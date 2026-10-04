@@ -3,6 +3,8 @@
 An AI-first design canvas: describe an app, get editable screens on an infinite canvas.
 Built with [Electrobun](https://framework.blackboard.sh/electrobun/) 2.x (Hutch + Cottontail), React 19, Tailwind v4, shadcn/ui and the [uai](https://uaiblocks.vercel.app) theme and blocks.
 
+See [docs/PRINCIPLES.md](docs/PRINCIPLES.md) for how Rabisco makes decisions and [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
+
 ## Getting started
 
 ```bash

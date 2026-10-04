@@ -1,0 +1,10 @@
+.hutch/
+.cottontail-tmp/
+node_modules/
+build/
+dist/
+artifacts/
+*.tsbuildinfo
+.DS_Store
+bench/compile/generated/
+src/mainview/public/runtime/
