@@ -44,7 +44,7 @@ async function collect(events: AsyncIterable<GenerationEvent>) {
 	return out;
 }
 
-/** A `gemini -p … --output-format stream-json` run, shaped after the headless-mode docs. */
+/** Shaped after the headless-mode docs, not a real recording. */
 const recording = (dir: string) => [
 	{ type: "init", timestamp: "2026-10-04T10:00:00.000Z", session_id: "s1", model: "gemini-2.5-pro" },
 	{ type: "message", timestamp: "2026-10-04T10:00:00.100Z", role: "user", content: "A primary button" },

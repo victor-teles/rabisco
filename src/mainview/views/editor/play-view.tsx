@@ -18,18 +18,11 @@ import { resolveLink } from "../../../shared/prototype/links";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 import { isTyping, PLAY_BACK_KEYS, PLAY_FORWARD_KEYS } from "./shortcuts";
 
-/** Screen pixels around the screen */
 const PADDING = 48;
 
 type History = { stack: string[]; index: number };
 
-/**
- * Play mode (decision 0007): the prototype from `start`, one screen at a time
- * at its device size (scaled down only to fit), live and interactive. Clicks
- * on elements with a `data-link-to` move between screens; the top bar has
- * back, forward, restart and a screen picker. Esc closes, from the bar or
- * from inside the screen.
- */
+/** Play mode (decision 0007): clicks on `data-link-to` elements move between screens */
 export function PlayView({
 	start,
 	frames,
@@ -88,7 +81,6 @@ export function PlayView({
 
 	const restart = useCallback(() => setHistory({ stack: [start], index: 0 }), [start]);
 
-	// A link in the screen: as written in its `data-link-to`
 	const navigate = useCallback(
 		(to: string) => {
 			const target = resolveLink(to, files);
@@ -105,7 +97,7 @@ export function PlayView({
 		[files, go, back, canBack],
 	);
 
-	// Play mode owns the keyboard while open: the editor's shortcuts would act on a canvas the user can't see
+	// Owns the keyboard while open: the editor's shortcuts would act on a canvas the user can't see
 	const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
 		if (isTyping(event.target)) return;
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);

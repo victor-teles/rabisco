@@ -23,7 +23,6 @@ export function writeRecents(file: string, list: RecentEntry[]) {
 	writeFileSync(file, `${JSON.stringify(list, null, "\t")}\n`);
 }
 
-/** Moves `path` to the front (or adds it), most recent first. */
 export function touchRecent(list: RecentEntry[], path: string, openedAt = new Date().toISOString()): RecentEntry[] {
 	return sortRecents([{ path, openedAt }, ...list.filter((e) => e.path !== path)]);
 }
@@ -44,7 +43,7 @@ export function missingSummary(entry: RecentEntry): ProjectSummary {
 	};
 }
 
-/** Card data for one recent folder. Reads without writing, so listing never touches projects. */
+/** Read-only, so listing never touches projects. */
 export function summarizeFolder(entry: RecentEntry): ProjectSummary {
 	const missing = missingSummary(entry);
 

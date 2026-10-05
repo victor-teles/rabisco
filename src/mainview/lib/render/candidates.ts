@@ -1,8 +1,4 @@
-/**
- * Extracts Tailwind class candidates from source text. A cheap superset: Tailwind ignores
- * tokens that are not classes. Tokens are split on whitespace and quotes, and also on code
- * punctuation, so both `w-[calc(100%-2rem)]` and `cn("p-4",` yield their class.
- */
+/** A cheap superset: Tailwind ignores tokens that are not classes. */
 export function extractCandidates(source: string): string[] {
 	const set = new Set<string>();
 

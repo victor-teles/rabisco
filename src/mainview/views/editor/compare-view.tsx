@@ -32,7 +32,6 @@ const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
 
 type Column = { file: string; label: string; picked: boolean; width: number; height: number; radius: number };
 
-/** The columns of `group`: one per file, sized like its frame on the canvas. */
 function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const sibling = group.files.map((file) => byFile.get(file)).find(Boolean);
@@ -48,17 +47,12 @@ function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 			picked,
 			width: size.width,
 			height: size.height,
-			// Same corners as the frame on the canvas
 			radius: frame?.device === "mobile" ? 28 : 6,
 		};
 	});
 }
 
-/**
- * Compare mode: a group's variations side by side at one zoom. Every column is as
- * tall as its screen's content and they share one scroll container, so scrolling
- * is synced. ←/→ move the highlight, Enter picks it, Esc closes.
- */
+/** Columns share one scroll container, so scrolling stays synced */
 export function CompareView({
 	group,
 	frames,
@@ -84,7 +78,6 @@ export function CompareView({
 	const current = Math.min(highlight, columns.length - 1);
 	const name = frames.find((frame) => frame.file === group.picked)?.name || screenNameFromPath(group.base);
 
-	// Fit every column into the available width (never above 100%)
 	const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
 	const gaps = PADDING * 2 + GAP * Math.max(0, columns.length - 1);
 	useLayoutEffect(() => {
@@ -133,8 +126,7 @@ export function CompareView({
 		else if (el.scrollLeft < right) el.scrollLeft = right;
 	};
 
-	// Compare mode owns the keyboard while open: the editor's canvas shortcuts would act on
-	// frames the user can't see. Undo and redo still reach it, so a pick can be undone.
+	// Owns the keyboard while open: canvas shortcuts would act on hidden frames. Undo/redo still pass so a pick can be undone.
 	const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
 		if (isTyping(event.target)) return;
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
@@ -180,8 +172,7 @@ export function CompareView({
 		return () => window.removeEventListener("keydown", listener, { capture: true });
 	}, []);
 
-	// The canvas listens to the wheel natively (pointer input goes through React, stopped on
-	// the root below): keep ours to ourselves, and let ⌘/ctrl + wheel (or pinch) zoom the comparison instead of the page.
+	// The canvas listens to the wheel natively, so keep ours to ourselves; ⌘/ctrl + wheel zooms the comparison, not the page
 	const wheelZoom = useEffectEvent((deltaY: number) => setZoomSetting(clampZoom(zoom * Math.exp(-deltaY * 0.01))));
 
 	useEffect(() => {

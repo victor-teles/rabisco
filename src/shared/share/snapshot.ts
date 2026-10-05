@@ -1,49 +1,37 @@
-/**
- * A read-only snapshot of a project (decision 0008): what the share link and
- * "Export as website" serve. The webview builds it, because that is where TSX
- * compiles and Tailwind builds (decisions 0001 and 0002); the main process only
- * checks its shape and serves it.
- */
+// Built in the webview, where TSX compiles and Tailwind builds; the main process only checks and serves it.
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
 import { isScreenFile, screenNameFromPath } from "../project";
 import type { Device, Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
 
-/** One project module, compiled the way frames receive it (`ModulePayload` in the render protocol). */
+/** Compiled the way frames receive it (`ModulePayload`) */
 export type ShareModule =
 	| { source: string; code: string; error?: undefined }
 	| { source: string; code?: undefined; error: { message: string; line: number; column?: number } };
 
-/** A screen of the viewer, in canvas order. */
 export type ShareScreen = { file: string; name: string; device: Device; width: number; height: number };
 
 export type ShareSnapshot = {
 	version: 1;
-	/** Project name */
 	name: string;
 	createdAt: string;
-	/** The screen the viewer opens on */
 	start: string;
 	screens: ShareScreen[];
-	/** Every module the screens import, by project path */
+	/** By project path */
 	modules: Record<string, ShareModule>;
-	/** The Tailwind stylesheet shared by every frame */
 	css: string;
 	/** DESIGN.md token overrides, loaded after `css` */
 	theme: string;
 };
 
-/** The prebuilt screen runtime (`runtime/frame.html` and `runtime/frame.js`), the same one the canvas uses. */
+/** The same prebuilt runtime the canvas uses */
 export type ScreenRuntime = { html: string; js: string };
 
-/** A running share link. */
 export type ShareStatus = {
-	/** The link to send: the computer's address on the local network */
+	/** The computer's address on the local network */
 	url: string;
-	/** The same link on this computer */
 	localUrl: string;
-	/** When the snapshot behind the link was last updated */
 	updatedAt: string;
 	screens: number;
 };
@@ -92,14 +80,14 @@ function assertShareSnapshot(value: Json | undefined): asserts value is ShareSna
 		throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);
 }
 
-/** Checks a snapshot that came over RPC. Returns it, or throws with what is wrong. */
+/** Throws with what is wrong */
 export function assertSnapshot(value: Json | undefined): ShareSnapshot {
 	assertShareSnapshot(value);
 
 	return value;
 }
 
-/** Screens a viewer shows: the canvas's screens in canvas order, without the alternates (picked designs only). */
+/** Canvas order, without alternates */
 export function shareScreens(frames: Frame[], files: ProjectFiles): ShareScreen[] {
 	return frames.flatMap(({ file, name, device, width, height }) =>
 		isScreenFile(file) && !isAlternate(file) && files[file] !== undefined

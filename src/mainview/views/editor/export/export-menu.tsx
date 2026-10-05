@@ -12,23 +12,20 @@ import type { Frame, ProjectFiles } from "../../../../shared/types";
 import { copyCode, exportViteProject, hasLocalImports } from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
 
-/** What every export needs from the editor. */
 export type ExportContext = {
 	projectPath: string;
 	projectName: string;
 	frames: Frame[];
 	files: ProjectFiles;
-	/** Selected screens, in canvas order */
+	/** In canvas order */
 	selected: Frame[];
-	/** The component open in the Components tab, if any (`components/*.tsx`) */
 	selectedComponent: string | null;
-	/** Writes a pending canvas save, so a git commit includes the current layout */
+	/** So a git commit includes the current layout */
 	flushCanvas: () => Promise<void>;
-	/** Reads the canvas and files again after a git pull replaced them */
+	/** A git pull may have replaced them */
 	reloadFromDisk: () => Promise<void>;
 };
 
-/** The title bar's Export button (Phase 7): code, a runnable project, images and the flow PDF. */
 export function ExportMenu(props: ExportContext) {
 	const { frames } = props;
 
@@ -41,7 +38,6 @@ export function ExportMenu(props: ExportContext) {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-60">
-				{/* Code (copy as code, Vite project) */}
 				<DropdownMenuLabel>Code</DropdownMenuLabel>
 				<DropdownMenuItem onSelect={() => void copyCode(props, false)}>Copy code</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void copyCode(props, true)} disabled={!hasLocalImports(props)}>
@@ -51,7 +47,6 @@ export function ExportMenu(props: ExportContext) {
 					Vite + React project…
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
-				{/* Images (PNG, SVG, flow PDF) */}
 				<DropdownMenuLabel>Images</DropdownMenuLabel>
 				<DropdownMenuItem onSelect={() => void exportImages("png", props)} disabled={frames.length === 0}>
 					PNG…

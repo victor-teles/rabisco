@@ -1,34 +1,26 @@
 import { angleDelta, isOpen, matching, splitTop, unquote, type Tok } from "./tokens";
 
-/**
- * The top-level declarations of a TSX file that matter for its component API:
- * type aliases, interfaces, cva variant tables, function-like values and the
- * export list. Built from tokens, so it never evaluates or compiles anything.
- */
+// Built from tokens: never evaluates or compiles anything.
 
 export type Variants = Record<string, { options: string[]; default?: string }>;
 
 export type FunctionInfo = {
-	/** Tokens of the first parameter (`{ a, b = 1 }: Props`), if any */
 	param?: Tok[];
-	/** Props type given outside the parameter: `forwardRef<El, Props>`, `const X: FC<Props>` */
+	/** `forwardRef<El, Props>`, `const X: FC<Props>` */
 	typeArg?: Tok[];
 };
 
 export type Scope = {
 	source: string;
-	/** `type Name = …`: the tokens after `=` */
+	/** Tokens after `=` */
 	types: Map<string, Tok[]>;
-	/** `interface Name extends A, B { … }`: heritage clauses and the body inside the braces */
 	interfaces: Map<string, { heritage: Tok[][]; body: Tok[] }>;
-	/** `const x = cva(base, { variants, defaultVariants })` */
 	cva: Map<string, Variants>;
 	functions: Map<string, FunctionInfo>;
-	/** Named exports in order: local binding → exported name */
 	exports: { local: string; name: string }[];
 };
 
-/** Words that start a new top-level statement; a type alias without `;` ends before one on a new line. */
+/** A type alias without `;` ends before one of these on a new line. */
 const STATEMENT = new Set([
 	"export",
 	"import",
@@ -46,7 +38,6 @@ const STATEMENT = new Set([
 
 const WRAPPERS = new Set(["forwardRef", "memo"]);
 
-/** Index after the `<…>` group that starts at `from`. */
 export function skipAngles(toks: Tok[], from: number): number {
 	let depth = 0;
 
@@ -64,7 +55,7 @@ export function skipAngles(toks: Tok[], from: number): number {
 	return toks.length;
 }
 
-/** End (exclusive) of a type that starts at `from`: a top-level `;`, a `stop` token, or a statement on a new line. */
+/** Exclusive: a top-level `;`, a `stop` token, or a statement on a new line. */
 function typeEnd(toks: Tok[], from: number, stop: string[] = []): number {
 	for (let i = from; i < toks.length; i++) {
 		const tok = toks[i]!;
@@ -82,7 +73,7 @@ function typeEnd(toks: Tok[], from: number, stop: string[] = []): number {
 	return toks.length;
 }
 
-/** `{ key: value, … }` starting at `toks[0]`: entries with a simple key. */
+/** Only entries with a simple key */
 export function objectEntries(toks: Tok[]): { key: string; value: Tok[] }[] {
 	if (toks[0]?.type !== "{") return [];
 	const close = matching(toks, 0);
@@ -98,7 +89,6 @@ export function objectEntries(toks: Tok[]): { key: string; value: Tok[] }[] {
 	return entries;
 }
 
-/** A literal value as written: `"x"` → x, `true`, `3`, `-1`. */
 export function literalOf(toks: Tok[]): string | number | boolean | undefined {
 	if (toks.length === 1) {
 		const [tok] = toks;
@@ -136,12 +126,10 @@ function cvaVariants(args: Tok[][]) {
 	return variants;
 }
 
-/** First parameter of the parameter list whose `(` is at `open`. */
 function firstParam(toks: Tok[], open: number): Tok[] | undefined {
 	return splitTop(toks, open + 1, matching(toks, open), [","])[0];
 }
 
-/** `function Name<T>(…)` at `at` (the `function` token). */
 function functionAt(toks: Tok[], at: number): FunctionInfo | null {
 	let k = at + 1;
 
@@ -154,10 +142,7 @@ function functionAt(toks: Tok[], at: number): FunctionInfo | null {
 	return toks[k]?.type === "(" ? { param: firstParam(toks, k) } : null;
 }
 
-/**
- * The component behind an initializer at `at`: an arrow, a function
- * expression, or one wrapped in `forwardRef`/`memo` (with `React.` or not).
- */
+/** An arrow, a function expression, or one wrapped in `forwardRef`/`memo`. */
 function functionFromInit(toks: Tok[], at: number): FunctionInfo | null {
 	let k = at;
 
@@ -205,7 +190,6 @@ function functionFromInit(toks: Tok[], at: number): FunctionInfo | null {
 	return inner;
 }
 
-/** `FC<Props>` / `React.FunctionComponent<Props>` annotation → `Props`. */
 function fcTypeArg(annotation: Tok[]): Tok[] | undefined {
 	const at = annotation.findIndex((t) => t.text === "<");
 
@@ -219,7 +203,6 @@ function fcTypeArg(annotation: Tok[]): Tok[] | undefined {
 	return splitTop(annotation, at + 1, skipAngles(annotation, at) - 1, [","])[0];
 }
 
-/** Scans the top level of `toks` (from `tokenize(source)`). */
 export function scanScope(source: string, toks: Tok[]): Scope {
 	const scope: Scope = {
 		source,

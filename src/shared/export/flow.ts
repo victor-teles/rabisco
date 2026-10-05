@@ -1,8 +1,4 @@
-/**
- * "PDF of the flow": the screens in the order a user walks through them, one
- * page each, after an overview page. Prototype links (decision 0007) decide
- * the order, and become clickable areas that jump to the linked page.
- */
+// Page order and clickable areas come from prototype links (decision 0007).
 
 import { listLinks, resolveLink } from "../prototype/links";
 import type { ProjectFiles } from "../types";
@@ -17,12 +13,7 @@ import {
 } from "./pdf";
 import type { SceneLink } from "./scene";
 
-/**
- * `screens` (paths, canvas order) in flow order: breadth-first from the first
- * screen along its links, in source order; then the same from the first
- * screen not reached yet, until every screen is in. Links written in
- * component files don't count, as on the canvas.
- */
+/** Breadth-first along links from the first unreached screen; links in component files don't count. */
 export function flowOrder(screens: string[], files: ProjectFiles): string[] {
 	const included = new Set(screens);
 	const targets = new Map<string, string[]>();
@@ -61,7 +52,7 @@ export function flowOrder(screens: string[], files: ProjectFiles): string[] {
 	return order;
 }
 
-/** One rendered screen, in flow order. `image` is its raster at any scale; sizes are CSS pixels. */
+/** `image` is its raster at any scale; sizes are CSS pixels. */
 export type FlowScreen = {
 	file: string;
 	name: string;
@@ -87,19 +78,14 @@ const MUTED: PdfColor = [0.45, 0.45, 0.5];
 
 const LINE: PdfColor = [0.88, 0.88, 0.9];
 
-/** `text` shortened with "…" to about `width` px of Helvetica at `size` px. */
+/** Approximate, for Helvetica */
 export function fitText(text: string, width: number, size: number): string {
 	const max = Math.floor(width / (size * 0.55));
 
 	return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
 }
 
-/**
- * The flow PDF: an overview page with every screen as a numbered thumbnail
- * (when there is more than one), then a page per screen sized to it, with
- * its name and position as a header. Links to other exported screens are
- * clickable; `back` links aren't, since a page has no history.
- */
+/** `back` links aren't clickable, since a page has no history. */
 export function flowDocument({
 	title,
 	screens,

@@ -2,15 +2,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { FrameHost, runtimeUrl } from "@/lib/render/frame-host";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
-/**
- * Renders the screen `entry` from `files` in a sandboxed frame running the screen runtime.
- * `allow-scripts` without `allow-same-origin` keeps generated code away from the app.
- * Non-interactive unless `interactive` (text editing in place): the canvas handles pointer input. The frame re-renders only when a file
- * in the entry's module graph, or the shared CSS, changes. `onContentHeight` receives the
- * screen's content height whenever it changes (compare mode sizes frames to it).
- * `play` turns on play mode (decision 0007): clicks on linked elements call
- * `onNavigate` with the link as written, and Escape inside the frame calls `onEscape`.
- */
+/** `allow-scripts` without `allow-same-origin` keeps generated code away from the app. */
 export function ScreenFrame({
 	entry,
 	files,
@@ -74,7 +66,6 @@ export function ScreenFrame({
 	);
 }
 
-/** A screen scaled down to fit inside `maxWidth` × `maxHeight`, for thumbnails. */
 export function ScreenPreview({
 	source,
 	maxWidth,

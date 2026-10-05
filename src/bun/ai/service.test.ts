@@ -115,8 +115,6 @@ describe("ai service", () => {
 	});
 });
 
-// ---------------------------------------------------------------- variations
-
 function put(projectPath: string, path: string, content: string) {
 	mkdirSync(dirname(join(projectPath, path)), { recursive: true });
 	writeFileSync(join(projectPath, path), content);
@@ -126,7 +124,6 @@ const screenSource = (name: string) => `export default function ${name}() { retu
 
 type Play = (request: GenerationRequest, signal: AbortSignal) => AsyncIterable<GenerationEvent>;
 
-/** A service whose model `mock:mock` plays `play` for every request, recording them. */
 function setupFake(play: Play) {
 	const root = tempDir();
 	const sent: GenerationEventMessage[] = [];

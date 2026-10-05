@@ -17,23 +17,15 @@ type Point = { x: number; y: number };
 
 type CommentsLayerProps = {
 	controller: CommentsController;
-	/** The canvas frames, to place pins that sit on a frame */
 	frames: Frame[];
 	zoom: number;
-	/** Shows "Ask AI" on threads: a targeted generation from the comment */
 	onAskAI?: (comment: CanvasComment) => void;
 };
 
-// Pointer input on pins and threads must never reach the canvas (select, marquee, pan).
-// Threads render in a portal, but React still bubbles their events through the canvas.
+// Threads render in a portal, but React still bubbles their events through the canvas: stop them reaching it
 const stop = (event: React.PointerEvent) => event.stopPropagation();
 
-/**
- * Comment pins, rendered inside the canvas's transformed layer (canvas
- * coordinates). Pins counter-scale so they keep their screen size; a click
- * opens the thread, a drag moves the pin. Resolved pins are hidden unless
- * "show resolved" is on.
- */
+/** Pins counter-scale so they keep their screen size; a click opens the thread, a drag moves the pin */
 export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLayerProps) {
 	const { comments, draft, openId, showResolved } = controller;
 	const draftAt = draft ? pinPosition(draft, frames) : null;
@@ -80,7 +72,7 @@ export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLay
 	);
 }
 
-/** A 0×0 box at the pin's canvas point; its child is counter-scaled from the bottom-left, where the pin's tip is. */
+/** Its child is counter-scaled from the bottom-left, where the pin's tip is */
 function PinAnchor({ at, zoom, children }: { at: Point; zoom: number; children: React.ReactNode }) {
 	return (
 		<div className="absolute" style={{ left: at.x, top: at.y }}>
@@ -91,7 +83,6 @@ function PinAnchor({ at, zoom, children }: { at: Point; zoom: number; children: 
 	);
 }
 
-/** Figma's pin: a round badge with a square bottom-left corner pointing at the spot. */
 function PinMarker({
 	label,
 	pinId,
@@ -128,10 +119,7 @@ function PinMarker({
 	);
 }
 
-/**
- * The thread popover. Pointer input stays out of the canvas; the composer takes focus itself.
- * Pressing its own pin is not an outside click: the pin toggles or drags it.
- */
+/** Pressing its own pin is not an outside click: the pin toggles or drags it */
 function ThreadContent({
 	pinId,
 	children,
@@ -367,7 +355,7 @@ function CommentPin({
 	);
 }
 
-/** Edits the comment in place: every keystroke is part of one undo step, Enter or blur finishes. */
+/** Every keystroke is part of one undo step; Enter or blur finishes */
 function EditText({
 	comment,
 	controller,
@@ -404,7 +392,6 @@ function EditText({
 	);
 }
 
-/** Enter posts, ⇧Enter adds a line, Esc cancels. */
 function Composer({
 	placeholder,
 	submitLabel,
@@ -416,7 +403,6 @@ function Composer({
 	submitLabel: string;
 	onSubmit: (text: string) => void;
 	onCancel: () => void;
-	/** Clears the field after posting instead of leaving it to the parent to unmount */
 	keepAfterSubmit?: boolean;
 }) {
 	const [text, setText] = useState("");

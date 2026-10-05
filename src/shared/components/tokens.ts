@@ -1,23 +1,16 @@
 import { parse } from "sucrase/dist/esm/parser";
 import { formatTokenType } from "sucrase/dist/esm/parser/tokenizer/types";
 
-/**
- * A light token stream over TSX source, from Sucrase's tokenizer: strings,
- * comments, templates, regexes and JSX text are already handled, so callers
- * only match brackets and words. Works in Bun and in the webview.
- */
-
 export type Tok = {
-	/** Sucrase's token label: `name`, `string`, `num`, `{`, `=>`, `export`, `jsxText`… */
+	/** Sucrase's token label: `name`, `string`, `{`, `=>`, `jsxText`… */
 	type: string;
 	text: string;
 	start: number;
 	end: number;
-	/** A line break separates this token from the previous one */
+	/** Preceded by a line break */
 	nl: boolean;
 };
 
-/** Tokens of `source` without the final `eof`, or `null` when it doesn't parse. */
 export function tokenize(source: string): Tok[] | null {
 	try {
 		const { tokens } = parse(source, true, true, false);
@@ -52,7 +45,7 @@ export const isOpen = (tok: Tok | undefined) => !!tok && OPEN.has(tok.type);
 
 export const isClose = (tok: Tok | undefined) => !!tok && CLOSE.has(tok.type);
 
-/** Index of the bracket closing the one at `open`; the last index when it is unbalanced. */
+/** The last index when unbalanced */
 export function matching(toks: Tok[], open: number): number {
 	let depth = 0;
 
@@ -64,7 +57,6 @@ export function matching(toks: Tok[], open: number): number {
 	return toks.length - 1;
 }
 
-/** Angle-bracket depth change of a token inside a type (`<`, `>`, `>>`). */
 export function angleDelta(tok: Tok): number {
 	if (tok.text === "<") return 1;
 
@@ -73,10 +65,7 @@ export function angleDelta(tok: Tok): number {
 	return 0;
 }
 
-/**
- * Splits `toks[from, to)` at every top-level token whose text is in `separators`,
- * ignoring brackets and (with `angles`) type arguments. Empty parts are dropped.
- */
+/** Splits at top level (with `angles`, also outside type arguments); empty parts are dropped. */
 export function splitTop(toks: Tok[], from: number, to: number, separators: string[], angles = true): Tok[][] {
 	const parts: Tok[][] = [];
 	let current: Tok[] = [];
@@ -108,7 +97,7 @@ export function splitTop(toks: Tok[], from: number, to: number, separators: stri
 	return parts;
 }
 
-/** Source text spanned by `toks`, whitespace collapsed. */
+/** Whitespace collapsed */
 export function textOf(source: string, toks: Tok[]): string {
 	if (!toks.length) return "";
 
@@ -123,7 +112,6 @@ const ESCAPES = new Map([
 	["t", "\t"],
 ]);
 
-/** The value of a string literal token (single or double quoted). */
 export function unquote(text: string): string {
 	const body = text.slice(1, -1);
 

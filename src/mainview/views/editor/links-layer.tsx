@@ -9,17 +9,14 @@ type Rect = { x: number; y: number; width: number; height: number };
 
 type Side = "left" | "right" | "top" | "bottom";
 
-/**
- * One drawn connector: every link of a source screen that goes to the same
- * place. `to` is a target frame, or a stub for "back" and missing screens.
- */
+/** Links of a source screen that go to the same place; `to` is a stub for "back" and missing screens */
 type Connector = {
 	key: string;
 	source: Frame;
 	links: ProjectLink[];
 } & ({ kind: "screen"; target: Frame } | { kind: "back" } | { kind: "broken"; to: string });
 
-/** Screen pixels: stroke widths, arrowheads and stubs keep their size at every zoom */
+/** Screen pixels: keep their size at every zoom */
 const STROKE = 1.5;
 
 const STROKE_SELECTED = 2;
@@ -30,10 +27,10 @@ const DOT = 3;
 
 const STUB = 40;
 
-/** Canvas units: how far curves bow out of a frame's edge, at most */
+/** Canvas units, at most */
 const MAX_BOW = 320;
 
-/** Where a connector leaves `a` and enters `b`, from where the frames sit. `null` when they overlap. */
+/** `null` when the frames overlap */
 function sidesOf(a: Rect, b: Rect): [Side, Side] | null {
 	if (b.x >= a.x + a.width) return ["right", "left"];
 
@@ -46,7 +43,6 @@ function sidesOf(a: Rect, b: Rect): [Side, Side] | null {
 	return null;
 }
 
-/** The point at `t` (0…1) along `side` of `rect`. */
 function pointOn(rect: Rect, side: Side, t: number): Point {
 	if (side === "left" || side === "right")
 		return { x: side === "left" ? rect.x : rect.x + rect.width, y: rect.y + rect.height * t };
@@ -61,7 +57,7 @@ const OUTWARD: Record<Side, Point> = {
 	bottom: { x: 0, y: 1 },
 };
 
-/** The frames' connectors, from the project's links. Links in components or frameless files aren't drawn. */
+/** Links in components or frameless files aren't drawn */
 function connectorsOf(frames: Frame[], files: ProjectFiles): Connector[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const connectors = new Map<string, Connector>();
@@ -90,10 +86,7 @@ function connectorsOf(frames: Frame[], files: ProjectFiles): Connector[] {
 
 type Route = { connector: Connector; from: Point; to: Point; fromSide: Side; toSide: Side | null };
 
-/**
- * Endpoints for every connector. Connectors that share a frame side are
- * spread along it, ordered by where their other end is, so they don't cross.
- */
+/** Connectors sharing a frame side are spread along it, ordered by their other end, so they don't cross */
 function routesOf(connectors: Connector[]): Route[] {
 	type End = { route: number; frame: Frame; side: Side; other: Point; outgoing: boolean };
 
@@ -144,15 +137,7 @@ function routesOf(connectors: Connector[]): Route[] {
 	});
 }
 
-/**
- * Prototype links on the canvas (decision 0007), rendered inside the canvas's
- * transformed layer (canvas coordinates). One curved arrow per source screen
- * and target, from the side of the source frame that faces the target to the
- * facing side of the target. "Back" and links to missing screens end in a
- * short labelled stub; missing ones are dashed in the destructive color. The
- * connector of the `selected` element is highlighted. Strokes and labels keep
- * their screen size at every zoom. Never takes pointer input.
- */
+/** Prototype links (decision 0007), in canvas coordinates. Never takes pointer input. */
 export function LinksLayer({
 	frames,
 	files,

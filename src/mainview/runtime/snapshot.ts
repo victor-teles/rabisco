@@ -1,17 +1,4 @@
-/**
- * Image export, inside the frame: reads the rendered screen into a `Scene`
- * (`src/shared/export/scene.ts`), a list of boxes, text lines, images and SVG
- * shapes with their computed styles. The host turns it into SVG; `raster.ts`
- * paints it to a canvas for PNG and PDF.
- *
- * Supported: backgrounds (colors, linear gradients, images), borders, radii,
- * outer box shadows and rings, opacity, overflow clipping, text (with
- * `bg-clip-text` gradients, letter spacing, decorations, text-transform),
- * images with object-fit, form field values and placeholders, inline SVG
- * icons, and stacking by z-index among siblings. Not supported: CSS
- * transforms other than translation, filters, masks, inset shadows,
- * pseudo-elements (`::before`/`::after`) and text-overflow ellipses.
- */
+// Not captured: non-translate transforms, filters, masks, inset shadows, ::before/::after, text ellipses.
 import { isVisible, parseColor, type Rgba } from "../../shared/export/color";
 import {
 	fitRadii,
@@ -33,19 +20,16 @@ import { boxOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect"
 
 const SKIPPED = new Set(["script", "style", "link", "meta", "template", "noscript", "head", "title"]);
 
-/** The render error overlay (`errors.ts`) is not part of the screen */
 const OVERLAY_ID = "rabisco-error";
 
 const PLACEHOLDER: Rgba = { r: 228, g: 228, b: 231, a: 1 };
 
-/** The screen's height: the viewport, or more when content overflows it. */
 export function contentHeight() {
 	return Math.ceil(Math.max(window.innerHeight, document.documentElement.scrollHeight, document.body.scrollHeight));
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Waits for fonts and images, and jumps CSS animations and transitions to their end state. */
 export async function settle() {
 	for (const img of document.images) if (img.loading === "lazy") img.loading = "eager";
 	await Promise.race([document.fonts?.ready, wait(3000)]);
@@ -64,8 +48,6 @@ export async function settle() {
 	await wait(30);
 }
 
-// ————— Colors and fonts —————
-
 let probe: CanvasRenderingContext2D | null = null;
 
 const probeContext = () => {
@@ -80,7 +62,6 @@ const probeContext = () => {
 
 const colors = new Map<string, Rgba | null>();
 
-/** A computed color as sRGB; the browser resolves what `parseColor` doesn't know. */
 function color(value: string): Rgba | null {
 	if (colors.has(value)) return colors.get(value)!;
 	let parsed = parseColor(value);
@@ -105,7 +86,7 @@ export const canvasFont = (font: { style: string; weight: string; size: number; 
 
 const metrics = new Map<string, { ascent: number; descent: number }>();
 
-/** The font's ascent and descent: a text range's box is their sum, centered on the line. */
+/** A text range's box is ascent + descent, centered on the line. */
 function fontMetrics(font: string, size: number) {
 	let found = metrics.get(font);
 
@@ -130,8 +111,6 @@ function textWidth(font: string, text: string) {
 	return ctx.measureText(text).width;
 }
 
-// ————— Images —————
-
 type Loaded = { src: string; width: number; height: number };
 
 const loaded = new Map<string, Promise<Loaded | null>>();
@@ -151,10 +130,7 @@ const asDataUrl = (blob: Blob) =>
 		reader.readAsDataURL(blob);
 	});
 
-/**
- * `url` as a data URL with its natural size. Other origins need CORS (the
- * frame's origin is opaque); `null` when the image can't be read.
- */
+/** Other origins need CORS since the frame's origin is opaque. */
 function loadImage(url: string): Promise<Loaded | null> {
 	let promise = loaded.get(url);
 
@@ -182,7 +158,6 @@ function loadImage(url: string): Promise<Loaded | null> {
 	return promise;
 }
 
-/** Where an image of `natural` size goes in `box` for an `object-fit` / `background-size` and position. */
 function placeImage(natural: { width: number; height: number }, box: Box, fit: string, position: string): Box {
 	const [px = 0.5, py = 0.5] = position
 		.split(/\s+/)
@@ -204,8 +179,6 @@ function placeImage(natural: { width: number; height: number }, box: Box, fit: s
 
 	return { x: at(width, box.width, px, box.x), y: at(height, box.height, py, box.y), width, height };
 }
-
-// ————— Boxes —————
 
 type Sides = [number, number, number, number];
 
@@ -237,7 +210,6 @@ function borderWidths(style: CSSStyleDeclaration): Sides {
 	];
 }
 
-/** `rect` without `sides` (top, right, bottom, left); inner radii shrink with them. */
 function shrink(rect: RoundedRect, [top, right, bottom, left]: Sides): RoundedRect {
 	const width = Math.max(0, rect.width - left - right);
 	const height = Math.max(0, rect.height - top - bottom);
@@ -269,7 +241,6 @@ const add = (a: Sides, b: Sides): Sides => [a[0] + b[0], a[1] + b[1], a[2] + b[2
 const clipsText = (style: CSSStyleDeclaration) =>
 	style.backgroundClip === "text" || style.webkitBackgroundClip === "text";
 
-/** The element's background as one paint: its first gradient, else its color. */
 function backgroundPaint(style: CSSStyleDeclaration, box: Box): Paint | null {
 	for (const layer of splitTopLevel(style.backgroundImage)) {
 		const gradient = parseLinearGradient(layer, box);
@@ -282,7 +253,6 @@ function backgroundPaint(style: CSSStyleDeclaration, box: Box): Paint | null {
 	return isVisible(fill) ? { kind: "color", color: fill } : null;
 }
 
-/** Visually hidden content (`sr-only`): 1px, clipped away. */
 function isScreenReaderOnly(style: CSSStyleDeclaration, rect: DOMRect) {
 	if (style.clip === "rect(0px, 0px, 0px, 0px)" || style.clipPath === "inset(50%)") return true;
 
@@ -298,7 +268,7 @@ class SceneBuilder {
 		return { x: rect.left + this.scrollX, y: rect.top + this.scrollY, width: rect.width, height: rect.height };
 	}
 
-	/** An image, filled in once it loads: the slot keeps paint order. */
+	/** The slot is reserved now so paint order survives the async load. */
 	image(url: string, clip: RoundedRect, place: (natural: Loaded) => Box, out: SceneOp[]) {
 		const slot: SceneOp & { type: "group" } = { type: "group", opacity: 1, clip: clip, ops: [] };
 		out.push(slot);
@@ -352,7 +322,6 @@ class SceneBuilder {
 		else out.push(...own);
 	}
 
-	/** Shadows, background and border, in CSS paint order. */
 	decorations(style: CSSStyleDeclaration, borderBox: RoundedRect, borders: Sides, out: SceneOp[]) {
 		if (borderBox.width <= 0 || borderBox.height <= 0) return;
 
@@ -420,7 +389,6 @@ class SceneBuilder {
 		}
 	}
 
-	/** Images, canvases and the text of form fields. `content` is the content box. */
 	replaced(element: Element, style: CSSStyleDeclaration, content: RoundedRect, out: SceneOp[]) {
 		if (content.width <= 0 || content.height <= 0) return;
 
@@ -454,7 +422,6 @@ class SceneBuilder {
 		}
 	}
 
-	/** A form field's value, or its placeholder, where the browser draws it. */
 	field(
 		element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
 		style: CSSStyleDeclaration,
@@ -550,7 +517,6 @@ class SceneBuilder {
 		for (const item of sorted(above)) out.push(...item.ops);
 	}
 
-	/** The paint of text in `element`: its color, or the gradient behind it with `bg-clip-text`. */
 	textPaint(element: Element, style: CSSStyleDeclaration): Paint | null {
 		const fill = color(style.webkitTextFillColor || style.color);
 
@@ -565,7 +531,6 @@ class SceneBuilder {
 		return null;
 	}
 
-	/** One text op per rendered line of `node`. */
 	text(node: Text, parent: Element, style: CSSStyleDeclaration, out: SceneOp[]) {
 		const data = node.data;
 
@@ -650,7 +615,6 @@ class SceneBuilder {
 		}
 	}
 
-	/** Underline, line-through or overline, from the element or its inline ancestors. */
 	decoration(element: Element, style: CSSStyleDeclaration, size: number) {
 		for (let node: Element | null = element; node; node = node.parentElement) {
 			const nodeStyle = node === element ? style : getComputedStyle(node);
@@ -680,7 +644,6 @@ class SceneBuilder {
 		return null;
 	}
 
-	/** An inline SVG (icons, mostly) as paths in document coordinates. */
 	svg(svg: SVGSVGElement, out: SceneOp[]) {
 		const skip = new Set([
 			"defs",
@@ -717,7 +680,6 @@ class SceneBuilder {
 		visit(svg, 1);
 	}
 
-	/** One SVG shape element (path, rect, circle…) as a path op. */
 	graphic(graphic: SVGGraphicsElement, style: CSSStyleDeclaration, opacity: number, out: SceneOp[]) {
 		if (style.visibility !== "visible" || opacity <= 0) return;
 		const d = graphicPath(graphic);
@@ -769,7 +731,6 @@ class SceneBuilder {
 	}
 }
 
-/** Path data for an SVG graphic element, in its own user space; `null` for anything else. */
 function graphicPath(graphic: SVGGraphicsElement): string | null {
 	const n = (v: number) => String(Math.round(v * 1000) / 1000);
 
@@ -816,11 +777,7 @@ function graphicPath(graphic: SVGGraphicsElement): string | null {
 	return null;
 }
 
-/**
- * Prototype links (decision 0007) and their boxes, read from React's fiber
- * tree so a component that doesn't pass `data-link-to` on still counts.
- * The outermost link wins.
- */
+/** Reads React fibers so components that don't forward `data-link-to` still count (decision 0007). */
 function collectLinks(container: Element, scrollX: number, scrollY: number): SceneLink[] {
 	const links: SceneLink[] = [];
 
@@ -856,7 +813,6 @@ function collectLinks(container: Element, scrollX: number, scrollY: number): Sce
 	return links;
 }
 
-/** The rendered screen as a scene, `width` wide (the viewport) and as tall as its content. */
 export async function captureScene(container: Element): Promise<Scene> {
 	await settle();
 	const builder = new SceneBuilder();
@@ -879,7 +835,6 @@ export async function captureScene(container: Element): Promise<Scene> {
 	};
 }
 
-/** Drops empty groups, so the SVG has no clutter. */
 function prune(ops: SceneOp[]): SceneOp[] {
 	return ops.flatMap((op) => {
 		if (op.type !== "group") return [op];

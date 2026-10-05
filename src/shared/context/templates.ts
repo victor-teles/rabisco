@@ -1,9 +1,6 @@
 import type { ContextFileName } from "../types";
 
-/**
- * Starting points for the context files (principle 5). Guidance lives in HTML comments, so an
- * untouched template has no content outside headings and comments, and generations ignore it.
- */
+// Guidance lives in HTML comments, so generations ignore an untouched template.
 export const PRODUCT_TEMPLATE = `# Product
 
 <!--

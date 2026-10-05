@@ -25,10 +25,6 @@ import type {
 } from "../shared/types";
 import { arrayOr, objectOr, optionalNumber, optionalString, parseJson } from "./json";
 
-/**
- * A project is a folder:
- * `rabisco.json` (canvas), `PRODUCT.md`, `DESIGN.md`, `screens/*.tsx`, `components/*.tsx`, `chat.jsonl`.
- */
 export const CANVAS_FILE = "rabisco.json";
 
 export const CHAT_FILE = "chat.jsonl";
@@ -49,14 +45,13 @@ export function assertProjectDir(path: string) {
 	if (!isDirectory(path)) throw new Error(`Not a folder: ${path}. Choose a folder to open as a project.`);
 }
 
-/** Rejects anything that isn't a screen, component or context file, including `..` and absolute paths. */
+/** Also rejects `..` and absolute paths. */
 export function assertProjectFilePath(path: string) {
 	if (!isString(path) || !isProjectFile(path)) {
 		throw new Error(`Rabisco can only write screens/*.tsx, components/*.tsx, PRODUCT.md and DESIGN.md (got "${path}")`);
 	}
 }
 
-/** Reads every screen, component and context file of the folder. */
 export function readProjectFiles(dir: string): ProjectFiles {
 	const files: ProjectFiles = {};
 	const candidates = ["PRODUCT.md", "DESIGN.md"];
@@ -88,7 +83,6 @@ export function readFileIfExists(path: string): string | null {
 const parseDevice = (value: Json | undefined): Device | undefined =>
 	value === "desktop" || value === "mobile" ? value : undefined;
 
-/** A frame needs its file and position; the rest falls back to the screen's defaults. */
 function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	const frame = objectOr(value);
 	const file = optionalString(frame.file);
@@ -119,7 +113,6 @@ function parseAlternateGroup(value: Json): AlternateGroup[] {
 	return picked === undefined ? [] : [{ picked, files: arrayOr(group.files).filter(isString) }];
 }
 
-/** Fills in anything missing from a hand-edited or older `rabisco.json`. */
 export function normalizeCanvas(raw: Json | undefined, fallbackName: string): CanvasDoc {
 	const base = emptyCanvas(fallbackName, "mobile");
 
@@ -140,7 +133,7 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 	};
 }
 
-/** `null` when the folder has no `rabisco.json` yet. Throws when it exists but isn't valid JSON. */
+/** `null` when missing; throws when it exists but isn't valid JSON. */
 export function readCanvas(dir: string): CanvasDoc | null {
 	const text = readFileIfExists(join(dir, CANVAS_FILE));
 
@@ -157,7 +150,7 @@ export function writeCanvas(dir: string, canvas: CanvasDoc) {
 	writeFileSync(join(dir, CANVAS_FILE), `${JSON.stringify(canvas, null, "\t")}\n`);
 }
 
-/** One `ChatMessage` per line; malformed lines are skipped. */
+/** Malformed lines are skipped. */
 export function parseChat(text: string): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 
@@ -194,10 +187,7 @@ export function appendChat(dir: string, messages: ChatMessage[]) {
 	appendFileSync(join(dir, CHAT_FILE), messages.map((m) => `${JSON.stringify(m)}\n`).join(""));
 }
 
-/**
- * Loads a folder as a project. Creates `rabisco.json` when it's missing and
- * saves it again when frames had to be reconciled with the files on disk.
- */
+/** Writes `rabisco.json` when missing or when frames had to be reconciled with the files on disk. */
 export function loadProject(dir: string): Project {
 	assertProjectDir(dir);
 	const files = readProjectFiles(dir);
@@ -210,7 +200,7 @@ export function loadProject(dir: string): Project {
 	return { path: dir, canvas, files, messages };
 }
 
-/** Applies writes and deletes after validating every path, so a bad path writes nothing. */
+/** Validates every path first, so a bad path writes nothing. */
 export function writeProjectFiles(dir: string, changes: FileChange[]) {
 	for (const change of changes) assertProjectFilePath(change.path);
 
@@ -237,7 +227,6 @@ export function freeProjectDir(parent: string, name: string) {
 	return dir;
 }
 
-/** A new project folder with an empty canvas and the PRODUCT.md and DESIGN.md templates. */
 export function createProjectFolder(parent: string, name: string, device: Device) {
 	const dir = freeProjectDir(parent, name);
 	mkdirSync(dir, { recursive: true });

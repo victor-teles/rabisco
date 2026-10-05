@@ -152,7 +152,6 @@ describe("findDuplicates", () => {
 		const result = extractSuggestion(project, group!, group!.suggestedName);
 		expect(result.ok && result.replaced).toEqual([{ path: "screens/a.tsx", count: 2 }]);
 
-		// The alternate and the local-Star screen are left alone
 		if (result.ok)
 			expect(result.changes.map((c) => c.path).sort()).toEqual(["components/feature-card.tsx", "screens/a.tsx"]);
 

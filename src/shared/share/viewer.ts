@@ -1,29 +1,11 @@
-/**
- * The read-only viewer (decision 0008): a static site that plays a project's
- * screens with the real screen runtime, so it looks exactly like the canvas.
- *
- * ```
- * index.html          screen list, stage, back and restart
- * viewer.js           feeds the frame, follows `data-link-to` (decision 0007)
- * snapshot.js         window.__RABISCO_SHARE__ = { modules, css, theme, screens… }
- * runtime/frame.html  the screen runtime with frame.js inlined, in a sandboxed frame (allow-scripts only)
- * ```
- *
- * Every URL is relative and the data is a classic script (not `fetch`), so the
- * folder works from any path, on any static host, and from `file://`. The
- * runtime is inlined because browsers don't let a sandboxed `file://` frame
- * load scripts from other files.
- */
+// Relative URLs and a classic data script (not `fetch`) so the site works from `file://`. The runtime is
+// inlined because a sandboxed `file://` frame can't load scripts from other files.
 import type { ExportFile } from "../types";
 import type { ScreenRuntime, ShareSnapshot } from "./snapshot";
 
-/** The global `snapshot.js` sets. */
 export const SNAPSHOT_GLOBAL = "__RABISCO_SHARE__";
 
-/**
- * `normalizeTarget` from `src/shared/prototype/links.ts`, as browser JavaScript
- * for the viewer (a test keeps the two in step).
- */
+/** Browser copy of `normalizeTarget` in `src/shared/prototype/links.ts`; a test keeps them in step. */
 export const NORMALIZE_TARGET_JS = `function normalizeTarget(to) {
 	var path = String(to).trim().replace(/\\\\/g, "/").replace(/^(\\.\\/|\\/)+/, "");
 	if (path.indexOf("/") === -1) path = "screens/" + path;
@@ -110,12 +92,7 @@ function indexHtml(snapshot: ShareSnapshot) {
 `;
 }
 
-/**
- * The viewer's host side, in plain browser JavaScript: the same `modules`,
- * `play` and `navigate` messages as `FrameHost` (src/mainview/lib/render).
- * The screen lives in the URL hash, so a link can open on any screen and the
- * browser's back button works.
- */
+/** Same messages as `FrameHost`; the screen lives in the URL hash so links and the back button work. */
 const VIEWER_JS = `(function () {
 	"use strict";
 	var data = window.${SNAPSHOT_GLOBAL};
@@ -239,11 +216,7 @@ const VIEWER_JS = `(function () {
 
 const RUNTIME_SCRIPT = /<script\s+src=["']\.\/frame\.js["']\s*><\/script>/;
 
-/**
- * `frame.html` with `frame.js` inside it. `</script` and `<!--` can't appear
- * in an inline script, so they are escaped the way JavaScript reads them
- * the same (`<\/script`, `<\!--`).
- */
+/** `</script` and `<!--` can't appear in an inline script, so they become `<\/script`, `<\!--`. */
 export function inlineRuntime(runtime: ScreenRuntime): string {
 	if (!RUNTIME_SCRIPT.test(runtime.html)) throw new Error("The screen runtime's frame.html doesn't load frame.js");
 	const js = runtime.js.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
@@ -251,7 +224,6 @@ export function inlineRuntime(runtime: ScreenRuntime): string {
 	return runtime.html.replace(RUNTIME_SCRIPT, () => `<script>${js}</script>`);
 }
 
-/** The files of the viewer for `snapshot`, relative to the site's root. */
 export function viewerFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[] {
 	return [
 		{ path: "index.html", content: indexHtml(snapshot) },

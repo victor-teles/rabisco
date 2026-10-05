@@ -1,5 +1,3 @@
-/** Which identifiers a JSX subtree reads from outside itself, using Sucrase's identifier roles. */
-
 import { TokenType as tt } from "sucrase/dist/esm/parser/tokenizer/types";
 import type { ParsedFile, Token } from "./tree";
 
@@ -14,22 +12,18 @@ type Span = { start: number; end: number };
 
 const inside = (token: Token, span: Span) => token.start >= span.start && token.end <= span.end;
 
-/** A free identifier of a subtree and how it is used. */
 export type FreeIdentifier = {
 	name: string;
-	/** Used as a JSX tag (`<Star />`, the `Card` of `<Card.Header>`) */
+	/** `<Star />`, or the `Card` of `<Card.Header>` */
 	tag: boolean;
 };
 
-/**
- * Identifiers the span reads but doesn't declare, in order of first use.
- * Type positions and spans in `skip` (e.g. the root's `key`) are ignored.
- */
+/** In order of first use; type positions and spans in `skip` are ignored. */
 export function freeIdentifiers(file: ParsedFile, span: Span, skip: Span[] = []): FreeIdentifier[] {
 	const { tokens, source } = file;
 	const declared = new Set<string>();
 	const used = new Map<string, FreeIdentifier>();
-	// Binary search for the first token of the span: subtrees are small, files aren't
+	// Binary search: subtrees are small, files aren't
 	let lo = 0;
 	let hi = tokens.length;
 
@@ -61,7 +55,7 @@ export function freeIdentifiers(file: ParsedFile, span: Span, skip: Span[] = [])
 	return [...used.values()].filter((entry) => !declared.has(entry.name));
 }
 
-/** Every name the file declares anywhere (imports included), and those declared at its top level. */
+/** Imports included */
 export function declaredNames(file: ParsedFile) {
 	const all = new Set<string>();
 	const topLevel = new Set<string>();
@@ -77,11 +71,7 @@ export function declaredNames(file: ParsedFile) {
 	return { all, topLevel };
 }
 
-/**
- * A readable TypeScript type for a value the subtree gets as a prop, from its
- * declaration outside `span`: annotations, literals, `useState(…)` pairs and
- * `.map` callback params over a literal array; else `any`.
- */
+/** From annotations, literals, `useState(…)` pairs and `.map` params over a literal array; else `any`. */
 export function inferType(file: ParsedFile, name: string, span: Span): string {
 	const { tokens, source } = file;
 	const text = (i: number) => (tokens[i] ? source.slice(tokens[i]!.start, tokens[i]!.end) : "");
@@ -99,7 +89,7 @@ export function inferType(file: ParsedFile, name: string, span: Span): string {
 		return null;
 	};
 
-	/** `{ id: "a", done: false }` at `open` → its fields: `id: string`, `done: boolean` */
+	/** `{ id: "a", done: false }` → `id: string`, `done: boolean` */
 	const objectFields = (open: number) => {
 		const fields = new Map<string, string>();
 		let depth = 0;
@@ -118,7 +108,7 @@ export function inferType(file: ParsedFile, name: string, span: Span): string {
 		return fields;
 	};
 
-	/** Item type of a top-level `const NAME = [ … ]`, with its fields when items are objects */
+	/** Of a top-level `const NAME = [ … ]` */
 	const itemType = (array: string): { type: string; fields: Map<string, string> } | null => {
 		for (let j = 0; j < tokens.length; j++) {
 			if (

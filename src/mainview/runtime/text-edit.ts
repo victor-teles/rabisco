@@ -1,22 +1,10 @@
-/**
- * Editing a screen element's text in place, inside the frame, so it keeps the
- * screen's exact fonts and layout. The DOM is borrowed: when the edit ends,
- * the nodes React rendered are put back as they were, and the host writes the
- * new text to the source, which re-renders the screen.
- */
+// The DOM is borrowed: React's nodes are restored when the edit ends, then the new source re-renders.
 
 export type TextEdit = { finish: (commit: boolean) => void };
 
-/** Text as the screen shows it, for comparing with the source's: whitespace collapsed. */
 const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
 
-/**
- * Makes `elements` (one rendered instance of a source element) editable, when
- * it is a single element whose text is `expected`: anything else (an icon
- * next to the text, text the component adds) would not map back to the
- * source's text. `done` receives the new text, or `null` when cancelled.
- * Enter and a click elsewhere keep the text, Escape puts the old one back.
- */
+/** Refuses unless it is a single element whose text is `expected`, so the edit maps back to source. */
 export function startTextEdit(
 	elements: Element[],
 	expected: string,
@@ -58,7 +46,7 @@ export function startTextEdit(
 	window.getSelection()?.addRange(range);
 
 	let finished = false;
-	/** The click that follows a press outside ends the edit; it must not reach the screen */
+	// The click that follows a press outside ends the edit; it must not reach the screen
 	let swallowClick = false;
 
 	const onKeyDown = (event: KeyboardEvent) => {

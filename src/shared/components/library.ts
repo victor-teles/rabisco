@@ -1,19 +1,14 @@
-/**
- * The shadcn/ui pieces Rabisco offers in the components panel: small,
- * realistic JSX snippets to insert into a screen, with the imports they need.
- * Snippets use only the exports in `UI_MODULES`, lucide icons and theme classes.
- */
+// Snippets may use only the exports in `UI_MODULES`, lucide icons and theme classes.
 
 export type LibraryImport = { from: string; names: string[] };
 
 export type LibraryItem = {
-	/** Stable id, e.g. `button-outline` */
 	id: string;
 	title: string;
-	/** The `@/components/ui/<module>` it showcases */
+	/** `@/components/ui/<module>` */
 	module: string;
 	description: string;
-	/** JSX to insert (one or more sibling elements) */
+	/** One or more sibling elements */
 	snippet: string;
 	imports: LibraryImport[];
 	keywords: string[];
@@ -250,7 +245,6 @@ export const LIBRARY: LibraryItem[] = [
 	},
 ];
 
-/** Library items matching `query` (title, module, keywords), in catalog order. */
 export function searchLibrary(query: string): LibraryItem[] {
 	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
 

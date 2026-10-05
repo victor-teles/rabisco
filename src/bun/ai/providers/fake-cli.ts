@@ -1,8 +1,3 @@
-/**
- * Test helper: a fake `SpawnFn` that plays back recorded CLI output, and can
- * act on the staging dir (write files) like a real agent would.
- */
-
 import { isString } from "../../../shared/guards";
 import type { Json } from "../../../shared/json";
 import type { SpawnFn, SpawnOptions } from "../cli";
@@ -16,7 +11,6 @@ export type FakeRun = {
 	act?: (cwd: string) => Promise<void> | void;
 	/** Never exits on its own; only a kill ends it */
 	hang?: boolean;
-	/** Throw like Bun.spawn does when the binary is missing */
 	throws?: NodeJS.ErrnoException;
 };
 

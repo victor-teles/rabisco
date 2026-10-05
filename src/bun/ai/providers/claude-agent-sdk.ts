@@ -1,12 +1,5 @@
-/**
- * Claude Agent SDK provider: the same agent as Claude Code, driven in-process
- * with the user's Anthropic API key. Runs in a staging dir with file tools only.
- *
- * The SDK is imported lazily, so a missing or broken package only disables
- * this provider. It spawns its own bundled Claude Code binary; `binPath`
- * overrides that binary (needed when the SDK is bundled, see the README of
- * `@anthropic-ai/claude-agent-sdk`).
- */
+// The SDK is imported lazily, so a missing or broken package only disables this provider.
+// `binPath` overrides its bundled Claude Code binary (needed when the SDK itself is bundled).
 
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { GenerationEvent, Provider } from "../../../shared/ai/contract";
@@ -23,7 +16,6 @@ export type SdkProviderOptions = {
 	stagingRoot?: string;
 };
 
-/** The slice of the SDK this provider uses. Injectable for tests. */
 export type AgentSdk = {
 	query(params: { prompt: string; options?: Options }): AsyncIterable<object> & { close?(): void };
 };
@@ -102,7 +94,7 @@ export function createClaudeAgentSdkProvider(
 						allowedTools: CLAUDE_FILE_TOOLS,
 						disallowedTools: CLAUDE_DENIED_TOOLS,
 						permissionMode: "acceptEdits",
-						// Isolation: no user/project settings, CLAUDE.md or MCP servers; the system prompt carries the instructions
+						// Isolation: no user/project settings, CLAUDE.md or MCP servers
 						settingSources: [],
 						mcpServers: {},
 						persistSession: false,
@@ -153,7 +145,7 @@ async function* runSdkAgent(
 
 			if (next.done) break;
 
-			// SDK messages are the CLI's stream-json lines, decoded: read them back as JSON for the shared mapper
+			// SDK messages are decoded stream-json lines; round-trip them for the shared mapper
 			for (const event of map(parseJson(JSON.stringify(next.value)))) {
 				yield event;
 

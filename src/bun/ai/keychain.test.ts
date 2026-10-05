@@ -7,7 +7,6 @@ import {
 	type RunCommand,
 } from "./keychain";
 
-/** Records commands and answers with `reply`. */
 function recorder(reply: (argv: string[]) => { exitCode: number; stdout?: string; stderr?: string }) {
 	const calls: { argv: string[]; stdin?: string }[] = [];
 

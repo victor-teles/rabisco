@@ -52,7 +52,6 @@ const MOCK_STATUS: ProviderStatus = {
 
 type VariantRun = VariantOutput & { reply: string };
 
-/** An `error` event of the mock provider, carried out of a variant's run. */
 class MockGenerationError extends Error {
 	readonly failure: GenerationFailure;
 
@@ -70,13 +69,11 @@ function failureOf(cause: unknown): GenerationFailure {
 
 const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 
-/** DESIGN.md for the browser: the template with a filled Tokens section */
 const BROWSER_DESIGN = DESIGN_TEMPLATE.replace(
 	/(## Tokens\n\n)<!--[\s\S]*?-->/,
 	`$1- primary: oklch(0.55 0.2 264)\n- primary-foreground: #ffffff\n- radius: 0.75rem\n- font-sans: "Inter", system-ui, sans-serif\n\n### Dark\n\n- primary: oklch(0.7 0.15 264)`,
 );
 
-/** PRODUCT.md for the browser: the interview answers in the prompt, assembled as they are */
 function browserProduct(prompt: string) {
 	const answers = INTERVIEW_QUESTIONS.map(({ question }) => {
 		const at = prompt.indexOf(`Q: ${question}\nA: `);
@@ -94,7 +91,6 @@ function browserProduct(prompt: string) {
 	return productFromAnswers({ step: answers.length, answers }, "Product");
 }
 
-/** The deterministic `context` task: writes the target file without a model, streamed like a real one. */
 async function* contextEvents(params: GenerateParams): AsyncGenerator<GenerationEvent> {
 	const path = params.targets?.[0] === "DESIGN.md" ? "DESIGN.md" : "PRODUCT.md";
 	const content = path === "DESIGN.md" ? BROWSER_DESIGN : browserProduct(params.prompt);
@@ -106,7 +102,7 @@ async function* contextEvents(params: GenerateParams): AsyncGenerator<Generation
 	yield { type: "done", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
 }
 
-/** The mock provider, in development builds only (the guard lets production builds drop it) */
+/** The `import.meta.env.DEV` guard lets production builds drop the mock. */
 async function mockEvents(request: GenerationRequest, signal: AbortSignal) {
 	if (!import.meta.env.DEV) throw new Error("The mock provider is only available in development.");
 	const { createMockProvider } = await import("../../bun/ai/providers/mock");
@@ -118,12 +114,7 @@ const unsupported = async (): Promise<never> => {
 	throw new Error("AI providers run in the desktop app. In the browser, only the mock generator is available.");
 };
 
-/**
- * Generation for the browser fallback (`hutch run hmr`): the mock provider only,
- * without validation. Variations, "vary" and references are named and laid out
- * like the main process does (`src/shared/ai/variants.ts`). The mock is imported in development builds only, so it
- * never ships.
- */
+/** Browser fallback (`hutch run hmr`): mock provider only, no validation; mirrors `src/shared/ai/variants.ts`. */
 export function createBrowserGenerator(
 	emit: (message: GenerationEventMessage) => void,
 	readFiles: (path: string) => ProjectFiles,
@@ -156,7 +147,6 @@ export function createBrowserGenerator(
 		async generate(params) {
 			const task = params.task ?? "create";
 
-			// The context task needs no model, so it works in every build
 			if (task !== "context" && !import.meta.env.DEV) {
 				return {
 					ok: false,
@@ -178,7 +168,6 @@ export function createBrowserGenerator(
 				};
 			}
 
-			// What shaped this result: the context files that say something (the one being written doesn't count)
 			const context = CONTEXT_FILES.filter(
 				(path) => contextBody(files[path]) && !(task === "context" && params.targets?.includes(path)),
 			);
@@ -195,7 +184,6 @@ export function createBrowserGenerator(
 			const multi = vary || count > 1;
 			const references = (params.references ?? []).filter((path) => path in files);
 
-			// Point and prompt: an edit of the element's file, checked like the main process does
 			const focus =
 				requestTask === "edit" && !vary && params.targets?.includes(params.focus?.file ?? "")
 					? resolveFocus(params.focus, files)

@@ -6,7 +6,6 @@ import { isUiModule, UI_MODULES } from "./ui-modules";
 
 const LUCIDE_EXPORTS = new Map(Object.entries(Lucide));
 
-/** Capitalised JSX tags a snippet renders (`<Button`, `<CardTitle`). */
 const tags = (snippet: string) => new Set([...snippet.matchAll(/<([A-Z]\w*)/g)].map((m) => m[1]!));
 
 describe("LIBRARY", () => {

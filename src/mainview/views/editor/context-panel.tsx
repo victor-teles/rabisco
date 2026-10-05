@@ -43,10 +43,9 @@ export type ContextPanelProps = {
 	onEndStep: () => void;
 	onUndo: () => void;
 	onRedo: () => void;
-	/** Context files the latest generation followed; null before the first one */
+	/** `null` before the first generation */
 	lastUsed: ContextFileName[] | null;
 	hasScreens: boolean;
-	/** A generation or the interview is running */
 	busy: boolean;
 	onWriteDesign: () => void;
 	onInterview: () => void;
@@ -57,11 +56,7 @@ const DESCRIPTION: Record<ContextFileName, string> = {
 	"DESIGN.md": "Tokens, typography, layout and component rules. Tokens re-theme every screen.",
 };
 
-/**
- * PRODUCT.md and DESIGN.md (principle 5): edit them, write them with the AI or
- * import them from a repository, and see whether the last generation used them.
- * The text comes straight from the project files, so external edits show up live.
- */
+/** Text comes straight from the project files, so external edits show up live */
 export function ContextPanel(props: ContextPanelProps) {
 	const { files, file, onFileChange, onEdit, onReplace, onEndStep, onUndo, onRedo, lastUsed } = props;
 	const source = files[file];
@@ -218,7 +213,7 @@ export function ContextPanel(props: ContextPanelProps) {
 	);
 }
 
-/** The AI action for a file: writing DESIGN.md needs screens, PRODUCT.md comes from an interview. */
+/** Writing DESIGN.md needs screens; PRODUCT.md comes from an interview */
 function aiAction({ file, hasScreens, busy, onWriteDesign, onInterview }: ContextPanelProps) {
 	return file === "DESIGN.md"
 		? {
@@ -302,7 +297,6 @@ function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
 	);
 }
 
-/** Whether the file shaped the last generation, or why it won't shape the next one. */
 function UsageLine({
 	file,
 	source,
@@ -335,7 +329,6 @@ function UsageLine({
 	);
 }
 
-/** Parsed tokens at a glance, so a typo in a value or name is visible before the next generation. */
 function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLine: (line: number) => void }) {
 	const tokens = useMemo(() => parseDesignTokens(markdown), [markdown]);
 	const colorNames = new Set<string>(COLOR_TOKENS);

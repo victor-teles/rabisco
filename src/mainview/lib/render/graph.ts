@@ -4,15 +4,12 @@ import { isRelative, resolveRelative } from "./resolve";
 
 export type ModuleGraph = {
 	entry: string;
-	/** Every project module reachable from the entry, entry first */
+	/** Entry first. */
 	modules: Map<string, CompiledModule>;
-	/** Resolved project imports of each module */
 	edges: Map<string, string[]>;
-	/** Relative imports that match no file */
 	missing: { from: string; specifier: string }[];
 };
 
-/** Compiles the entry and everything it imports from the project, following relative imports. */
 export function collectGraph(entry: string, files: ProjectFiles, cache: CompileCache): ModuleGraph {
 	const graph: ModuleGraph = { entry, modules: new Map(), edges: new Map(), missing: [] };
 	const exists = (path: string) => Object.hasOwn(files, path);
@@ -46,7 +43,6 @@ export function collectGraph(entry: string, files: ProjectFiles, cache: CompileC
 	return graph;
 }
 
-/** `changed` plus every module that imports one of them, directly or not. */
 export function withDependents(changed: Iterable<string>, edges: ReadonlyMap<string, Iterable<string>>): Set<string> {
 	const dependents = new Map<string, string[]>();
 

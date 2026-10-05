@@ -1,22 +1,16 @@
-/**
- * Structural equivalence of JSX subtrees. Two subtrees are equivalent when they
- * have the same element tree, element names, attribute names, className values
- * and other non-string attributes and expressions; they may differ only in text
- * children and string attribute values, which are their slots.
- */
+// Equivalent subtrees may differ only in text children and string attribute values (their slots).
 
 import { hashString } from "./hash";
 import { jsxTextValue } from "./text";
 import type { JsxElement, JsxText } from "./tree";
 
-/** A place where equivalent subtrees may differ. `start`/`end` cover the text (trimmed) or the attribute's quoted value. */
+/** `start`/`end` cover the text (trimmed) or the attribute's quoted value. */
 export type Slot =
 	| { kind: "text"; element: JsxElement; value: string; start: number; end: number }
 	| { kind: "attribute"; element: JsxElement; name: string; value: string; raw: string; start: number; end: number };
 
 const norm = (text: string) => text.replace(/\s+/g, " ").trim();
 
-/** Attributes whose string value is part of the structure rather than a slot. */
 const FIXED_STRING_ATTRIBUTES = new Set(["className", "class"]);
 
 const keys = new WeakMap<JsxElement, string>();
@@ -48,10 +42,7 @@ function serialize(element: JsxElement, root: boolean) {
 	return out;
 }
 
-/**
- * Hash of the subtree's structure. At the root (`root`, default) its `key`
- * attribute is ignored, since a list item's key stays at the call site.
- */
+/** The root's `key` is ignored, since a list item's key stays at the call site. */
 export function structureKey(element: JsxElement, root = true): string {
 	if (root) return hashString(serialize(element, true));
 	let key = keys.get(element);
@@ -64,7 +55,7 @@ export function structureKey(element: JsxElement, root = true): string {
 	return key;
 }
 
-/** Elements in the subtree, itself and those inside expressions included (memoized). */
+/** Includes itself and elements inside expressions; memoized */
 export function subtreeSize(element: JsxElement): number {
 	let count = counts.get(element);
 
@@ -85,7 +76,6 @@ export function subtreeSize(element: JsxElement): number {
 	return count;
 }
 
-/** Span of the text without its surrounding whitespace. */
 function textCore(text: JsxText) {
 	const lead = text.raw.length - text.raw.trimStart().length;
 	const trail = text.raw.length - text.raw.trimEnd().length;
@@ -93,7 +83,7 @@ function textCore(text: JsxText) {
 	return { start: text.start + lead, end: text.end - trail };
 }
 
-/** The subtree's slots in a stable order (same order for every equivalent subtree). The root's `key` is not a slot. */
+/** Same order for every equivalent subtree; the root's `key` is not a slot. */
 export function slotsOf(element: JsxElement, root = true): Slot[] {
 	const slots: Slot[] = [];
 

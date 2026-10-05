@@ -26,7 +26,7 @@ ${STAT}\`\`\`
 <rabisco-delete path="screens/old.tsx" />
 Done. <b>bold</b> </rabisco-file> stays out.`;
 
-/** Feeds `chunks` and merges adjacent deltas so different splits compare equal. */
+/** Merges adjacent deltas so different splits compare equal. */
 function run(chunks: string[]) {
 	const parser = createTextProtocolParser();
 	const events: GenerationEvent[] = [];

@@ -1,11 +1,7 @@
 import { literalOf, scanScope, skipAngles, type Scope, type Variants } from "./scope";
 import { isOpen, matching, splitTop, textOf, tokenize, unquote, type Tok } from "./tokens";
 
-/**
- * The public API of a project component file: its exported components, their
- * props (with defaults), cva variants, children and the element they extend.
- * Read from the source without running it; never throws.
- */
+// Read from source without running it; never throws.
 
 export type PropType =
 	| { kind: "string" }
@@ -21,14 +17,14 @@ export type PropSpec = {
 	name: string;
 	type: PropType;
 	optional: boolean;
-	/** The destructuring default (or cva default variant), when it is a literal */
+	/** Only when it is a literal */
 	default?: string | number | boolean;
 };
 
 export type ComponentExport = {
 	name: string;
 	props: PropSpec[];
-	/** cva variant axes from `VariantProps<typeof x>`, with their options and default */
+	/** From `VariantProps<typeof x>` */
 	variants: Variants;
 	acceptsChildren: boolean;
 	/** `"button"` for `ComponentProps<"button">`/`ButtonHTMLAttributes`; the referenced name for `ComponentProps<typeof X>` */
@@ -75,7 +71,7 @@ const ELEMENT_NAMES = new Map(
 
 const CONTINUES = new Set(["|", "&", ":", "=>", "?", "<", ",", "(", "=", "."]);
 
-/** Members of a type literal body (between its braces): `;`, `,` or line separated. */
+/** `;`, `,` or line separated */
 function membersOf(body: Tok[]): Member[] {
 	const parts: Tok[][] = [];
 	let current: Tok[] = [];
@@ -129,7 +125,6 @@ function membersOf(body: Tok[]): Member[] {
 
 const wrapped = (toks: Tok[]) => toks[0]?.type === "(" && matching(toks, 0) === toks.length - 1;
 
-/** Generic arguments of `Name<…>` (the tokens after the head), split at top-level commas. */
 function typeArgs(toks: Tok[]): Tok[][] {
 	const at = toks.findIndex((t) => t.text === "<");
 
@@ -138,7 +133,6 @@ function typeArgs(toks: Tok[]): Tok[][] {
 
 const stringLiterals = (toks: Tok[]) => toks.flatMap((t) => (t.type === "string" ? [unquote(t.text)] : []));
 
-/** Resolves a props type (an intersection of literals, aliases, interfaces and React helpers) to its members. */
 function resolve(scope: Scope, toks: Tok[], seen: Set<string> = new Set()): Resolved {
 	const out: Resolved = { members: [], variants: {} };
 
@@ -218,7 +212,6 @@ const NODE = /^(?:React\.)?(?:ReactNode|ReactElement(?:<.*>)?|JSX\.Element)$/;
 
 const HANDLER = /^(?:React\.)?(?:\w*Handler(?:<.*>)?|Function|VoidFunction)$/;
 
-/** Whether `toks` has a top-level `=>` (a function type). */
 const isArrowType = (toks: Tok[]) => {
 	for (let i = 0; i < toks.length; i++) {
 		if (isOpen(toks[i])) i = matching(toks, i);
@@ -299,7 +292,6 @@ function destructure(param: Tok[]): Destructured {
 	return out;
 }
 
-/** The type annotation of a parameter (`{ … }: T = {}` or `props?: T`). */
 function paramType(param: Tok[]): Tok[] | undefined {
 	let k = param[0]?.type === "{" ? matching(param, 0) + 1 : 1;
 
@@ -321,7 +313,7 @@ function variantProp(name: string, variant: Variants[string], fallback?: string 
 	);
 }
 
-/** Sets `default` only when there is one: specs without a default have no such key. */
+/** Specs without a default have no `default` key at all. */
 function withDefault(spec: PropSpec, value: PropSpec["default"]): PropSpec {
 	if (value !== undefined) spec.default = value;
 
@@ -377,7 +369,7 @@ function exportOf(scope: Scope, name: string, local: string): ComponentExport | 
 	return api;
 }
 
-/** The exported components of a component file (PascalCase, function-like named exports). */
+/** PascalCase, function-like named exports */
 export function componentApi(_path: string, source: string): ComponentApi {
 	try {
 		const toks = tokenize(source);
@@ -412,7 +404,7 @@ function typeText(type: PropType): string {
 	}
 }
 
-/** One-line TS-ish signature for prompts: `StatCard({ label: string; tone?: "default" | "success" = "default" })`. */
+/** e.g. `StatCard({ label: string; tone?: "default" | "success" = "default" })` */
 export function propsSignature(exp: ComponentExport): string {
 	const props = exp.props.map(
 		(p) =>

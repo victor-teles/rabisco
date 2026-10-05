@@ -1,8 +1,4 @@
-/**
- * Vite + React + Tailwind export (Phase 7). Screens and components are copied
- * verbatim, next to the shadcn components and theme the canvas renders them with,
- * so the exported app looks like the canvas without a conversion step (principle 3).
- */
+// Screens and components are copied verbatim, so the export looks like the canvas without conversion.
 
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import { parseDesignTokens, tokensToCss } from "../context/tokens";
@@ -12,24 +8,22 @@ import type { ExportFile, Frame, ProjectFiles } from "../types";
 import { importSpecifiers, localDependencies } from "./code";
 
 export type ViteProjectInput = {
-	/** The project's display name */
 	name: string;
-	/** Canvas frames, in canvas order: the first screen opens first */
+	/** The first screen opens first */
 	frames: Frame[];
 	files: ProjectFiles;
-	/** Sources of the shadcn components the canvas provides, by module name (`button` for `@/components/ui/button`) */
+	/** By module name (`button` for `@/components/ui/button`) */
 	uiSources: Record<string, string>;
-	/** Also export alternates (`*.alt-N.tsx`, decision 0004) as screens */
 	includeAlternates?: boolean;
 };
 
 export type ViteProject = {
 	files: ExportFile[];
-	/** Imports the export can't satisfy, e.g. a shadcn component the canvas doesn't provide */
+	/** Imports the export can't satisfy */
 	warnings: string[];
 };
 
-/** Versions the canvas runtime is built with, so the export renders the same way. */
+/** Same as the canvas runtime, so the export renders the same way. */
 const VERSIONS = new Map(
 	Object.entries({
 		react: "^19.3.0",
@@ -55,7 +49,6 @@ const DEV_VERSIONS = {
 
 const UI_PREFIX = "@/components/ui/";
 
-/** The `cn` helper shadcn components import from `@/lib/utils`, as in the canvas runtime. */
 const UTILS = `import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -64,7 +57,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 `;
 
-/** `My App!` → `my-app`; `rabisco-design` when nothing is left. */
+/** `My App!` → `my-app` */
 export function packageName(name: string) {
 	const kebab = name
 		.normalize("NFKD")
@@ -76,7 +69,7 @@ export function packageName(name: string) {
 	return kebab || "rabisco-design";
 }
 
-/** `react-dom/client` → `react-dom`, `@scope/pkg/x` → `@scope/pkg`; `null` for relative and `@/` imports. */
+/** `@scope/pkg/x` → `@scope/pkg`; `null` for relative and `@/` imports */
 function packageOf(specifier: string) {
 	if (specifier.startsWith(".") || specifier.startsWith("@/")) return null;
 	const parts = specifier.split("/");
@@ -84,7 +77,7 @@ function packageOf(specifier: string) {
 	return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
-/** `screens/order-history.tsx` → `OrderHistoryScreen`; `welcome.alt-1` → `WelcomeAlt1Screen`. */
+/** `welcome.alt-1` → `WelcomeAlt1Screen` */
 function screenIdentifier(id: string) {
 	const pascal = id
 		.split(/[^a-zA-Z0-9]+/)
@@ -97,7 +90,7 @@ function screenIdentifier(id: string) {
 
 const screenId = (file: string) => file.replace(/^screens\//, "").replace(/\.tsx$/, "");
 
-/** Screen files to export: canvas order first, then screens without a frame, sorted. */
+/** Canvas order first, then screens without a frame, sorted */
 function exportedScreens(input: ViteProjectInput) {
 	const keep = (file: string) =>
 		isScreenFile(file) && Object.hasOwn(input.files, file) && (input.includeAlternates || !isAlternate(file));
@@ -111,10 +104,7 @@ function exportedScreens(input: ViteProjectInput) {
 	return [...new Set([...onCanvas, ...rest])];
 }
 
-/**
- * The shadcn modules `sources` import, with the ones those import in turn, sorted.
- * Names the canvas doesn't provide go to `missing`.
- */
+/** Transitive; names the canvas doesn't provide go to `missing`. */
 function uiModules(sources: string[], uiSources: Record<string, string>, missing: Set<string>) {
 	const found = new Set<string>();
 
@@ -140,7 +130,6 @@ function uiModules(sources: string[], uiSources: Record<string, string>, missing
 	return [...found].sort();
 }
 
-/** `package.json` with the packages the exported files import, plus the build tools. */
 function packageJson(name: string, sources: string[], warnings: string[]) {
 	const dependencies: Record<string, string> = {};
 
@@ -240,7 +229,6 @@ createRoot(document.getElementById("root")!).render(
 );
 `;
 
-/** `App.tsx`: the screens in canvas order, and a hash router that follows `data-link-to` like play mode (decision 0007). */
 function appTsx(screens: string[]) {
 	const entries = screens.map((file) => ({
 		id: screenId(file),
@@ -308,7 +296,6 @@ export default function App() {
 `;
 }
 
-/** Tailwind, the canvas's screen theme, and the DESIGN.md tokens that override it. */
 function indexCss(files: ProjectFiles) {
 	const tokens = files["DESIGN.md"] ? tokensToCss(parseDesignTokens(files["DESIGN.md"])) : "";
 
@@ -356,11 +343,6 @@ Elements with \`data-link-to="screens/settings.tsx"\` open that screen when clic
 
 const GITIGNORE = "node_modules\ndist\n*.local\n";
 
-/**
- * A runnable Vite + React + Tailwind project for the screens of `input`: screens and
- * components verbatim under `src/`, the shadcn components they use (with the ones
- * those use), the theme with DESIGN.md tokens, and an app that follows prototype links.
- */
 export function viteProject(input: ViteProjectInput): ViteProject {
 	const { files, name } = input;
 	const screens = exportedScreens(input);
@@ -368,7 +350,6 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 	if (!screens.length) throw new Error("There are no screens to export");
 	const warnings: string[] = [];
 
-	// Screens, every component, and any other project file they import
 	const roots = [...screens, ...Object.keys(files).filter(isComponentFile).sort()];
 	const included = new Set(roots);
 

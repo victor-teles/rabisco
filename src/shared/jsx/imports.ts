@@ -1,5 +1,3 @@
-/** Import declarations of a file: reading them, adding names and dropping names that are no longer used. */
-
 import { TokenType as tt } from "sucrase/dist/esm/parser/tokenizer/types";
 import { isString } from "../guards";
 import { lineEnd, lineStart } from "./text";
@@ -8,24 +6,23 @@ import { parseFile, type ParsedFile } from "./tree";
 export type ImportSpecifier = { imported: string; local: string; type: boolean };
 
 export type ImportDecl = {
-	/** `import` to the end of the statement, `;` included */
+	/** Through the end of the statement, `;` included */
 	start: number;
 	end: number;
 	module: string;
 	quote: string;
 	semicolon: boolean;
-	/** `import type { … }` */
 	typeOnly: boolean;
 	defaultName: string | null;
 	namespace: string | null;
 	named: ImportSpecifier[];
-	/** Span of `{ … }`, braces included */
+	/** Braces included */
 	braces: { start: number; end: number } | null;
 };
 
 const ROLE_OBJECT_KEY = 10;
 
-/** The file's static import declarations, in order. Empty when it does not parse. */
+/** Empty when it does not parse */
 export function readImports(file: ParsedFile | string): ImportDecl[] {
 	const parsed = isString(file) ? parseFile(file) : file;
 	const { source, tokens } = parsed;
@@ -84,7 +81,7 @@ function parseSpecifiers(text: string): ImportSpecifier[] {
 const specifierText = (s: ImportSpecifier) =>
 	`${s.type ? "type " : ""}${s.imported}${s.local !== s.imported ? ` as ${s.local}` : ""}`;
 
-/** `{ A, B }`, or one specifier per line when the original braces spanned lines. */
+/** One specifier per line when the original braces spanned lines */
 function bracesText(source: string, decl: ImportDecl, named: ImportSpecifier[]) {
 	const original = decl.braces ? source.slice(decl.braces.start, decl.braces.end) : "";
 
@@ -97,7 +94,6 @@ function bracesText(source: string, decl: ImportDecl, named: ImportSpecifier[]) 
 	return `{ ${named.map(specifierText).join(", ")} }`;
 }
 
-/** Local names bound by any import of the file. */
 export function importedNames(imports: ImportDecl[]) {
 	const names = new Set<string>();
 
@@ -112,11 +108,7 @@ export function importedNames(imports: ImportDecl[]) {
 	return names;
 }
 
-/**
- * Adds named imports from `from`: merged into an existing import of that module,
- * or a new line after the last import (top of the file if none). Names already
- * imported are skipped. Returns the source unchanged when it does not parse.
- */
+/** Merges into an existing import of the module, else a new line after the last import. */
 export function addImport(source: string, from: string, names: string[]): string {
 	const parsed = parseFile(source);
 
@@ -151,7 +143,6 @@ export function addImport(source: string, from: string, names: string[]): string
 	return `${source.slice(0, at)}\n${line}${source.slice(at)}`;
 }
 
-/** Names among `names` that some code outside the import declarations still refers to. */
 function usedNames(parsed: ParsedFile, imports: ImportDecl[], names: Set<string>) {
 	const used = new Set<string>();
 	const { tokens, source } = parsed;
@@ -175,10 +166,7 @@ function usedNames(parsed: ParsedFile, imports: ImportDecl[], names: Set<string>
 	return used;
 }
 
-/**
- * Removes the imports of `names` that nothing in the file uses anymore, and
- * whole declarations left empty. Other imports are never touched.
- */
+/** Other imports are never touched. */
 export function removeUnusedImports(source: string, names: string[]): string {
 	const parsed = parseFile(source);
 

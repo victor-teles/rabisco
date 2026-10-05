@@ -11,14 +11,8 @@ import type { Json } from "../../shared/json";
 import { arrayOr, objectOr, optionalString, parseJson } from "../json";
 import { apiKeyAccount, type SecretStore } from "./keychain";
 
-/**
- * `<userData>/providers.json`: configured providers and the default model.
- * API keys go to the keychain; the file only records `hasKey`.
- */
-
 export const SETTINGS_FILE = "providers.json";
 
-/** CLI binaries found on this machine, used to seed the first settings. */
 export type Detected = Partial<Record<"claude" | "codex" | "gemini" | "ollama", boolean>>;
 
 export const detectBinaries = async (): Promise<Detected> => ({
@@ -28,7 +22,7 @@ export const detectBinaries = async (): Promise<Detected> => ({
 	ollama: !!Bun.which("ollama"),
 });
 
-/** Providers added on first run when their binary is found; they need no setup. */
+/** Added on first run when their binary is found. */
 const SEED: { binary: keyof Detected; type: ProviderType }[] = [
 	{ binary: "claude", type: "claude-code" },
 	{ binary: "codex", type: "codex" },
@@ -39,7 +33,6 @@ const SEED: { binary: keyof Detected; type: ProviderType }[] = [
 export type SettingsStoreOptions = {
 	userDataDir: string;
 	secrets: SecretStore;
-	/** Defaults to looking the binaries up on PATH */
 	detect?: () => Promise<Detected>;
 };
 
@@ -68,10 +61,8 @@ export function uniqueProviderId(type: ProviderType, taken: Iterable<string>) {
 	return id;
 }
 
-/** The trimmed text, or undefined when the value isn't a string or is blank. */
 const nonBlank = (value: Json | undefined) => optionalString(value)?.trim() || undefined;
 
-/** Keeps valid entries of a hand-edited or older file; drops the rest. */
 export function normalizeSettings(raw: Json): ProviderSettings {
 	const data = objectOr(raw);
 	const providers: ProviderConfig[] = [];
@@ -138,13 +129,12 @@ function newConfig(input: NewProvider, taken: Iterable<string>): ProviderConfig 
 	return config;
 }
 
-/** Provider settings on disk, with keys in `secrets`. Every method reads the file fresh, and writes are serialized. */
+/** API keys live in `secrets`, never in the file. Every method reads the file fresh; writes are serialized. */
 export function createSettingsStore(options: SettingsStoreOptions) {
 	const file = join(options.userDataDir, SETTINGS_FILE);
 	const detect = options.detect ?? detectBinaries;
 	let queue: Promise<unknown> = Promise.resolve();
 
-	/** Runs `fn` after every earlier call has finished. */
 	function serial<T>(fn: () => Promise<T>): Promise<T> {
 		const next = queue.then(fn, fn);
 		queue = next.catch(() => {});
@@ -159,7 +149,6 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 		renameSync(temp, file);
 	}
 
-	/** The settings on disk; seeds and saves them when the file doesn't exist yet. */
 	async function read(): Promise<ProviderSettings> {
 		let text: string;
 
@@ -254,7 +243,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 			});
 		},
 
-		/** Removes the provider and its stored key; clears the default model when it pointed to it. */
+		/** Also deletes its key and clears the default model when it pointed to it. */
 		remove(id: string): Promise<void> {
 			return mutate(async (settings) => {
 				find(settings, id);

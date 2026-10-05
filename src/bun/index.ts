@@ -13,7 +13,6 @@ import { createProjectStore } from "./store";
 
 const DEV_SERVER_URL = "http://localhost:5173";
 
-// Use the Vite dev server when it's running (`hutch run dev:hmr`)
 async function getMainViewUrl(): Promise<string> {
 	if (channel === "dev") {
 		try {
@@ -69,7 +68,7 @@ const ai = createAiService({
 
 const ok = { ok: true } as const;
 
-/** Where the screen runtime is: the app bundle, then the source tree (development) */
+/** App bundle first, then the source tree (development) */
 const runtimeDirs = () => [
 	join(PATHS.VIEWS_FOLDER, "mainview/runtime"),
 	join(process.cwd(), "src/mainview/public/runtime"),

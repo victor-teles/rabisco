@@ -1,5 +1,3 @@
-/** JSX source tools for components and direct editing (Phase 5): tree, edits, extraction and duplicate detection. */
-
 export { childElements, elementAt, elementCount, findElement, flatten, parseJsx, walk } from "./tree";
 
 export type { JsxAttribute, JsxChild, JsxElement, JsxExpression, JsxString, JsxText, JsxTree } from "./tree";

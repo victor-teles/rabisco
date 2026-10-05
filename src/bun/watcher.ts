@@ -8,15 +8,10 @@ type Options = {
 	debounceMs?: number;
 	/** Used only when recursive `fs.watch` is unavailable */
 	pollMs?: number;
-	/** Force polling (tests) */
 	poll?: boolean;
 };
 
-/**
- * Watches a project folder and reports screen, component and context files
- * whose content on disk differs from the last known content. Rabisco's own
- * writes go through `noteWrite` first, so they are never echoed back.
- */
+/** Rabisco's own writes go through `noteWrite` first, so they are never echoed back. */
 export class ProjectWatcher {
 	private known = new Map<string, string>();
 	private pending = new Set<string>();
@@ -49,12 +44,10 @@ export class ProjectWatcher {
 		this.startPolling(options.pollMs);
 	}
 
-	/** Replaces the known contents, e.g. after the project was read again. */
 	reset(files: ProjectFiles) {
 		this.known = new Map(Object.entries(files));
 	}
 
-	/** Records a write made by Rabisco so the resulting file event is ignored. */
 	noteWrite(path: string, content: string | null) {
 		if (content === null) this.known.delete(path);
 		else this.known.set(path, content);
@@ -92,7 +85,6 @@ export class ProjectWatcher {
 		this.timer = setTimeout(() => this.flush(), this.debounceMs);
 	}
 
-	/** Compares pending paths with disk and emits what really changed. */
 	flush() {
 		this.timer = null;
 		const paths = new Set(this.pending);

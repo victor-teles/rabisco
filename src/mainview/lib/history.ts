@@ -1,18 +1,10 @@
 import { detachComments } from "../../shared/comments";
 import type { CanvasComment, FileChange, Frame, ProjectFiles } from "../../shared/types";
 
-/**
- * What one undo step restores: frame layout, file contents and comments. Selection and chat are not part of it.
- * Recipes that only touch frames or files may leave `comments` out: `nextSnapshot` carries them over,
- * so every snapshot in a history has them.
- */
+/** Recipes may omit `comments`; `nextSnapshot` carries them over. */
 export type Snapshot = { frames: Frame[]; files: ProjectFiles; comments?: CanvasComment[] };
 
-/**
- * Completes a recipe's result: missing comments are carried over from `present`,
- * and pins on frames the change removed stay where they were, on the canvas
- * (`detachComments`), in the same step so undo puts them back on their frame.
- */
+/** Pins on removed frames are detached in the same step, so undo puts them back on their frame. */
 export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	if (update === present) return present;
 	const comments = detachComments(update.comments ?? present.comments ?? [], present.frames, update.frames);
@@ -24,7 +16,6 @@ export type History = {
 	past: Snapshot[];
 	present: Snapshot;
 	future: Snapshot[];
-	/** Commits with the same key as the last one replace `present` instead of adding a step */
 	coalesceKey: string | null;
 };
 
@@ -34,10 +25,6 @@ export function createHistory(present: Snapshot): History {
 	return { past: [], present, future: [], coalesceKey: null };
 }
 
-/**
- * Records `next` as the new present. With a `coalesce` key equal to the
- * previous commit's, it amends the current step (a drag, a typing burst).
- */
 export function commit(history: History, next: Snapshot, options: { coalesce?: string; limit?: number } = {}): History {
 	if (next === history.present) return history;
 	const key = options.coalesce ?? null;
@@ -51,7 +38,6 @@ export function commit(history: History, next: Snapshot, options: { coalesce?: s
 	return { past, present: next, future: [], coalesceKey: key };
 }
 
-/** Ends the current coalescing run, so the next commit starts a new step. */
 export function seal(history: History): History {
 	return history.coalesceKey === null ? history : { ...history, coalesceKey: null };
 }
@@ -94,7 +80,6 @@ export function applyFileChanges(files: ProjectFiles, changes: FileChange[]): Pr
 	return next;
 }
 
-/** The writes that turn `from` into `to`, sorted by path. */
 export function diffFiles(from: ProjectFiles, to: ProjectFiles): FileChange[] {
 	if (from === to) return [];
 	const changes: FileChange[] = [];
@@ -106,13 +91,8 @@ export function diffFiles(from: ProjectFiles, to: ProjectFiles): FileChange[] {
 	return changes.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/**
- * Folds changes made outside Rabisco (external editor, git) into every
- * snapshot, so undo and redo never revert them and never resurrect stale file
- * contents. Edits only touch snapshots that have the file (undoing the step
- * that created a file still removes it), new files and deletions apply to all
- * of them. `reconcile` then fixes each snapshot's frames for its files.
- */
+// Folds external changes into every snapshot so undo/redo never reverts them. Edits only touch
+// snapshots that have the file, so undoing a file's creation still removes it.
 export function rebase(
 	history: History,
 	changes: FileChange[],

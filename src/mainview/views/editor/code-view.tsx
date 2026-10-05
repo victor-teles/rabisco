@@ -25,7 +25,6 @@ const GUTTER = 44;
 
 const TAB_SIZE = 2;
 
-/** File path and copy button, above the structure and the code. */
 export function CodeHeader({ path, source }: { path: string; source: string | undefined }) {
 	const [copied, setCopied] = useState(false);
 
@@ -53,7 +52,6 @@ export function CodeHeader({ path, source }: { path: string; source: string | un
 	);
 }
 
-/** Offsets where each line starts */
 function lineStarts(source: string) {
 	const starts = [0];
 
@@ -62,7 +60,6 @@ function lineStarts(source: string) {
 	return starts;
 }
 
-/** Line index of `offset` (binary search over `starts`) */
 function lineOf(starts: number[], offset: number) {
 	let low = 0;
 	let high = starts.length - 1;
@@ -77,7 +74,7 @@ function lineOf(starts: number[], offset: number) {
 	return low;
 }
 
-/** Columns from the line start to `offset`, with tabs expanded */
+/** With tabs expanded */
 function columnOf(source: string, lineStart: number, offset: number) {
 	let column = 0;
 
@@ -89,9 +86,7 @@ function columnOf(source: string, lineStart: number, offset: number) {
 
 type CodeEditorProps = {
 	source: string;
-	/** Accessible name of the text area */
 	label: string;
-	/** Source range shown as selected (the outline's element) */
 	highlight: { start: number; end: number } | null;
 	/** Bumped to scroll the highlight into view */
 	revealKey: number;
@@ -100,17 +95,13 @@ type CodeEditorProps = {
 	onEndStep: () => void;
 	onUndo: () => void;
 	onRedo: () => void;
-	/** A click placed the caret (no text selected) at `offset` */
+	/** Only when no text is selected */
 	onCaretClick?: (offset: number) => void;
-	/** Selectable and copyable, but not editable (while a generation runs) */
+	/** While a generation runs */
 	readOnly?: boolean;
 };
 
-/**
- * Line-numbered, highlighted and editable source: a transparent textarea over
- * the highlighted text, with the same font metrics, so typing, selection and
- * IME stay native. The project history owns undo, like the context panel.
- */
+/** A transparent textarea over highlighted text with the same metrics, so typing, selection and IME stay native */
 export function CodeEditor({
 	source,
 	label,
@@ -129,14 +120,14 @@ export function CodeEditor({
 	const area = useRef<HTMLTextAreaElement>(null);
 	const measure = useRef<HTMLSpanElement>(null);
 	const focusId = useRef(0);
-	/** The last value this textarea produced, to tell typing from undo and external edits */
+	/** Tells typing from undo and external edits */
 	const typed = useRef<string | null>(null);
 	const caret = useRef({ start: 0, end: 0 });
 
 	const first = highlight ? lineOf(starts, highlight.start) : -1;
 	const last = highlight ? lineOf(starts, Math.max(highlight.start, highlight.end - 1)) : -1;
 
-	/** Scrolls the container so `offset` is visible; `center` puts it a third down the view */
+	/** `center` puts `offset` a third down the view */
 	const reveal = (offset: number, center = false) => {
 		const box = scroller.current;
 
@@ -183,7 +174,7 @@ export function CodeEditor({
 		requestAnimationFrame(() => area.current && reveal(area.current.selectionEnd));
 	};
 
-	/** Inserts text at the caret as a native edit (so the input event fires); falls back to a manual splice */
+	/** A native edit so the input event fires; falls back to a manual splice */
 	const insert = (element: HTMLTextAreaElement, text: string) => {
 		if (readOnly) return;
 
@@ -215,7 +206,6 @@ export function CodeEditor({
 			event.preventDefault();
 			insert(element, "\t");
 		} else if (event.key === "Enter" && !mod && !event.altKey && !event.shiftKey && !event.nativeEvent.isComposing) {
-			// Keep the current line's indentation
 			event.preventDefault();
 			const lineStart = element.value.lastIndexOf("\n", element.selectionStart - 1) + 1;
 			const indent = /^[ \t]*/.exec(element.value.slice(lineStart, element.selectionStart))![0];

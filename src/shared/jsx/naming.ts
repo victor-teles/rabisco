@@ -1,5 +1,3 @@
-/** Readable names for extracted props and suggested components. */
-
 import type { Slot } from "./structure";
 import { flatten, type JsxElement } from "./tree";
 
@@ -27,7 +25,6 @@ const classOf = (element: JsxElement) => {
 const camel = (name: string) =>
 	name.replace(/[-:.]+([a-z0-9])/gi, (_, c: string) => c.toUpperCase()).replace(/[^\w$]/g, "");
 
-/** A base prop name for a text slot, from its element and the values it takes. */
 function textName(element: JsxElement, values: string[]) {
 	const name = element.name ?? "";
 	const cls = classOf(element);
@@ -45,12 +42,7 @@ function textName(element: JsxElement, values: string[]) {
 	return long ? "text" : "label";
 }
 
-/**
- * Prop names for the slots that vary, in order: attribute slots take the
- * attribute's name (`href`, `alt`), text slots a role (`title`, `value`,
- * `description`, `label`). Repeats are numbered (`label`, `label2`), and
- * names in `taken` are avoided.
- */
+/** Attribute slots take the attribute's name, text slots a role; repeats are numbered (`label2`). */
 export function slotPropNames(slots: { slot: Slot; values: string[] }[], taken: Iterable<string> = []) {
 	const used = new Set(taken);
 
@@ -71,10 +63,7 @@ const CARD_CLASS = /\brounded(-\w+)?\b/;
 
 const SURFACE_CLASS = /\b(border|shadow(-\w+)?|bg-card|bg-muted|ring-1)\b/;
 
-/**
- * A short sentence-case name for a repeated subtree ("Stat card", "List item"),
- * guessed from its tags, classes, icons and text. `icons` are the file's lucide-react imports.
- */
+/** `icons` are the file's lucide-react imports. */
 export function suggestName(element: JsxElement, icons: Set<string> = new Set()): string {
 	const all = flatten(element);
 	const names = new Set(all.map((e) => e.name ?? ""));

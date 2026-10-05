@@ -6,11 +6,11 @@ import { isDirectory } from "./project-folder";
 export type FoundContextFile = {
 	path: ContextFileName;
 	content: string;
-	/** Path inside the searched folder where it was found, e.g. `docs/design.md` */
+	/** Relative to the searched folder, e.g. `docs/design.md` */
 	source: string;
 };
 
-/** Where repositories usually keep these files, in search order. `""` is the folder itself. */
+/** In search order; `""` is the folder itself. */
 export const CONTEXT_SEARCH_DIRS = ["", "docs", "doc", "design", ".github", ".rabisco"];
 
 const NAMES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
@@ -18,7 +18,6 @@ const NAMES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 /** Bigger files aren't context, and would blow up every prompt */
 export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 
-/** Entry names of `dir`, or none when it isn't a readable folder. */
 function entries(dir: string) {
 	try {
 		return readdirSync(dir);
@@ -27,11 +26,7 @@ function entries(dir: string) {
 	}
 }
 
-/**
- * Finds PRODUCT.md and DESIGN.md in an existing repository (case-insensitive): the folder root
- * first, then `docs/`, `doc/`, `design/`, `.github/` and `.rabisco/`. The first match wins per
- * file; files over 200 KB are skipped. Throws when `dir` isn't a folder.
- */
+/** Case-insensitive; first match wins per file. Throws when `dir` isn't a folder. */
 export function findContextFiles(dir: string): FoundContextFile[] {
 	if (!dir || !existsSync(dir)) throw new Error(`Folder not found: ${dir || "(empty path)"}`);
 

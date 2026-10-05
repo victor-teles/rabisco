@@ -7,7 +7,6 @@ import { packageName, viteProject, type ViteProjectInput } from "./vite-project"
 
 const UI_DIR = join(import.meta.dir, "../../mainview/components/ui");
 
-/** The shadcn sources the webview passes in (`UI_SOURCES`) */
 const uiSources = Object.fromEntries(
 	readdirSync(UI_DIR)
 		.filter((file) => file.endsWith(".tsx"))

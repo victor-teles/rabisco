@@ -3,7 +3,7 @@ import { FUNCTION_HEADER_LINES, RenderError } from "./registry";
 
 const STACK_LOCATION = new RegExp(`${SOURCE_URL_PREFIX.replace(/[/.]/g, "\\$&")}([^\\s:)]+):(\\d+):(\\d+)`);
 
-/** First project location in a stack trace (V8 and JavaScriptCore formats). */
+/** Handles V8 and JavaScriptCore stack formats. */
 export function locationFromStack(stack: string | undefined) {
 	const match = stack?.match(STACK_LOCATION);
 
@@ -13,7 +13,7 @@ export function locationFromStack(stack: string | undefined) {
 	return { file: match[1]!, line: Number(match[2]) - FUNCTION_HEADER_LINES, column: Number(match[3]) };
 }
 
-/** Source lines around `line`, 1-based. */
+/** `line` is 1-based. */
 export function excerptOf(source: string | undefined, line: number | undefined, context = 2) {
 	if (!source || !line) return undefined;
 	const lines = source.split("\n");
@@ -26,7 +26,6 @@ export function excerptOf(source: string | undefined, line: number | undefined, 
 	return excerpt;
 }
 
-/** Turns anything thrown into a `FrameError` pointing at project source when possible. */
 export function describeError(cause: unknown, sourceOf: (path: string) => string | undefined): FrameError {
 	if (cause instanceof RenderError) {
 		return {
@@ -57,7 +56,6 @@ const TITLES: Record<FrameError["kind"], string> = {
 	"missing-module": "Missing module",
 };
 
-/** Shows `error` over the screen, replacing any previous overlay. */
 export function showOverlay(error: FrameError) {
 	let overlay = document.getElementById("rabisco-error");
 

@@ -1,4 +1,4 @@
-/** A value decoded from JSON (a file, localStorage, a message) before it is checked. */
+/** Unchecked, as decoded */
 export type Json = null | boolean | number | string | readonly Json[] | JsonObject;
 
 /** Fields may be missing, so reads come back `undefined`. */

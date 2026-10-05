@@ -1,21 +1,14 @@
-/**
- * Play mode (decision 0007): the screen runs as a real React screen, and a
- * click on an element with a `data-link-to` posts `navigate` to the host
- * instead of its default. The link is read from React's fiber chain first, so
- * a component that doesn't pass the prop on to the DOM still links; then from
- * the DOM. Linked elements get a pointer cursor as a quiet hint.
- */
+// Play mode (decision 0007). Links are read from React fibers so components that don't forward the prop still link.
 import { LINK_TO_ATTRIBUTE, type FrameMessage } from "../lib/render/protocol";
 import { fiberOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect";
 
-/** Marks the DOM of linked component elements, which don't carry `data-link-to` themselves */
+/** Marks the DOM of linked component elements, which don't carry `data-link-to` themselves. */
 const MARK = "data-rabisco-link";
 
 const POINTER_CSS = `:is([${LINK_TO_ATTRIBUTE}], [${MARK}]), :is([${LINK_TO_ATTRIBUTE}], [${MARK}]) * { cursor: pointer !important; }`;
 
 const linkOf = (fiber: Fiber) => textProp(fiber, LINK_TO_ATTRIBUTE)?.trim() || null;
 
-/** The link of the element at `target` or its nearest linked ancestor; `null` when none links. */
 export function linkAt(target: EventTarget | null): string | null {
 	const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
 
@@ -32,10 +25,6 @@ export function linkAt(target: EventTarget | null): string | null {
 	return value || null;
 }
 
-/**
- * Play mode for the screen rendered in `container`. `refresh` re-marks linked
- * elements after the tree changed; it does nothing while play mode is off.
- */
 export function createPlay(container: Element, post: (message: FrameMessage) => void) {
 	let playing = false;
 	const style = document.createElement("style");

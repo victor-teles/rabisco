@@ -52,7 +52,7 @@ export async function measure<T>(
 	return summarize(name, samples, batch > 1 ? [note, `batch of ${batch}`].filter(Boolean).join(", ") : note);
 }
 
-/** Times a single call: cold paths such as initialising a wasm module. */
+/** For cold paths such as initialising a wasm module. */
 export async function once<T>(name: string, fn: () => T | Promise<T>, note?: string): Promise<Stat> {
 	const start = performance.now();
 	consume(await fn());
@@ -60,7 +60,6 @@ export async function once<T>(name: string, fn: () => T | Promise<T>, note?: str
 	return summarize(name, [performance.now() - start], note);
 }
 
-/** Text outputs are counted, anything else is just touched. */
 function consume<T>(value: T) {
 	if (isText(value)) sink += value.length;
 	else if (value) sink += 1;
@@ -70,7 +69,7 @@ function isText<T>(value: T): value is T & string {
 	return typeof value === "string";
 }
 
-/** Extracts Tailwind class candidates from TSX source: a cheap superset, invalid tokens are ignored by Tailwind. */
+/** A cheap superset; Tailwind ignores invalid tokens. */
 export function extractCandidates(source: string): string[] {
 	const set = new Set<string>();
 

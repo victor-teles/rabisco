@@ -1,5 +1,3 @@
-// Builds the screen runtime (src/mainview/runtime) into src/mainview/public/runtime/, so the
-// dev server serves it and the app build copies it into dist/runtime/.
 // A classic IIFE script: frames have an opaque origin, where module scripts would need CORS.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";

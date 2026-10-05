@@ -20,11 +20,9 @@ export type ProviderDeps = {
 	secrets: SecretStore;
 	fetch?: typeof fetch;
 	spawn?: SpawnFn;
-	/** Parent folder for agent staging directories */
 	stagingRoot?: string;
 };
 
-/** Builds the provider for one configuration. */
 export function createProvider(config: ProviderConfig, deps: ProviderDeps): Provider {
 	const getApiKey = () => deps.secrets.get(apiKeyAccount(config.id));
 	const api = { config, getApiKey, fetch: deps.fetch };
@@ -51,7 +49,6 @@ export function createProvider(config: ProviderConfig, deps: ProviderDeps): Prov
 	}
 }
 
-/** The development-only mock, listed when the registry is created with `includeMock`. */
 export const MOCK_CONFIG: ProviderConfig = {
 	id: "mock",
 	type: "mock",
@@ -62,9 +59,8 @@ export const MOCK_CONFIG: ProviderConfig = {
 
 export type RegistryOptions = ProviderDeps & {
 	includeMock?: boolean;
-	/** Per call to `health()` and `listModels()` when computing statuses */
+	/** Per `health()` / `listModels()` call */
 	statusTimeoutMs?: number;
-	/** Injectable for tests */
 	create?: (config: ProviderConfig, deps: ProviderDeps) => Provider;
 };
 
@@ -82,10 +78,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 	return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-/**
- * The configured providers, built on demand and cached until their config
- * changes. Resolves `ModelRef`s and reports statuses for Settings and the model picker.
- */
+/** Providers are built on demand and cached until their config changes. */
 export class ProviderRegistry {
 	#options: RegistryOptions;
 	#configs: ProviderConfig[] = [];
@@ -96,7 +89,7 @@ export class ProviderRegistry {
 		this.setConfigs(configs);
 	}
 
-	/** Replaces the configured providers (from the settings store). Instances of unchanged configs are kept. */
+	/** Instances of unchanged configs are kept. */
 	setConfigs(configs: ProviderConfig[]) {
 		this.#configs =
 			this.#options.includeMock && !configs.some((c) => c.id === MOCK_CONFIG.id)
@@ -115,7 +108,7 @@ export class ProviderRegistry {
 		return this.#configs.find((c) => c.id === id);
 	}
 
-	/** The provider for `id`, enabled or not; `null` when no such provider is configured. */
+	/** Enabled or not. */
 	get(id: string): Provider | null {
 		const config = this.config(id);
 
@@ -130,11 +123,7 @@ export class ProviderRegistry {
 		return provider;
 	}
 
-	/**
-	 * `anthropic:claude-sonnet-5-5` → the provider and model id. A bare provider
-	 * id (`anthropic`) uses the provider's `defaultModel`. `null` when the provider
-	 * is missing or disabled, or no model can be picked.
-	 */
+	/** A bare provider id uses its `defaultModel`; `null` when missing, disabled or no model can be picked. */
 	resolve(ref: ModelRef): ResolvedModel | null {
 		const parsed = parseModelRef(ref);
 		const providerId = parsed?.providerId ?? ref;
@@ -149,7 +138,7 @@ export class ProviderRegistry {
 		return provider ? { provider, config, model } : null;
 	}
 
-	/** Health and models of every provider, checked in parallel. Never throws; disabled providers aren't checked. */
+	/** Never throws; disabled providers aren't checked. */
 	async statuses(): Promise<ProviderStatus[]> {
 		const timeoutMs = this.#options.statusTimeoutMs ?? 8000;
 

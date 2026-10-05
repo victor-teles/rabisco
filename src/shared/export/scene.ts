@@ -1,15 +1,5 @@
-/**
- * A screen as a flat list of drawing operations: what the frame runtime reads
- * from the rendered DOM (`src/mainview/runtime/snapshot.ts`), and what PNG,
- * SVG and PDF export draw from. One scene, two backends: a canvas in the frame
- * for raster images, and `sceneToSvg` here for vector SVG.
- *
- * Why not an SVG `<foreignObject>`: WebKit taints any canvas that draws an SVG
- * image containing one (`SVGImage::renderingTaintsOrigin`), so it can't become
- * a PNG in WKWebView, and design tools (Figma, Illustrator) don't read it.
- *
- * Coordinates are CSS pixels from the top left of the screen's document.
- */
+// Not `<foreignObject>`: WebKit taints any canvas that draws an SVG containing one, and design tools
+// don't read it. Coordinates are CSS pixels from the top left of the screen's document.
 
 import { isVisible, mixOklab, parseColor, toCss, toHex, type Rgba } from "./color";
 
@@ -17,7 +7,7 @@ export type { Rgba } from "./color";
 
 export type Box = { x: number; y: number; width: number; height: number };
 
-/** Corner radii: top left, top right, bottom right, bottom left. */
+/** Top left, top right, bottom right, bottom left */
 export type Radii = [number, number, number, number];
 
 export type RoundedRect = Box & { radii: Radii };
@@ -30,13 +20,12 @@ export type Paint =
 
 export type TextFont = { family: string; size: number; weight: string; style: string };
 
-/** 2D affine matrix `[a, b, c, d, e, f]`, as in SVG and canvas. */
+/** `[a, b, c, d, e, f]`, as in SVG and canvas */
 export type Matrix = [number, number, number, number, number, number];
 
 export type SceneOp =
-	/** A background */
 	| { type: "fill"; rect: RoundedRect; paint: Paint }
-	/** An outer box shadow (or ring): drawn outside `rect` only */
+	/** Drawn outside `rect` only */
 	| { type: "shadow"; rect: RoundedRect; color: Rgba; offsetX: number; offsetY: number; blur: number; spread: number }
 	| {
 			type: "border";
@@ -45,7 +34,7 @@ export type SceneOp =
 			colors: [Rgba, Rgba, Rgba, Rgba];
 			style: "solid" | "dashed" | "dotted";
 	  }
-	/** One line of text; `y` is the baseline, `width` the rendered width */
+	/** `y` is the baseline, `width` the rendered width */
 	| {
 			type: "text";
 			x: number;
@@ -59,7 +48,7 @@ export type SceneOp =
 	  }
 	/** `src` is a data URL */
 	| { type: "image"; x: number; y: number; width: number; height: number; src: string }
-	/** An SVG shape; `d` is in the shape's user space, `transform` maps it to the document */
+	/** `d` is in the shape's user space, `transform` maps it to the document */
 	| {
 			type: "path";
 			d: string;
@@ -69,20 +58,16 @@ export type SceneOp =
 	  }
 	| { type: "group"; opacity: number; clip: RoundedRect | null; ops: SceneOp[] };
 
-/** A prototype link (decision 0007) and where its element is. */
 export type SceneLink = { to: string; box: Box };
 
 export type Scene = { width: number; height: number; background: Rgba | null; ops: SceneOp[]; links: SceneLink[] };
 
-/** `n` with at most 2 decimals, no trailing zeros */
+/** At most 2 decimals, no trailing zeros */
 export const num = (n: number) => String(Math.round(n * 100) / 100);
 
 const mapRadii = ([tl, tr, br, bl]: Radii, f: (r: number) => number): Radii => [f(tl), f(tr), f(br), f(bl)];
 
-/**
- * Radii as CSS draws them: overlapping corners scale down together so that
- * adjacent radii never add up to more than their side.
- */
+/** Like CSS: overlapping corners scale down together so adjacent radii never exceed their side. */
 export function fitRadii(width: number, height: number, radii: Radii): Radii {
 	const [tl, tr, br, bl] = mapRadii(radii, (r) => Math.max(0, Number.isFinite(r) ? r : 0));
 	const ratio = (side: number, sum: number) => (sum > 0 ? side / sum : Number.POSITIVE_INFINITY);
@@ -93,7 +78,7 @@ export function fitRadii(width: number, height: number, radii: Radii): Radii {
 
 export const hasRadius = (radii: Radii) => radii.some((r) => r > 0);
 
-/** `rect` grown by `by` on every side (shrunk when negative); radii follow, never below 0. */
+/** Grows by `by` (shrinks when negative); radii follow, never below 0. */
 export function inset(rect: RoundedRect, by: number): RoundedRect {
 	const width = Math.max(0, rect.width - by * 2);
 	const height = Math.max(0, rect.height - by * 2);
@@ -111,7 +96,7 @@ export function inset(rect: RoundedRect, by: number): RoundedRect {
 	};
 }
 
-/** SVG path data for a rounded rectangle (also valid for canvas `Path2D`). */
+/** Also valid for canvas `Path2D` */
 export function rectPath({ x, y, width: w, height: h, radii }: RoundedRect): string {
 	const [tl, tr, br, bl] = fitRadii(w, h, radii);
 
@@ -127,7 +112,7 @@ export function rectPath({ x, y, width: w, height: h, radii }: RoundedRect): str
 	);
 }
 
-/** Splits on commas outside parentheses: `a(b, c), d` → `["a(b, c)", "d"]`. */
+/** `a(b, c), d` → `["a(b, c)", "d"]` */
 export function splitTopLevel(value: string, separator = ","): string[] {
 	const parts: string[] = [];
 	let depth = 0;
@@ -149,10 +134,8 @@ export function splitTopLevel(value: string, separator = ","): string[] {
 	return parts.filter(Boolean);
 }
 
-/** A color token taken out of a CSS value, and the rest of the value. */
 type TakenColor = { color: Rgba | null; rest: string };
 
-/** The color token at the start or end of `text`, and the rest. */
 function takeColor(text: string): TakenColor {
 	const fn = /([a-z-]+\([^()]*(?:\([^()]*\)[^()]*)*\))/i.exec(text);
 
@@ -168,7 +151,7 @@ function takeColor(text: string): TakenColor {
 
 export type BoxShadow = { color: Rgba; offsetX: number; offsetY: number; blur: number; spread: number; inset: boolean };
 
-/** A computed `box-shadow`, layers in CSS order (first on top). Invisible layers are dropped. */
+/** Layers in CSS order (first on top); invisible layers are dropped. */
 export function parseBoxShadow(value: string): BoxShadow[] {
 	if (!value || value === "none") return [];
 	const shadows: BoxShadow[] = [];
@@ -196,7 +179,7 @@ export function parseBoxShadow(value: string): BoxShadow[] {
 
 const SIDES = new Map(Object.entries({ top: 0, right: 90, bottom: 180, left: 270 }));
 
-/** The angle (CSS degrees, clockwise from "to top") of a gradient direction for a `width`×`height` box. */
+/** CSS degrees, clockwise from "to top" */
 function gradientAngle(direction: string, width: number, height: number): number | null {
 	const angle = /^(-?[\d.]+)(deg|rad|grad|turn)$/.exec(direction);
 
@@ -227,14 +210,10 @@ function gradientAngle(direction: string, width: number, height: number): number
 	return horizontal === "right" ? 180 - corner : 180 + corner;
 }
 
-/** How many extra stops approximate OKLab interpolation between two stops */
+/** Extra stops that approximate OKLab interpolation between two stops */
 const OKLAB_STEPS = 6;
 
-/**
- * A computed `linear-gradient(…)` laid out over `box`, or `null` when it
- * isn't one. Stops get their positions resolved; gradients interpolated
- * `in oklab`/`in oklch` gain intermediate stops so sRGB renderers match.
- */
+/** Gradients `in oklab`/`in oklch` gain intermediate stops so sRGB renderers match. */
 export function parseLinearGradient(value: string, box: Box): Paint | null {
 	const match = /^(repeating-)?linear-gradient\((.*)\)$/s.exec(value.trim());
 
@@ -332,22 +311,19 @@ export function parseLinearGradient(value: string, box: Box): Paint | null {
 	};
 }
 
-/** The first color of a paint, e.g. for renderers without gradients. */
+/** For renderers without gradients */
 export const paintColor = (paint: Paint): Rgba => (paint.kind === "color" ? paint.color : paint.stops[0]!.color);
-
-// ————— SVG —————
 
 export const escapeXml = (text: string) =>
 	text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
 
-/** `fill="#rrggbb"` plus `fill-opacity` when not opaque (SVG 1.1 tools don't read rgba). */
+/** Separate opacity attribute: SVG 1.1 tools don't read rgba. */
 function colorAttrs(name: "fill" | "stroke" | "stop-color", color: Rgba) {
 	const opacity = name === "stop-color" ? "stop-opacity" : `${name}-opacity`;
 
 	return `${name}="${toHex(color)}"${color.a < 1 ? ` ${opacity}="${num(color.a)}"` : ""}`;
 }
 
-/** Writes a scene as a standalone SVG 1.1 document with real shapes, text and embedded images. */
 export function sceneToSvg(scene: Scene, title?: string): string {
 	const defs: string[] = [];
 	let nextId = 0;

@@ -1,9 +1,4 @@
-/**
- * Share a read-only link (decision 0008): a small HTTP server in the main
- * process serves each shared project's viewer (`src/shared/share/viewer.ts`)
- * from memory, under a random token. GET and HEAD only; nothing on disk is
- * ever served. Independent of Electrobun so it can be tested.
- */
+// Decision 0008. Serves from memory only, GET/HEAD only: nothing on disk is ever served.
 import { randomBytes } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { networkInterfaces } from "os";
@@ -12,7 +7,6 @@ import type { Json } from "../shared/json";
 import { assertSnapshot, type ScreenRuntime, type ShareStatus } from "../shared/share/snapshot";
 import { viewerFiles } from "../shared/share/viewer";
 
-/** Content types by file extension. */
 const TYPES = new Map([
 	["html", "text/html; charset=utf-8"],
 	["js", "text/javascript; charset=utf-8"],
@@ -29,20 +23,17 @@ type Share = {
 };
 
 export type ShareServiceOptions = {
-	/** The screen runtime the canvas uses (`runtime/frame.html` and `frame.js`) */
 	readRuntime: () => ScreenRuntime;
-	/** Interface the server listens on: `0.0.0.0` so people on the same network can open the link */
+	/** `0.0.0.0` so people on the same network can open the link */
 	hostname?: string;
 	/** `0` picks a free port */
 	port?: number;
-	/** The computer's address on the local network, for the link; `null` when offline */
+	/** `null` when offline */
 	lanAddress?: () => string | null;
-	/** Random URL token; injectable for tests */
 	token?: () => string;
 	now?: () => Date;
 };
 
-/** The first private IPv4 address of this computer, or `null` when there is none. */
 export function lanAddress(): string | null {
 	const candidates: string[] = [];
 
@@ -57,10 +48,6 @@ export function lanAddress(): string | null {
 	return candidates.find(isPrivate) ?? candidates[0] ?? null;
 }
 
-/**
- * Reads the screen runtime from the first folder that has it: the app bundle's
- * `views/mainview/runtime`, then the source tree (development).
- */
 export function readScreenRuntime(dirs: string[]): ScreenRuntime {
 	for (const dir of dirs) {
 		const html = join(dir, "frame.html");
@@ -96,7 +83,7 @@ function headers(path: string, served: Served, gzip: boolean) {
 	return result;
 }
 
-/** Share links for any number of projects, served by one server that runs only while something is shared. */
+/** One server for all projects, running only while something is shared. */
 export function createShareService(options: ShareServiceOptions) {
 	const byProject = new Map<string, Share>();
 	const byToken = new Map<string, Share>();
@@ -105,7 +92,6 @@ export function createShareService(options: ShareServiceOptions) {
 	const now = options.now ?? (() => new Date());
 	const findLan = options.lanAddress ?? lanAddress;
 
-	/** Answers one request. Exported for tests through the service. */
 	function handle(request: Request): Response {
 		if (request.method !== "GET" && request.method !== "HEAD") {
 			return new Response("Read-only", { status: 405, headers: { Allow: "GET, HEAD" } });
@@ -161,7 +147,7 @@ export function createShareService(options: ShareServiceOptions) {
 	return {
 		handle,
 
-		/** Starts sharing `projectPath`, or updates what its link shows. The link stays the same. */
+		/** Republishing keeps the same link. */
 		publish(projectPath: string, rawSnapshot: Json): ShareStatus {
 			const snapshot = assertSnapshot(rawSnapshot);
 			const runtime = options.readRuntime();
@@ -188,14 +174,13 @@ export function createShareService(options: ShareServiceOptions) {
 			return statusOf(share);
 		},
 
-		/** The project's link, or `null` when it isn't shared. */
 		status(projectPath: string): ShareStatus | null {
 			const share = byProject.get(projectPath);
 
 			return share ? statusOf(share) : null;
 		},
 
-		/** Stops sharing: the link stops working for good (sharing again makes a new one). */
+		/** The link dies for good; sharing again makes a new one. */
 		stop(projectPath: string) {
 			const share = byProject.get(projectPath);
 

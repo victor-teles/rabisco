@@ -42,7 +42,6 @@ const fakeFrame = () => {
 	return { frame, posted };
 };
 
-/** The last message of `type` the host posted. */
 function lastPosted<T extends HostMessage["type"]>(posted: HostMessage[], type: T) {
 	const matching = posted.filter((message): message is Extract<HostMessage, { type: T }> => message.type === type);
 	const last = matching.at(-1);

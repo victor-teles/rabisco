@@ -16,28 +16,17 @@ import type { Frame, ProjectFiles } from "../../../shared/types";
 
 export type LinkControlProps = {
 	files: ProjectFiles;
-	/** The canvas frames: the screens a link can go to, with their names */
 	frames: Frame[];
-	/** The selected element; nothing renders without one */
+	/** Nothing renders without one */
 	element: ElementRef | null;
-	/**
-	 * Link the element to a screen path or `"back"`, or remove its link (`null`).
-	 * Write it as one undo step, e.g. `structure.setProp(element, LINK_ATTRIBUTE, to)`.
-	 */
+	/** A screen path, `"back"`, or `null` to remove the link; write it as one undo step */
 	onChange: (element: ElementRef, to: string | null) => void;
-	/** A generation is running: read-only */
 	disabled?: boolean;
 };
 
-/** The radio value of "no link" */
 const NONE = "";
 
-/**
- * Design tab, "Prototype": where the selected element goes in play mode
- * (decision 0007). A dropdown of none, the project's screens and Back, written
- * as the element's `data-link-to`. A link to a screen that is gone shows as
- * missing; a link written as code is shown read-only.
- */
+/** Writes `data-link-to` (decision 0007); a link written as code is read-only */
 export function LinkControl({ files, frames, element, onChange, disabled }: LinkControlProps) {
 	const source = element ? files[element.file] : undefined;
 	const node = element && source !== undefined ? findElement(parseJsx(source), element.start) : null;

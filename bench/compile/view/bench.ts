@@ -30,8 +30,6 @@ const push = (stat: Stat) => {
 	log(`${stat.name}: median ${stat.median.toFixed(3)} ms (p95 ${stat.p95.toFixed(3)}, n=${stat.n})`);
 };
 
-// ---------------------------------------------------------------- compilers
-
 const compilers = {
 	"esbuild-wasm": async (source) =>
 		(await esbuild.transform(source, { loader: "tsx", jsx: "automatic", format: "esm", target: "es2022" })).code,
@@ -48,7 +46,6 @@ const compilers = {
 		}).code,
 } satisfies Record<string, (source: string) => string | Promise<string>>;
 
-/** Correctness gate: the output must parse as an ES module (imports stripped, nothing is called). */
 async function parsesAsModule(code: string) {
 	// Sucrase keeps imports on the same line as code to preserve line numbers
 	const stripped = code.replace(/\bimport\s[^;'"]*?from\s*["'][^"']+["'];?/g, "");
@@ -65,8 +62,6 @@ async function parsesAsModule(code: string) {
 	}
 }
 
-// ---------------------------------------------------------------- tailwind per frame
-
 const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function frameMarkup(candidates: string[]) {
@@ -75,7 +70,6 @@ function frameMarkup(candidates: string[]) {
 	return `<div id="probe" class="p-4"></div><div hidden>${elements}</div>`;
 }
 
-/** Time from inserting an iframe until `#probe` has Tailwind's p-4 applied. */
 async function timeToStyled(srcdoc: string) {
 	const iframe = document.createElement("iframe");
 	iframe.style.cssText = "position:absolute;left:-9999px;width:390px;height:844px";
@@ -107,8 +101,6 @@ async function sampleFrames(name: string, srcdoc: () => string, iterations = 15)
 	return summarize(name, samples);
 }
 
-// ---------------------------------------------------------------- run
-
 async function run() {
 	push(await once("webview · esbuild-wasm initialize", () => esbuild.initialize({ wasmURL: esbuildWasmUrl })));
 	push(await once("webview · swc-wasm initialize", () => initSwc({ module_or_path: swcWasmUrl })));
@@ -126,7 +118,6 @@ async function run() {
 		checks[`webview.${name}.large.parses`] = await parsesAsModule(await compile(FIXTURES.large));
 	}
 
-	// RPC overhead on its own, by payload size
 	for (const kb of [0, 8, 40]) {
 		const payload = "x".repeat(kb * 1024);
 		push(
@@ -138,7 +129,6 @@ async function run() {
 		);
 	}
 
-	// End to end through RPC: what the webview actually waits for when the main process compiles
 	for (const mode of ["transpiler", "build"] as const) {
 		for (const size of ["medium", "large"] as const) {
 			push(
@@ -160,7 +150,6 @@ async function run() {
 		checks[`main.${mode}.large.parses`] = await parsesAsModule(large.code);
 	}
 
-	// Tailwind compile() in the webview
 	for (const [size, source] of Object.entries(FIXTURES)) {
 		push(
 			await measure(`webview · extract candidates (${size})`, () => extractCandidates(source), {
@@ -213,7 +202,6 @@ async function run() {
 	);
 	push(await measure("webview · tailwind build no new classes", () => warm.build(base), { iterations: 20, batch: 50 }));
 
-	// Per frame: shared precompiled CSS vs the Tailwind browser runtime inside every iframe
 	const markup = frameMarkup(base);
 	push(await sampleFrames("frame · precompiled CSS injected → styled", () => `<style>${css}</style>${markup}`));
 	push(

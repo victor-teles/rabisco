@@ -1,31 +1,16 @@
-/**
- * Point and prompt guard: after a focused edit, finds what changed in the file
- * outside the focused element. It never fails the generation; the result is a
- * note under the reply, and undo reverts the whole edit.
- *
- * A line diff (LCS over non-blank lines, trailing spaces ignored) of the file
- * before and after. Allowed outside the element:
- * - import lines, added or removed;
- * - new top-level declarations: a run of added lines whose first line starts a
- *   declaration at column 0 (`function Hero…`, `const items = …`, `type …`),
- *   e.g. a helper component the element now uses.
- * Everything else outside the element is reported: changed, added or removed lines.
- * When one changed run of lines covers the element and lines next to it, those
- * outside lines count one for one; lines only added right next to the element
- * count as part of it (a new sibling is a fair way to change an element).
- */
+// Reports edits outside the focused element (never fails the run). Imports and new top-level
+// declarations are allowed; lines only added right next to the element count as part of it.
 
 import type { ElementFocus } from "../../shared/ai/contract";
 import type { FileChange, ProjectFiles } from "../../shared/types";
 
-/** Above this many cells, the diff is skipped (two ~2000-line files after trimming common ends) */
+/** LCS table cells; roughly two ~2000-line files after trimming common ends */
 const MAX_CELLS = 4_000_000;
 
 const DECLARATION = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function|const|let|var|type|interface|class|enum)\b/;
 
 type Line = { no: number; text: string; isImport: boolean };
 
-/** Non-blank lines, with whether they belong to an import statement (top-level, possibly multi-line) */
 function linesOf(source: string): Line[] {
 	const lines: Line[] = [];
 	let inImport = false;
@@ -48,7 +33,7 @@ function linesOf(source: string): Line[] {
 
 type Op = { kind: "same"; a: number; b: number } | { kind: "del"; a: number } | { kind: "add"; b: number };
 
-/** Edit script from `a` to `b` (indices), common ends trimmed before the LCS table; `null` when too large */
+/** `null` when too large */
 function diff(a: Line[], b: Line[]): Op[] | null {
 	let head = 0;
 
@@ -100,11 +85,7 @@ function diff(a: Line[], b: Line[]): Op[] | null {
 	return ops;
 }
 
-/**
- * Lines of `after` (1-based) that changed outside the focused element of
- * `before`. A removed line counts as the line that now follows it. `null` when
- * the files are too large to compare.
- */
+/** 1-based lines of `after`; a removed line counts as the line now following it. `null` when too large. */
 export function changesOutside(
 	before: string,
 	after: string,
@@ -132,13 +113,11 @@ export function changesOutside(
 			continue;
 		}
 
-		// A run of added and removed lines, up to the next kept line
 		let end = k;
 
 		while (end + 1 < ops.length && ops[end + 1]!.kind !== "same") end++;
 		const run = ops.slice(k, end + 1);
 		const following = ops[end + 1];
-		// The run stops at a kept line or at the end
 		const next = following?.kind === "same" ? following : undefined;
 		const added = run.flatMap((o) => (o.kind === "add" ? [b[o.b]!] : []));
 		const removed = run.flatMap((o) => (o.kind === "del" ? [o.a] : []));
@@ -184,7 +163,6 @@ export function lineRanges(lines: number[]): string {
 	return `${lines.length === 1 ? "line" : "lines"} ${ranges.join(", ")}`;
 }
 
-/** Notes for the reply when a focused edit changed its file outside the element; empty when it stayed inside. */
 export function focusNotes(
 	focus: ElementFocus | undefined,
 	projectFiles: ProjectFiles,

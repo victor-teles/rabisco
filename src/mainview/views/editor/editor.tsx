@@ -63,9 +63,7 @@ import { ALIGN_SHORTCUTS, COMPONENTS_VIEW_CODE, DISTRIBUTE_SHORTCUTS, isPlay, is
 type EditorProps = {
 	projectPath: string;
 	initialPrompt?: string;
-	/** Reference images sent with the initial prompt */
 	initialFiles?: File[];
-	/** Variations for the initial prompt, chosen on Home */
 	initialVariations?: number;
 	theme: Theme;
 	onToggleTheme: () => void;
@@ -83,7 +81,6 @@ const NO_MESSAGES: ChatMessage[] = [];
 /** Arrow-key nudges closer together than this are one undo step */
 const NUDGE_BURST_MS = 800;
 
-/** Replaces frames by file, keeping canvas order. */
 const withMoves = (frames: Frame[], moves: FrameMove[]) => {
 	const byFile = new Map(moves.map((move) => [move.file, move]));
 
@@ -124,9 +121,8 @@ export function EditorView({
 	const [tab, setTab] = useState<InspectorTab>("design");
 	const [contextFile, setContextFile] = useState<ContextFileName>("PRODUCT.md");
 	const [viewport, setViewport] = useState<Viewport>({ x: 80, y: 80, zoom: 0.6 });
-	/** The variation group open in compare mode, by its base path */
+	/** By its base path */
 	const [compareBase, setCompareBase] = useState<string | null>(null);
-	/** The screen play mode started from, while it is open */
 	const [playStart, setPlayStart] = useState<string | null>(null);
 	const [variations, setVariations] = useVariations();
 	const canvasRef = useRef<CanvasHandle>(null);
@@ -141,7 +137,6 @@ export function EditorView({
 	const messages = project?.messages ?? NO_MESSAGES;
 	const selected = useMemo(() => selectedFrames(frames, selection), [frames, selection]);
 
-	// Frame existing work once the project opens
 	useEffect(() => {
 		if (!project || fittedOnLoad.current) return;
 		fittedOnLoad.current = true;
@@ -193,7 +188,6 @@ export function EditorView({
 
 	const busy = generation !== null || interview !== null;
 
-	// The components panel: suggestions, Make component from them, drops onto screens, the selected component
 	const {
 		components,
 		suggestions,
@@ -217,19 +211,13 @@ export function EditorView({
 		reloadFromDisk,
 	};
 
-	// The Code tab's structure outline: element selection, Make component, prop controls and code edits
 	const codeFile = selection.length === 1 ? selection[0]! : null;
 	const showCode = useCallback(() => setTab("code"), []);
 	const structure = useStructure({ files, file: codeFile, stateRef, change, onShowCode: showCode, busy });
 	const { select: selectNode, setChildren: setNodeChildren } = structure;
-	/** The element a prompt would change (point and prompt), when one is selected in the selected screen */
 	const focus = useMemo(() => focusOf(files, structure.node), [files, structure.node]);
 
-	/**
-	 * During the PRODUCT.md interview the composer answers its questions. Otherwise,
-	 * with an element selected, the prompt changes only that element; with screens
-	 * selected, it edits them; without, it creates new screens.
-	 */
+	/** Answers the PRODUCT.md interview, else changes the selected element, edits the selected screens, or creates new ones */
 	const sendPrompt = useCallback(
 		(prompt: string, attachments: File[] = []) => {
 			if (interview) answer(prompt);
@@ -238,7 +226,6 @@ export function EditorView({
 		[interview, answer, send, selection, variations, structure.node],
 	);
 
-	/** Selects an element of a screen from the canvas (the screen becomes the selection), or clears it. */
 	const selectElement = useCallback(
 		(file: string, element: ElementRef | null) => {
 			const current = stateRef.current?.canvas.selection;
@@ -257,10 +244,9 @@ export function EditorView({
 		[setNodeChildren],
 	);
 
-	// Text with more than text in it (an icon, a nested element) is edited in the Design tab's props
 	const editTextElsewhere = useCallback(() => setTab("design"), []);
 
-	/** The element's nearest ancestor that has props of its own (fragments have none), or null. */
+	/** Fragments have no props of their own */
 	const parentElement = (element: ElementRef): ElementRef | null => {
 		const source = files[element.file];
 		let parent = source === undefined ? null : (findElement(parseJsx(source), element.start)?.parent ?? null);
@@ -282,10 +268,7 @@ export function EditorView({
 
 	const comments = useComments({ comments: project?.canvas.comments, frames, change, endStep });
 
-	/**
-	 * "Ask AI" on a comment: a change to the element under the pin (point and
-	 * prompt), else to the screen it is pinned to; a canvas pin creates new screens.
-	 */
+	/** Changes the element under the pin, else its screen; a canvas pin creates new screens */
 	const askAboutComment = useCallback(
 		async (comment: CanvasComment) => {
 			if (!comment.file) return send(comment.text, { variations });
@@ -297,15 +280,11 @@ export function EditorView({
 
 	const groups = useMemo(() => variationGroups(Object.keys(files)), [files]);
 	const compareGroup = compareBase ? (groups.find((group) => group.base === compareBase) ?? null) : null;
-	// Close compare when its group is gone (deleted, or down to one file)
 	useEffect(() => {
 		if (compareBase && !compareGroup) setCompareBase(null);
 	}, [compareBase, compareGroup]);
 
-	/**
-	 * Picks a variation: swaps its content into the screen's own file (decision
-	 * 0004), one undo step. Frames stay where they are; the selection follows the content.
-	 */
+	/** Swaps the variation into the screen's own file (decision 0004) as one undo step */
 	const pick = useCallback(
 		(file: string) => {
 			if (generation) {
@@ -320,7 +299,6 @@ export function EditorView({
 			change(
 				(snapshot) => {
 					const files = applyFileChanges(snapshot.files, pickVariation(snapshot.files, file));
-					// When the screen's own file was gone, the alternate's frame takes its name
 					const base = baseOf(file);
 					const hasBaseFrame = snapshot.frames.some((frame) => frame.file === base);
 
@@ -336,7 +314,6 @@ export function EditorView({
 		[generation, stateRef, change],
 	);
 
-	/** Edits of the context files go through the undo history like any other file change. */
 	const editContext = useCallback(
 		(file: ContextFileName, text: string, step: string) =>
 			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: text } }), { coalesce: step }),
@@ -349,7 +326,7 @@ export function EditorView({
 		[change],
 	);
 
-	// The context files the latest generation followed. Older replies and interview questions have no `context`.
+	// Older replies and interview questions have no `context`
 	const lastUsed = useMemo(() => {
 		for (let i = messages.length - 1; i >= 0; i--)
 			if (messages[i]!.role === "assistant" && messages[i]!.context) return messages[i]!.context!;
@@ -365,7 +342,6 @@ export function EditorView({
 		send(initialPrompt, { files: initialFiles, variations: initialVariations });
 	}, [project, initialPrompt, initialFiles, initialVariations, providersLoading, send]);
 
-	// Show new screens as they start streaming in
 	const draftCount = drafts?.frames.length ?? 0;
 	useEffect(() => {
 		if (draftCount === 1 && drafts) canvasRef.current?.fitTo([...frames, ...drafts.frames]);
@@ -422,7 +398,7 @@ export function EditorView({
 		[change, selection],
 	);
 
-	/** Deleting a frame deletes its screen file; undo brings both back. A selected component file is never deleted this way. */
+	/** Undo brings the files back. A selected component file is never deleted this way. */
 	const deleteSelection = useCallback(() => {
 		const doomed = new Set(selectedFrames(frames, selection).map((frame) => frame.file));
 
@@ -436,7 +412,6 @@ export function EditorView({
 		);
 	}, [change, frames, selection]);
 
-	/** Copies each selected screen to a new file, placed below the selection. */
 	const duplicateSelection = useCallback(() => {
 		const current = stateRef.current;
 
@@ -492,8 +467,7 @@ export function EditorView({
 		[frames, selection, setSelection],
 	);
 
-	// Keyboard shortcuts (Figma conventions), ignored while typing. The handler
-	// reads the latest render through a ref so it is registered once.
+	// Reads the latest render through a ref so the handler is registered once
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || isTyping(event.target) || !project) return;
 
@@ -510,7 +484,6 @@ export function EditorView({
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
 		const code = event.code;
 
-		// Play mode handles its own keys
 		if (playStart) return;
 
 		if (isPlay(event)) {
@@ -520,7 +493,7 @@ export function EditorView({
 			return;
 		}
 
-		// Compare mode handles its own keys (Esc closes it); only undo/redo stay global
+		// Only undo/redo stay global in compare mode
 		if (compareBase && !(mod && (code === "KeyZ" || code === "KeyY"))) return;
 
 		if (mod && code === "KeyZ") {
@@ -604,7 +577,6 @@ export function EditorView({
 		}
 	};
 
-	/** Plays the prototype from the selected screen, or the first one. */
 	function startPlay() {
 		const start = selected.find((frame) => frame.file.startsWith("screens/"))?.file ?? frames[0]?.file;
 

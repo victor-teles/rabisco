@@ -1,9 +1,3 @@
-/**
- * Codex CLI provider: runs `codex exec --json` in a staging dir with a
- * workspace-write sandbox, and maps its JSONL events to generation events.
- * Uses the user's own Codex login.
- */
-
 import type { GenerationEvent, Provider, ProviderModel } from "../../../shared/ai/contract";
 import {
 	bunSpawn,
@@ -30,7 +24,7 @@ import type { CliProviderOptions } from "./claude-code";
 /** Used when `codex debug models` isn't available. */
 export const CODEX_MODELS: ProviderModel[] = [{ id: "gpt-5.5", label: "GPT-5.5" }];
 
-/** Maps `codex exec --json` lines to events. Stateful: create one per run. */
+/** Stateful: create one per run. */
 export function createCodexMapper(dir: string): LineMapper {
 	const text = new MessageText();
 
@@ -111,7 +105,6 @@ export function createCodexMapper(dir: string): LineMapper {
 	};
 }
 
-/** The models `codex debug models` lists for users, or none when its output isn't a catalog. */
 function parseCodexCatalog(stdout: string): ProviderModel[] {
 	return arrayOr(objectOr(parseJson(stdout)).models).flatMap((entry) => {
 		const model = objectOr(entry);
@@ -123,7 +116,7 @@ function parseCodexCatalog(stdout: string): ProviderModel[] {
 	});
 }
 
-/** The `codex` arguments for one generation; the prompt goes on stdin (`-`). */
+/** The prompt goes on stdin (`-`). */
 export function codexArgs(model: string, dir: string) {
 	return [
 		"exec",
@@ -170,7 +163,6 @@ export function createCodexProvider(options: CliProviderOptions): Provider {
 			return { ok: true, version: version.version };
 		},
 
-		/** Codex's own catalog (`codex debug models`), falling back to a static list. */
 		async listModels() {
 			if (models) return models;
 			const bin = binary();

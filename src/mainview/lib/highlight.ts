@@ -1,7 +1,4 @@
-/**
- * A tiny TSX tokenizer for the read-only code view. It only has to look
- * right, not parse: one regex pass, unknown text falls through as "plain".
- */
+// Display-only TSX tokenizer: one regex pass, unknown text falls through as "plain".
 
 export type TokenKind = "plain" | "comment" | "string" | "keyword" | "number" | "tag" | "attr" | "punct";
 
@@ -46,7 +43,6 @@ export function tokenize(source: string): Token[] {
 	return tokens;
 }
 
-/** Splits tokens into lines, cutting multi-line tokens (block comments, template strings). */
 export function tokenizeLines(source: string): Token[][] {
 	const lines: Token[][] = [[]];
 

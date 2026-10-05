@@ -216,7 +216,6 @@ describe("sceneToSvg", () => {
 		expect(svg).toContain('transform="matrix(1 0 0 1 10 10)"');
 		expect(svg).not.toContain("foreignObject");
 
-		// Every referenced id is defined
 		for (const [, id] of svg.matchAll(/url\(#([a-z]\d+)\)/g)) expect(svg).toContain(`id="${id}"`);
 	});
 });
@@ -298,7 +297,6 @@ describe("pdf", () => {
 		expect(text).toContain("/Filter /DCTDecode");
 		expect(text).toContain("/Subtype /Link");
 		expect(text).toContain("/Outlines");
-		// The image bytes are embedded as they are
 		expect(text).toContain(latin(jpeg));
 		// startxref points at the xref table, and every entry at its object
 		const startxref = Number(/startxref\n(\d+)\n%%EOF/.exec(text)![1]);
@@ -404,7 +402,6 @@ describe("flowDocument", () => {
 		expect(doc.pages).toHaveLength(3);
 		expect(doc.pages[1]!.width).toBe((390 + 80) * PT_PER_PX);
 		expect(doc.pages[2]!.height).toBe((40 + 64 + 1200 + 40) * PT_PER_PX);
-		// Overview thumbnails link to their pages
 		expect(doc.pages[0]!.links!.map((l) => l.page)).toEqual([1, 2]);
 		// Screen links go to the linked page; `back` has nowhere to go
 		expect(doc.pages[1]!.links).toHaveLength(1);

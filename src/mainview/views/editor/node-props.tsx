@@ -15,19 +15,12 @@ import { PropControls, propSignature } from "./prop-controls";
 
 type NodePropsProps = {
 	files: ProjectFiles;
-	/** The one selected file, or null */
 	file: string | null;
 	structure: Structure;
 	onEndStep: () => void;
-	/** Selects a component file (to see and edit its code) */
 	onOpenComponent?: (path: string) => void;
 };
 
-/**
- * Design tab, top: the props of the element selected in the structure, as
- * controls written back to its attributes; or, with a component file
- * selected and no element, the component's API.
- */
 export function NodeProps({ files, file, structure, onEndStep, onOpenComponent }: NodePropsProps) {
 	const { node } = structure;
 
@@ -171,7 +164,6 @@ function ElementProps({
 	);
 }
 
-/** A component file's exports and their props, read-only. */
 function ComponentApiView({ path, source }: { path: string; source: string }) {
 	const { exports } = cachedComponentApi(path, source);
 

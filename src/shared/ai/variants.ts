@@ -12,30 +12,22 @@ import type { Device, FileChange, Frame, ProjectFiles } from "../types";
 import { altPath, baseOf, MAX_VARIATIONS, nextAltNumber } from "../variations";
 import type { GenerationEvent, ScreenMeta } from "./contract";
 
-/**
- * Naming for parallel variations (decisions 0003 and 0004), shared by the main
- * process and the browser fallback. Variant 0 keeps the provider's paths. Every
- * other variant `k` is renamed live: screens become `*.alt-N.tsx` and the
- * components it writes become `components/<name>-v<k+1>.tsx`, with its imports
- * rewritten. Once all runs end, `combineVariations` collapses components that
- * came out the same, maps extra screens onto variant 0's and lays out frames.
- */
+// Parallel variation naming: decisions 0003 and 0004.
 
-/** 1 to `MAX_VARIATIONS`; anything else falls back to `fallback`. */
 export function clampVariations(count: number | undefined, fallback = 1) {
 	const n = Number.isFinite(count) ? Math.floor(count!) : fallback;
 
 	return Math.min(MAX_VARIATIONS, Math.max(1, n));
 }
 
-/** `screens/welcome.tsx` (or any of its alternates) for variant `k` ≥ 1 → `screens/welcome.alt-<next + k - 1>.tsx` */
+/** For variant `k` ≥ 1: `screens/welcome.tsx` → `screens/welcome.alt-<next + k - 1>.tsx` */
 export function variantScreenPath(path: string, k: number, taken: Iterable<string>) {
 	const base = baseOf(path);
 
 	return altPath(base, nextAltNumber(base, taken) + k - 1);
 }
 
-/** `components/row.tsx` for variant `k` → `components/row-v<k+1>.tsx`, skipping names in `taken` */
+/** `components/row.tsx` → `components/row-v<k+1>.tsx` */
 export function variantComponentPath(path: string, k: number, taken: Iterable<string>) {
 	const used = new Set(taken);
 	const stem = `${path.replace(/\.tsx$/, "")}-v${k + 1}`;
@@ -50,11 +42,7 @@ const componentName = (path: string) => path.slice("components/".length, -".tsx"
 
 const SPECIFIER = /(["'])(\.\.\/components\/|\.\/)([a-z0-9-]+)\1/g;
 
-/**
- * Rewrites project-component specifiers in `content` (a file at `path`) by
- * `renames` (component path → component path): `../components/<name>`
- * anywhere, `./<name>` between components.
- */
+/** `../components/<name>` anywhere, `./<name>` only between components. */
 export function rewriteImports(path: string, content: string, renames: ReadonlyMap<string, string>) {
 	if (!renames.size) return content;
 
@@ -66,7 +54,6 @@ export function rewriteImports(path: string, content: string, renames: ReadonlyM
 	});
 }
 
-/** Component paths `content` imports (resolved from `path`). */
 function importedComponents(path: string, content: string) {
 	const found = new Set<string>();
 
@@ -78,7 +65,6 @@ function importedComponents(path: string, content: string) {
 	return found;
 }
 
-/** Renames paths by `map` and rewrites component imports to follow. */
 export function renameChanges(changes: FileChange[], map: ReadonlyMap<string, string>): FileChange[] {
 	const components = new Map([...map].filter(([from]) => isComponentFile(from)));
 
@@ -94,35 +80,29 @@ const renameKeys = <T>(record: Record<string, T>, map: ReadonlyMap<string, strin
 
 const invert = (map: ReadonlyMap<string, string>) => new Map([...map].map(([a, b]) => [b, a]));
 
-// ---------------------------------------------------------------- live renaming
 
 export type VariantRenamerOptions = {
-	/** 0 keeps paths (only `readOnly` applies); `k` ≥ 1 renames to alternates and `-v<k+1>` components */
+	/** 0 keeps paths (only `readOnly` applies) */
 	variant: number;
-	/** Paths that exist in the project */
 	taken: Iterable<string>;
-	/** Paths the run must not change (references); their writes are dropped */
+	/** Writes to these are dropped */
 	readOnly?: Iterable<string>;
 };
 
 export type VariantRenamer = {
 	readonly variant: number;
-	/** Provider path → name Rabisco assigned */
+	/** Provider path → assigned name */
 	readonly renames: Map<string, string>;
-	/** The names Rabisco assigned; validation accepts these alternates */
+	/** Validation accepts these alternates */
 	readonly assigned: Set<string>;
-	/** One provider event in, the events to forward out (none when dropped; extra `file.end`s when imports change) */
+	/** Empty when dropped; extra `file.end`s when imports change */
 	transform(event: GenerationEvent): GenerationEvent[];
 };
 
-/** Where a provider path goes; `added` when it is a component that got a new name. */
+/** `added`: a component that got a new name */
 type RenamedFile = { path: string; added: boolean };
 
-/**
- * Renames one variant's event stream as it arrives, so validation and repairs
- * see the final names. A component write renames it for the whole variant, and
- * files that already ended are sent again with their imports rewritten.
- */
+/** Renames live so validation and repairs see the final names; ended files are resent when imports change. */
 export function createVariantRenamer(options: VariantRenamerOptions): VariantRenamer {
 	const { variant } = options;
 	const taken = [...options.taken];
@@ -130,7 +110,6 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 	const renames = new Map<string, string>();
 	const assigned = new Set<string>();
 	const components = new Map<string, string>();
-	/** Ended files of this variant: provider content and what was sent */
 	const ended = new Map<string, { raw: string; sent: string }>();
 
 	function rename(path: string): RenamedFile {
@@ -151,7 +130,6 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 		return { path: to, added: isComponentFile(path) };
 	}
 
-	/** Files that ended before a component was renamed, sent again with the new import */
 	function resend(): GenerationEvent[] {
 		const out: GenerationEvent[] = [];
 
@@ -177,7 +155,7 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 
 			if (variant === 0) return [event];
 
-			// Extra variations add files; they never delete the project's
+			// Extra variations never delete the project's files
 			if (event.type === "file.delete") return [];
 			const { path, added } = rename(event.path);
 			const extra = added ? resend() : [];
@@ -198,23 +176,19 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 	};
 }
 
-// ---------------------------------------------------------------- combining
 
 export type VariantOutput = {
-	/** 0 for the primary; `k` ≥ 1 for the renamed ones */
 	variant: number;
-	/** Validated changes, already under the renamer's names */
+	/** Already under the renamer's names */
 	changes: FileChange[];
-	/** Screen metadata from `file.start`, by final path */
+	/** By final path */
 	screens: Record<string, ScreenMeta | undefined>;
-	/** The renamer's map: provider path → assigned name */
 	renames: ReadonlyMap<string, string>;
 };
 
 export type CombineInput = {
-	/** `create`: variant 0 (or the lowest successful one) is the primary. `vary`: every output is an alternate. */
+	/** `create`: the lowest successful variant is the primary. `vary`: every output is an alternate. */
 	mode: "create" | "vary";
-	/** Successful variants only */
 	outputs: VariantOutput[];
 	projectFiles: ProjectFiles;
 	device: Device;
@@ -222,19 +196,15 @@ export type CombineInput = {
 
 export type Combined = {
 	changes: FileChange[];
-	/** Rows are variants, columns are screens, from the canvas origin (`placeNewFrames` places them) */
+	/** Rows are variants, columns are screens, from the canvas origin */
 	frames: Frame[];
-	/** The variant whose files kept the base names; `null` for `vary` */
+	/** `null` for `vary` */
 	primary: number | null;
-	/** Screens of extra variations that matched none of the primary's screens, left out */
+	/** Extra screens that matched none of the primary's */
 	dropped: string[];
 };
 
-/**
- * Renamed components whose content is the same as `reference(original)` once
- * their imports point back, and that only import renamed components that
- * collapse too: these go back to their original names.
- */
+/** Renamed components identical to their original once imports point back (transitively). */
 function collapsible(
 	changes: FileChange[],
 	renames: ReadonlyMap<string, string>,
@@ -269,7 +239,6 @@ function collapsible(
 	return collapse;
 }
 
-/** Drops collapsible components and points imports back at the original names. */
 export function collapseComponents(
 	changes: FileChange[],
 	renames: ReadonlyMap<string, string>,
@@ -288,12 +257,7 @@ export function collapseComponents(
 const writtenScreens = (changes: FileChange[]) =>
 	changes.flatMap((c) => (c.content !== null && isScreenFile(c.path) ? [c.path] : []));
 
-/**
- * Maps an extra variant's screens onto the primary's: a screen whose base is a
- * primary screen stays; the others take the primary screen at their index (or
- * the next one still free) as `altPath(that, next + k - 1)`. Screens left over
- * are dropped.
- */
+/** Unmatched screens take the primary screen at their index (or the next free one); leftovers are dropped. */
 export function remapScreens(changes: FileChange[], primaryScreens: string[], k: number, taken: Iterable<string>) {
 	const all = [...taken];
 	const screens = writtenScreens(changes);
@@ -346,7 +310,6 @@ function frameOf(
 	};
 }
 
-/** Combines the successful runs of one variations request into one set of changes and frames. */
 export function combineVariations({ mode, outputs, projectFiles, device }: CombineInput): Combined {
 	const taken = Object.keys(projectFiles);
 	const sorted = [...outputs].sort((a, b) => a.variant - b.variant);
@@ -423,7 +386,6 @@ export function combineVariations({ mode, outputs, projectFiles, device }: Combi
 	return { changes, frames, primary: first.variant, dropped };
 }
 
-/** The note appended to the primary reply. */
 export function variationsNote(made: number, failed: number, dropped: number) {
 	const parts: string[] = [];
 

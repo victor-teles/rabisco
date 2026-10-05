@@ -1,12 +1,9 @@
-/** Test helpers: a fake `fetch` that records requests and answers with canned responses or SSE streams. */
-
 import { isString } from "../../../shared/guards";
 import type { Json } from "../../../shared/json";
 import { objectOr, optionalString } from "../../json";
 
 export type RecordedRequest = { url: string; init: RequestInit; body: any };
 
-/** A streaming body that emits `chunks` one by one, erroring if `signal` aborts. */
 export function streamOf(chunks: string[], signal?: AbortSignal | null, delayMs = 0): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
 	let i = 0;
@@ -27,7 +24,7 @@ export function streamOf(chunks: string[], signal?: AbortSignal | null, delayMs 
 	});
 }
 
-/** An SSE body: strings are sent as raw `data`, other values as JSON. `named` adds `event: <type>` lines. */
+/** Strings are sent as raw `data`, other values as JSON. `named` adds `event: <type>` lines. */
 export const sse = (events: Json[], named = false) =>
 	events
 		.map(
@@ -38,7 +35,6 @@ export const sse = (events: Json[], named = false) =>
 
 const isText = (body: RequestInit["body"]): body is string => typeof body === "string";
 
-/** Splits `text` into chunks of `size` characters, to exercise chunk boundaries. */
 export const chunked = (text: string, size = 7) =>
 	Array.from({ length: Math.ceil(text.length / size) }, (_, i) => text.slice(i * size, i * size + size));
 

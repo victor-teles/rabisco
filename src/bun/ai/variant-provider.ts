@@ -1,11 +1,7 @@
 import type { Provider } from "../../shared/ai/contract";
 import type { VariantRenamer } from "../../shared/ai/variants";
 
-/**
- * Wraps a provider so its events come out under the names Rabisco assigns to
- * one variation (`createVariantRenamer`). `runGeneration` then validates and
- * repairs the final names.
- */
+/** Renames events to the variation's assigned names; `runGeneration` validates the final names. */
 export function variantProvider(provider: Provider, renamer: VariantRenamer): Provider {
 	return {
 		id: provider.id,

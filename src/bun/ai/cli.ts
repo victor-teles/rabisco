@@ -1,9 +1,3 @@
-/**
- * Shared plumbing for CLI providers (Claude Code, Codex, Gemini CLI):
- * finding the binary, spawning it, reading JSON lines from stdout, killing it
- * on abort, and turning stderr into provider error codes.
- */
-
 import { accessSync, constants, statSync } from "fs";
 import { homedir } from "os";
 import { delimiter, dirname, join } from "path";
@@ -12,24 +6,21 @@ import { PROVIDER_TYPES, type ProviderType } from "../../shared/ai/settings";
 import type { Json } from "../../shared/json";
 import { parseJson } from "../json";
 
-// ---------------------------------------------------------------- spawn
-
 export type SpawnOptions = {
 	cwd?: string;
 	env?: Record<string, string | undefined>;
-	/** Written to stdin, which is then closed. stdin is empty when omitted. */
+	/** Written to stdin, which is then closed */
 	stdin?: string;
 };
 
 export type SpawnedProcess = {
 	stdout: ReadableStream<Uint8Array>;
 	stderr: ReadableStream<Uint8Array>;
-	/** Resolves with the exit code once the process has exited */
 	exited: Promise<number>;
 	kill(signal?: NodeJS.Signals | number): void;
 };
 
-/** Starts a process. Throws when the binary can't be executed. Injectable for tests. */
+/** Throws when the binary can't be executed */
 export type SpawnFn = (cmd: string[], options: SpawnOptions) => SpawnedProcess;
 
 export const bunSpawn: SpawnFn = (cmd, options) => {
@@ -43,8 +34,6 @@ export const bunSpawn: SpawnFn = (cmd, options) => {
 
 	return { stdout: proc.stdout, stderr: proc.stderr, exited: proc.exited, kill: (signal) => proc.kill(signal) };
 };
-
-// ---------------------------------------------------------------- binaries
 
 /** Where CLIs usually live. GUI apps on macOS don't inherit the shell PATH. */
 export function commonBinDirs(home = homedir()) {
@@ -72,10 +61,7 @@ const isExecutable = (path: string) => {
 	}
 };
 
-/**
- * Finds a CLI: the configured `binPath` first, then PATH, then common install
- * locations. Returns null when it isn't installed (or `binPath` is wrong).
- */
+/** `binPath` first, then PATH, then common install locations. */
 export function resolveBinary(
 	name: string,
 	binPath?: string,
@@ -97,14 +83,12 @@ export function resolveBinary(
 	return null;
 }
 
-/** process.env with PATH extended by the binary's folder and common locations, so CLIs find node and friends. */
+/** Extends PATH so CLIs find node and friends. */
 export function cliEnv(binary: string, extra: Record<string, string | undefined> = {}) {
 	const path = [dirname(binary), ...(process.env.PATH ?? "").split(delimiter), ...commonBinDirs()].filter(Boolean);
 
 	return { ...process.env, PATH: [...new Set(path)].join(delimiter), ...extra };
 }
-
-// ---------------------------------------------------------------- errors
 
 export const CLI_BINARIES: Partial<Record<ProviderType, string>> = {
 	"claude-code": "claude",
@@ -121,7 +105,6 @@ const LOGIN_FIX: Partial<Record<ProviderType, string>> = {
 
 const labelOf = (type: ProviderType) => PROVIDER_TYPES.find((info) => info.type === type)?.label ?? type;
 
-/** A provider failure, before it becomes a `health` result or an `error` event. */
 export type ProviderFailure = {
 	code: ProviderErrorCode;
 	message: string;
@@ -150,7 +133,6 @@ export function notAuthenticated(type: ProviderType, message?: string): Provider
 	};
 }
 
-/** Maps CLI output (stderr, an error event, a failed result) to an error code. */
 export function classifyFailure(type: ProviderType, text: string): ProviderFailure {
 	const message = text.trim().split("\n").slice(-6).join("\n").slice(0, 600) || `${labelOf(type)} failed.`;
 
@@ -191,16 +173,14 @@ export const abortedEvent = (): GenerationEvent => ({
 	retryable: false,
 });
 
-// ---------------------------------------------------------------- reading output
-
-/** Resolves when `signal` aborts; never rejects. */
+/** Never rejects. */
 export function whenAborted(signal: AbortSignal): Promise<"aborted"> {
 	if (signal.aborted) return Promise.resolve("aborted");
 
 	return new Promise((resolve) => signal.addEventListener("abort", () => resolve("aborted"), { once: true }));
 }
 
-/** Splits a byte stream into lines. Stops (and cancels the stream) as soon as `signal` aborts. */
+/** Cancels the stream as soon as `signal` aborts. */
 export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<string> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
@@ -232,7 +212,7 @@ export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: Ab
 	}
 }
 
-/** Reads a whole stream as text, giving up quietly on errors. */
+/** Returns "" on errors. */
 export async function readAll(stream: ReadableStream<Uint8Array>) {
 	try {
 		return await new Response(stream).text();
@@ -264,7 +244,6 @@ export function terminate(proc: SpawnedProcess, graceMs = 2000) {
 	timer.unref?.();
 }
 
-/** Runs a short command (e.g. `--version`) and collects its output. */
 export async function runCommand(spawn: SpawnFn, cmd: string[], options: SpawnOptions & { timeoutMs?: number } = {}) {
 	const proc = spawn(cmd, options);
 	const timer = setTimeout(() => terminate(proc, 500), options.timeoutMs ?? 15_000);
@@ -278,11 +257,9 @@ export async function runCommand(spawn: SpawnFn, cmd: string[], options: SpawnOp
 	}
 }
 
-/** Pulls the first version-looking token out of `--version` output. */
 export const parseVersion = (text: string) =>
 	text.match(/\d+\.\d+\.\d+[\w.-]*/)?.[0] ?? (text.trim().split("\n")[0] || undefined);
 
-/** `--version` health check shared by CLI providers. */
 export async function versionHealth(
 	type: ProviderType,
 	spawn: SpawnFn,
@@ -301,9 +278,7 @@ export async function versionHealth(
 	}
 }
 
-// ---------------------------------------------------------------- agent runs
-
-/** Turns one parsed JSON line into events. May return a `done` or `error`, which ends the run. */
+/** A `done` or `error` event ends the run. */
 export type LineMapper = (line: Json) => GenerationEvent[];
 
 export type CliAgentRun = {
@@ -316,11 +291,7 @@ export type CliAgentRun = {
 	map: LineMapper;
 };
 
-/**
- * Spawns an agent CLI and maps its JSON-lines stdout to events, ending with
- * exactly one `done` or `error`. Kills the process on abort, and when the
- * consumer stops early.
- */
+/** Ends with exactly one `done` or `error`; kills the process on abort or when the consumer stops early. */
 export async function* runCliAgent(run: CliAgentRun, signal: AbortSignal): AsyncGenerator<GenerationEvent> {
 	if (signal.aborted) {
 		yield abortedEvent();
@@ -404,14 +375,11 @@ export async function* runCliAgent(run: CliAgentRun, signal: AbortSignal): Async
 	}
 }
 
-// ---------------------------------------------------------------- shared mapping helpers
-
 /** Joins assistant text from separate blocks or turns with a blank line. */
 export class MessageText {
 	private started = false;
 	private pendingBreak = false;
 
-	/** The next text starts a new paragraph (after a tool call, or a new block). */
 	break() {
 		if (this.started) this.pendingBreak = true;
 	}
@@ -438,7 +406,6 @@ export function stagingRelative(dir: string, path: string | undefined) {
 	return clean.replace(/^\.\//, "");
 }
 
-/** A short status for a file tool call, e.g. "Writing screens/home.tsx". */
 export function toolStatus(
 	verb: "write" | "edit" | "read" | "search" | "list" | "run" | "other",
 	path?: string,

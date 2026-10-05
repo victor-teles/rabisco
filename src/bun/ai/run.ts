@@ -19,7 +19,7 @@ import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../sh
 import { focusNotes } from "./focus-guard";
 import { validateFiles, type ValidateOptions } from "./validate";
 
-/** A generation that produced nothing usable: the provider failed on the first attempt, or it was aborted. */
+/** The first attempt failed, or the run was aborted. */
 export class GenerationError extends Error {
 	code: ProviderErrorCode;
 	retryable: boolean;
@@ -44,22 +44,20 @@ const FIXES: Partial<Record<ProviderErrorCode, string>> = {
 export type RunOptions = {
 	provider: Provider;
 	request: GenerationRequest;
-	/** Current project files (for validation and for repair requests) */
 	projectFiles: ProjectFiles;
 	signal: AbortSignal;
-	/** Every event, forwarded live (status, message.delta, file.*), tagged with the attempt number */
+	/** Tagged with the 1-based attempt number */
 	onEvent: (event: GenerationEvent, attempt: number) => void;
 	/** Alternate names Rabisco assigns live (a variation run); validation accepts them */
 	alternates?: ReadonlySet<string>;
 };
 
 export type RunResult = {
-	/** Validated changes; files that still fail after the repair attempts are left out (the last valid version stays) */
+	/** Files that still fail after the repair attempts are left out */
 	changes: FileChange[];
 	reply: string;
-	/** Problems left after the last attempt; shown to the user */
 	problems: Problem[];
-	/** Non-fatal remarks for the reply, e.g. a focused edit that changed its file outside the element */
+	/** Non-fatal remarks, e.g. a focused edit that changed its file outside the element */
 	notes: string[];
 	usage?: Usage;
 	attempts: number;
@@ -143,10 +141,7 @@ export function addUsage(a: Usage | undefined, b: Usage | undefined): Usage | un
 const toFiles = (written: Map<string, string>): ProjectFile[] =>
 	[...written].map(([path, content]) => ({ path, content }));
 
-/**
- * Validates `written`, then drops failing files and re-checks the rest until
- * stable, so a screen that imports a dropped component is dropped too.
- */
+/** Drops failing files until stable, so a screen importing a dropped component is dropped too. */
 function settle(written: Map<string, string>, deleted: Set<string>, project: ProjectFiles, options: ValidateOptions) {
 	const kept = new Map(written);
 	const keptDeletes = new Set(deleted);
@@ -167,12 +162,7 @@ function settle(written: Map<string, string>, deleted: Set<string>, project: Pro
 	return { kept, keptDeletes, problems };
 }
 
-/**
- * Runs a generation and its repair loop (decision 0003): collects the files,
- * validates them, and sends up to `FILE_RULES.maxRepairAttempts` repair
- * requests for the files that fail. Repaired files replace earlier versions.
- * Throws `GenerationError` when the first attempt fails or the run is aborted.
- */
+/** Generation plus repair loop (decision 0003). Throws `GenerationError` if the first attempt fails or is aborted. */
 export async function runGeneration(options: RunOptions): Promise<RunResult> {
 	const { provider, request, projectFiles, signal, onEvent } = options;
 
@@ -251,7 +241,6 @@ export function dedupeProblems(problems: Problem[]) {
 	});
 }
 
-/** The file a `context` task writes, or undefined for other tasks. */
 export function contextTargetOf(request: GenerationRequest): ContextFileName | undefined {
 	const target = request.task === "context" ? request.targets?.[0] : undefined;
 
@@ -260,7 +249,6 @@ export function contextTargetOf(request: GenerationRequest): ContextFileName | u
 
 const isContextFileName = (path: string): path is ContextFileName => FILE_RULES.paths.context.test(path);
 
-/** The context files that went into a request: what shapes its result. */
 export function contextFilesOf(request: GenerationRequest): ContextFileName[] {
 	const used: ContextFileName[] = [];
 
@@ -271,11 +259,7 @@ export function contextFilesOf(request: GenerationRequest): ContextFileName[] {
 	return used;
 }
 
-/**
- * A `repair` request: the failing files as written, plus every component they
- * may import. Context comes along from the original request, and so does the
- * focus: the prompt reminds the model which element the edit was about.
- */
+/** Failing files plus every component they may import; keeps the original context and focus. */
 function buildRepairRequest(
 	original: GenerationRequest,
 	attempt: number,
@@ -305,45 +289,31 @@ function buildRepairRequest(
 	};
 }
 
-// ---------------------------------------------------------------- requests
-
 export type BuildRequestParams = {
 	id: string;
 	task: Exclude<GenerationTask, "repair">;
 	prompt: string;
 	device: Device;
-	/** Model id inside the provider (not the `ModelRef`) */
+	/** Model id inside the provider, not the `ModelRef` */
 	model: string;
 	projectFiles: ProjectFiles;
-	/** For `edit`: the files the change is about. For `context`: the one file to write (`PRODUCT.md` or `DESIGN.md`). */
+	/** For `context`: the single context file to write */
 	targets?: string[];
-	/** Files to read but not change; always included, like targets */
+	/** Read-only files; always included, like targets */
 	references?: string[];
-	/** Point and prompt, for `edit`: kept when its file is a target and the element is still in it (`resolveFocus`) */
+	/** `edit` only; dropped unless its file is a target and the element still resolves */
 	focus?: ElementFocus;
 	attachments?: Attachment[];
 	history?: GenerationRequest["history"];
-	/** Upper bound for context + files, in characters */
+	/** Characters, context + files */
 	maxChars?: number;
-	/** How many other screens to include for style (default 2; every screen that fits when writing DESIGN.md) */
+	/** Default 2; every screen that fits when writing DESIGN.md */
 	styleScreens?: number;
 };
 
 export const DEFAULT_REQUEST_CHARS = 150_000;
 
-/** `{ components }` for a request: every component file with its signatures and users, or nothing when there are none. */
-/**
- * Builds a request from editor-level params: PRODUCT.md and DESIGN.md as
- * context, then the edit targets and references, every component and a few
- * screens for style. Style screens are dropped first, then components, to stay
- * within `maxChars`; targets and references are always included. The component
- * catalog (`components`: signatures from the whole project) is always included.
- *
- * A context file goes in as written (agents get the real file on disk; the
- * prompt strips its comments), and only when `contextBody` finds something in
- * it: an untouched template is no context. A `context` task gets the file it
- * writes as its target, in `files` when it exists, and not as context.
- */
+/** Over `maxChars`, style screens are dropped first, then components; targets and references always stay. */
 export function buildGenerationRequest(params: BuildRequestParams): GenerationRequest {
 	const files = params.projectFiles;
 	const maxChars = params.maxChars ?? DEFAULT_REQUEST_CHARS;

@@ -1,12 +1,4 @@
-/**
- * Sync to a git repository (decision 0008), with the system `git` CLI in the
- * project folder. Everything is scoped to the project folder, so a project
- * inside a bigger repository only stages and commits its own files.
- *
- * Git never prompts (`GIT_TERMINAL_PROMPT=0`, SSH in batch mode), every call
- * has a timeout, sync never force-pushes, and a failed rebase is aborted so the
- * repository is left as it was, with Rabisco's commit kept locally.
- */
+// Decision 0008. Scoped to the project folder; never prompts, never force-pushes, aborts failed rebases.
 import { existsSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import {
@@ -22,9 +14,8 @@ import { cliEnv, resolveBinary } from "./ai/cli";
 export type GitResult = { code: number; stdout: string; stderr: string; timedOut: boolean };
 
 export type GitOptions = {
-	/** The git binary; found on PATH and in common folders when omitted. `null` acts as if git were missing (tests). */
+	/** `null` acts as if git were missing (tests) */
 	bin?: string | null;
-	/** Local commands */
 	timeoutMs?: number;
 	/** fetch and push */
 	networkTimeoutMs?: number;
@@ -35,7 +26,6 @@ const GITIGNORE = ".DS_Store\n";
 const MISSING_GIT =
 	"Git isn't installed. Install it from git-scm.com (on a Mac, run `xcode-select --install` in Terminal), then try again.";
 
-/** A git failure, with git's own output for the details. */
 export class GitError extends Error {
 	constructor(
 		message: string,
@@ -48,7 +38,7 @@ export class GitError extends Error {
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
-/** Parses `git status --porcelain=v1 -z`: root-relative paths with their one-letter status. */
+/** Parses `git status --porcelain=v1 -z`; paths are root-relative. */
 export function parsePorcelain(output: string): ChangedPath[] {
 	const entries = output.split("\0");
 	const changes: ChangedPath[] = [];
@@ -74,7 +64,6 @@ export function parsePorcelain(output: string): ChangedPath[] {
 
 const output = (result: GitResult) => [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
 
-/** What went wrong talking to a remote, in words a designer can act on. */
 function remoteFailure(action: string, remote: string, result: GitResult): GitError {
 	const text = output(result);
 
@@ -110,7 +99,6 @@ function remoteFailure(action: string, remote: string, result: GitResult): GitEr
 	return new GitError(`Git couldn't ${action} ${remote}.`, text);
 }
 
-/** Git for project folders. Independent of Electrobun so it can be tested with real repositories. */
 export function createGit(options: GitOptions = {}) {
 	const timeoutMs = options.timeoutMs ?? 20_000;
 	const networkTimeoutMs = options.networkTimeoutMs ?? 90_000;
@@ -127,11 +115,10 @@ export function createGit(options: GitOptions = {}) {
 				GIT_TERMINAL_PROMPT: "0",
 				GCM_INTERACTIVE: "never",
 				GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes",
-				// No editor for commits and rebases
 				GIT_EDITOR: "true",
 				GIT_SEQUENCE_EDITOR: "true",
 				GIT_MERGE_AUTOEDIT: "no",
-				// Messages Rabisco can recognise
+				// Untranslated messages, so the regexes match
 				LC_ALL: "C",
 				LANG: "C",
 			}),
@@ -155,7 +142,7 @@ export function createGit(options: GitOptions = {}) {
 		return { code: timedOut ? -1 : code, stdout, stderr, timedOut };
 	}
 
-	/** The git binary, checked once: macOS ships a `/usr/bin/git` stub that only works with the command line tools. */
+	// macOS ships a `/usr/bin/git` stub that only works with the command line tools
 	async function binary(): Promise<string> {
 		if (!checked) {
 			const bin = options.bin === undefined ? resolveBinary("git") : options.bin;
@@ -183,12 +170,10 @@ export function createGit(options: GitOptions = {}) {
 		return checked.bin;
 	}
 
-	/** Runs git in `cwd`; resolves with the exit code instead of throwing. */
 	async function run(cwd: string, args: string[], timeout = timeoutMs) {
 		return spawn(await binary(), cwd, args, timeout);
 	}
 
-	/** Runs git in `cwd` and returns stdout; throws a `GitError` with `message` when it fails. */
 	async function must(cwd: string, args: string[], message: string, timeout = timeoutMs) {
 		const result = await run(cwd, args, timeout);
 
@@ -205,7 +190,6 @@ export function createGit(options: GitOptions = {}) {
 		return result.code === 0 ? result.stdout.trim() : null;
 	};
 
-	/** Changed files of the project folder, project-relative. */
 	async function changedPaths(dir: string, prefix: string): Promise<ChangedPath[]> {
 		const porcelain = await must(
 			dir,
@@ -299,7 +283,6 @@ export function createGit(options: GitOptions = {}) {
 		};
 	}
 
-	/** Stages the project folder and commits it, when it has changes. */
 	async function commitProject(dir: string, prefix: string, message?: string): Promise<GitCommit | null> {
 		const changes = await changedPaths(dir, prefix);
 
@@ -324,7 +307,6 @@ export function createGit(options: GitOptions = {}) {
 		return lastCommit(dir, "HEAD", false);
 	}
 
-	/** Makes the project folder a repository with a first commit. */
 	async function init(dir: string, name: string): Promise<GitStatus> {
 		const current = await status(dir);
 
@@ -341,7 +323,6 @@ export function createGit(options: GitOptions = {}) {
 		return status(dir);
 	}
 
-	/** Points the repository's remote (`origin`, or the one sync uses) at `url`. */
 	async function setRemote(dir: string, rawUrl: string): Promise<GitStatus> {
 		const url = rawUrl.trim();
 
@@ -360,7 +341,6 @@ export function createGit(options: GitOptions = {}) {
 		return status(dir);
 	}
 
-	/** Commit, then bring in the remote's commits (rebase) and push. Never forces. */
 	async function sync(dir: string): Promise<GitSyncResult> {
 		try {
 			const before = await status(dir);

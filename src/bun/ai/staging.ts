@@ -1,12 +1,4 @@
-/**
- * The staging-directory runner for CLI and SDK agents (decision 0003).
- *
- * Agents never touch the project: they run in a temp copy of the request's
- * files. Rabisco watches the copy, emits `file.*` events as screens and
- * components settle, and diffs the copy against the request when the agent
- * finishes. PRODUCT.md and DESIGN.md are input, except for the file a
- * `context` task writes. The temp dir is always removed.
- */
+// Agents never touch the project: they run in a temp copy that is diffed afterwards (decision 0003).
 
 import { watch, type FSWatcher } from "fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "fs/promises";
@@ -26,7 +18,7 @@ const CONTEXT_FILES = ["PRODUCT.md", "DESIGN.md"] as const;
 
 const RESERVED = new Set<string>([...INSTRUCTION_FILES, ...CONTEXT_FILES]);
 
-/** Where an agent may write. Naming rules are checked later by validation, which can ask for a repair. */
+/** Naming rules are checked later by validation, which can ask for a repair. */
 const WRITABLE = /^(screens|components)\/[^/]+\.tsx$/;
 
 export const isWritablePath = (path: string) => WRITABLE.test(path);
@@ -34,30 +26,21 @@ export const isWritablePath = (path: string) => WRITABLE.test(path);
 const kindOf = (path: string): FileKind =>
 	path.startsWith("screens/") ? "screen" : path.startsWith("components/") ? "component" : "context";
 
-/** Where an agent may write for this request: screens and components, plus the target of a `context` task. */
 function writableFor(request: GenerationRequest) {
 	const target = contextTargetOf(request);
 
 	return (path: string) => isWritablePath(path) || path === target;
 }
 
-/** Agent-produced events: `status`, `message.delta`, then one `done` or `error`. File events are ignored. */
+/** File events from the agent are ignored; the staging watcher produces them. */
 export type AgentRunner = (dir: string, signal: AbortSignal) => AsyncIterable<GenerationEvent>;
 
 export type StagingOptions = {
-	/** Parent folder for the temp dir (default: the OS temp dir) */
 	root?: string;
-	/** How long a file must stay quiet before it's reported while the agent runs */
 	debounceMs?: number;
-	/** Rescan interval, in case file events are late or dropped */
 	pollMs?: number;
 };
 
-/**
- * Creates the staging dir with the request's files, context and agent
- * instructions. Context files are written as they are on disk, when they say
- * anything; a `context` task's target comes from `files` instead.
- */
 export async function createStagingDir(request: GenerationRequest, root = tmpdir()): Promise<string> {
 	const dir = await mkdtemp(join(root, "rabisco-staging-"));
 	const contextTarget = contextTargetOf(request);
@@ -91,7 +74,6 @@ export async function createStagingDir(request: GenerationRequest, root = tmpdir
 	}
 }
 
-/** Lists files under `dir` as forward-slash relative paths, skipping dot folders and node_modules. */
 async function listFiles(dir: string, sub = ""): Promise<string[]> {
 	let entries;
 
@@ -117,7 +99,6 @@ async function listFiles(dir: string, sub = ""): Promise<string[]> {
 
 const readIfExists = (path: string) => readFile(path, "utf8").catch(() => null);
 
-/** A tiny async queue: producers push, one consumer awaits. */
 class Queue<T> {
 	private items: T[] = [];
 	private waiting: ((item: T) => void) | null = null;
@@ -137,7 +118,6 @@ class Queue<T> {
 		return new Promise((resolve) => (this.waiting = resolve));
 	}
 
-	/** Takes everything queued right now. */
 	drain(): T[] {
 		return this.items.splice(0);
 	}
@@ -148,12 +128,7 @@ type Item =
 	| { kind: "agent-end"; usage?: Usage; error?: GenerationEvent }
 	| { kind: "aborted" };
 
-/**
- * Runs `runAgent` in a staging copy of `request.files` and merges its events
- * with file events. Ends with exactly one `done` (carrying the agent's usage)
- * or `error`; on abort, `error` with code `aborted`. No file events follow an
- * agent error.
- */
+/** Ends with exactly one `done` or `error`; no file events follow an agent error. */
 export async function* runInStaging(
 	request: GenerationRequest,
 	signal: AbortSignal,
@@ -183,7 +158,6 @@ export async function* runInStaging(
 
 	const writable = writableFor(request);
 	const original = new Map(request.files.filter((f) => writable(f.path)).map((f) => [f.path, f.content]));
-	/** Last content sent in a `file.end`, per path */
 	const emitted = new Map<string, string>();
 	const ignored = new Set<string>();
 	const queue = new Queue<Item>();
@@ -202,7 +176,6 @@ export async function* runInStaging(
 		emitted.set(path, content);
 		const kind = kindOf(path);
 
-		// Screen metadata only matters for new screens
 		const screen =
 			kind === "screen" && !original.has(path)
 				? { screen: { name: screenNameFromPath(path), device: request.device } }
@@ -223,7 +196,6 @@ export async function* runInStaging(
 		return [{ type: "status", label: "Ignored a file outside screens/ and components/", detail: path }];
 	};
 
-	// ------------------------------------------------ watching
 	const pending = new Set<string>();
 	let rescan = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
@@ -264,8 +236,8 @@ export async function* runInStaging(
 		const path = name?.replace(/\\/g, "/");
 
 		if (path && /\.[^/]+$/.test(path)) pending.add(path);
-		else rescan = true; // A folder, or an unknown name
-		// Debounce, but don't let a steady stream of writes postpone reporting forever
+		else rescan = true;
+		// Don't let a steady stream of writes postpone reporting forever
 		const debounceMs = options.debounceMs ?? 150;
 
 		if (timer && Date.now() - firstPendingAt < debounceMs * 4) clearTimeout(timer);
@@ -290,7 +262,6 @@ export async function* runInStaging(
 		flushing = flushing.then(flush, flush);
 	}, options.pollMs ?? 1000);
 
-	// ------------------------------------------------ the agent
 	const pump = async () => {
 		try {
 			for await (const event of runAgent(dir, agentAbort.signal)) {
@@ -332,7 +303,6 @@ export async function* runInStaging(
 				continue;
 			}
 
-			// The agent is done: stop watching, then diff the staging dir against the request
 			finished = true;
 
 			if (timer) clearTimeout(timer);

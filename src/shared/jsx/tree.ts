@@ -1,28 +1,23 @@
-/**
- * JSX tree of a TSX file with exact source offsets, built on Sucrase's tokenizer
- * (the same parser the renderer compiles with). Never throws: a file that does
- * not parse comes back with `ok: false` and no roots.
- */
+// Uses Sucrase, the same parser the renderer compiles with. Never throws.
 
 import { parse } from "sucrase/dist/esm/parser";
 import { TokenType as tt } from "sucrase/dist/esm/parser/tokenizer/types";
 import { decodeEntities, jsxTextValue } from "./text";
 
-/** A Sucrase token, reduced to what this module reads. */
 export type Token = { type: tt; start: number; end: number; identifierRole: number | null; isType: boolean };
 
-/** `"…"` attribute value. `value` is decoded (`&amp;` → `&`), `raw` includes the quotes. */
+/** `value` is decoded (`&amp;` → `&`), `raw` includes the quotes. */
 export type JsxString = { kind: "string"; value: string; raw: string; start: number; end: number };
 
-/** `{…}` as a child or attribute value. `text` is the source between the braces; `start`/`end` include them. */
+/** `text` excludes the braces; `start`/`end` include them. */
 export type JsxExpression = {
 	kind: "expression";
 	text: string;
 	start: number;
 	end: number;
-	/** Only comments or nothing between the braces */
+	/** Only comments or nothing */
 	empty: boolean;
-	/** JSX elements written inside, e.g. the `<Row />` of `{items.map((i) => <Row />)}` */
+	/** e.g. the `<Row />` of `{items.map((i) => <Row />)}` */
 	elements: JsxElement[];
 };
 
@@ -30,45 +25,44 @@ export type JsxAttribute =
 	| { kind: "attribute"; name: string; start: number; end: number; value: JsxString | JsxExpression | null }
 	| { kind: "spread"; text: string; start: number; end: number };
 
-/** Text between tags. `value` is what React renders (whitespace collapsed, entities decoded); empty for indentation. */
+/** `value` is what React renders; empty for indentation. */
 export type JsxText = { kind: "text"; raw: string; value: string; start: number; end: number };
 
 export type JsxChild = JsxElement | JsxText | JsxExpression;
 
 export type JsxElement = {
 	kind: "element";
-	/** `div`, `Card`, `Card.Header`; `null` for a fragment */
+	/** `null` for a fragment */
 	name: string | null;
-	/** Lowercase tag (`div`, `svg:path`): a DOM element rather than a component */
+	/** Lowercase tag (`div`, `svg:path`) */
 	intrinsic: boolean;
 	/** `<` of the opening tag to the end of the closing tag (or of `/>`) */
 	start: number;
 	end: number;
-	/** End of the tag name (just after `<` for fragments): where new attributes can go */
+	/** Just after `<` for fragments; where new attributes can go */
 	nameEnd: number;
-	/** End of the opening tag, after its `>` */
+	/** After its `>` */
 	openingEnd: number;
-	/** `<` of the closing tag; `null` when self-closing */
+	/** `null` when self-closing */
 	closingStart: number | null;
 	selfClosing: boolean;
 	attributes: JsxAttribute[];
 	children: JsxChild[];
 	parent: JsxElement | null;
 	depth: number;
-	/** The expression it sits in when it is not a plain child: `{open && <X />}`, `.map(…)`, `icon={<Star />}` */
+	/** When not a plain child: `{open && <X />}`, `.map(…)`, `icon={<Star />}` */
 	container: JsxExpression | null;
 };
 
 export type JsxTree = { ok: boolean; error: string | null; roots: JsxElement[] };
 
-/** A parsed file: the tree plus Sucrase's tokens, for scope and import analysis. */
 export type ParsedFile = JsxTree & { source: string; tokens: Token[] };
 
 const cache = new Map<string, ParsedFile>();
 
 const CACHE_SIZE = 128;
 
-/** Parses a TSX file, memoized by content. Treat the result as read-only. */
+/** Memoized by content: treat the result as read-only. */
 export function parseFile(source: string): ParsedFile {
 	const hit = cache.get(source);
 
@@ -94,7 +88,6 @@ export function parseFile(source: string): ParsedFile {
 	return parsed;
 }
 
-/** Every top-level JSX root of a file (all functions), with nested elements, texts and expressions. */
 export function parseJsx(source: string): JsxTree {
 	const { ok, error, roots } = parseFile(source);
 
@@ -104,7 +97,6 @@ export function parseJsx(source: string): JsxTree {
 function buildTree(source: string, tokens: Token[]): JsxElement[] {
 	const is = (i: number, type: tt) => tokens[i]?.type === type;
 
-	/** Index of the `}` matching the `{` (or `${`) at `i` */
 	const matchBrace = (i: number) => {
 		let depth = 0;
 
@@ -118,7 +110,6 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 		return tokens.length - 1;
 	};
 
-	/** JSX elements that start in tokens [from, to) */
 	const scan = (from: number, to: number, parent: JsxElement | null, container: JsxExpression | null) => {
 		const found: JsxElement[] = [];
 
@@ -133,7 +124,7 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 		return found;
 	};
 
-	/** `{…}` at `i` as an expression; returns it with the index after its `}` */
+	/** Returns the index after its `}` */
 	const expression = (i: number, parent: JsxElement): [JsxExpression, number] => {
 		const k = matchBrace(i);
 
@@ -151,7 +142,7 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 		return [value, k + 1];
 	};
 
-	/** A dotted or namespaced name at `j`; returns it with the index after it */
+	/** Returns the index after it */
 	const dottedName = (j: number): [string, number] => {
 		const first = j;
 		j++;
@@ -279,7 +270,7 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 	return scan(0, tokens.length, null, null);
 }
 
-/** JSX elements written inside an attribute value or child expression of `element`, or child elements, in source order. */
+/** Includes elements inside attribute values and child expressions, in source order */
 export function childElements(element: JsxElement): JsxElement[] {
 	const found: JsxElement[] = [];
 
@@ -295,7 +286,7 @@ export function childElements(element: JsxElement): JsxElement[] {
 	return found;
 }
 
-/** Depth-first, source order, including elements inside expressions. Return `false` from `visit` to skip an element's descendants. */
+/** Depth-first, including elements inside expressions; `visit` returns `false` to skip descendants. */
 export function walk(roots: JsxTree | JsxElement[] | JsxElement, visit: (element: JsxElement) => void | boolean) {
 	const list = Array.isArray(roots) ? roots : "kind" in roots ? [roots] : roots.roots;
 
@@ -308,7 +299,6 @@ export function walk(roots: JsxTree | JsxElement[] | JsxElement, visit: (element
 	for (const root of list) step(root);
 }
 
-/** Every element, in source order. */
 export function flatten(roots: JsxTree | JsxElement[] | JsxElement): JsxElement[] {
 	const all: JsxElement[] = [];
 	walk(roots, (element) => void all.push(element));
@@ -316,7 +306,7 @@ export function flatten(roots: JsxTree | JsxElement[] | JsxElement): JsxElement[
 	return all;
 }
 
-/** The deepest element whose span contains `offset`, or `null`. */
+/** Deepest match */
 export function elementAt(tree: JsxTree | JsxElement[], offset: number): JsxElement | null {
 	let found: JsxElement | null = null;
 	walk(tree, (element) => {
@@ -327,7 +317,6 @@ export function elementAt(tree: JsxTree | JsxElement[], offset: number): JsxElem
 	return found;
 }
 
-/** The element that starts exactly at `start`, or `null`. */
 export function findElement(tree: JsxTree | JsxElement[], start: number): JsxElement | null {
 	let found: JsxElement | null = null;
 	walk(tree, (element) => {
@@ -339,5 +328,4 @@ export function findElement(tree: JsxTree | JsxElement[], start: number): JsxEle
 	return found;
 }
 
-/** Number of elements in the subtree, itself included. */
 export const elementCount = (element: JsxElement) => flatten(element).length;

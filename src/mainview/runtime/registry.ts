@@ -2,7 +2,6 @@ import { withDependents } from "../lib/render/graph";
 import { SOURCE_URL_PREFIX, type FrameError, type ModulePayload } from "../lib/render/protocol";
 import { isRelative, resolveRelative } from "../lib/render/resolve";
 
-/** An error that already knows which project file and line it belongs to. */
 export class RenderError extends Error {
 	kind: FrameError["kind"];
 	file?: string;
@@ -18,15 +17,11 @@ export class RenderError extends Error {
 	}
 }
 
-/**
- * A module's exports as its compiled code leaves them. Only `default` is read from outside, and it
- * is whatever the module exported, so callers check it before using it.
- */
+/** `default` is whatever the module exported; callers must check it. */
 export type ModuleExports = { default?: unknown };
 
 type Module = { exports: ModuleExports };
 
-/** What `require` hands compiled code: a project module's exports or one of the runtime's externals. */
 type RequiredModule<External> = ModuleExports | External;
 
 type Factory<External> = (
@@ -35,13 +30,10 @@ type Factory<External> = (
 	exports: ModuleExports,
 ) => void;
 
-/** Lines `new Function` puts before the body: `function anonymous(<params>` and `) {` (ECMAScript CreateDynamicFunction). */
+/** Lines `new Function` adds before the body (ECMAScript CreateDynamicFunction). */
 export const FUNCTION_HEADER_LINES = 2;
 
-/**
- * Wraps compiled CommonJS in a function. Its `sourceURL` names the project file, so stack traces
- * carry it; their lines are `FUNCTION_HEADER_LINES` below the source's.
- */
+/** Stack trace lines are offset by `FUNCTION_HEADER_LINES` from the source's. */
 export function evaluateModule<External>(code: string, path: string): Factory<External> {
 	const body = code.replace(/\n\/\/# sourceURL=[^\n]*\s*$/, "");
 
@@ -55,7 +47,7 @@ export function evaluateModule<External>(code: string, path: string): Factory<Ex
 	) as Factory<External>;
 }
 
-/** Line of `source` that mentions `needle`, 1-based, for errors without a stack. */
+/** 1-based; for errors without a stack. */
 export function lineOf(source: string | undefined, needle: string) {
 	if (!source) return undefined;
 	const index = source.split("\n").findIndex((line) => line.includes(needle));
@@ -63,16 +55,11 @@ export function lineOf(source: string | undefined, needle: string) {
 	return index === -1 ? undefined : index + 1;
 }
 
-/**
- * The module registry of one frame. Bare specifiers resolve to `externals` (the runtime's
- * React, lucide and shadcn components); relative ones to project modules sent by the host.
- */
 export class ModuleRegistry<External> {
 	#externals: Readonly<Record<string, External>>;
 	#evaluate: (code: string, path: string) => Factory<External>;
 	#payloads = new Map<string, ModulePayload>();
 	#cache = new Map<string, Module>();
-	/** Project modules each evaluated module required, recorded at runtime */
 	#edges = new Map<string, Set<string>>();
 
 	constructor(externals: Readonly<Record<string, External>>, evaluate = evaluateModule<External>) {
@@ -80,7 +67,7 @@ export class ModuleRegistry<External> {
 		this.#evaluate = evaluate;
 	}
 
-	/** Applies an update from the host. Returns the modules it invalidated, dependents included. */
+	/** Returns the invalidated modules, dependents included. */
 	apply(modules: Record<string, ModulePayload | null>, reset = false): Set<string> {
 		if (reset) {
 			const all = new Set(this.#cache.keys());
@@ -113,17 +100,14 @@ export class ModuleRegistry<External> {
 		return this.#payloads.has(path);
 	}
 
-	/** Original source of a project module, for error excerpts. */
 	source(path: string) {
 		return this.#payloads.get(path)?.source;
 	}
 
-	/** Whether the module is evaluated and cached. */
 	isLoaded(path: string) {
 		return this.#cache.has(path);
 	}
 
-	/** Loads a project module by path and returns its exports. */
 	load(path: string): ModuleExports {
 		const cached = this.#cache.get(path);
 

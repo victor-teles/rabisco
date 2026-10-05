@@ -1,11 +1,4 @@
-/**
- * Gemini CLI provider: runs `gemini -p` headless in a staging dir with edits
- * auto-approved, and maps its `stream-json` output to generation events.
- * Uses the user's own Gemini CLI login.
- *
- * Written from the Gemini CLI docs (headless mode, stream-json); not yet run
- * against a real install.
- */
+// Written from the Gemini CLI docs (headless mode, stream-json); not yet run against a real install.
 
 import type { GenerationEvent, Provider, ProviderModel } from "../../../shared/ai/contract";
 import {
@@ -61,7 +54,7 @@ function toolEvent(dir: string, name: string | undefined, params: JsonObject): G
 	}
 }
 
-/** Maps Gemini CLI `stream-json` lines to events. Stateful: create one per run. */
+/** Stateful: create one per run. */
 export function createGeminiMapper(dir: string): LineMapper {
 	const text = new MessageText();
 
@@ -118,7 +111,6 @@ export function createGeminiMapper(dir: string): LineMapper {
 	};
 }
 
-/** The `gemini` arguments for one generation. */
 export function geminiArgs(model: string, prompt: string) {
 	return [
 		"--output-format",

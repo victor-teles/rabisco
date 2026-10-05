@@ -23,17 +23,14 @@ type ChatPanelProps = {
 	onRetry: () => void;
 	onDismissFailure: () => void;
 	selectedScreenName?: string;
-	/** How many screens a prompt would edit; with any, the variations count doesn't apply */
+	/** With any, the variations count doesn't apply */
 	editingCount: number;
-	/** Point and prompt: the selected element a prompt would edit (`<Button> “Get started”`), shown as a chip */
 	focusLabel?: string;
-	/** Clears the selected element, so prompts edit the whole screen again */
 	onClearFocus?: () => void;
 	variations: number;
 	onVariationsChange: (variations: number) => void;
-	/** Opens the Context tab on a file named under a reply */
 	onOpenContext: (file: ContextFileName) => void;
-	/** The PRODUCT.md interview, while it runs: the composer sends answers */
+	/** While it runs, the composer sends answers */
 	interview: Interview | null;
 	onStartInterview: () => void;
 	onSkipQuestion: () => void;
@@ -222,7 +219,6 @@ export function ChatPanel({
 	);
 }
 
-/** Which context files shaped a reply (principle 5); each opens in the Context tab. */
 function ContextLine({ files, onOpen }: { files: ContextFileName[]; onOpen: (file: ContextFileName) => void }) {
 	return (
 		<p className="text-xs text-subtle-foreground">
@@ -244,7 +240,6 @@ function ContextLine({ files, onOpen }: { files: ContextFileName[]; onOpen: (fil
 	);
 }
 
-/** Point and prompt: the element the next prompt edits, and × to edit the whole screen again. */
 function FocusChip({ label, where, onClear }: { label: string; where?: string; onClear?: () => void }) {
 	return (
 		<div className="mb-1.5 flex w-fit max-w-full items-center gap-1.5 rounded-md border bg-muted/50 py-0.5 pr-0.5 pl-2 text-xs text-subtle-foreground">
@@ -323,7 +318,6 @@ const FAILURE_TITLE: Record<GenerationFailure["code"], string> = {
 	unknown: "Generation failed",
 };
 
-/** What went wrong, and the one action most likely to fix it. */
 function FailureCard({
 	failure,
 	onRetry,

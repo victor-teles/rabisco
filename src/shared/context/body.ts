@@ -1,11 +1,7 @@
-/** A Markdown heading line (ATX style, up to 3 spaces of indent) */
+/** ATX style, up to 3 spaces of indent */
 const HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 
-/**
- * What a context file (PRODUCT.md, DESIGN.md) actually says: HTML comments
- * removed and trimmed. `undefined` when only headings and blank lines are
- * left, as in an untouched template, whose guidance lives in comments.
- */
+/** HTML comments removed; `undefined` when only headings are left (an untouched template). */
 export function contextBody(markdown: string | undefined): string | undefined {
 	if (!markdown) return undefined;
 

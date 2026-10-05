@@ -1,17 +1,9 @@
-/**
- * Import resolution shared by the host (module graph) and the frame runtime (`require`).
- * Bare specifiers (`react`, `@/components/ui/button`) come from the runtime; relative
- * ones resolve to project files.
- */
-
-/** Extensions tried, in order, for an import written without one. */
 export const EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
 
 export function isRelative(specifier: string) {
 	return specifier.startsWith("./") || specifier.startsWith("../");
 }
 
-/** Joins `specifier` onto the directory of `from` and normalises `.` / `..` segments. */
 export function joinPath(from: string, specifier: string) {
 	const parts = from.split("/").slice(0, -1);
 
@@ -25,10 +17,7 @@ export function joinPath(from: string, specifier: string) {
 	return parts.join("/");
 }
 
-/**
- * Resolves a relative import to a project path, or `null` when no file matches.
- * Tries the path as written, then with each extension, then as a folder index.
- */
+/** Tries the path as written, then each extension, then as a folder index. */
 export function resolveRelative(from: string, specifier: string, exists: (path: string) => boolean): string | null {
 	const base = joinPath(from, specifier);
 
@@ -41,7 +30,6 @@ export function resolveRelative(from: string, specifier: string, exists: (path: 
 	return null;
 }
 
-/** `require("…")` calls in Sucrase's CommonJS output, in order of appearance. */
 export function extractRequires(code: string): string[] {
 	const found = new Set<string>();
 

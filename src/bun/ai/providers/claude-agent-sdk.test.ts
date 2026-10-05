@@ -35,7 +35,6 @@ async function collect(events: AsyncIterable<GenerationEvent>) {
 	return out;
 }
 
-/** A fake SDK whose `query` writes a file in `cwd` and yields recorded SDK messages. */
 function fakeSdk(messages: (cwd: string) => object[], options: { hang?: boolean; throws?: string } = {}) {
 	const calls: { prompt: string; options: Options }[] = [];
 

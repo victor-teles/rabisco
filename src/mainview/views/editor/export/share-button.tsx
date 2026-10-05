@@ -15,7 +15,7 @@ import type { ExportContext } from "./export-menu";
 import { GitSection } from "./git-section";
 import { errorMessage, timeAgo } from "./share-utils";
 
-/** What each shared project's link shows, so the popover can tell when it is out of date. */
+/** Lets the popover tell when a shared link is out of date */
 const publishedFingerprints = new Map<string, string>();
 
 const fingerprintOf = (frames: Frame[], files: ProjectFiles) =>
@@ -25,10 +25,7 @@ type ShareTab = "link" | "git";
 
 const isShareTab = (value: string): value is ShareTab => value === "link" || value === "git";
 
-/**
- * The title bar's Share button (Phase 7, decision 0008): a read-only link on
- * the local network (or the same viewer exported as a website), and git sync.
- */
+/** Decision 0008 */
 export function ShareButton(props: ExportContext) {
 	const { projectPath } = props;
 	const [open, setOpen] = useState(false);
@@ -99,7 +96,7 @@ export function ShareButton(props: ExportContext) {
 	);
 }
 
-/** Copies `text`; falls back to a selected field and `execCommand` where the Clipboard API is blocked. */
+/** Falls back to a selected field and `execCommand` where the Clipboard API is blocked */
 async function copyText(text: string, field: HTMLInputElement | null) {
 	try {
 		await navigator.clipboard.writeText(text);

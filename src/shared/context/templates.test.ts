@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CONTEXT_TEMPLATES, DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "./templates";
 
-/** Lines outside HTML comments that aren't headings or blank */
 const contentLines = (markdown: string) =>
 	markdown
 		.replace(/<!--[\s\S]*?-->/g, "")

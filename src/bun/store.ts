@@ -24,19 +24,17 @@ import {
 import { ProjectWatcher } from "./watcher";
 
 export type StoreOptions = {
-	/** `Utils.paths.documents`; new projects go in `<documents>/Rabisco` */
+	/** New projects go in `<documents>/Rabisco` */
 	documentsDir: string;
-	/** `Utils.paths.userData`; holds `recents.json` and legacy `projects/*.json` */
+	/** Holds `recents.json` and legacy `projects/*.json` */
 	userDataDir: string;
 	moveToTrash: (path: string) => boolean;
 	showItemInFolder: (path: string) => void;
-	/** Native folder picker; returns the chosen paths */
 	pickFolder: () => Promise<string[]>;
 	onFilesChanged: (path: string, changes: FileChange[]) => void;
 	watchOptions?: ConstructorParameters<typeof ProjectWatcher>[3];
 };
 
-/** Project folders, recents and file watching, independent of Electrobun so it can be tested. */
 export function createProjectStore(options: StoreOptions) {
 	const projectsDir = join(options.documentsDir, "Rabisco");
 	const recentsFile = join(options.userDataDir, "recents.json");
@@ -47,7 +45,6 @@ export function createProjectStore(options: StoreOptions) {
 	const recents = () => readRecents(recentsFile);
 	const normalize = (path: string) => resolve(path).replace(/\/+$/, "");
 
-	/** Writes only go to folders that are Rabisco projects. */
 	function assertProject(path: string) {
 		assertProjectDir(path);
 

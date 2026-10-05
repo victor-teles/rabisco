@@ -17,7 +17,6 @@ import { isComponentFile } from "../../shared/project";
 import type { ProjectFiles } from "../../shared/types";
 import type { ChangeOptions, ProjectState } from "./use-project";
 
-/** A drop from the components panel onto the canvas: the frame under the pointer and the screen elements there. */
 export type ComponentDrop = { file: string | null; data: string; hit: FrameHit | null };
 
 type Options = {
@@ -27,9 +26,7 @@ type Options = {
 	stateRef: RefObject<ProjectState | null>;
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
 	undo: () => void;
-	/** A generation or the interview runs: drops and extractions wait, suggestions hold still */
 	busy: boolean;
-	/** The Components tab is open, so its suggestions count as seen */
 	open: boolean;
 };
 
@@ -53,14 +50,12 @@ function writeKeys(key: string, keys: Set<string>) {
 	}
 }
 
-/** Duplicate-structure suggestions the user hasn't dismissed, remembered per project. */
 function useSuggestions(projectPath: string, files: ProjectFiles, busy: boolean, open: boolean) {
 	const dismissedKey = `rabisco:suggestions:dismissed:${projectPath}`;
 	const seenKey = `rabisco:suggestions:seen:${projectPath}`;
 	const [dismissed, setDismissed] = useState(() => readKeys(dismissedKey));
 	const [seen, setSeen] = useState(() => readKeys(seenKey));
 
-	// Cheap and cached per file, but there's no point recomputing while a generation lands files
 	const [found, setFound] = useState<{ files: ProjectFiles | null; groups: DuplicateGroup[] }>(() =>
 		busy ? { files: null, groups: [] } : { files, groups: findDuplicates(files) },
 	);
@@ -72,7 +67,6 @@ function useSuggestions(projectPath: string, files: ProjectFiles, busy: boolean,
 	const suggestions = useMemo(() => all.filter((group) => !dismissed.has(group.key)), [all, dismissed]);
 	const unseen = suggestions.filter((group) => !seen.has(group.key)).length;
 
-	// The open tab shows every suggestion: they count as seen right away
 	if (open && unseen) setSeen(new Set([...seen, ...suggestions.map((group) => group.key)]));
 
 	useEffect(() => {
@@ -94,16 +88,10 @@ function useSuggestions(projectPath: string, files: ProjectFiles, busy: boolean,
 	return { suggestions, unseen, dismiss };
 }
 
-/** The display name of a component file: its first export, or the file name. */
 export function componentName(component: ProjectComponent | undefined, path: string) {
 	return component?.exports[0]?.name ?? path.replace(/^components\//, "").replace(/\.tsx$/, "");
 }
 
-/**
- * The editor side of the components panel: project components, duplicate
- * suggestions and "Make component" from them, drops from the panel onto
- * screens, and the selected component. Every change is one undo step.
- */
 export function useComponents({ projectPath, files, selection, stateRef, change, undo, busy, open }: Options) {
 	const components = useMemo(() => projectComponents(files), [files]);
 	const { suggestions, unseen, dismiss } = useSuggestions(projectPath, files, busy, open);
@@ -121,7 +109,7 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 			}
 		: null;
 
-	/** Undo for a toast: only while the change it reports is still the latest step. */
+	/** Only undoes while the toast's change is still the latest step. */
 	const undoAction = useCallback(() => {
 		const after = stateRef.current?.history.present;
 
@@ -134,7 +122,6 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 		};
 	}, [stateRef, undo]);
 
-	/** "Make component" on a suggestion: returns why it failed, or null. */
 	const makeComponent = useCallback(
 		(group: DuplicateGroup, name: string): string | null => {
 			const current = stateRef.current;
@@ -208,8 +195,7 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 				return;
 			}
 
-			// The offsets index the source the frame rendered: when the file changed since (or the
-			// newer version failed to load), they point elsewhere, so the drop goes to the root
+			// Stale offsets (file changed since render) are dropped, so the drop goes to the root
 			const next = insertDrop(source, hitStarts(hit, file, source), insertion);
 
 			if (next === null) {

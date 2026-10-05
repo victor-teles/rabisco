@@ -1,14 +1,8 @@
-/** Which screens an image export covers, and what their files are called. */
-
 import { isScreenFile, toKebab } from "../project";
 import type { Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
 
-/**
- * The screens to export: the selected ones (alternates included, since the
- * user picked them), or every screen on the canvas except alternates.
- * Canvas order; frames whose file is gone are skipped.
- */
+/** The selection (alternates included), or every screen except alternates. */
 export function imageTargets(frames: Frame[], selected: Frame[], files: ProjectFiles): Frame[] {
 	const exists = (frame: Frame) => isScreenFile(frame.file) && files[frame.file] !== undefined;
 	const chosen = selected.filter(exists);
@@ -16,10 +10,7 @@ export function imageTargets(frames: Frame[], selected: Frame[], files: ProjectF
 	return chosen.length ? chosen : frames.filter((frame) => exists(frame) && !isAlternate(frame.file));
 }
 
-/**
- * One file name per screen, from its path (`screens/welcome.tsx` →
- * `welcome.png`, `welcome.alt-1.png`), made unique with `-2`, `-3`….
- */
+/** `screens/welcome.tsx` → `welcome.png`, made unique with `-2`, `-3`… */
 export function imageFileNames(paths: string[], extension: string): string[] {
 	const used = new Set<string>();
 
@@ -39,7 +30,7 @@ export function imageFileNames(paths: string[], extension: string): string[] {
 	});
 }
 
-/** A file-system friendly project name: `My App` → `my-app`. */
+/** `My App` → `my-app` */
 export function exportSlug(projectName: string) {
 	const name = projectName.replace(/\.rabisco$/i, "").normalize("NFKD");
 

@@ -1,9 +1,3 @@
-/**
- * Dropping a component on a screen: the JSX and imports to insert, and where
- * in the screen's source they go. Pure source-to-source logic; the canvas finds
- * the element under the pointer (FrameHost.hitTest) and the editor applies it.
- */
-
 import type { ComponentExport } from "../../shared/components/api";
 import type { LibraryImport, LibraryItem } from "../../shared/components/library";
 import { sampleProps, type PreviewValue } from "../../shared/components/preview";
@@ -14,17 +8,12 @@ import { TokenType as tt } from "sucrase/dist/esm/parser/tokenizer/types";
 import { parseFile, type ParsedFile, type Token } from "../../shared/jsx/tree";
 import { sourceVersion, type FrameHit } from "./render/protocol";
 
-/** The drag data type for items dragged out of the components panel. */
 export const COMPONENT_MIME = "application/x-rabisco-component";
 
-/** What the components panel drags: a project component export, or a library item. */
 export type DragItem = { kind: "component"; path: string; name: string } | { kind: "library"; id: string };
 
-/**
- * The item being dragged out of the components panel, as `parseDragItem` reads it.
- * WebKit hides custom drag types from `dragover` on non-http origins (the app runs
- * on `views://`), so the canvas reads the drag from here, not from `dataTransfer`.
- */
+// WebKit hides custom drag types from `dragover` on non-http origins (`views://`),
+// so the canvas reads the active drag from here instead of `dataTransfer`.
 let activeDrag: string | null = null;
 
 const dragListeners = new Set<() => void>();
@@ -40,7 +29,6 @@ export const componentDrag = {
 	start: (item: DragItem) => setDrag(JSON.stringify(item)),
 	end: () => setDrag(null),
 	current: () => activeDrag,
-	/** For `useSyncExternalStore` */
 	subscribe: (listener: () => void) => {
 		dragListeners.add(listener);
 
@@ -69,7 +57,6 @@ export function parseDragItem(data: string): DragItem | null {
 	return null;
 }
 
-/** JSX and imports to insert. */
 export type Insertion = { snippet: string; imports: LibraryImport[] };
 
 const isIconValue = (value: PreviewValue | undefined): value is { icon: string } =>
@@ -90,11 +77,6 @@ function attribute(name: string, value: PreviewValue, icons: Set<string>): strin
 	return `${name}={${value.icon}}`;
 }
 
-/**
- * `<StatCard label="Label" value={42} />` for a project component: its sample
- * props (required props and variants) written as readable JSX, with children
- * when it takes them, and the imports that needs.
- */
 export function componentInsertion(path: string, component: ComponentExport): Insertion {
 	const icons = new Set<string>();
 	const { children, ...props } = sampleProps(component);
@@ -119,7 +101,7 @@ export function componentInsertion(path: string, component: ComponentExport): In
 
 export const libraryInsertion = (item: LibraryItem): Insertion => ({ snippet: item.snippet, imports: item.imports });
 
-/** DOM elements a dropped block can go into. Text, inline, list, table and SVG elements pass the drop to their parent. */
+/** Text, inline, list, table and SVG elements pass the drop to their parent. */
 const CONTAINERS = new Set([
 	"div",
 	"section",
@@ -143,7 +125,6 @@ const CONTAINERS = new Set([
 
 const isContainer = (element: JsxElement) => element.intrinsic && element.name !== null && CONTAINERS.has(element.name);
 
-/** Index of the token closing the bracket opened at `i` (`(`, `{` or `${`). */
 function matching(tokens: Token[], i: number): number {
 	const open = tokens[i]!.type === tt.parenL ? [tt.parenL] : [tt.braceL, tt.dollarBraceL];
 	const close = tokens[i]!.type === tt.parenL ? tt.parenR : tt.braceR;
@@ -157,7 +138,6 @@ function matching(tokens: Token[], i: number): number {
 	return -1;
 }
 
-/** The JSX element a value expression starting at token `i` is, when it is only that (in parens or not). */
 function jsxAt(parsed: ParsedFile, i: number): JsxElement | null {
 	const { tokens } = parsed;
 
@@ -168,12 +148,7 @@ function jsxAt(parsed: ParsedFile, i: number): JsxElement | null {
 	return parsed.roots.find((root) => root.start === tokens[i]!.start) ?? null;
 }
 
-/**
- * What the function at token `i` returns at its own top level: the last
- * `return` of its body that isn't inside a nested block or function, or its
- * arrow expression. Handles `function X() {…}`, `async`, arrows and one
- * wrapper call (`memo(function X() {…})`). `null` when that isn't plain JSX.
- */
+/** Last top-level `return` (or arrow body) of the function at token `i`; unwraps one `memo(...)`-style call. */
 function returnedJsx(parsed: ParsedFile, i: number): JsxElement | null {
 	const { tokens, source } = parsed;
 	const text = (k: number) => (tokens[k] ? source.slice(tokens[k]!.start, tokens[k]!.end) : "");
@@ -238,7 +213,6 @@ function returnedJsx(parsed: ParsedFile, i: number): JsxElement | null {
 	return last < 0 ? null : jsxAt(parsed, last + 1);
 }
 
-/** Token index of the default-exported value (`export default function…`, `export default () => …`, or the declaration of `export default Name`). */
 function defaultExport(parsed: ParsedFile): number | null {
 	const { tokens, source } = parsed;
 	const text = (k: number) => source.slice(tokens[k]!.start, tokens[k]!.end);
@@ -249,7 +223,6 @@ function defaultExport(parsed: ParsedFile): number | null {
 	const isName = tokens[value]?.type === tt.name && text(value) !== "async" && text(value) !== "function";
 
 	if (!isName || tokens[value + 1]?.type === tt.parenL) return value;
-	// `export default Page;`: find `function Page` or `const Page = …` at the top level
 	const name = text(value);
 
 	for (let k = 0; k < tokens.length; k++) {
@@ -275,7 +248,6 @@ function defaultExport(parsed: ParsedFile): number | null {
 // Sucrase's IdentifierRole.TopLevelDeclaration
 const TOP_LEVEL_DECLARATION = 2;
 
-/** The JSX the default export renders at its top level (its main `return`), or `null`. */
 function renderedRoot(parsed: ParsedFile): JsxElement | null {
 	if (!parsed.ok) return null;
 	const at = defaultExport(parsed);
@@ -289,14 +261,7 @@ const isInside = (element: JsxElement, ancestor: JsxElement) => {
 	return false;
 };
 
-/**
- * Where a drop on the element at `start` goes: that element or its nearest
- * container ancestor. Only elements of the JSX the default export returns
- * count: not a local helper component's, nor JSX built before the `return`.
- * Elements inside an expression (`.map(…)`, `{open && …}`, a render prop) are
- * skipped, since inserting there would repeat or hide the drop. `null` when
- * there is none.
- */
+/** Skips elements inside expressions (`.map`, `{open && …}`), where an insert would repeat or hide the drop. */
 export function dropParent(source: string, start: number): number | null {
 	const parsed = parseFile(source);
 	const root = renderedRoot(parsed);
@@ -313,12 +278,6 @@ export function dropParent(source: string, start: number): number | null {
 	return target?.start ?? null;
 }
 
-/**
- * Where a drop goes when nothing better is under the pointer: the outermost
- * element the default export returns, or the first container element inside
- * it when that is a component or a non-container tag. `null` when the file
- * doesn't parse or its default export doesn't return plain JSX.
- */
 export function screenRoot(source: string): number | null {
 	const root = renderedRoot(parseFile(source));
 
@@ -339,23 +298,12 @@ export function screenRoot(source: string): number | null {
 	return root.selfClosing && !root.intrinsic ? null : root.start;
 }
 
-/**
- * The element starts of a frame's hit that index `source`, the current content
- * of `file`. `null` when the hit is for another file, or the frame rendered
- * another version of it (edited since, or a newer version failed to load):
- * its offsets would point at the wrong elements.
- */
+/** `null` when the frame rendered another version of `file`, whose offsets would point at the wrong elements. */
 export function hitStarts(hit: FrameHit | null, file: string, source: string): number[] | null {
 	return hit && hit.path === file && hit.version === sourceVersion(source) ? hit.starts : null;
 }
 
-/**
- * The screen's source with `insertion` added as the last child of the
- * container at the drop point, or of the screen's root when there is no usable
- * element there. `at` is the element start under the pointer, or the starts of
- * it and its ancestors, innermost first: the first one that takes a drop wins.
- * `null` when the source doesn't parse or has no root to add to.
- */
+/** `at` is innermost-first; the first start that accepts a drop wins, else the screen root. */
 export function insertDrop(source: string, at: number | readonly number[] | null, insertion: Insertion): string | null {
 	const candidates = at === null ? [] : [at].flat();
 	let parent: number | null = null;

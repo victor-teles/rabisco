@@ -48,7 +48,6 @@ async function collect(events: AsyncIterable<GenerationEvent>) {
 	return out;
 }
 
-/** A recorded `codex exec --json` run. */
 const recording = (dir: string) => [
 	{ type: "thread.started", thread_id: "0199a213-81c0-7800-8aa1-bbab2a035a53" },
 	{ type: "turn.started" },

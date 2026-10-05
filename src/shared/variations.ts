@@ -1,37 +1,31 @@
 import { FRAME_GAP, isScreenFile, nextFrameX } from "./project";
 import type { AlternateGroup, FileChange, Frame, ProjectFiles } from "./types";
 
-/**
- * Variations of a screen are files (decision 0004): the picked one keeps the
- * screen's name, the others are `screens/<name>.alt-N.tsx`. Groups follow from
- * the file names, so a file renamed outside Rabisco simply leaves its group.
- */
+// Decision 0004: groups follow from file names, so a file renamed outside Rabisco leaves its group.
 
-/** How many variations one generation may produce */
 export const MAX_VARIATIONS = 4;
 
 const ALT = /^(screens\/[a-z0-9][a-z0-9-]*)\.alt-(\d+)\.tsx$/;
 
 export const isAlternate = (path: string) => ALT.test(path);
 
-/** `screens/welcome.alt-2.tsx` → `screens/welcome.tsx`; other paths are their own base. */
+/** `screens/welcome.alt-2.tsx` → `screens/welcome.tsx` */
 export function baseOf(path: string) {
 	const match = ALT.exec(path);
 
 	return match ? `${match[1]}.tsx` : path;
 }
 
-/** `screens/welcome.alt-2.tsx` → 2; `null` for anything that isn't an alternate. */
+/** `screens/welcome.alt-2.tsx` → 2 */
 export function altNumber(path: string) {
 	const match = ALT.exec(path);
 
 	return match ? Number(match[2]) : null;
 }
 
-/** `screens/welcome.tsx`, 2 → `screens/welcome.alt-2.tsx` */
 export const altPath = (base: string, n: number) => base.replace(/\.tsx$/, `.alt-${n}.tsx`);
 
-/** The next free alternate number of `base`: one above the highest in `taken`. */
+/** One above the highest in `taken` */
 export function nextAltNumber(base: string, taken: Iterable<string>) {
 	let max = 0;
 
@@ -41,15 +35,13 @@ export function nextAltNumber(base: string, taken: Iterable<string>) {
 }
 
 export type VariationGroup = {
-	/** The screen's own path, e.g. `screens/welcome.tsx` */
 	base: string;
-	/** `base` when that file exists; `null` when only alternates are left */
+	/** `null` when only alternates are left */
 	picked: string | null;
-	/** Every file of the group: the picked one first, then alternates by number */
+	/** Picked first, then alternates by number */
 	files: string[];
 };
 
-/** Every screen that has at least one alternate. */
 export function variationGroups(paths: Iterable<string>): VariationGroup[] {
 	const all = new Set(paths);
 	const alts = new Map<string, string[]>();
@@ -70,22 +62,17 @@ export function variationGroups(paths: Iterable<string>): VariationGroup[] {
 		});
 }
 
-/** The group `path` belongs to, or `null` for a screen without alternates. */
 export function groupOf(path: string, paths: Iterable<string>): VariationGroup | null {
 	const base = baseOf(path);
 
 	return variationGroups(paths).find((group) => group.base === base) ?? null;
 }
 
-/** `rabisco.json` stores the groups (decision 0004); they always mirror the files. */
+/** Stored in `rabisco.json`; always mirrors the files */
 export const alternatesOf = (paths: Iterable<string>): AlternateGroup[] =>
 	variationGroups(paths).map((group) => ({ picked: group.picked ?? group.base, files: group.files }));
 
-/**
- * Picks `path`: swaps its content with the screen's own file, so `welcome.tsx`
- * is always the chosen version and imports keep working. When the screen's
- * file is gone, the alternate takes its name.
- */
+/** Swaps content with the base file, so `welcome.tsx` is always the chosen version and imports keep working. */
 export function pickVariation(files: ProjectFiles, path: string): FileChange[] {
 	const base = baseOf(path);
 
@@ -103,22 +90,14 @@ export function pickVariation(files: ProjectFiles, path: string): FileChange[] {
 	];
 }
 
-/**
- * Frames swap with their files on a pick: the picked content now lives in the
- * base file, so the selection follows it there. Frame positions stay.
- */
+/** The picked content now lives in the base file, so the selection follows it there. */
 export function selectionAfterPick(selection: string[], path: string) {
 	const base = baseOf(path);
 
 	return [...new Set(selection.map((file) => (file === path ? base : file)))];
 }
 
-/**
- * Places frames a generation created on the canvas. A frame whose variation
- * group already has a frame goes below the lowest frame of that group (one row
- * per variation). The rest keep their layout relative to each other and move
- * to the right of everything on the canvas.
- */
+/** Frames of an existing group go below it (one row per variation); the rest go right of everything. */
 export function placeNewFrames(canvas: Frame[], created: Frame[]): Frame[] {
 	if (!created.length) return [];
 	const placed: Frame[] = [];

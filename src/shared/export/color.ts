@@ -1,11 +1,6 @@
-/**
- * CSS colors as 8-bit sRGB, for image export. Computed styles carry modern
- * color syntax (`oklch()`, `oklab()`, `lab()`, `color(display-p3 …)`) that
- * SVG editors don't read, so the exporter converts every color it writes.
- * Out-of-gamut colors are clipped per channel.
- */
+// SVG editors don't read modern color syntax (`oklch()`, `color(display-p3 …)`), so export converts to sRGB.
 
-/** sRGB, channels 0–255 (rounded), alpha 0–1. */
+/** Channels 0–255 (rounded), alpha 0–1 */
 export type Rgba = { r: number; g: number; b: number; a: number };
 
 type Vec3 = [number, number, number];
@@ -14,7 +9,6 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 const map3 = ([x, y, z]: Vec3, f: (n: number) => number): Vec3 => [f(x), f(y), f(z)];
 
-/** Exactly three numbers, none NaN, or `null`. */
 function vec3([x, y, z, ...extra]: number[]): Vec3 | null {
 	if (x === undefined || y === undefined || z === undefined || extra.length) return null;
 	const v: Vec3 = [x, y, z];
@@ -28,7 +22,7 @@ const multiply = (m: number[][], [x, y, z]: Vec3): Vec3 => [
 	m[2]![0]! * x + m[2]![1]! * y + m[2]![2]! * z,
 ];
 
-/** sRGB (and display-p3) transfer function: linear → encoded */
+/** sRGB/display-p3 transfer: linear → encoded */
 const encode = (c: number) => {
 	const sign = c < 0 ? -1 : 1;
 	const abs = Math.abs(c);
@@ -36,7 +30,6 @@ const encode = (c: number) => {
 	return sign * (abs <= 0.0031308 ? 12.92 * abs : 1.055 * abs ** (1 / 2.4) - 0.055);
 };
 
-/** encoded → linear */
 const decode = (c: number) => {
 	const sign = c < 0 ? -1 : 1;
 	const abs = Math.abs(c);
@@ -115,7 +108,7 @@ const fromEncoded = ([r, g, b]: Vec3, a: number): Rgba => ({
 	a: Math.round(clamp01(a) * 1000) / 1000,
 });
 
-/** A number, percentage (`percent` = the value of 100%), angle or `none`; NaN when it isn't one. */
+/** `percent` is the value of 100%; NaN when not a number, percentage, angle or `none`. */
 function component(token: string | undefined, percent = 1): number {
 	if (token === undefined) return Number.NaN;
 
@@ -139,7 +132,6 @@ function component(token: string | undefined, percent = 1): number {
 	}
 }
 
-/** `fn(a b c / d)` or `fn(a, b, c, d)` → channel tokens and the alpha token. */
 type ColorArgs = { channels: string[]; alpha?: string };
 
 function args(body: string): ColorArgs {
@@ -187,12 +179,7 @@ function hslToRgb(h: number, s: number, l: number): Vec3 {
 	return [f(0), f(8), f(4)];
 }
 
-/**
- * The sRGB value of a CSS color as `getComputedStyle` serializes it: hex,
- * named basics, `rgb()`, `hsl()`, `oklch()`, `oklab()`, `lab()`, `lch()` and
- * `color()` in srgb, srgb-linear and display-p3. `null` for anything else
- * (`currentcolor`, `color-mix()`, system colors).
- */
+/** As `getComputedStyle` serializes colors; `null` for `currentcolor`, `color-mix()`, system colors. */
 export function parseColor(value: string): Rgba | null {
 	const text = value.trim().toLowerCase();
 
@@ -292,16 +279,12 @@ export function parseColor(value: string): Rgba | null {
 
 export const isVisible = (color: Rgba | null): color is Rgba => !!color && color.a > 0;
 
-/** `#rrggbb`, ignoring alpha (SVG writes it as a separate opacity). */
+/** Ignores alpha: SVG writes it as a separate opacity. */
 export const toHex = ({ r, g, b }: Rgba) => `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 
-/** `rgba(r, g, b, a)`, for canvas. */
 export const toCss = ({ r, g, b, a }: Rgba) => `rgba(${r}, ${g}, ${b}, ${a})`;
 
-/**
- * `from` → `to` at `t` (0–1), interpolated in OKLab like CSS gradients
- * written `in oklab` (Tailwind's default); alpha is linear.
- */
+/** Like CSS gradients `in oklab` (Tailwind's default); alpha is linear. */
 export function mixOklab(from: Rgba, to: Rgba, t: number): Rgba {
 	const lab = (c: Rgba) => linearSrgbToOklab([decode(c.r / 255), decode(c.g / 255), decode(c.b / 255)]);
 	const [a, b] = [lab(from), lab(to)];

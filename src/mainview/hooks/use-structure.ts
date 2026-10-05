@@ -9,24 +9,17 @@ import { extractComponent, findElement, parseJsx, removeElement } from "../../sh
 import type { PropSpec } from "../../shared/components/api";
 import type { ProjectFiles } from "../../shared/types";
 
-/** The element selected in the structure outline: its file and start offset. */
 export type StructureNode = { file: string; start: number };
 
 type Tracked = StructureNode & { source: string };
 
 type Options = {
 	files: ProjectFiles;
-	/** The one file the inspector shows (a screen or a component), or null */
 	file: string | null;
 	stateRef: React.RefObject<ProjectState | null>;
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
-	/** Brings the Code tab forward, where the outline lives */
 	onShowCode: () => void;
-	/**
-	 * A generation or interview is running. Its result is built from the files
-	 * as they were when it started, so edits made meanwhile would be lost:
-	 * they are refused until it ends.
-	 */
+	/** Edits are refused while a generation runs, since its result would overwrite them. */
 	busy?: boolean;
 };
 
@@ -34,7 +27,6 @@ const BUSY_MESSAGE = "Wait for the generation to finish";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
-/** "Made StatCard · replaced 4 in 3 files" */
 export function madeComponentMessage(exportName: string, replaced: { path: string; count: number }[]) {
 	const total = replaced.reduce((sum, item) => sum + item.count, 0);
 
@@ -43,23 +35,16 @@ export function madeComponentMessage(exportName: string, replaced: { path: strin
 		: `Made ${exportName}`;
 }
 
-/**
- * The structure outline's selection and the edits made from it: "Make
- * component", prop controls and the code editor. The selection follows its
- * element through edits (by offset, then by tree position) and clears when
- * the element is gone or another file is shown.
- */
 export function useStructure({ files, file, stateRef, change, onShowCode, busy = false }: Options) {
 	const [tracked, setTracked] = useState<Tracked | null>(null);
 	const [naming, setNaming] = useState(false);
-	// Read in callbacks, so a generation that starts mid-burst refuses the next keystroke
 	const busyRef = useRef(busy);
 
 	useLayoutEffect(() => {
 		busyRef.current = busy;
 	}, [busy]);
 
-	// Follow the element through edits; adjusting state while rendering avoids a frame with stale offsets
+	// Adjusting state while rendering avoids a frame with stale offsets
 	let node: Tracked | null = tracked;
 
 	if (tracked) {
@@ -86,7 +71,6 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[stateRef],
 	);
 
-	/** Edits one file through the undo history; `step` coalesces a typing burst. */
 	const editFile = useCallback(
 		(path: string, edit: (source: string) => string | null, step?: string) => {
 			if (busyRef.current) return;
@@ -105,7 +89,6 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[change],
 	);
 
-	/** Replaces a file's source; without `step`, the edit is an undo step of its own. */
 	const editCode = useCallback(
 		(path: string, text: string, step?: string) => editFile(path, () => text, step),
 		[editFile],
@@ -123,7 +106,6 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[editFile],
 	);
 
-	/** Deletes the selected element from its file (one undo step) and selects its parent. */
 	const removeNode = useCallback(() => {
 		const source = node ? stateRef.current?.files[node.file] : undefined;
 
@@ -144,7 +126,6 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		setTracked(parent && parent.name !== null ? { file: node.file, start: parent.start, source: next } : null);
 	}, [node, stateRef, change]);
 
-	/** Extracts the selected element into components/*.tsx and replaces its repeats, as one undo step. */
 	const makeComponent = useCallback(
 		(name: string) => {
 			const current = stateRef.current;
@@ -168,7 +149,6 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 			const before = current.files[node.file]!;
 			change((snapshot) => ({ ...snapshot, files: applyFileChanges(snapshot.files, result.changes) }));
 			toast(madeComponentMessage(result.exportName, result.replaced));
-			// The usage sits where the element was: same place in the tree
 			const after = result.changes.find((c) => c.path === node.file)?.content ?? before;
 			const path = pathOf(parseJsx(before), node.start);
 			const usage = path ? atPath(parseJsx(after), path) : null;
@@ -182,7 +162,7 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[stateRef, node, change],
 	);
 
-	// ⌥⌘K, Figma's create-component shortcut, from anywhere in the editor
+	// ⌥⌘K, Figma's create-component shortcut
 	const shortcut = useEffectEvent((event: KeyboardEvent) => {
 		if (!isMakeComponent(event) || event.defaultPrevented) return;
 		event.preventDefault();

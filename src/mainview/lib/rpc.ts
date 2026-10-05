@@ -15,7 +15,6 @@ import { createBrowserGenerator } from "./browser-generate";
 
 type Requests = RabiscoRPC["bun"]["requests"];
 
-/** Promise-based view of every request the main process handles. */
 export type RabiscoApi = {
 	[K in keyof Requests]: (params: Requests[K]["params"]) => Promise<Requests[K]["response"]>;
 };
@@ -41,10 +40,8 @@ const generationEvents = listenerSet<GenerationEventMessage>();
 
 const fileChanges = listenerSet<FilesChanged>();
 
-/** Events of running generations. Returns an unsubscribe function. */
 export const onGenerationEvent = generationEvents.add;
 
-/** Files edited on disk outside Rabisco. Returns an unsubscribe function. */
 export const onFilesChanged = fileChanges.add;
 
 function createElectrobunApi(): RabiscoApi {
@@ -59,18 +56,12 @@ function createElectrobunApi(): RabiscoApi {
 
 	new Electroview({ rpc });
 
-	// Every request maps 1:1 to the main-process handler of the same name
 	return rpc.request;
 }
 
-/**
- * Lets the UI run in a regular browser (`hutch run hmr` + open localhost:5173)
- * by mirroring the main-process handlers on top of localStorage. A project's
- * path is `browser://<uuid>`; there is no folder picker and no file watching.
- */
+// Browser fallback (`hutch run hmr`): main-process handlers mirrored on localStorage, paths are `browser://<uuid>`.
 type Stored = { canvas: CanvasDoc; files: ProjectFiles; messages: ChatMessage[] };
 
-/** Only Rabisco writes these keys: a record with a canvas is a stored project. */
 function isStored(value: unknown): value is Stored {
 	return typeof value === "object" && value !== null && "canvas" in value && Boolean(value.canvas);
 }
@@ -176,7 +167,6 @@ function createBrowserApi(): RabiscoApi {
 		},
 		async createProject({ name, device }) {
 			const path = `browser://${crypto.randomUUID()}`;
-			// Same starting point as the desktop app: both context files, as templates
 			write(path, {
 				canvas: emptyCanvas(name.trim() || "Untitled", device),
 				files: { ...CONTEXT_TEMPLATES },
@@ -273,7 +263,6 @@ function createBrowserApi(): RabiscoApi {
 	};
 }
 
-/** Why sharing and git aren't available in the browser fallback. */
 export const DESKTOP_ONLY = "Sharing and git sync need the Rabisco desktop app.";
 
 export const isDesktop = typeof window !== "undefined" && Boolean(window.__electrobun);

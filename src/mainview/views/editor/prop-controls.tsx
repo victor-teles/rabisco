@@ -23,27 +23,25 @@ import { cn } from "@/lib/utils";
 import type { ComponentExport, PropSpec, PropType } from "../../../shared/components/api";
 
 export type PropChange = {
-	/** The prop's API entry, when declared; writing its default removes the attribute */
+	/** Writing the API default removes the attribute */
 	spec?: PropSpec;
-	/** Typing in a field (coalesce into one undo step per focus) rather than a discrete pick */
+	/** Typing (coalesced into one undo step per focus) rather than a discrete pick */
 	continuous: boolean;
 };
 
 export type PropControlsProps = {
-	/** The component's API; null shows only `extra` attributes and children */
+	/** `null` shows only `extra` attributes and children */
 	spec: ComponentExport | null;
-	/** Values as written on the usage, by prop name; missing means unset */
+	/** By prop name; missing means unset */
 	values: Record<string, PropValue>;
-	/** `null` removes the attribute */
 	onChange: (name: string, value: Literal | null, change: PropChange) => void;
-	/** Children as plain text; `null` when they hold elements or code (shown read-only); `undefined` hides the row */
+	/** `null` when they hold elements or code (read-only); `undefined` hides the row */
 	childrenText?: string | null;
 	onChildrenChange?: (text: string, change: PropChange) => void;
-	/** Attributes written on the usage that the API doesn't declare (`className`, DOM props) */
+	/** Attributes the API doesn't declare (`className`, DOM props) */
 	extra?: string[];
-	/** A text or number field took focus: a new undo burst starts */
 	onFieldFocus?: () => void;
-	/** A field lost focus: its burst is one finished step */
+	/** Seals the current burst as one undo step */
 	onFieldBlur?: () => void;
 	disabled?: boolean;
 };
@@ -70,12 +68,6 @@ function typeText(type: PropType): string {
 export const propSignature = (prop: PropSpec) =>
 	`${prop.name}${prop.optional ? "?" : ""}: ${typeText(prop.type)}${prop.default !== undefined ? ` = ${JSON.stringify(prop.default)}` : ""}`;
 
-/**
- * One control per prop of a component usage: variants and enums as segmented
- * toggles or menus, booleans as switches, strings and numbers as fields, plain
- * text children as a field, and code-valued props as read-only code. Used by
- * the inspector and the components panel.
- */
 export function PropControls({
 	spec,
 	values,
@@ -340,7 +332,7 @@ function TextField({
 	);
 }
 
-/** Tolerates partial text ("-", "") while typing; reports numbers, or null when cleared. ↑/↓ step by 1 (⇧ 10). */
+/** Tolerates partial text ("-", "") while typing; ↑/↓ step by 1 (⇧ 10) */
 function NumberInput({
 	label,
 	value,

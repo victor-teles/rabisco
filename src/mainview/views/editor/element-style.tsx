@@ -1,28 +1,4 @@
-/**
- * Design tab: style controls for the selected element (Phase 6), read from and
- * written back to its Tailwind `className` through the class model in
- * `src/shared/tailwind/classes.ts`. Layout, spacing, size, type, fill, border
- * and effects edit unprefixed classes only (`md:`, `hover:`… stay as written),
- * and a raw "Classes" field is the escape hatch. A computed `className`
- * (`{styles.card}`, `{`p-4 ${x}`}`) shows read-only.
- *
- * Wiring, under the element props panel (node-props.tsx):
- *
- * ```tsx
- * <ElementStyle
- * 	source={source}
- * 	start={start}
- * 	disabled={structure.busy}
- * 	onChange={(next, step) => editFile(file, () => next, step)}
- * 	onFieldFocus={() => {}}
- * 	onFieldBlur={onEndStep}
- * />
- * ```
- *
- * `onChange` gets the whole new source of the file; `step` is set for typing
- * (one undo step per field focus, sealed by `onFieldBlur`) and unset for
- * discrete picks (menus, toggles, swatches), which are one step each.
- */
+// Style controls edit unprefixed Tailwind classes only (`md:`, `hover:`… stay as written); a computed className is read-only.
 
 import { useRef, useState } from "react";
 import {
@@ -89,21 +65,17 @@ import {
 } from "../../../shared/tailwind/classes";
 
 export type ElementStyleProps = {
-	/** The file's source */
 	source: string;
-	/** The selected element's start offset in `source` */
+	/** Start offset in `source` */
 	start: number;
-	/** A generation runs: controls are read-only */
 	disabled?: boolean;
-	/** The new source of the file; `step` coalesces a typing burst into one undo step */
+	/** `step` coalesces a typing burst into one undo step */
 	onChange: (nextSource: string, step?: string) => void;
-	/** A text field took focus: a new undo burst starts */
 	onFieldFocus?: () => void;
-	/** A text field lost focus: its burst is one finished step */
+	/** Seals the current typing burst as one undo step */
 	onFieldBlur?: () => void;
 };
 
-/** Elements with no content to lay out or no text to style. */
 const REPLACED = new Set([
 	"img",
 	"video",
@@ -200,9 +172,8 @@ const GAP_AXES: Part[] = [
 	{ label: "Y", parts: ["y"] },
 ];
 
-/** Field events plus the change to write, shared by every control. */
 type Edit = {
-	/** Writes new classes; `field` set for typing (coalesced per focus) */
+	/** `field` set for typing (coalesced per focus) */
 	apply: (classes: string, field?: string) => void;
 	onFocus: () => void;
 	onBlur: () => void;
@@ -279,12 +250,8 @@ export function ElementStyle({ source, start, disabled, onChange, onFieldFocus, 
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Sections
-
 type SectionProps = { classes: string; edit: Edit };
 
-/** Writes one-class property `prop`: typed values coalesce under the property's name. */
 const styleWriter = (classes: string, edit: Edit, prop: SimpleProp) => (value: string | null, continuous: boolean) =>
 	edit.apply(setStyle(classes, prop, value), continuous ? prop : undefined);
 
@@ -314,7 +281,6 @@ function LayoutSection({ classes, edit }: SectionProps) {
 							value={direction ?? "row"}
 							options={DIRECTION_OPTIONS}
 							disabled={edit.disabled}
-							// `flex-row` is the default: picking it again removes the class
 							onChange={(value) =>
 								edit.apply(setStyle(classes, "flexDirection", value === "row" || value === null ? null : value))
 							}
@@ -611,7 +577,6 @@ function EffectsSection({ classes, edit }: SectionProps) {
 	);
 }
 
-/** Every class, as text: the escape hatch for what the controls don't cover. */
 function ClassesField({ classes, edit, note }: SectionProps & { note: string | null }) {
 	const [draft, setDraft] = useState<string | null>(null);
 	const text = classes.replace(/\s+/g, " ").trim();
@@ -649,9 +614,6 @@ function ClassesField({ classes, edit, note }: SectionProps & { note: string | n
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Layout primitives
-
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
 	return (
 		<section className="flex flex-col gap-2">
@@ -673,14 +635,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Controls
-
-/**
- * A box group (padding, radius…) as linked fields (X and Y, or one value) or
- * one field per side or corner. It opens split when the linked fields can't
- * show the values, and the toggle switches by hand.
- */
+/** Opens split when the linked fields can't show the values */
 function BoxField({
 	title,
 	group,
@@ -748,11 +703,7 @@ function BoxField({
 	);
 }
 
-/**
- * Text field for a scale value with the Tailwind scale in a menu (`4 · 16px`).
- * Typing takes scale values, px (`16px` → `4`), CSS lengths and `[…]`; empty
- * unsets. ↑/↓ step along the scale.
- */
+/** Typing takes scale values, px (`16px` → `4`), CSS lengths and `[…]`; empty unsets */
 function ScaleField({
 	label,
 	ariaLabel,
@@ -856,7 +807,6 @@ function ScaleField({
 	);
 }
 
-/** Radio items for a scale (`label · hint`), plus "Clear" when set. */
 function ScaleMenuItems({
 	value,
 	options,
@@ -891,7 +841,7 @@ function ScaleMenuItems({
 	);
 }
 
-/** A menu of fixed choices (display, weight, shadow…); a value outside them shows as written. */
+/** A value outside the options shows as written */
 function SelectField({
 	label,
 	value,
@@ -936,7 +886,7 @@ function SelectField({
 	);
 }
 
-/** Icon toggles for a few choices; clicking the active one unsets it. */
+/** Clicking the active option unsets it */
 function Segmented({
 	label,
 	value,
@@ -1011,12 +961,9 @@ function IconToggle({
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Colors
-
 let themeColors: Map<string, string> | null = null;
 
-/** A theme token's color in the screens' default (light) theme, for swatches. */
+/** In the screens' default (light) theme */
 function tokenColor(name: string): string {
 	if (!themeColors) {
 		themeColors = new Map();
@@ -1030,7 +977,6 @@ function tokenColor(name: string): string {
 
 const swatchCss = (value: string) => colorCss(value, tokenColor);
 
-/** Transparent shows as a checkerboard under the color. */
 const CHECKERBOARD = "repeating-conic-gradient(#d4d4d8 0 25%, #fff 0 50%) 0 0 / 8px 8px";
 
 function Swatch({ value, className }: { value: string | null; className?: string }) {
@@ -1057,11 +1003,7 @@ function colorLabel(value: string) {
 	return modifier === null ? name : `${name} · ${modifier.replace(/^\[|\]$/g, "")}${/^\d+$/.test(modifier) ? "%" : ""}`;
 }
 
-/**
- * A color property: a swatch button opening the theme tokens, then the
- * palette, then a field for any CSS color and the opacity. Picking keeps the
- * current opacity (`/50`).
- */
+/** Picking keeps the current opacity (`/50`) */
 function ColorField({
 	label,
 	value,
@@ -1189,7 +1131,6 @@ function ColorCell({
 	);
 }
 
-/** Any CSS color (`#0ea5e9`, `oklch(…)`, a token name) and the opacity modifier. */
 function CustomColor({
 	value,
 	base,

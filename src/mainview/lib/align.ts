@@ -1,5 +1,3 @@
-/** Canvas geometry for selection, alignment and distribution. Pure, canvas-space units. */
-
 export type Rect = { x: number; y: number; width: number; height: number };
 
 export type Alignment = "left" | "h-center" | "right" | "top" | "v-middle" | "bottom";
@@ -16,17 +14,14 @@ export function boundsOf(rects: Rect[]): Rect | null {
 	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/** The rect spanned by two corner points, in any order. */
 export function rectFromPoints(a: { x: number; y: number }, b: { x: number; y: number }): Rect {
 	return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
 }
 
-/** True when the rects overlap or touch. */
 export function intersects(a: Rect, b: Rect) {
 	return a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height;
 }
 
-/** Aligns every rect to the selection bounds (Figma behaviour). Returns copies in the same order. */
 export function align<T extends Rect>(rects: T[], alignment: Alignment): T[] {
 	const bounds = boundsOf(rects);
 
@@ -50,10 +45,7 @@ export function align<T extends Rect>(rects: T[], alignment: Alignment): T[] {
 	});
 }
 
-/**
- * Equal gaps between rects along `axis`. The first and last rects (by
- * position) stay put; needs at least 3. Returns copies in the same order.
- */
+/** The outermost rects stay put; needs at least 3. */
 export function distribute<T extends Rect>(rects: T[], axis: Axis): T[] {
 	if (rects.length < 3) return rects;
 	const pos = axis === "horizontal" ? "x" : "y";

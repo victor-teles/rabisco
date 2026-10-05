@@ -5,12 +5,7 @@ import { designThemeCss } from "@/lib/render/theme";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
 import type { Frame, ProjectFiles } from "../../shared/types";
 
-/**
- * Everything the read-only viewer needs (decision 0008), built from the same
- * render path as the canvas: each screen's module graph compiled with Sucrase
- * (cached), the shared Tailwind stylesheet with every class they use, and the
- * DESIGN.md token overrides. `start` is where the viewer opens, if it is a screen.
- */
+/** Read-only viewer payload (decision 0008), built from the same render path as the canvas. */
 export async function buildShareSnapshot(input: {
 	name: string;
 	frames: Frame[];

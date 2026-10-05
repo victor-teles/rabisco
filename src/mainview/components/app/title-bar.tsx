@@ -2,11 +2,7 @@ import type { ComponentProps } from "react";
 import { isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 
-/**
- * Window chrome for the `hiddenInset` title bar: the bar itself drags the
- * window, interactive children opt out with `no-drag`, and the left inset
- * leaves room for the macOS traffic lights.
- */
+/** Drags the window; interactive children opt out with `no-drag`. The left inset clears the traffic lights. */
 export function TitleBar({ className, children, ...props }: ComponentProps<"header">) {
 	return (
 		<header

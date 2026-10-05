@@ -1,15 +1,11 @@
 import type { Frame } from "../../shared/types";
 import { intersects, type Rect } from "./align";
 
-/** ⇧-click: adds the file if missing, removes it if present. */
 export function toggleInSelection(selection: string[], file: string) {
 	return selection.includes(file) ? selection.filter((f) => f !== file) : [...selection, file];
 }
 
-/**
- * Frames touched by a marquee. With `additive` (⇧ held) they join `base`,
- * the selection when the marquee started; otherwise they replace it.
- */
+/** `base` is the selection when the marquee started; `additive` (⇧) joins it instead of replacing it. */
 export function marqueeSelection(frames: Frame[], marquee: Rect, base: string[], additive: boolean) {
 	const hits = frames.flatMap((frame) => (intersects(frame, marquee) ? [frame.file] : []));
 
@@ -18,7 +14,6 @@ export function marqueeSelection(frames: Frame[], marquee: Rect, base: string[],
 	return [...base, ...hits.filter((file) => !base.includes(file))];
 }
 
-/** Keeps canvas order, drops files that have no frame. */
 export function selectedFrames(frames: Frame[], selection: string[]) {
 	const set = new Set(selection);
 

@@ -19,7 +19,6 @@ const BAD = `export default function A() { return <div> }\n`;
 
 type Script = GenerationEvent[] | ((signal: AbortSignal) => AsyncIterable<GenerationEvent>);
 
-/** A provider that plays one scripted stream per call and records the requests. */
 function fakeProvider(scripts: Script[]) {
 	const requests: GenerationRequest[] = [];
 

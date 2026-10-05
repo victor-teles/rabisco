@@ -1,19 +1,13 @@
-/**
- * Paints a `Scene` to a canvas, for PNG and the flow PDF's JPEGs. Every image
- * in a scene is a data URL and nothing else is drawn from outside, so the
- * canvas stays clean and `toDataURL` works in WKWebView too (an SVG
- * `<foreignObject>` would taint it there).
- */
+// Paints scenes directly because an SVG `<foreignObject>` would taint the canvas in WKWebView.
 import { toCss } from "../../shared/export/color";
 import { inset, rectPath, type Paint, type Scene, type SceneOp } from "../../shared/export/scene";
 import { canvasFont } from "./snapshot";
 
-/** Canvas limits that hold in WebKit and Chromium */
+/** Canvas limits that hold in WebKit and Chromium. */
 const MAX_AREA = 16_777_216;
 
 const MAX_SIDE = 16_384;
 
-/** `wanted`, lowered so a `width`×`height` scene fits the canvas limits. */
 export function rasterScale(width: number, height: number, wanted: number) {
 	return Math.max(
 		0.1,
@@ -30,7 +24,6 @@ const LINE_CAPS = new Set<string>(["butt", "round", "square"] satisfies CanvasLi
 
 const LINE_JOINS = new Set<string>(["bevel", "miter", "round"] satisfies CanvasLineJoin[]);
 
-/** Scene strokes carry the computed `stroke-linecap` / `stroke-linejoin` as text. */
 const isLineCap = (value: string): value is CanvasLineCap => LINE_CAPS.has(value);
 
 const isLineJoin = (value: string): value is CanvasLineJoin => LINE_JOINS.has(value);
@@ -62,11 +55,7 @@ async function loadImages(ops: SceneOp[], into = new Map<string, HTMLImageElemen
 	return into;
 }
 
-/**
- * The scene as a PNG or JPEG data URL, `scale` device pixels per CSS pixel
- * (lowered for very tall screens). JPEG has no transparency: it gets a white
- * page under the screen's background.
- */
+/** JPEG has no transparency, so it gets a white page under the screen. */
 export async function rasterize(
 	scene: Scene,
 	{ type, scale: wanted, quality }: { type: "image/png" | "image/jpeg"; scale: number; quality?: number },

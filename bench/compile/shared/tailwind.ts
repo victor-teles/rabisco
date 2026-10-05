@@ -1,6 +1,6 @@
 import { compile } from "tailwindcss";
 
-/** The input every screen shares; DESIGN.md tokens would be appended here. */
+/** DESIGN.md tokens would be appended here. */
 export const TAILWIND_INPUT = `@import "tailwindcss";`;
 
 export function createTailwind(indexCss: string) {

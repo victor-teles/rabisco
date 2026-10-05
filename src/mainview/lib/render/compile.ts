@@ -4,7 +4,6 @@ import { extractCandidates } from "./candidates";
 import { SOURCE_URL_PREFIX, type CompileError } from "./protocol";
 import { extractRequires } from "./resolve";
 
-/** Sucrase's syntax errors carry where they happened. */
 function hasLocation(error: Error): error is Error & { loc: { line: number; column: number } } {
 	if (!("loc" in error) || typeof error.loc !== "object" || error.loc === null) return false;
 	const { loc } = error;
@@ -12,22 +11,17 @@ function hasLocation(error: Error): error is Error & { loc: { line: number; colu
 	return "line" in loc && "column" in loc && typeof loc.line === "number" && typeof loc.column === "number";
 }
 
-/** One project file after Sucrase, with what the host needs to know about it. */
 export type CompiledModule = {
 	path: string;
 	source: string;
-	/** Content hash of `path` + `source` */
 	hash: string;
-	/** CommonJS code ending in a `sourceURL` comment, or `null` when it did not compile */
 	code: string | null;
 	error: CompileError | null;
-	/** Import specifiers as written, e.g. `react`, `../components/card` */
 	imports: string[];
-	/** Tailwind class candidates found in the source */
 	candidates: string[];
 };
 
-/** 53-bit string hash (cyrb53). Fast, and collisions are checked against the source anyway. */
+/** cyrb53; collisions are checked against the source anyway. */
 export function hashString(text: string, seed = 0) {
 	let h1 = 0xdeadbeef ^ seed;
 	let h2 = 0x41c6ce57 ^ seed;
@@ -44,7 +38,6 @@ export function hashString(text: string, seed = 0) {
 	return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-/** Import specifiers found in source, used when the file does not compile. */
 function importsFromSource(source: string) {
 	const found = new Set<string>();
 
@@ -53,15 +46,9 @@ function importsFromSource(source: string) {
 	return [...found];
 }
 
-/** Files whose DOM elements get `data-rabisco-loc`, so the canvas can map a point back to source (drops, direct editing). */
 const LOCATED = /\.(tsx|jsx)$/;
 
-/**
- * Compiles one file with Sucrase. Never throws: errors come back in `error`.
- * TSX is compiled with `data-rabisco-loc="<path>:<offset>"` on every DOM element
- * (offsets into `source`, which stays the original). The attributes only move
- * text within a line, so error lines still match `source`.
- */
+/** Never throws. Injected `data-rabisco-loc` attributes stay within a line, so error lines still match `source`. */
 export function compileSource(path: string, source: string): CompiledModule {
 	const hash = hashString(`${path}\0${source}`);
 	const candidates = extractCandidates(source);
@@ -84,10 +71,9 @@ export function compileSource(path: string, source: string): CompiledModule {
 			candidates,
 		};
 	} catch (error) {
-		// 1-based line and column
 		const loc = error instanceof Error && hasLocation(error) ? error.loc : undefined;
 
-		// Sucrase adds "Error transforming <path>: " and " (line:column)"; the overlay shows both already
+		// Strip Sucrase's path and (line:column) decorations; the overlay shows both already
 		const message = String(error instanceof Error ? error.message : error)
 			.replace(/^Error transforming [^:]*: /, "")
 			.replace(/\s*\(\d+:\d+\)$/, "");
@@ -106,7 +92,6 @@ export function compileSource(path: string, source: string): CompiledModule {
 
 const MAX_ENTRIES = 1000;
 
-/** Compiles files, cached by content hash so unchanged files never recompile. */
 export class CompileCache {
 	#byHash = new Map<string, CompiledModule>();
 	#byPath = new Map<string, CompiledModule>();
@@ -114,7 +99,6 @@ export class CompileCache {
 	misses = 0;
 
 	get(path: string, source: string): CompiledModule {
-		// Fast path: same file, same string
 		const last = this.#byPath.get(path);
 
 		if (last && last.source === source) {
@@ -143,5 +127,4 @@ export class CompileCache {
 	}
 }
 
-/** The cache shared by every frame in the webview. */
 export const compileCache = new CompileCache();

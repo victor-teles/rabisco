@@ -1,4 +1,3 @@
-/** Modules the screen runtime provides to screens, keyed by the specifier screens import. */
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
 import * as ReactDOM from "react-dom";
@@ -59,6 +58,5 @@ export const externals = {
 
 export type ExternalSpecifier = keyof typeof externals;
 
-/** Whether screens can import `specifier` from the runtime. */
 export const isExternalSpecifier = (specifier: string): specifier is ExternalSpecifier =>
 	Object.hasOwn(externals, specifier);

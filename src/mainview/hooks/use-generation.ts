@@ -29,27 +29,21 @@ import { openSettings, useProviders } from "./use-providers";
 import type { ChangeOptions, ProjectState } from "./use-project";
 import type { StructureNode } from "./use-structure";
 
-/** A file the provider is writing right now. `done` once `file.end` arrived. */
 export type WritingFile = { kind: FileKind; screen?: ScreenMeta; text: string; done: boolean };
 
 export type Generation = {
 	id: string;
 	task: "create" | "edit" | "repair" | "context" | "vary";
-	/** Parallel variations of this run; 1 for a single generation */
 	variations: number;
-	/** `variant` is set for the extra variations (1…) of a parallel run */
+	/** `variant` is set only for the extra variations (1…) of a parallel run. */
 	steps: { label: string; detail?: string; variant?: number }[];
-	/** Assistant text streamed so far */
 	reply: string;
-	/** 1 for the first try, then automatic repairs */
 	attempt: number;
 	writing: Record<string, WritingFile>;
 };
 
 export type GenerationDrafts = {
-	/** Placeholder frames for screens that don't exist yet */
 	frames: Frame[];
-	/** Project files with every finished file of the generation applied, so frames render before it ends */
 	files: ProjectFiles;
 	writing: Record<string, WritingFile>;
 };
@@ -57,23 +51,16 @@ export type GenerationDrafts = {
 type SendOptions = {
 	targets?: string[];
 	files?: File[];
-	/**
-	 * `context`: write the context file in `targets`. `vary`: new alternates of the one screen in `targets`.
-	 * Otherwise the task follows from `targets` (edit or create).
-	 */
+	/** Unset: edit when `targets` is non-empty, else create. */
 	task?: "context" | "vary";
-	/** Parallel variations, for create and vary */
 	variations?: number;
-	/** Read-only files for an edit (Mix) */
 	references?: string[];
-	/** Point and prompt: the one element of the one target the edit is about */
 	focus?: ElementFocus;
 	repair?: { problems: Problem[] };
 };
 
 type LastRequest = { prompt: string; options: SendOptions };
 
-/** How long to wait for frames to report a render error after a generation lands */
 const RENDER_CHECK_MS = 2500;
 
 const message = (role: ChatMessage["role"], content: string): ChatMessage => ({
@@ -114,7 +101,6 @@ async function toAttachments(files: File[] = []): Promise<Attachment[]> {
 function applyEvent(generation: Generation, attempt: number, event: GenerationEvent, variant?: number): Generation {
 	switch (event.type) {
 		case "status": {
-			// Parallel variations interleave; skip repeats within one variation
 			const label = variantLabel(event.label, variant);
 			const last = [...generation.steps].reverse().find((step) => (step.variant ?? 0) === (variant || 0));
 
@@ -127,7 +113,7 @@ function applyEvent(generation: Generation, attempt: number, event: GenerationEv
 		}
 
 		case "message.delta":
-			// Repairs talk about the fix, and parallel variations all talk at once: keep the primary's first attempt
+			// Keep only the primary variation's first attempt; the others would interleave
 			return attempt <= 1 && !variant ? { ...generation, reply: generation.reply + event.text } : generation;
 		case "file.start":
 			return {
@@ -167,11 +153,6 @@ function applyEvent(generation: Generation, attempt: number, event: GenerationEv
 	}
 }
 
-/**
- * Runs generations for the editor: streams provider events into the chat and
- * the canvas, applies the validated result as one undo step, checks that the
- * new screens render and asks for one repair when they don't.
- */
 export function useGeneration({
 	projectPath,
 	stateRef,
@@ -198,7 +179,7 @@ export function useGeneration({
 	const flush = useRef(0);
 	const last = useRef<LastRequest | null>(null);
 
-	// Events can arrive per token; batch them into one render per frame
+	// Events arrive per token; batch them into one render per frame
 	useEffect(
 		() =>
 			onGenerationEvent(({ generationId, attempt, variant, event }) => {
@@ -215,7 +196,6 @@ export function useGeneration({
 		[],
 	);
 
-	/** Waits for frames of `screens` to render and collects their errors, by screen. */
 	const collectRenderErrors = useCallback((screens: string[]) => {
 		type Failure = { entry: string; problem: Problem };
 
@@ -245,7 +225,6 @@ export function useGeneration({
 	}, []);
 
 	const run = useCallback(
-		/** Resolves to whether the result was applied. */
 		async (prompt: string, options: SendOptions = {}): Promise<boolean> => {
 			const current = stateRef.current;
 
@@ -259,7 +238,6 @@ export function useGeneration({
 
 			const generationId = crypto.randomUUID();
 			const task = options.repair ? "repair" : (options.task ?? (options.targets?.length ? "edit" : "create"));
-			// Variations apply to new screens only; edits change the selected ones
 			const variations = task === "create" || task === "vary" ? Math.max(1, options.variations ?? 1) : 1;
 			last.current = options.repair ? last.current : { prompt, options };
 			setFailure(null);
@@ -295,7 +273,6 @@ export function useGeneration({
 					return false;
 				}
 
-				// New frames go right of the canvas; new alternates go below their group
 				const placedFiles = new Set(latest.canvas.frames.map((frame) => frame.file));
 
 				const placed = placeNewFrames(
@@ -320,7 +297,6 @@ export function useGeneration({
 					? `\n\nI couldn't make ${[...new Set(result.problems.map((p) => p.path))].join(", ")} valid, so I left ${result.problems.length === 1 ? "it" : "them"} out:\n${result.problems.map((p) => `• ${p.path}${p.line ? `:${p.line}` : ""}: ${p.message}`).join("\n")}`
 					: "";
 
-				// `context` records which files shaped this result; the chat and the Context panel show it
 				addMessages([{ ...message("assistant", reply + leftOut), context: result.context ?? [] }]);
 
 				if (placed.length) onPlaced(placed);
@@ -337,7 +313,7 @@ export function useGeneration({
 				setGeneration((g) => (g?.id === generationId ? null : g));
 			}
 
-			// Check 5 of decision 0003: the frames must render. One automatic repair, then the error stays in the frame.
+			// Decision 0003, check 5: one automatic repair, then the error stays in the frame.
 			const failures = await collectRenderErrors(check.screens);
 
 			if (failures.length && !live.current) {
@@ -354,7 +330,6 @@ export function useGeneration({
 		[stateRef, model, projectPath, device, change, addMessages, onPlaced, collectRenderErrors],
 	);
 
-	/** Whether a new request can start; points to Settings when no model is set up. */
 	const ready = useCallback(() => {
 		if (!stateRef.current || live.current) return false;
 
@@ -368,11 +343,7 @@ export function useGeneration({
 		return true;
 	}, [stateRef, model]);
 
-	/**
-	 * With `targets` the prompt edits them and `variations` is ignored; without, it creates `variations` versions.
-	 * With `focus` (point and prompt) it edits that element of its file only, and `targets` is that file. When the
-	 * element is gone from the current source, it falls back to an edit of the whole file.
-	 */
+	/** `variations` is ignored when editing `targets`; a stale `focus` falls back to editing the whole file. */
 	const send = useCallback(
 		(
 			prompt: string,
@@ -402,7 +373,6 @@ export function useGeneration({
 		[ready, stateRef, addMessages, run],
 	);
 
-	/** "Vary this": `count` new alternates of `target`, with an optional direction ("bolder"). The screen stays as it is. */
 	const vary = useCallback(
 		(target: string, direction: string, count: number) => {
 			if (!ready()) return;
@@ -413,7 +383,6 @@ export function useGeneration({
 		[ready, stateRef, addMessages, run],
 	);
 
-	/** Mix: takes `section` ("header") of `source` into `receiver`, an edit that only reads `source`. */
 	const mix = useCallback(
 		(receiver: string, source: string, section: string) => {
 			if (!ready() || !section.trim()) return;
@@ -425,11 +394,6 @@ export function useGeneration({
 		[ready, stateRef, addMessages, run],
 	);
 
-	/**
-	 * Writes PRODUCT.md or DESIGN.md with a `context` generation. `note` is the
-	 * user-visible chat message ("Write DESIGN.md from my screens"); the prompt
-	 * itself can be longer. Resolves to whether the file was written.
-	 */
 	const writeContext = useCallback(
 		async (path: ContextFileName, prompt: string, note?: string): Promise<boolean> => {
 			if (!ready()) return false;
@@ -451,7 +415,6 @@ export function useGeneration({
 		if (last.current) void run(last.current.prompt, last.current.options);
 	}, [run]);
 
-	// Stop a running generation when the editor closes
 	useEffect(() => () => stop(), [stop]);
 
 	const writing = generation?.writing;

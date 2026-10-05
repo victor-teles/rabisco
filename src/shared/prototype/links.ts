@@ -1,9 +1,4 @@
-/**
- * Prototype links (decision 0007): an element links to another screen with a
- * `data-link-to` attribute in its TSX, e.g. `data-link-to="screens/settings.tsx"`,
- * or `data-link-to="back"` to go back. Play mode follows them; the canvas draws
- * them. Only string literals count: an expression is code, not a link.
- */
+// Decision 0007. Only string literals count: an expression is code, not a link.
 
 import { isString } from "../guards";
 import type { Json } from "../json";
@@ -12,22 +7,18 @@ import { findElement, flatten, parseFile, type JsxElement } from "../jsx/tree";
 import { isComponentFile, isScreenFile } from "../project";
 import type { FileChange, ProjectFiles } from "../types";
 
-/** The attribute that holds an element's link. */
 export const LINK_ATTRIBUTE = "data-link-to";
 
-/** The link target that goes back to the previous screen. */
 export const BACK = "back";
 
-/** An element of a file, by its start offset in the current source. */
 export type ElementRef = { file: string; start: number };
 
-/** One link in a project: the element at `start` of `file` links to `to`, as written. */
+/** `to` as written */
 export type ProjectLink = ElementRef & { to: string };
 
-/** What a link's value points to: a screen file of the project, "back", or nothing that exists. */
 export type ResolvedLink = { kind: "screen"; file: string } | { kind: "back" } | { kind: "broken"; to: string };
 
-/** The value of a `{"…"}`, `{'…'}` or `` {`…`} `` expression without interpolation; `undefined` for anything else. */
+/** `{"…"}`, `{'…'}` or `` {`…`} `` without interpolation */
 function stringLiteral(text: string): string | undefined {
 	const trimmed = text.trim();
 	const match = /^(["'`])([\s\S]*)\1$/.exec(trimmed);
@@ -50,10 +41,7 @@ function stringLiteral(text: string): string | undefined {
 	return body!.includes("'") || body!.includes("\\") ? undefined : body;
 }
 
-/**
- * The link written on `element`: the string value of its last `data-link-to`.
- * `null` when it has none, or when the value is an expression (`{target}`).
- */
+/** The last `data-link-to` wins; `null` when the value is an expression. */
 export function linkOfElement(element: JsxElement): string | null {
 	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === LINK_ATTRIBUTE);
 
@@ -63,14 +51,13 @@ export function linkOfElement(element: JsxElement): string | null {
 	return value?.trim() ? value.trim() : null;
 }
 
-/** Whether `element` has a `data-link-to` whose value is code rather than a string (read-only in the inspector). */
+/** Read-only in the inspector */
 export function hasExpressionLink(element: JsxElement): boolean {
 	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === LINK_ATTRIBUTE);
 
 	return attribute?.kind === "attribute" && attribute.value?.kind === "expression" && linkOfElement(element) === null;
 }
 
-/** The link of the element at `ref`, as written; `null` when it has none, or the file or element is gone. */
 export function readLink(files: ProjectFiles, ref: ElementRef): string | null {
 	const source = files[ref.file];
 
@@ -81,22 +68,15 @@ export function readLink(files: ProjectFiles, ref: ElementRef): string | null {
 	return element ? linkOfElement(element) : null;
 }
 
-/**
- * Links the element at `start` to `to` (a screen path or `"back"`), or removes
- * its link when `to` is `null`. Returns the new source, or `null` when the
- * file doesn't parse or has no element there. Formatting follows `setAttribute`.
- */
+/** `to: null` removes the link; `null` result when the file doesn't parse or no element is there. */
 export function setLink(source: string, start: number, to: string | null): string | null {
 	return setAttribute(source, start, LINK_ATTRIBUTE, to === null || !to.trim() ? null : to.trim());
 }
 
-/** Files that can hold links: screens, and components (a link in a component applies wherever it renders). */
+/** A link in a component applies wherever it renders. */
 const canLink = (path: string) => isScreenFile(path) || isComponentFile(path);
 
-/**
- * Every literal link of the project, by file (sorted) then source order.
- * Files that don't parse, and expression values, are skipped.
- */
+/** By file (sorted) then source order */
 export function listLinks(files: ProjectFiles): ProjectLink[] {
 	const links: ProjectLink[] = [];
 
@@ -118,11 +98,7 @@ export function listLinks(files: ProjectFiles): ProjectLink[] {
 	return links;
 }
 
-/**
- * The screen path a link value names, forgiving what people and models write:
- * `./settings.tsx`, `/screens/settings.tsx`, `settings` and `screens/settings`
- * all mean `screens/settings.tsx`.
- */
+/** `./settings.tsx`, `/screens/settings.tsx` and `settings` all mean `screens/settings.tsx`. */
 export function normalizeTarget(to: string): string {
 	let path = to
 		.trim()
@@ -136,10 +112,6 @@ export function normalizeTarget(to: string): string {
 	return path;
 }
 
-/**
- * Where a link goes: `"back"`, an existing screen file of `files`, or broken
- * (the screen was deleted or renamed, or the value names no screen).
- */
 export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 	if (to.trim().toLowerCase() === BACK) return { kind: "back" };
 	const file = normalizeTarget(to);
@@ -147,10 +119,7 @@ export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 	return isScreenFile(file) && files[file] !== undefined ? { kind: "screen", file } : { kind: "broken", to };
 }
 
-/**
- * Points every link to `from` at `to` instead, for a screen that was renamed.
- * Returns the files to write (none when nothing linked to `from`).
- */
+/** For a renamed screen */
 export function retargetLinks(files: ProjectFiles, from: string, to: string): FileChange[] {
 	const changes: FileChange[] = [];
 	const byFile = new Map<string, ProjectLink[]>();

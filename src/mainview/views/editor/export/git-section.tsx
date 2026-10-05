@@ -24,11 +24,7 @@ type Failure = { error: string; detail?: string };
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
-/**
- * Git sync (decision 0008): set up a repository, set its remote, and sync:
- * commit the project folder, bring in the remote's commits, push. Pulled screens
- * reach the canvas through the folder watcher; the canvas layout is reloaded.
- */
+/** Git sync (decision 0008). Pulled screens reach the canvas through the folder watcher. */
 export function GitSection({
 	projectPath,
 	projectName,
@@ -61,7 +57,6 @@ export function GitSection({
 		setBusy(null);
 	}, [fetchStatus]);
 
-	// `busy` starts as "load"
 	useEffect(() => {
 		let cancelled = false;
 		void fetchStatus().then((next) => {
@@ -300,7 +295,6 @@ export function GitSection({
 	);
 }
 
-/** A git failure: the sentence, with git's own output behind a disclosure. */
 function FailureNote({ failure }: { failure: Failure }) {
 	return (
 		<div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">

@@ -1,57 +1,45 @@
-/**
- * Git sync (decision 0008): types shared by the main process (`src/bun/git.ts`)
- * and the Share dialog, and the commit message Rabisco writes.
- */
+// Git sync: docs/decisions/0008-share-link-and-git-sync.md
 import { isComponentFile, isScreenFile, screenNameFromPath } from "./project";
 
 export type GitCommit = { hash: string; subject: string; date: string };
 
 export type GitStatus =
-	/** No usable `git` on this computer */
 	| { state: "unavailable"; error: string }
-	/** The project folder isn't in a repository */
 	| { state: "none" }
 	| {
 			state: "repo";
-			/** Top folder of the repository: the project folder, or a folder above it */
 			root: string;
-			/** The project's path inside the repository, `""` when it is the root */
+			/** `""` when the project folder is the repository root */
 			prefix: string;
 			/** `null` when HEAD is detached */
 			branch: string | null;
 			hasCommits: boolean;
-			/** The remote sync uses, with credentials removed from the URL */
+			/** Credentials removed from the URL */
 			remote: { name: string; url: string } | null;
 			/** e.g. `origin/main`; `null` before the first push */
 			upstream: string | null;
-			/** Commits not pushed / not pulled yet, as of the last fetch */
+			/** As of the last fetch */
 			ahead: number;
 			behind: number;
-			/** Changed files in the project folder (staged, unstaged or untracked) */
+			/** Staged, unstaged or untracked */
 			changes: number;
-			/** The last commit that touched the project folder */
 			lastCommit: GitCommit | null;
-			/** A rebase or merge someone started and didn't finish */
 			unfinished: "rebase" | "merge" | null;
 	  };
 
 export type GitSyncResult =
 	| {
 			ok: true;
-			/** The commit Rabisco made for local changes, if there were any */
 			committed: GitCommit | null;
-			/** Commits brought in from the remote */
 			pulled: number;
-			/** Commits pushed to the remote */
 			pushed: number;
-			/** Remote used, `null` when there is none (commit only) */
+			/** `null` when there is none (commit only) */
 			remote: string | null;
-			/** One sentence for a toast */
 			summary: string;
 	  }
 	| { ok: false; error: string; /** Git's own output */ detail?: string };
 
-/** One changed path, project-relative, with git's one-letter status (`A`, `M`, `D`, `R`, `?`…). */
+/** Git's one-letter status (`A`, `M`, `D`, `R`, `?`…); project-relative path */
 export type ChangedPath = { status: string; path: string };
 
 type Verb = "add" | "update" | "remove";
@@ -64,10 +52,7 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 /** `screens/order-history.tsx` → `order history` */
 const shortName = (path: string) => screenNameFromPath(path).toLowerCase();
 
-/**
- * The commit message for `changes`: a subject like `Rabisco: add 2 screens,
- * update button component` and a body that lists the files.
- */
+/** e.g. `Rabisco: add 2 screens, update button component`, with a body listing the files */
 export function commitMessage(changes: ChangedPath[]): string {
 	const parts: string[] = [];
 
@@ -119,7 +104,6 @@ export function commitMessage(changes: ChangedPath[]): string {
 	return `${subject}\n\n${body}\n`;
 }
 
-/** A remote URL without the user name and password (`https://token@github.com/…` → `https://github.com/…`). */
 export function redactRemoteUrl(url: string): string {
 	return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, "$1");
 }

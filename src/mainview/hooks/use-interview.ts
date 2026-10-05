@@ -18,7 +18,7 @@ import { useProviders } from "./use-providers";
 import type { ChangeOptions } from "./use-project";
 
 export type Interview = {
-	/** 1-based number of the question being asked */
+	/** 1-based. */
 	step: number;
 	total: number;
 };
@@ -30,13 +30,6 @@ const message = (role: ChatMessage["role"], content: string): ChatMessage => ({
 	createdAt: new Date().toISOString(),
 });
 
-/**
- * "Write my PRODUCT.md": asks the interview questions as chat messages, takes
- * the answers from the composer and then writes PRODUCT.md with a `context`
- * generation, or straight from the answers when no model is configured.
- * Questions and answers are regular, persisted chat messages; only the
- * position in the interview lives here.
- */
 export function useInterview({
 	projectName,
 	addMessages,
@@ -48,12 +41,11 @@ export function useInterview({
 	addMessages: (messages: ChatMessage[]) => void;
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
 	writeContext: (path: ContextFileName, prompt: string, note?: string) => Promise<boolean>;
-	/** PRODUCT.md was written */
 	onWritten: () => void;
 }) {
 	const { model } = useProviders();
 	const [state, setState] = useState<InterviewState | null>(null);
-	// Answers can arrive faster than a render; read the latest state from here
+	// Answers can arrive faster than a render
 	const live = useRef<InterviewState | null>(null);
 
 	const update = (next: InterviewState | null) => {
@@ -77,7 +69,6 @@ export function useInterview({
 				return;
 			}
 
-			// No model: the answers already are a PRODUCT.md
 			const content = productFromAnswers(done, projectName);
 			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "PRODUCT.md": content } }));
 			addMessages([
@@ -94,7 +85,6 @@ export function useInterview({
 		[model, projectName, addMessages, change, writeContext, onWritten],
 	);
 
-	/** Moves past the current question with `next` and asks the following one, or finishes. */
 	const advance = useCallback(
 		(next: InterviewState, answer?: string) => {
 			const following = currentQuestion(next);

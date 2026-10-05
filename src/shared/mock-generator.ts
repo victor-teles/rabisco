@@ -1,11 +1,6 @@
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "./project";
 import type { Device, FileChange, Frame, GenerateScreensResult } from "./types";
 
-/**
- * Placeholder design generator. It turns a prompt into a few TSX screens built
- * from shadcn components, plus shared project components, so the canvas, files
- * and chat can be built end to end. Replace it with a real provider (src/bun/ai).
- */
 
 export const GENERATION_STEPS = [
 	{ label: "Reading your brief" },
@@ -14,7 +9,7 @@ export const GENERATION_STEPS = [
 	{ label: "Polishing details" },
 ];
 
-/** Tailwind color families used as the accent; the full class names appear in the generated source. */
+/** Full class names appear in the generated source so Tailwind sees them. */
 const ACCENTS = ["blue", "violet", "emerald", "orange", "rose"] as const;
 
 type Accent = (typeof ACCENTS)[number];
@@ -59,7 +54,6 @@ function titleFromPrompt(prompt: string) {
 	return picked.join(" ") || "Untitled";
 }
 
-/** Text that is safe as a JSX child: plain when possible, otherwise a string expression. */
 function jsxText(text: string) {
 	const clean = text.replace(/\s+/g, " ").trim();
 
@@ -70,7 +64,7 @@ type Draft = { name: string; source: string };
 
 type Context = { title: string; brief: string; accent: Accent };
 
-/** Shared project components. Their content never depends on the prompt, so an existing file is reused as is. */
+/** Never depend on the prompt, so an existing file is reused as is. */
 const COMPONENTS = new Map(
 	Object.entries({
 		"components/stat-card.tsx": `import type { LucideIcon } from "lucide-react";
@@ -457,7 +451,6 @@ export default function Dashboard() {
 	];
 }
 
-/** Project components a screen imports through `../components/<name>`. */
 function importedComponents(source: string) {
 	return [...source.matchAll(/from "\.\.\/(components\/[a-z0-9-]+)"/g)].map((m) => `${m[1]}.tsx`);
 }

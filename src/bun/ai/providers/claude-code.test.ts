@@ -44,7 +44,6 @@ async function collect(events: AsyncIterable<GenerationEvent>) {
 	return out;
 }
 
-/** A recorded `claude -p --output-format stream-json --verbose` run, with the staging dir filled in. */
 const recording = (dir: string) => [
 	{
 		type: "system",

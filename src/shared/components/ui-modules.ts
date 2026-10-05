@@ -1,8 +1,5 @@
-/**
- * The `@/components/ui/*` modules a frame can import, with their exports.
- * Mirrors `src/mainview/runtime/externals.ts` (importing it here would pull
- * React DOM components into the main process); a test keeps them in sync.
- */
+// Mirrors `src/mainview/runtime/externals.ts` (importing it would pull React DOM into the main process);
+// a test keeps them in sync.
 const MODULE_EXPORTS = {
 	avatar: ["Avatar", "AvatarImage", "AvatarFallback", "AvatarBadge", "AvatarGroup", "AvatarGroupCount"],
 	badge: ["Badge", "badgeVariants"],

@@ -16,43 +16,35 @@ import type {
 	ProjectSummary,
 } from "./types";
 
-/**
- * Contract between the main process (`bun`) and the webview (`webview`).
- * `bun.requests` are handled in src/bun, `webview.messages` are pushed to the UI.
- * Projects are identified by their absolute folder path.
- */
+/** Projects are identified by their absolute folder path. */
 export type RabiscoRPC = {
 	bun: RPCSchema<{
 		requests: {
-			/** Recent project folders, most recent first. Migrates legacy JSON projects on first call. */
+			/** Most recent first. Migrates legacy JSON projects on first call. */
 			listRecents: { params: {}; response: ProjectSummary[] };
-			/** Shows the native folder picker. */
 			pickProjectFolder: { params: {}; response: string | null };
-			/** Opens any folder as a project (creating `rabisco.json` if needed), adds it to recents and starts watching it. */
+			/** Creates `rabisco.json` if needed, adds to recents and starts watching. */
 			openProject: { params: { path: string }; response: Project };
-			/** Stops watching the folder. */
 			closeProject: { params: { path: string }; response: { ok: true } };
-			/** Creates `<name>.rabisco/` in the default projects directory. */
+			/** In the default projects directory */
 			createProject: { params: { name: string; device: Device }; response: Project };
 			saveCanvas: { params: { path: string; canvas: CanvasDoc }; response: { ok: true } };
 			writeFiles: { params: { path: string; changes: FileChange[] }; response: { ok: true } };
 			appendMessages: { params: { path: string; messages: ChatMessage[] }; response: { ok: true } };
-			/** Forgets the folder without touching it. */
 			removeRecent: { params: { path: string }; response: { ok: true } };
-			/** Moves the folder to the trash and forgets it. */
+			/** Moves the folder to the trash */
 			deleteProject: { params: { path: string }; response: { ok: true } };
 			revealProject: { params: { path: string }; response: { ok: true } };
-			/** Runs one generation with the provider of `params.model`. Events stream through `generationEvent`. */
+			/** Events stream through `generationEvent`. */
 			generate: { params: GenerateParams; response: GenerateResult };
-			/** Aborts a running generation; `generate` then resolves with `aborted`. */
+			/** `generate` then resolves with `aborted`. */
 			stopGeneration: { params: { generationId: string }; response: { ok: true } };
 
-			/** Configured providers with their health and models. `refresh` re-checks health and models. */
 			listProviders: {
 				params: { refresh?: boolean };
 				response: { settings: ProviderSettings; statuses: ProviderStatus[] };
 			};
-			/** Adds a provider. `apiKey` goes to the OS keychain. */
+			/** `apiKey` goes to the OS keychain. */
 			addProvider: {
 				params: { type: ProviderType; label?: string; baseUrl?: string; binPath?: string; apiKey?: string };
 				response: ProviderStatus;
@@ -67,58 +59,42 @@ export type RabiscoRPC = {
 				response: ProviderStatus;
 			};
 			removeProvider: { params: { id: string }; response: { ok: true } };
-			/** Checks health and lists models again for one provider. */
 			testProvider: { params: { id: string }; response: ProviderStatus };
 			setDefaultModel: { params: { model: string }; response: { ok: true } };
 			openExternal: { params: { url: string }; response: { ok: true } };
-			/**
-			 * Finds PRODUCT.md and DESIGN.md in another folder (an existing repository) and returns
-			 * their content. Nothing is written: the editor applies them as one undoable step.
-			 */
+			/** Writes nothing: the editor applies the result as one undoable step. */
 			importContext: {
 				params: { from: string };
 				response: {
 					files: {
 						path: ContextFileName;
 						content: string;
-						/** Path inside `from` where it was found */ source: string;
+						/** Path inside `from` */ source: string;
 					}[];
 				};
 			};
 
-			// Phase 7: export and handoff
-			/** Native folder picker for exports; `null` when cancelled. */
 			pickExportFolder: { params: {}; response: string | null };
-			/**
-			 * Writes `files` into `<dir>/<name>` (`-2`, `-3`… when taken), or straight into `dir`
-			 * when `name` is omitted. Paths can't leave the folder. `reveal` shows it in Finder.
-			 * Returns the folder written to.
-			 */
+			/** Into `<dir>/<name>` (`-2`… when taken), or `dir` without `name`. Paths can't leave the folder. */
 			writeExport: {
 				params: { dir: string; name?: string; files: ExportFile[]; reveal?: boolean };
 				response: { dir: string };
 			};
 
-			// Share a read-only link and export the viewer (decision 0008)
-			/** Starts sharing the project at a random link on the local network, or updates what the link shows. */
+			/** Random link on the local network; republishing updates what it shows. */
 			sharePublish: { params: { path: string; snapshot: ShareSnapshot }; response: ShareStatus };
-			/** The project's share link; `null` when it isn't shared. */
 			shareStatus: { params: { path: string }; response: ShareStatus | null };
-			/** Stops sharing: the link stops working. */
 			shareStop: { params: { path: string }; response: { ok: true } };
-			/** Writes the read-only viewer as a static site into `<dir>/<name>` (`-2`… when taken). */
+			/** Into `<dir>/<name>` (`-2`… when taken) */
 			exportViewer: {
 				params: { dir: string; name: string; snapshot: ShareSnapshot; reveal?: boolean };
 				response: { dir: string };
 			};
 
-			// Sync to a git repository (decision 0008)
 			gitStatus: { params: { path: string }; response: GitStatus };
-			/** `git init`, a .gitignore and a first commit. */
 			gitInit: { params: { path: string; name: string }; response: GitStatus };
-			/** Adds or changes the remote sync pushes to. */
 			gitSetRemote: { params: { path: string; url: string }; response: GitStatus };
-			/** Commits the project folder, rebases onto the remote and pushes. Never forces. */
+			/** Commit, rebase onto the remote, push. Never forces. */
 			gitSync: { params: { path: string }; response: GitSyncResult };
 		};
 		messages: {};
@@ -127,7 +103,7 @@ export type RabiscoRPC = {
 		requests: {};
 		messages: {
 			generationEvent: GenerationEventMessage;
-			/** Files changed on disk outside Rabisco (external editor, git). Writes made through `writeFiles` are not echoed. */
+			/** Outside Rabisco only: writes made through `writeFiles` are not echoed. */
 			filesChanged: { path: string; changes: FileChange[] };
 		};
 	}>;

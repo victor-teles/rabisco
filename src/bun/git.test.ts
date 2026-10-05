@@ -7,7 +7,7 @@ import { tempDir } from "./test-utils";
 
 const hasGit = resolveBinary("git") !== null && Bun.spawnSync(["git", "--version"]).exitCode === 0;
 
-/** A fixed identity and no user or system config, so the tests behave the same everywhere. */
+/** No user or system config, so the tests behave the same everywhere. */
 const ENV = {
 	GIT_AUTHOR_NAME: "Test",
 	GIT_AUTHOR_EMAIL: "test@example.com",
@@ -33,7 +33,6 @@ afterAll(() => {
 	}
 });
 
-/** Runs git outside Rabisco, like a collaborator would. */
 function sh(cwd: string, ...args: string[]) {
 	const result = Bun.spawnSync(["git", ...args], { cwd, env: { ...process.env, ...ENV } });
 
@@ -125,14 +124,12 @@ describe.skipIf(!hasGit)("git sync", () => {
 		expect(first).toMatchObject({ ok: true, pushed: 1, pulled: 0, remote: "origin" });
 		expect(await git.status(dir)).toMatchObject({ upstream: "origin/main", ahead: 0, behind: 0 });
 
-		// A collaborator pushes a change
 		const other = join(tempDir(), "clone");
 		sh(tempDir(), "clone", "-q", bare, other);
 		writeFileSync(join(other, "DESIGN.md"), "# Design\n\n- primary: red\n");
 		sh(other, "commit", "-qam", "Change the design");
 		sh(other, "push", "-q");
 
-		// A local change, not synced yet: one ahead
 		writeFileSync(join(dir, "screens/about.tsx"), "export default () => null;\n");
 		sh(dir, "add", ".");
 		sh(dir, "commit", "-qm", "Add about");

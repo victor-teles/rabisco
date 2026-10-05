@@ -1,4 +1,4 @@
-/** 53-bit string hash (cyrb53), same as the renderer's compile cache. */
+/** cyrb53, same as the renderer's compile cache */
 export function hashString(text: string, seed = 0) {
 	let h1 = 0xdeadbeef ^ seed;
 	let h2 = 0x41c6ce57 ^ seed;

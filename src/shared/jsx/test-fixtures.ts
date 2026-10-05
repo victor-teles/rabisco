@@ -1,5 +1,3 @@
-/** Realistic generated files for the JSX tests (imported by tests only). */
-
 import { transform } from "sucrase";
 
 export const DASHBOARD = `import { useState } from "react";
@@ -106,7 +104,7 @@ export function TabBar({ active = 0 }: { active?: number }) {
 }
 `;
 
-/** Compiles like the renderer does; throws on a syntax error. */
+/** Like the renderer; throws on a syntax error */
 export function compiles(source: string) {
 	transform(source, { transforms: ["typescript", "jsx", "imports"], jsxRuntime: "automatic", production: true });
 

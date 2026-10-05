@@ -1,7 +1,3 @@
-/**
- * Screen runtime: runs inside each sandboxed frame. Receives compiled modules and CSS from the
- * host, links them with the runtime's React and shadcn components, and renders the entry screen.
- */
 import { Component, useEffect, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -26,17 +22,15 @@ const registry = new ModuleRegistry(externals);
 
 const style = document.getElementById("rabisco-css") ?? document.head.appendChild(document.createElement("style"));
 
-/** DESIGN.md token overrides; after the main stylesheet so they win */
+// DESIGN.md token overrides; appended after the main stylesheet so they win
 const themeStyle = document.head.appendChild(document.createElement("style"));
 
 let entry = "";
 
 let version = 0;
 
-/** `sourceVersion` of the entry source the DOM was rendered from: hit offsets refer to it */
 let renderedVersion: string | null = null;
 
-/** The element whose boxes the host tracks, and the last boxes sent for it */
 let tracked: { start: number; version: string; sent: string } | null = null;
 
 let textEdit: TextEdit | null = null;
@@ -54,15 +48,10 @@ function reportError(cause: unknown) {
 
 const rootElement = document.getElementById("root")!;
 
-/** Play mode: linked elements navigate (decision 0007) */
 const play = createPlay(rootElement, post);
 
 const reportHeight = heightReporter((height) => post({ type: "size", height }));
 
-/**
- * The screen's content height, for compare mode: the bottom of the root's children, or the
- * root's scroll height when content overflows it. Viewport-tall screens report the viewport.
- */
 function measure() {
 	if (rootElement.scrollHeight > rootElement.clientHeight) return reportHeight(rootElement.scrollHeight);
 	let bottom = 0;
@@ -72,7 +61,6 @@ function measure() {
 	reportHeight(bottom);
 }
 
-/** Sends the tracked element's boxes when they changed. Waits for the version the host asked about. */
 function reportBoxes() {
 	if (!tracked || !entry || tracked.version !== renderedVersion) return;
 	const boxes = boxesOf(instancesOf(rootElement, locationOf(entry, tracked.start)));
@@ -99,7 +87,6 @@ const resizes = new ResizeObserver(scheduleMeasure);
 
 resizes.observe(rootElement);
 
-// Re-observe the screen's top-level elements whenever the tree changes
 new MutationObserver(() => {
 	for (const child of rootElement.children) resizes.observe(child);
 	scheduleMeasure();
@@ -127,7 +114,7 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
 	}
 }
 
-/** Reports a successful commit once the screen's own effects have run: from then on, the DOM is `source`'s. */
+/** Reports the commit only after the screen's own effects have run. */
 function Rendered({ source, children }: { source: string; children: ReactNode }) {
 	useEffect(() => {
 		renderedVersion = source;
@@ -139,7 +126,6 @@ function Rendered({ source, children }: { source: string; children: ReactNode })
 	return children;
 }
 
-/** A React component: a function or class, or an exotic one such as `memo` or `forwardRef` (tagged `$$typeof`). */
 function isComponent(value: unknown): value is ComponentType {
 	return typeof value === "function" || (typeof value === "object" && value !== null && "$$typeof" in value);
 }
@@ -230,7 +216,6 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	} else if (message?.type === "measure") {
 		post({ type: "measured", id: message.id, height: contentHeight() });
 	} else if (message?.type === "snapshot") {
-		// Image export (`snapshot.ts`): the screen as a scene, and a raster of it when asked
 		const { id, raster } = message;
 		void (async () => {
 			try {
@@ -258,11 +243,10 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		const invalid = registry.apply(message.modules, message.reset);
 		const entryChanged = message.entry !== entry;
 
-		// Another screen starts at its top (play mode navigates within one frame)
+		// Play mode navigates within one frame, so reset scroll on screen change
 		if (entryChanged && entry) window.scrollTo(0, 0);
 		entry = message.entry;
 
-		// Re-run only when the entry or something it loaded changed (or it never loaded)
 		if (entryChanged || invalid.has(entry) || !registry.isLoaded(entry)) render();
 	}
 });

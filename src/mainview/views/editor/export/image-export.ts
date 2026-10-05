@@ -1,12 +1,3 @@
-/**
- * Image export (Phase 7): PNG and SVG files of screens, and a PDF of the flow.
- *
- * Each screen renders in its own hidden frame at its canvas size (so screens
- * that aren't on screen, or never rendered, export too), grows to its content
- * height, and answers a `snapshot` with a `Scene` (`runtime/snapshot.ts`).
- * SVG is written from the scene here; PNG and the PDF's JPEGs are painted
- * from it inside the frame (`runtime/raster.ts`).
- */
 import { toast } from "sonner";
 import { FrameHost, runtimeUrl, type Snapshot } from "@/lib/render/frame-host";
 import type { SnapshotRaster } from "@/lib/render/protocol";
@@ -23,10 +14,9 @@ const SCALE = 2;
 
 const JPEG_QUALITY = 0.88;
 
-/** Screens rendering at once */
 const PARALLEL = 3;
 
-/** How often a screen may grow to fit content that grew with it (e.g. `min-h-screen`) */
+/** Passes to grow a screen whose content grows with it (e.g. `min-h-screen`) */
 const GROW_PASSES = 3;
 
 type Rendered = { frame: Frame; snapshot: Snapshot };
@@ -35,11 +25,7 @@ type Failure = { frame: Frame; message: string };
 
 const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
 
-/**
- * Renders `frame` in a hidden sandboxed frame and snapshots it at its full
- * content height. The frame stays inside the viewport (invisible), since
- * browsers throttle offscreen cross-origin frames.
- */
+/** The frame stays inside the viewport (invisible), since browsers throttle offscreen cross-origin frames */
 async function renderScreen(frame: Frame, files: ProjectFiles, raster?: SnapshotRaster): Promise<Snapshot> {
 	const iframe = document.createElement("iframe");
 	iframe.sandbox.add("allow-scripts");
@@ -82,7 +68,6 @@ async function renderScreen(frame: Frame, files: ProjectFiles, raster?: Snapshot
 	}
 }
 
-/** Renders every frame, `PARALLEL` at a time, reporting progress. Keeps `frames` order. */
 async function renderAll(
 	frames: Frame[],
 	files: ProjectFiles,
@@ -135,11 +120,7 @@ function base64OfBytes(bytes: Uint8Array) {
 	return btoa(binary);
 }
 
-/**
- * Writes `files` into a folder the user picks (`dir`): one file goes in
- * as it is, several into a new `<folder>` subfolder. The browser fallback
- * downloads each file.
- */
+/** Several files go into a new `folder` subfolder; the browser fallback downloads each file */
 async function write(dir: string, files: ExportFile[], folder: string) {
 	if (!isDesktop) {
 		for (const file of files) await api.writeExport({ dir, files: [file] });
@@ -167,10 +148,7 @@ function failureDescription(failed: Failure[]) {
 
 export type ImageExportInput = { projectName: string; frames: Frame[]; selected: Frame[]; files: ProjectFiles };
 
-/**
- * PNG (2x) or SVG files of the selected screens, or of every screen except
- * alternates when none is selected, named after their files (`welcome.png`).
- */
+/** Without a selection, every screen except alternates */
 export async function exportImages(format: "png" | "svg", { projectName, frames, selected, files }: ImageExportInput) {
 	const targets = imageTargets(frames, selected, files);
 
@@ -211,11 +189,7 @@ export async function exportImages(format: "png" | "svg", { projectName, frames,
 	}
 }
 
-/**
- * `<project>-flow.pdf`: every screen except alternates, in flow order
- * (prototype links breadth-first from the first screen on the canvas), one
- * page each after an overview page, with links that jump between pages.
- */
+/** Flow order: prototype links breadth-first from the first screen on the canvas */
 export async function exportFlowPdf({ projectName, frames, files }: Omit<ImageExportInput, "selected">) {
 	const screens = imageTargets(frames, [], files);
 

@@ -5,9 +5,9 @@ import type { FileChange } from "../../../shared/types";
 import { contextTargetOf } from "../run";
 
 export type MockProviderOptions = {
-	/** Pause between steps and chunks, in ms */
+	/** ms */
 	delayMs?: number;
-	/** How many `file.delta` chunks per file */
+	/** `file.delta` chunks per file */
 	chunks?: number;
 };
 
@@ -25,7 +25,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
 		signal.addEventListener("abort", done, { once: true });
 	});
 
-/** Development provider: the canned Phase 0 generator, streamed as provider events. */
+/** Development only. */
 export function createMockProvider(options: MockProviderOptions = {}): Provider {
 	const delay = options.delayMs ?? 300;
 	const chunks = Math.max(1, options.chunks ?? 3);
@@ -101,12 +101,9 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 	};
 }
 
-// ---------------------------------------------------------------- variations
-
-/** Accent families a variation can switch to */
 const VARIANT_ACCENTS = ["blue", "violet", "emerald", "orange", "rose", "teal", "amber", "fuchsia"];
 
-/** Class swaps per variation: corners, weight, spacing and alignment, so variations differ at a glance */
+/** Big swaps (corners, weight, spacing, alignment) so variations differ at a glance */
 const VARIANT_STYLES: Record<string, string>[] = [
 	{
 		"rounded-lg": "rounded-2xl",
@@ -135,10 +132,7 @@ const VARIANT_STYLES: Record<string, string>[] = [
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/**
- * Restyles a screen for variation `shift` (0 leaves it as it is): another
- * accent family and another set of class swaps. Development only.
- */
+/** `shift` 0 leaves the content as it is. */
 export function restyleForVariation(content: string, shift: number): string {
 	if (!shift) return content;
 	let out = content;
@@ -159,7 +153,6 @@ export function restyleForVariation(content: string, shift: number): string {
 	return out.replace(pattern, (match) => swaps[match] ?? match);
 }
 
-/** New screens; a variation (`request.variation`) restyles them so each one looks different */
 function mockCreate(request: GenerationRequest) {
 	const result = generateMockScreens({
 		prompt: request.prompt,
@@ -176,13 +169,10 @@ function mockCreate(request: GenerationRequest) {
 	return { ...result, changes };
 }
 
-/** Classes the mock adds to a focused element when restyling it changes nothing, so the edit still shows */
+/** Added when restyling changes nothing, so the edit still shows */
 const FOCUS_MARK = "ring-2 ring-primary ring-offset-2";
 
-/**
- * Point and prompt, development only: restyles the focused element and leaves
- * the rest of the file as it is. `null` when the element isn't where the focus says.
- */
+/** `null` when the element isn't where the focus says. */
 export function restyleElement(content: string, focus: ElementFocus, shift: number): string | null {
 	const element = content.slice(focus.start, focus.end);
 
@@ -201,7 +191,6 @@ export function restyleElement(content: string, focus: ElementFocus, shift: numb
 	return content.slice(0, focus.start) + next + content.slice(focus.end);
 }
 
-/** An edit (or a "vary" run) restyles its target screens in place; a focused edit restyles its element only */
 function mockEdit(request: GenerationRequest, targets: { path: string; content: string }[]) {
 	const shift = (request.variation?.index ?? 0) + 1;
 	const focus = request.focus;
@@ -218,9 +207,7 @@ function mockEdit(request: GenerationRequest, targets: { path: string; content: 
 	return { changes, frames, reply: focus ? `Restyled ${focus.label} in ${names}.` : `Restyled ${names}.` };
 }
 
-// ---------------------------------------------------------------- context task
-
-/** Tailwind v4's 600 shade per chromatic family; the mock maps `primary` to the first family the screens use. */
+/** Tailwind v4's 600 shade per chromatic family */
 const PALETTE_600 = new Map(
 	Object.entries({
 		red: "oklch(0.577 0.245 27.325)",
@@ -247,7 +234,6 @@ const PALETTE_CLASS = new RegExp(
 	`\\b(?:bg|text|border|ring|from|via|to|fill|stroke)-(${[...PALETTE_600.keys()].join("|")})-\\d{2,3}\\b`,
 );
 
-/** The first chromatic Tailwind family the project's screens and components use, if any. */
 export function primaryFamilyOf(files: { path: string; content: string }[]): string | undefined {
 	for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
 		if (!file.path.endsWith(".tsx")) continue;
@@ -307,10 +293,7 @@ const PRODUCT_SECTIONS = [
 
 type ProductSection = "Product" | (typeof PRODUCT_SECTIONS)[number]["title"];
 
-/**
- * Sorts interview answers into PRODUCT.md sections: a line ending in "?" is a
- * question, and the lines after it answer it. Unmatched answers are the product.
- */
+/** A line ending in "?" is a question; the lines after it answer it. Unmatched answers go under Product. */
 export function mockProductMd(prompt: string): string {
 	const sections: Record<ProductSection, string[]> = { Product: [], Audience: [], Voice: [], Constraints: [] };
 	let section: ProductSection = "Product";

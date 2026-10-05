@@ -25,9 +25,7 @@ export type MessageRole = (typeof MESSAGE_ROLES)[number];
 
 export type MessageProps = ComponentProps<"article"> & {
 	variant?: MessageVariant;
-	/** Who authored the message. */
 	from?: MessageRole;
-	/** Marks the message as still receiving content. */
 	streaming?: boolean;
 };
 
@@ -287,7 +285,7 @@ export function MessageAction({ label, className, ...props }: MessageActionProps
 }
 
 export type MessageCopyProps = Omit<ComponentProps<"button">, "children"> & {
-	/** Text to copy. Defaults to the text of MessageContent. */
+	/** Defaults to the text of MessageContent. */
 	text?: string;
 	onCopied?: (text: string) => void;
 	children?: ReactNode;

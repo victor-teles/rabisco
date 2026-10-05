@@ -11,7 +11,6 @@ export default {
 		cottontail: {
 			entrypoint: "src/bun/index.ts",
 		},
-		// Vite builds the webview into dist/, Electrobun copies it into the bundle
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",

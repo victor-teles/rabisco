@@ -27,24 +27,19 @@ export type ComponentsPanelProps = {
 	files: ProjectFiles;
 	frames: Frame[];
 	components: ProjectComponent[];
-	/** The component file selected on its own, shown in detail */
 	selectedComponent: string | null;
 	suggestions: DuplicateGroup[];
-	/** A generation runs: making components waits */
 	busy: boolean;
-	/** Selects a component file (`null` clears the selection) */
+	/** `null` clears the selection */
 	onSelectComponent: (path: string | null) => void;
-	/** Selects screens and zooms to them */
 	onShowScreens: (files: string[]) => void;
-	/** "Make component" from a suggestion; returns why it failed, or null */
+	/** Returns why it failed, or null */
 	onMakeComponent: (group: DuplicateGroup, name: string) => string | null;
 	onDismissSuggestion: (key: string) => void;
 };
 
-/** Thumbnails render the preview at this size, scaled down by half */
 const THUMB = { width: 400, height: 260, scale: 0.5 };
 
-/** The detail preview: rendered this wide, scaled to the panel */
 const DETAIL_WIDTH = 640;
 
 const DETAIL_SCALE = 0.6375;
@@ -58,11 +53,7 @@ const matches = (query: string, ...texts: string[]) => {
 	return words.every((word) => haystack.includes(word));
 };
 
-/**
- * Files a component preview depends on: component files and DESIGN.md (for the
- * theme). The same object while those don't change, so editing a screen never
- * re-renders a preview; editing a component or the tokens does.
- */
+/** Stays the same object while those files don't change, so editing a screen never re-renders a preview */
 function useDesignSystemFiles(files: ProjectFiles, include: (path: string) => boolean) {
 	const next: ProjectFiles = {};
 
@@ -98,12 +89,7 @@ function startDrag(event: React.DragEvent, item: DragItem, label: string) {
 
 const endDrag = () => componentDrag.end();
 
-/**
- * Makes a card with a preview draggable onto the canvas. WebKit cancels any drag whose
- * source element contains an iframe, and every preview is one, so the draggable element
- * is a transparent layer over the card instead of the card itself. The layer also takes
- * the card's clicks and focus (`layer` props).
- */
+/** WebKit cancels a drag whose source contains an iframe, so a transparent layer over the card is the draggable */
 function DragCard({
 	item,
 	label,
@@ -131,11 +117,6 @@ function DragCard({
 	);
 }
 
-/**
- * The Components tab: duplicate-structure suggestions, the project's
- * components and the shadcn library, with live previews. Click a project
- * component to select it (the chat then edits it); drag any item onto a screen.
- */
 export function ComponentsPanel(props: ComponentsPanelProps) {
 	const { files, components, selectedComponent, suggestions, onSelectComponent } = props;
 	const [query, setQuery] = useState("");
@@ -143,7 +124,6 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 	const systemFiles = useDesignSystemFiles(files, isSystemFile);
 	const designFiles = useDesignSystemFiles(files, isDesignFile);
 
-	// `/` or ⌘F focuses the search while the tab is open
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			const target = event.target instanceof HTMLElement ? event.target : null;
@@ -269,7 +249,7 @@ function PanelSection({ title, count, children }: { title: string; count?: numbe
 	);
 }
 
-/** Mounts its children only while near the visible part of the panel, so off-screen previews cost nothing. */
+/** Off-screen previews mount nothing */
 function useNearViewport<T extends Element>() {
 	const ref = useRef<T>(null);
 	const [near, setNear] = useState(false);
@@ -286,7 +266,7 @@ function useNearViewport<T extends Element>() {
 	return [ref, near] as const;
 }
 
-/** A preview module rendered in a sandboxed frame, scaled down. Memoized: same files, no re-render. */
+/** Memoized: same files, no re-render */
 const Preview = memo(function Preview({
 	entry,
 	files,
@@ -321,7 +301,6 @@ const Preview = memo(function Preview({
 	);
 });
 
-/** The project files plus a virtual preview module of `component`. Stable while neither changes. */
 function useComponentPreview(path: string, component: ComponentExport, systemFiles: ProjectFiles, variants = false) {
 	const entry = previewPath(variants ? `${component.name}Variants` : component.name);
 
@@ -424,7 +403,6 @@ function LibraryCard({ item, designFiles }: { item: LibraryItem; designFiles: Pr
 	);
 }
 
-/** A selected component: bigger preview (its variants when it has any), file, users and how to edit it. */
 function ComponentDetail({
 	component,
 	systemFiles,
@@ -530,7 +508,6 @@ function ExportPreview({
 	);
 }
 
-/** Repeated structure Rabisco found. The user decides: make it a component, or dismiss it. */
 function Suggestions({
 	groups,
 	busy,

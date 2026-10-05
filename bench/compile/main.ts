@@ -8,14 +8,9 @@ import { extractCandidates, measure, once, type Stat } from "./shared/stats";
 import { createTailwind } from "./shared/tailwind";
 import { transform as sucraseTransform } from "sucrase";
 
-// ---------------------------------------------------------------- compilers
-
 const transpiler = new Bun.Transpiler({ loader: "tsx", target: "browser" });
 
-/**
- * transformSync always emits dev-mode JSX helpers with hashed names and no
- * import (it expects a bundler afterwards), so we import them ourselves.
- */
+// transformSync emits dev-mode JSX helpers with hashed names and no import, so we add it ourselves
 function transpile(source: string) {
 	const code = transpiler.transformSync(source);
 	const jsx = code.match(/\bjsxDEV_[a-z0-9]+\b/)?.[0];
@@ -47,8 +42,6 @@ const buildSingle = (source: string) => build({ "/project/screens/screen.tsx": s
 const compileInMain = (source: string, mode: CompileMode) =>
 	mode === "transpiler" ? transpile(source) : buildSingle(source);
 
-// ---------------------------------------------------------------- benchmarks
-
 async function runMainBenchmarks(): Promise<{ results: Stat[]; checks: Record<string, string> }> {
 	const results: Stat[] = [];
 	const checks: Record<string, string> = {};
@@ -63,7 +56,7 @@ async function runMainBenchmarks(): Promise<{ results: Stat[]; checks: Record<st
 		results.push(await measure(`main · Bun.build (${size})`, () => buildSingle(source), { warmup: 5, iterations: 30 }));
 	}
 
-	// Same pure-JS compiler as the webview, to compare the two JavaScriptCore setups
+	// Same compiler as the webview, to compare the two JavaScriptCore setups
 	for (const size of ["medium", "large"] as const) {
 		results.push(
 			await measure(
@@ -79,7 +72,6 @@ async function runMainBenchmarks(): Promise<{ results: Stat[]; checks: Record<st
 		);
 	}
 
-	// Projects are folders, so bundling reads the screen and its components from disk
 	const projectDir = join(Utils.paths.userData, "bench-project");
 	const entry = join(projectDir, "screens/home.tsx");
 
@@ -106,7 +98,6 @@ async function runMainBenchmarks(): Promise<{ results: Stat[]; checks: Record<st
 		bundled.includes("function StatCard") && !bundled.includes("../components"),
 	);
 
-	// Tailwind
 	for (const [size, source] of Object.entries(FIXTURES)) {
 		results.push(
 			await measure(`main · extract candidates (${size})`, () => extractCandidates(source), {
@@ -152,8 +143,6 @@ async function runMainBenchmarks(): Promise<{ results: Stat[]; checks: Record<st
 
 	return { results, checks };
 }
-
-// ---------------------------------------------------------------- app
 
 const mainRun = await runMainBenchmarks();
 

@@ -23,14 +23,12 @@ export type FrameStatus = {
 
 const statusListeners = new Set<(status: FrameStatus) => void>();
 
-/** Subscribes to status changes of every screen frame. Returns an unsubscribe function. */
 export function onFrameStatus(listener: (status: FrameStatus) => void) {
 	statusListeners.add(listener);
 
 	return () => void statusListeners.delete(listener);
 }
 
-/** URL of the screen runtime, next to the app document (dev server or views://mainview/). */
 export function runtimeUrl() {
 	return new URL("./runtime/frame.html", document.baseURI).href;
 }
@@ -46,7 +44,6 @@ function listen() {
 		if (!event.source || !isFrameMessage(event.data)) return;
 
 		for (const host of hosts) {
-			// Only trust messages that come from the frame's own window
 			if (event.source === host.frame.contentWindow) {
 				host.receive(event.data);
 
@@ -56,7 +53,6 @@ function listen() {
 	});
 }
 
-/** The host feeding `frame`, if it has one. */
 export function hostOf(frame: HTMLIFrameElement | null | undefined): FrameHost | undefined {
 	if (!frame) return undefined;
 
@@ -65,64 +61,46 @@ export function hostOf(frame: HTMLIFrameElement | null | undefined): FrameHost |
 	return undefined;
 }
 
-/** How long `hitTest` waits for the frame before giving up */
 const HIT_TEST_TIMEOUT_MS = 500;
 
 let hitTestId = 0;
 
-/** Ids of `measure` and `snapshot` requests */
 let requestId = 0;
 
-/** The entry element `track` follows, in the entry source with `version`; `start: null` follows nothing. */
 type TrackedElement = { start: number | null; version: string };
 
-/** What `FrameHost.snapshot` resolves with: the screen as a scene, and its raster when asked for. */
 export type Snapshot = { scene: Scene; raster?: { dataUrl: string; scale: number } };
 
 function payloadOf(module: CompiledModule): ModulePayload {
 	return module.error ? { source: module.source, error: module.error } : { source: module.source, code: module.code! };
 }
 
-/**
- * Feeds one screen frame: compiles the entry's module graph, and posts only the modules and
- * CSS the frame does not have yet. Frames whose graph did not change receive nothing.
- */
+/** Posts only the modules and CSS the frame doesn't have yet; unchanged graphs post nothing. */
 export class FrameHost {
 	readonly frame: HTMLIFrameElement;
 	status: FrameStatus["status"] = "loading";
 	error: FrameError | null = null;
-	/** The screen's content height as the frame last reported it */
 	contentHeight: number | null = null;
-	/** Called when the frame reports a new content height */
 	onContentHeight: ((height: number) => void) | null = null;
 	#entry = "";
 	#files: ProjectFiles = {};
 	#ready = false;
 	#waitingForStyles = false;
-	/** Module hashes the frame has, by path */
 	#sent = new Map<string, string>();
 	#sentEntry = "";
 	#sentCss = "";
-	/** DESIGN.md token overrides the frame has */
 	#sentTheme = "";
 	#unsubscribe: () => void;
-	/** Unanswered `hitTest` calls by id */
 	#hitTests = new Map<number, (hit: FrameHit | null) => void>();
-	/** What `track` asked for, re-sent when the frame reloads */
+	/** Re-sent when the frame reloads. */
 	#tracked: TrackedElement = { start: null, version: "" };
-	/** Receives the tracked element's boxes */
 	onBoxes: ((boxes: { start: number; version: string; boxes: Box[] }) => void) | null = null;
-	/** The text edit in progress, as `editText` started it */
 	#textEdit: { start: number; version: string; resolve: (text: string | null | undefined) => void } | null = null;
-	/** Play mode, as `setPlay` asked for it; re-sent when the frame reloads */
+	/** Re-sent when the frame reloads. */
 	#play = false;
-	/** Play mode: a linked element was clicked; `to` is its `data-link-to` as written */
 	onNavigate: ((to: string) => void) | null = null;
-	/** Play mode: Escape was pressed inside the frame and the screen didn't handle it */
 	onEscape: (() => void) | null = null;
-	/** Unanswered `measure` and `snapshot` calls by id; `null` when the host is disposed */
 	#requests = new Map<number, (message: FrameMessage | null) => void>();
-	/** `whenRendered` calls waiting for the next render status */
 	#renderWaiters = new Set<(status: FrameStatus["status"]) => void>();
 
 	constructor(frame: HTMLIFrameElement) {
@@ -148,11 +126,6 @@ export class FrameHost {
 		this.#renderWaiters.clear();
 	}
 
-	/**
-	 * Resolves once the frame has rendered the screen, at once when it already
-	 * has. Rejects when it reports an error, is disposed or takes longer than
-	 * `timeoutMs`.
-	 */
 	whenRendered(timeoutMs = 15_000): Promise<void> {
 		if (this.status === "rendered") return Promise.resolve();
 
@@ -182,17 +155,12 @@ export class FrameHost {
 		});
 	}
 
-	/** Image export: the screen's content height in CSS pixels; `null` when the frame doesn't answer. */
 	async measure(timeoutMs = 5_000): Promise<number | null> {
 		const reply = await this.#request({ type: "measure", id: ++requestId }, timeoutMs);
 
 		return reply?.type === "measured" && Number.isFinite(reply.height) ? reply.height : null;
 	}
 
-	/**
-	 * Image export: the rendered screen as a `Scene` (and a PNG or JPEG of it
-	 * with `raster`). Rejects when the frame isn't ready, fails or times out.
-	 */
 	async snapshot(raster?: SnapshotRaster, timeoutMs = 60_000): Promise<Snapshot> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
 		const request: HostMessage & { id: number } = { type: "snapshot", id: ++requestId };
@@ -211,7 +179,6 @@ export class FrameHost {
 		return image ? { scene, raster: image } : { scene };
 	}
 
-	/** Posts `message` and resolves with the reply that has its id, or `null` on timeout or dispose. */
 	#request(message: HostMessage & { id: number }, timeoutMs: number): Promise<FrameMessage | null> {
 		if (!this.#ready) return Promise.resolve(null);
 
@@ -230,11 +197,6 @@ export class FrameHost {
 		});
 	}
 
-	/**
-	 * Follows the entry element at `start` of the entry source with version
-	 * `version`: `onBoxes` receives its boxes once the frame shows that version,
-	 * and again whenever its layout changes. `null` stops.
-	 */
 	track(start: number | null, version: string) {
 		if (start === this.#tracked.start && version === this.#tracked.version) return;
 		this.#tracked = { start, version };
@@ -242,13 +204,7 @@ export class FrameHost {
 		if (this.#ready) this.#post({ type: "track", start, version });
 	}
 
-	/**
-	 * Edits the text of the entry element at `start` in place, in the instance
-	 * under frame-local `x`, `y` when given. Resolves with the new text when the
-	 * edit is kept, `null` when it is cancelled, and `undefined` when the frame
-	 * refused (its DOM doesn't hold just that text: edit it elsewhere).
-	 * `onStart` runs once the frame is editing.
-	 */
+	/** Resolves with the new text, `null` if cancelled, or `undefined` if the frame refused. */
 	editText(
 		edit: { start: number; version: string; text: string; x?: number; y?: number },
 		onStart?: () => void,
@@ -268,10 +224,6 @@ export class FrameHost {
 		});
 	}
 
-	/**
-	 * Turns play mode on or off (decision 0007): the frame follows clicks on
-	 * linked elements by calling `onNavigate` instead of their default.
-	 */
 	setPlay(on: boolean) {
 		if (on === this.#play) return;
 		this.#play = on;
@@ -279,20 +231,13 @@ export class FrameHost {
 		if (this.#ready) this.#post({ type: "play", on });
 	}
 
-	/** Ends the text edit in progress: keeps the text, or puts the old one back. */
 	endTextEdit(commit: boolean) {
 		if (this.#textEdit) this.#post({ type: "end-edit", commit });
 	}
 
 	#onTextEditStart: (() => void) | null = null;
 
-	/**
-	 * The entry screen's JSX elements at frame-local CSS pixel `x`, `y`: start
-	 * offsets in the entry file, innermost first, and the version of the entry
-	 * source they refer to (compare it with `sourceVersion` of the file before
-	 * using them). `null` when nothing of the screen's own source is there, the
-	 * frame isn't ready, or it doesn't answer in time.
-	 */
+	/** Compare the hit's `version` with the file's `sourceVersion` before using its offsets. */
 	hitTest(x: number, y: number): Promise<FrameHit | null> {
 		if (!this.#ready || !this.#sentEntry) return Promise.resolve(null);
 		const id = ++hitTestId;
@@ -320,7 +265,6 @@ export class FrameHost {
 
 	receive(message: FrameMessage) {
 		if (message?.type === "ready") {
-			// A (re)loaded frame starts empty
 			this.#ready = true;
 			this.#sent.clear();
 			this.#sentEntry = "";
@@ -338,7 +282,6 @@ export class FrameHost {
 		} else if (message?.type === "error") {
 			this.#emit({ status: "error", error: message.error });
 		} else if (message?.type === "hit") {
-			// Only the entry's own elements are drop targets
 			const hit = message.hit;
 
 			const valid =
@@ -388,7 +331,6 @@ export class FrameHost {
 
 		for (const listener of statusListeners) listener(event);
 
-		// A waiter removes itself when called, which a Set's iteration tolerates
 		for (const waiter of this.#renderWaiters) waiter(status.status);
 	}
 
@@ -442,7 +384,6 @@ export class FrameHost {
 		const theme = themeCss !== this.#sentTheme ? themeCss : undefined;
 
 		if (!changed && !reset && this.#entry === this.#sentEntry && css === undefined) {
-			// Only the tokens changed: restyle without touching the modules
 			if (theme !== undefined) {
 				this.#sentTheme = theme;
 				this.#post({ type: "theme", css: theme });

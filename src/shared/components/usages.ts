@@ -3,23 +3,16 @@ import { isComponentFile, isScreenFile } from "../project";
 import type { ComponentSignature } from "../ai/contract";
 import { componentApi, propsSignature, type ComponentApi, type ComponentExport } from "./api";
 
-/**
- * Which project files use which component files, from their import
- * statements. Cheap enough to recompute on every file change: imports are
- * found with a regex, and component APIs are memoized by content.
- */
 
 export type ComponentUsage = {
-	/** The importing file */
 	path: string;
-	/** Imported export names (`default` / `*` for default and namespace imports) */
+	/** `default` / `*` for default and namespace imports */
 	names: string[];
 };
 
 export type ProjectComponent = {
 	path: string;
 	exports: ComponentExport[];
-	/** Files that import it, sorted */
 	usedBy: string[];
 };
 
@@ -27,7 +20,7 @@ const IMPORT = /^\s*import\s+(type\s+)?([^'";]*?)\s+from\s+(['"])([^'"\n]+)\3/gm
 
 const SIDE_EFFECT = /^\s*import\s+(['"])([^'"\n]+)\1/gm;
 
-/** Names a clause imports: `A, { B, C as D, type E }` → default, B, C. Type-only names are left out. */
+/** `A, { B, C as D, type E }` → default, B, C */
 function importedNames(clause: string): string[] {
 	const names: string[] = [];
 	const braces = /\{([^}]*)\}/.exec(clause);
@@ -52,7 +45,6 @@ function importedNames(clause: string): string[] {
 	return names;
 }
 
-/** The project file a relative `specifier` from `from` points to, if it exists. */
 function resolveIn(files: Record<string, string>, from: string, specifier: string): string | null {
 	const base = joinPath(from, specifier);
 
@@ -62,7 +54,6 @@ function resolveIn(files: Record<string, string>, from: string, specifier: strin
 	return null;
 }
 
-/** Every component file → the files that import it (sorted by path), with the names they import. */
 export function componentUsages(files: Record<string, string>): Map<string, ComponentUsage[]> {
 	const usages = new Map<string, ComponentUsage[]>();
 
@@ -94,12 +85,7 @@ export function componentUsages(files: Record<string, string>): Map<string, Comp
 	return usages;
 }
 
-/**
- * Screens that import any of `components`, directly or through other
- * components (a screen using StatGrid, which uses StatCard, depends on
- * StatCard): screen → the given components it reaches, sorted. Changing a
- * component can break these screens without touching them.
- */
+/** Directly or transitively through other components: screen → the given components it reaches. */
 export function screensUsing(files: Record<string, string>, components: string[]): Map<string, string[]> {
 	const usages = componentUsages(files);
 	const reached = new Map<string, Set<string>>();
@@ -128,7 +114,6 @@ export function screensUsing(files: Record<string, string>, components: string[]
 
 const apiCache = new Map<string, ComponentApi>();
 
-/** `componentApi`, memoized by path and content. */
 export function cachedComponentApi(path: string, source: string): ComponentApi {
 	const key = `${path}\0${source}`;
 	let api = apiCache.get(key);
@@ -142,7 +127,6 @@ export function cachedComponentApi(path: string, source: string): ComponentApi {
 	return api;
 }
 
-/** The project's component files with their API and users, sorted by path (the kebab name). */
 export function projectComponents(files: Record<string, string>): ProjectComponent[] {
 	const usages = componentUsages(files);
 
@@ -153,7 +137,6 @@ export function projectComponents(files: Record<string, string>): ProjectCompone
 	}));
 }
 
-/** The component catalog a generation request carries: every component file with its signatures and users. */
 export function componentSignatures(files: Record<string, string>): ComponentSignature[] {
 	return projectComponents(files).map(({ path, exports, usedBy }) => {
 		const component: ComponentSignature = { path, signature: exports.map(propsSignature) };

@@ -32,24 +32,20 @@ export type DesignComposerProps = {
 	onValueChange?: (value: string) => void;
 	device: Device;
 	onDeviceChange: (device: Device) => void;
-	/** Reference images come along as files */
 	onSubmit: (prompt: string, files: File[]) => void;
 	busy?: boolean;
-	/** Shown instead of the send button while busy */
 	onStop?: () => void;
 	placeholder?: string;
 	variant?: PromptComposerVariant;
-	/** How many variations a create generates (1–MAX_VARIATIONS); the picker shows when `onVariationsChange` is set */
+	/** The picker shows only when `onVariationsChange` is set. */
 	variations?: number;
 	onVariationsChange?: (variations: number) => void;
-	/** Why the count doesn't apply right now (e.g. editing selected screens); dims the picker */
+	/** Why the count doesn't apply right now; dims the picker. */
 	variationsHint?: string;
-	/** Render the device, variations and model pickers inside the composer; narrow layouts place them outside */
 	inlineOptions?: boolean;
 	className?: string;
 };
 
-/** The uai prompt composer, extended with the device and model pickers Rabisco needs. */
 export function DesignComposer({
 	value,
 	onValueChange,
@@ -137,10 +133,6 @@ export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDev
 
 const COUNTS = Array.from({ length: MAX_VARIATIONS }, (_, i) => i + 1);
 
-/**
- * How many variations to generate: `1×` … `4×`. With a `hint` the count
- * doesn't apply (edits change the selected screens), so it dims and says why.
- */
 export function VariationsPicker({
 	value,
 	onChange,
@@ -204,7 +196,6 @@ export function VariationsPicker({
 	);
 }
 
-/** Models of every working provider, grouped by provider, plus a way into Settings. */
 export function ModelPicker({ className }: { className?: string }) {
 	const { models, model, loading } = useProviders();
 	const groups = new Map<string, ModelOption[]>();

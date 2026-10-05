@@ -29,7 +29,6 @@ const KIND_LABEL = { api: "API", cli: "CLI", sdk: "SDK" } as const;
 
 const typeInfo = (type: string) => PROVIDER_TYPES.find((t) => t.type === type);
 
-/** Add a provider, test it, store its key in the keychain and pick its default model. */
 export function SettingsDialog() {
 	const { settingsOpen, focusProvider, settings, statuses, loading } = useProviders();
 	const [expanded, setExpanded] = useState(settingsOpen ? focusProvider : null);

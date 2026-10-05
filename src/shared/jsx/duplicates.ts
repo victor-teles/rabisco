@@ -1,7 +1,3 @@
-/**
- * Finds repeated structure across project files: subtrees that are
- * structurally equivalent (shape.ts) and could become one component.
- */
 
 import { isComponentFile, isScreenFile } from "../project";
 import { extractComponent, extractionSignature, type ExtractResult } from "./extract";
@@ -16,26 +12,20 @@ import { flatten, parseFile, type JsxElement, type ParsedFile } from "./tree";
 export type DuplicateOccurrence = { path: string; start: number; end: number };
 
 export type DuplicateGroup = {
-	/** Structure hash, stable while the structure doesn't change */
 	key: string;
-	/**
-	 * In path, then source order. Exactly what "Make component" replaces when
-	 * given these (`extractComponent({ …, occurrences })`): same shape and same
-	 * bindings (`extractionSignature`), none inside a larger suggestion.
-	 */
+	/** Exactly what "Make component" replaces: same shape and bindings, none inside a larger suggestion. */
 	occurrences: DuplicateOccurrence[];
-	/** Elements in one occurrence */
 	elementCount: number;
-	/** Sentence case, e.g. `Stat card`; not taken by an existing component */
+	/** Sentence case; not taken by an existing component */
 	suggestedName: string;
 };
 
 export type DuplicateOptions = {
-	/** Smallest subtree worth a component, in elements (default 3) */
+	/** In elements (default 3) */
 	minElements?: number;
-	/** Fewest occurrences (default 2) */
+	/** Default 2 */
 	minOccurrences?: number;
-	/** Look in alternates (`*.alt-N.tsx`) too; off by default, since they repeat their screen on purpose */
+	/** Off by default: alternates repeat their screen on purpose. */
 	includeAlternates?: boolean;
 };
 
@@ -46,7 +36,7 @@ type Candidate = {
 	size: number;
 	element: JsxElement;
 	file: ParsedFile;
-	/** `extractionSignature`, computed on demand; `null` when it can't be extracted */
+	/** Computed on demand; `null` when it can't be extracted */
 	signature?: string | null;
 };
 
@@ -54,7 +44,7 @@ const candidateCache = new Map<string, Candidate[]>();
 
 const CACHE_SIZE = 256;
 
-/** Subtrees of one file that could be a component, memoized by path and content. */
+/** Memoized by path and content */
 function candidatesOf(path: string, source: string, minElements: number): Candidate[] {
 	const cacheKey = `${minElements}\0${path}\0${source}`;
 	const hit = candidateCache.get(cacheKey);
@@ -78,12 +68,7 @@ function candidatesOf(path: string, source: string, minElements: number): Candid
 	return found;
 }
 
-/**
- * Groups of equivalent subtrees that occur at least twice across screens and
- * components, most valuable (occurrences × size) first. Occurrences inside an
- * occurrence of a larger reported group are left out, as are subtrees whose
- * root is already a project component.
- */
+/** Most valuable (occurrences × size) first; nested occurrences and existing components are left out. */
 export function findDuplicates(files: Record<string, string>, options: DuplicateOptions = {}): DuplicateGroup[] {
 	const minElements = options.minElements ?? 3;
 	const minOccurrences = options.minOccurrences ?? 2;
@@ -117,7 +102,6 @@ export function findDuplicates(files: Record<string, string>, options: Duplicate
 		const bySignature = new Map<string, Found[]>();
 
 		for (const candidate of list) {
-			// Memoized on the cached candidate, so it's computed once per file version
 			const { cached } = candidate;
 
 			if (cached.signature === undefined)
@@ -164,11 +148,7 @@ export function findDuplicates(files: Record<string, string>, options: Duplicate
 	return result.sort((a, b) => b.occurrences.length * b.elementCount - a.occurrences.length * a.elementCount);
 }
 
-/**
- * "Make component" on a suggestion: extracts from its first occurrence that can
- * be extracted, replacing exactly the suggestion's occurrences, so the count it
- * showed is what changes and alternates it didn't list stay as they are.
- */
+/** Replaces exactly the suggestion's occurrences, so alternates it didn't list stay as they are. */
 export function extractSuggestion(
 	files: Record<string, string>,
 	group: Pick<DuplicateGroup, "occurrences">,
@@ -201,7 +181,7 @@ function iconsOf(source: string) {
 	return icons;
 }
 
-/** `name`, or `name 2`, `name 3`… when a component (`exported`) or another suggestion has it. */
+/** `name`, or `name 2`, `name 3`… when taken */
 function freeName(name: string, exported: Set<string>, taken: Set<string>) {
 	let candidate = name;
 

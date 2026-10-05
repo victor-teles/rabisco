@@ -9,7 +9,7 @@ export const FRAME_SIZE = {
 
 export const FRAME_GAP = 120;
 
-/** `screens/<kebab>.tsx`, including alternates (`welcome.alt-1.tsx`). */
+/** Includes alternates (`welcome.alt-1.tsx`) */
 export const isScreenFile = (path: string) => /^screens\/[a-z0-9][a-z0-9-]*(\.alt-\d+)?\.tsx$/.test(path);
 
 export const isComponentFile = (path: string) => /^components\/[a-z0-9][a-z0-9-]*\.tsx$/.test(path);
@@ -38,14 +38,13 @@ export function screenNameFromPath(path: string) {
 	return words[0]!.toUpperCase() + words.slice(1);
 }
 
-/** A frame name for `path`: alternates get their number, `Welcome` → `Welcome (alt 2)`. */
+/** Alternates get their number: `Welcome (alt 2)` */
 export function frameName(name: string, path: string) {
 	const alt = /\.alt-(\d+)\.tsx$/.exec(path);
 
 	return alt && !name.endsWith(`(alt ${alt[1]})`) ? `${name} (alt ${alt[1]})` : name;
 }
 
-/** A free `screens/<kebab>.tsx` path for `name`, avoiding `taken`. */
 export function uniqueScreenPath(name: string, taken: Iterable<string>) {
 	const used = new Set(taken);
 	const base = toKebab(name);
@@ -56,17 +55,13 @@ export function uniqueScreenPath(name: string, taken: Iterable<string>) {
 	return path;
 }
 
-/** x for the next frame placed to the right of everything on the canvas. */
 export function nextFrameX(frames: Frame[]) {
 	if (!frames.length) return 0;
 
 	return Math.max(...frames.map((f) => f.x + f.width)) + FRAME_GAP * 2;
 }
 
-/**
- * Frames for screens a generation created, left to right from the canvas origin
- * in the order they were written; the editor offsets them. `meta` comes from `file.start`.
- */
+/** Left to right from the canvas origin; the editor offsets them. */
 export function framesForNewScreens(
 	paths: string[],
 	meta: Record<string, ScreenMeta | undefined>,
@@ -94,11 +89,7 @@ export function framesForNewScreens(
 	return frames;
 }
 
-/**
- * Makes the canvas match the files on disk: drops frames whose screen file is
- * gone and adds a frame for every screen file that has none. Pins on a dropped
- * frame stay where they were, on the canvas (`detachComments`).
- */
+/** Pins on a dropped frame stay where they were, on the canvas. */
 export function reconcileFrames(canvas: CanvasDoc, files: ProjectFiles): CanvasDoc {
 	const kept = canvas.frames.filter((frame) => frame.file in files);
 	const placed = new Set(kept.map((frame) => frame.file));
@@ -142,7 +133,6 @@ export function emptyCanvas(name: string, device: Device): CanvasDoc {
 
 export const isContextFile = (path: string) => path === "PRODUCT.md" || path === "DESIGN.md";
 
-/** Files that belong in `Project.files`: screens, components and the context Markdown. */
 export const isProjectFile = (path: string) => isScreenFile(path) || isComponentFile(path) || isContextFile(path);
 
 /** `~/Documents/Rabisco/my-app.rabisco` → `my-app` */
@@ -156,10 +146,7 @@ export function projectNameFromPath(path: string) {
 	return base.replace(/\.rabisco$/i, "") || "Untitled";
 }
 
-/**
- * First frame of the canvas with everything it needs to render on its own: its screen file,
- * every component, and DESIGN.md for the theme tokens.
- */
+/** The first frame with everything it needs to render on its own */
 export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource | null {
 	const frame = canvas.frames.find((f) => f.file in files);
 

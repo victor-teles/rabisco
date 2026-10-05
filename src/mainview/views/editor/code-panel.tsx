@@ -13,16 +13,13 @@ import { CodeEditor, CodeHeader } from "./code-view";
 import { CODE_VIEW_KEYS, isMakeComponent, MAKE_COMPONENT_KEYS, treeOwnsKey } from "./shortcuts";
 
 type CodePanelProps = {
-	/** The one selected file (screen or component), or null */
 	path: string | null;
 	source: string | undefined;
-	/** Why there is no file: nothing or several things selected */
 	emptyMessage: string;
 	structure: Structure;
 	onEndStep: () => void;
 	onUndo: () => void;
 	onRedo: () => void;
-	/** Shows the selected element's props (Design tab) */
 	onShowProps: () => void;
 };
 
@@ -45,11 +42,6 @@ function stored<T>(key: string, fallback: T, isValid: (value: unknown) => value 
 	}
 }
 
-/**
- * The Code tab: the selected file's structure (select an element, make it a
- * component) above its editable source. Selecting in either one selects in
- * the other.
- */
 export function CodePanel(props: CodePanelProps) {
 	const { path, source, emptyMessage } = props;
 
@@ -228,7 +220,6 @@ function FileCode({
 	);
 }
 
-/** Inline name for "Make component", prefilled with a guess from the structure. */
 function NameField({
 	source,
 	start,
@@ -287,7 +278,6 @@ function NameField({
 	);
 }
 
-/** Drag or arrow keys resize the structure pane. */
 function Divider({
 	height,
 	onHeightChange,
@@ -352,11 +342,7 @@ function contextChip(node: OutlineNode): { text: string; title: string } | null 
 	}
 }
 
-/**
- * The JSX tree as a keyboard-navigable tree: ↑/↓ move, ←/→ collapse and
- * expand (or go to the parent / first child), Enter makes a component,
- * ⌫ deletes the element (undoable).
- */
+/** ⌫ deletes the element (undoable) */
 function StructureTree({
 	treeRef,
 	roots,

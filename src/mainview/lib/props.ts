@@ -1,9 +1,3 @@
-/**
- * Props of a component usage as editable values: reading them from a JSX
- * element and writing a control's change back to the source. Pure, so the
- * inspector, the components panel and tests share it.
- */
-
 import { findElement, parseJsx, setAttribute, type JsxElement } from "../../shared/jsx";
 import { childText } from "../../shared/jsx/text";
 import type { ComponentExport, PropSpec, PropType } from "../../shared/components/api";
@@ -13,25 +7,18 @@ import { isBoolean, isNumber } from "../../shared/guards";
 
 export type Literal = string | number | boolean;
 
-/** The control type a literal is edited with when its prop has no type of its own. */
 export const literalKind = (value: Literal | undefined): "boolean" | "number" | "string" =>
 	isBoolean(value) ? "boolean" : isNumber(value) ? "number" : "string";
 
-/** A prop as written on the element: absent, a literal, or code (`{items.length}`) */
 export type PropValue = { kind: "unset" } | { kind: "literal"; value: Literal } | { kind: "expression"; text: string };
 
 export const UNSET: PropValue = { kind: "unset" };
 
-/** The control a prop gets. Code-valued props and types without a control are shown read-only. */
 export type ControlKind = "enum" | "boolean" | "string" | "number" | "readonly";
 
-/** Props that are plumbing rather than design: not shown as controls */
 const HIDDEN_PROPS = new Set(["asChild", "children", "key", "ref"]);
 
-/**
- * HTML elements that can't have children: React throws on `<input>abc</input>`.
- * `textarea` too, whose text is its value. Mirrors the set in shared/components/api.ts.
- */
+/** Includes `textarea`, whose text is its value. Mirrors the set in shared/components/api.ts. */
 export const VOID_ELEMENTS: ReadonlySet<string> = new Set([
 	"input",
 	"img",
@@ -49,11 +36,9 @@ export const VOID_ELEMENTS: ReadonlySet<string> = new Set([
 	"textarea",
 ]);
 
-/** Whether an intrinsic element (`input`, `div`) can hold children. Components decide for themselves. */
 export const isVoidElement = (element: JsxElement) =>
 	element.intrinsic && element.name !== null && VOID_ELEMENTS.has(element.name);
 
-/** `"x"`, `'x'`, `3`, `true` inside `{…}` → the literal; anything else is code. */
 export function literalOf(text: string): Literal | undefined {
 	const code = text.trim();
 
@@ -77,7 +62,7 @@ export function literalOf(text: string): Literal | undefined {
 	return single ? single[1]! : undefined;
 }
 
-/** The value of attribute `name` on `element` (the last one wins, like React). A bare attribute is `true`. */
+/** The last attribute wins, like React. */
 export function readProp(element: JsxElement, name: string): PropValue {
 	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === name);
 
@@ -93,10 +78,7 @@ export function readProp(element: JsxElement, name: string): PropValue {
 		: { kind: "literal", value: literal };
 }
 
-/**
- * Children as one editable text: plain text and string literals joined, or
- * null when they hold elements or code. `""` for no children.
- */
+/** `null` when the children hold elements or code. */
 export function readChildrenText(element: JsxElement): string | null {
 	let text = "";
 
@@ -115,7 +97,6 @@ export function readChildrenText(element: JsxElement): string | null {
 	return text.trim();
 }
 
-/** Which control fits a prop, given what is written now. */
 export function controlKind(type: PropType, value: PropValue): ControlKind {
 	if (value.kind === "expression") return "readonly";
 
@@ -130,16 +111,13 @@ export function controlKind(type: PropType, value: PropValue): ControlKind {
 		case "node":
 			return "string";
 		default:
-			// Untyped props written with a literal can still be edited as that literal
 			return value.kind === "literal" ? literalKind(value.value) : "readonly";
 	}
 }
 
-/** The props shown as controls, in declaration order. */
 export const visibleProps = (spec: ComponentExport): PropSpec[] =>
 	spec.props.filter((prop) => !HIDDEN_PROPS.has(prop.name));
 
-/** Attributes written on the element that the component's API doesn't declare (`className`, DOM props), by name. */
 export function extraAttributes(element: JsxElement, spec: ComponentExport | null): string[] {
 	const declared = new Set(spec?.props.map((prop) => prop.name) ?? []);
 	const names: string[] = [];
@@ -158,12 +136,10 @@ export function extraAttributes(element: JsxElement, spec: ComponentExport | nul
 	return names;
 }
 
-/** What is effectively in use: the written literal, else the prop's default. */
 export function effectiveValue(spec: PropSpec | undefined, value: PropValue): Literal | undefined {
 	return value.kind === "literal" ? value.value : value.kind === "unset" ? spec?.default : undefined;
 }
 
-/** Replaces the value of attribute `name` on the element at `start` with `{code}`, adding the attribute when missing. */
 function setAttributeCode(source: string, start: number, name: string, code: string): string | null {
 	const placed = setAttribute(source, start, name, 0);
 
@@ -176,12 +152,7 @@ function setAttributeCode(source: string, start: number, name: string, code: str
 	return placed.slice(0, attribute.value.start) + `{${code}}` + placed.slice(attribute.value.end);
 }
 
-/**
- * Writes a control's value to the element at `start`. Choosing the default
- * removes the attribute, so the code stays as short as it was; `false` is
- * written as `{false}` only when the default is `true`. `null` removes it.
- * Returns the new source, or null when the element is gone.
- */
+/** Writing the default removes the attribute; `{false}` is written only when the default is `true`. */
 export function writeProp(
 	source: string,
 	start: number,
@@ -199,12 +170,7 @@ export function writeProp(
 	return setAttribute(source, start, name, value);
 }
 
-/**
- * Sets an element's children to plain `text`, keeping the line layout around
- * them (`<Button>\n  Save\n</Button>` stays on three lines). A self-closing
- * element gets a closing tag. Returns null when the children hold elements or
- * code (they are not one text), the element is void (`<input />`), or it is gone.
- */
+/** Keeps the whitespace layout around the children; a self-closing element gains a closing tag. */
 export function setChildrenText(source: string, start: number, text: string): string | null {
 	const element = findElement(parseJsx(source), start);
 
@@ -231,10 +197,6 @@ export function setChildrenText(source: string, start: number, text: string): st
 	);
 }
 
-/**
- * The API of the component a usage refers to: a project component from its
- * file, a shadcn component from its source in `uiSources` (module → source).
- */
 export function componentSpec(
 	ref: ComponentRef | null,
 	files: Record<string, string>,

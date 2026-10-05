@@ -3,28 +3,18 @@ import { toKebab } from "../project";
 import type { ComponentExport, PropSpec } from "./api";
 import type { LibraryItem } from "./library";
 
-/**
- * Preview modules for components: TSX files that default-export a small scene
- * rendering one component, for the frame renderer. They live at virtual paths
- * (`preview/<kebab>.tsx`) next to the project files, so project components are
- * imported relatively (`../components/<kebab>`).
- */
+// Preview modules live at virtual `preview/<kebab>.tsx` paths, so components are imported as `../components/<kebab>`.
 
-/** A prop value a preview can write as JSX: literals, a lucide icon by name, or a list. */
 export type PreviewValue = string | number | boolean | { icon: string } | (string | number)[];
 
 export type PreviewProps = Record<string, PreviewValue>;
 
-/**
- * `center`: the component at its own size, centered. `stretch`: full width of a
- * centered column (cards, lists, forms). `fill`: the whole frame, no padding (bars, sidebars, layouts).
- */
+/** `center`: own size. `stretch`: full width of a centered column. `fill`: whole frame, no padding. */
 export type PreviewLayout = "center" | "stretch" | "fill";
 
-/** `preview/<kebab>.tsx` for a component or library item name. */
 export const previewPath = (name: string) => `preview/${toKebab(name.replace(/([a-z0-9])([A-Z])/g, "$1 $2"))}.tsx`;
 
-/** `components/stat-card.tsx` → `../components/stat-card`, from a `preview/*` module. */
+/** `components/stat-card.tsx` → `../components/stat-card` */
 export const previewImport = (componentPath: string) => `../${componentPath.replace(/\.tsx?$/, "")}`;
 
 /** `firstName` / `first_name` → `First name` */
@@ -107,11 +97,7 @@ function sampleOf(prop: PropSpec, owner: string): PreviewValue | undefined {
 	}
 }
 
-/**
- * Plausible props to render `exp` on its own: every required prop and every
- * enum/variant (default or first option). Strings come from the prop name,
- * children from the component name; functions are left out.
- */
+/** Every required prop and enum/variant; functions are left out. */
 export function sampleProps(exp: ComponentExport) {
 	const props: PreviewProps = {};
 
@@ -127,7 +113,6 @@ export function sampleProps(exp: ComponentExport) {
 	return props;
 }
 
-/** A layout that suits the component, from its name. */
 export function previewLayout(name: string): PreviewLayout {
 	if (/(Nav|Bar|Sidebar|Header|Footer|Layout|Shell|Navigation)$/.test(name)) return "fill";
 
@@ -145,15 +130,14 @@ const SURFACE: Record<PreviewLayout, { outer: string; inner?: string }> = {
 	fill: { outer: "flex min-h-full flex-col bg-background text-foreground" },
 };
 
-/** A lucide icon picked by name. */
 type IconValue = Extract<PreviewValue, { icon: string }>;
 
 const isIcon = (value: PreviewValue): value is IconValue => typeof value === "object" && !Array.isArray(value);
 
-/** Attribute text (with its leading space) and the children, if any. */
+/** `attrs` includes its leading space */
 type JsxParts = { attrs: string; children?: string };
 
-/** JSX attributes and children for `props`; icons are collected into `icons` (alias → lucide name). */
+/** Icons are collected into `icons` (alias → lucide name). */
 function jsxProps(props: PreviewProps, icons: Map<string, string>): JsxParts {
 	const attrs: string[] = [];
 	let children: string | undefined;
@@ -210,14 +194,12 @@ const iconImport = (icons: Map<string, string>) =>
 const previewName = (name: string) => `${name.replace(/[^\w$]/g, "")}Preview`;
 
 export type PreviewModuleParams = {
-	/** `components/<kebab>.tsx` */
 	componentPath: string;
 	exportName: string;
 	props: PreviewProps;
 	layout?: PreviewLayout;
 };
 
-/** TSX of a module that default-exports a preview of one component with `props`. */
 export function previewModule({ componentPath, exportName, props, layout = "center" }: PreviewModuleParams): string {
 	const icons = new Map<string, string>();
 	const body = element(exportName, props, icons);
@@ -226,7 +208,7 @@ export function previewModule({ componentPath, exportName, props, layout = "cent
 	return moduleSource(imports, previewName(exportName), body, layout);
 }
 
-/** The axes a variant grid shows: cva variants, or else enum props. */
+/** cva variants, or else enum props */
 export function variantAxes(exp: ComponentExport): { name: string; options: string[] }[] {
 	const cva = Object.entries(exp.variants).map(([name, v]) => ({ name, options: v.options }));
 
@@ -238,14 +220,11 @@ export function variantAxes(exp: ComponentExport): { name: string; options: stri
 export type VariantGridParams = {
 	componentPath: string;
 	component: ComponentExport;
-	/** Base props for every instance; defaults to `sampleProps(component)` */
+	/** Defaults to `sampleProps(component)` */
 	props?: PreviewProps;
 };
 
-/**
- * TSX of a module showing one labelled instance per option of each variant
- * axis (one row per axis), or `null` when the component has no variants.
- */
+/** One row per axis; `null` when the component has no variants. */
 export function variantGridModule({ componentPath, component, props }: VariantGridParams): string | null {
 	const axes = variantAxes(component);
 
@@ -269,7 +248,6 @@ export function variantGridModule({ componentPath, component, props }: VariantGr
 	return moduleSource(imports, `${previewName(component.name)}Variants`, body, "center");
 }
 
-/** TSX of a module previewing a shadcn library item's snippet. */
 export function libraryPreviewModule(item: LibraryItem, layout: PreviewLayout = "center"): string {
 	const imports = item.imports.map(({ from, names }) => `import { ${names.join(", ")} } from "${from}";`);
 	const name = `${item.title.replace(/[^A-Za-z0-9]/g, "")}Preview`;

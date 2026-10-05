@@ -278,7 +278,6 @@ export function ToolCallContent({ className, ...props }: ComponentProps<"div">) 
 }
 
 export type ToolCallPayloadProps = ComponentProps<"div"> & {
-	/** Heading shown above the payload. */
 	label?: ReactNode;
 };
 

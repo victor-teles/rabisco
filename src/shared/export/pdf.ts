@@ -1,29 +1,21 @@
-/**
- * A small PDF 1.4 writer for the flow export: pages with JPEG images
- * (embedded as-is with DCTDecode), Helvetica text, rectangles, link
- * annotations between pages and an outline. No dependencies, no compression
- * of its own: the images are already JPEG.
- *
- * Coordinates are points with the origin at the top left of the page (the
- * writer flips them to PDF's bottom-left origin).
- */
+// Coordinates are points from the top left; the writer flips them to PDF's bottom-left origin.
 
-/** RGB, channels 0–1. */
+/** Channels 0–1 */
 export type PdfColor = [number, number, number];
 
-/** A baseline JPEG, and its size in pixels. */
+/** Baseline JPEG; size in pixels */
 export type PdfImage = { jpeg: Uint8Array; width: number; height: number };
 
 export type PdfRect = { x: number; y: number; width: number; height: number };
 
 export type PdfDraw =
-	/** `image` indexes `PdfDocument.images`; an image used on several pages is stored once */
+	/** `image` indexes `PdfDocument.images` */
 	| ({ type: "image"; image: number; clip?: PdfRect } & PdfRect)
 	/** `y` is the baseline */
 	| { type: "text"; text: string; x: number; y: number; size: number; bold?: boolean; color?: PdfColor }
 	| ({ type: "rect"; fill?: PdfColor; stroke?: PdfColor; lineWidth?: number } & PdfRect);
 
-/** A clickable area that goes to page `page` (an index into `pages`). */
+/** `page` indexes `pages` */
 export type PdfLink = PdfRect & { page: number };
 
 export type PdfPage = { width: number; height: number; draw: PdfDraw[]; links?: PdfLink[] };
@@ -32,11 +24,10 @@ export type PdfDocument = {
 	title?: string;
 	images: PdfImage[];
 	pages: PdfPage[];
-	/** Bookmarks, in order */
 	outline?: { title: string; page: number }[];
 };
 
-/** Points per CSS pixel: at 100% zoom a page shows the screen at its CSS size. */
+/** At 100% zoom a page shows the screen at its CSS size. */
 export const PT_PER_PX = 0.75;
 
 const n = (value: number) => String(Math.round(value * 1000) / 1000);
@@ -72,7 +63,7 @@ const WIN_ANSI = new Map([
 	[0x0178, 0x9f],
 ]);
 
-/** `text` as a PDF literal string in WinAnsiEncoding (one char per byte); unmappable characters become `?`. */
+/** WinAnsiEncoding; unmappable characters become `?`. */
 export function pdfString(text: string): string {
 	let out = "(";
 
@@ -88,7 +79,7 @@ export function pdfString(text: string): string {
 	return `${out})`;
 }
 
-/** `text` as a UTF-16BE hex string with a byte order mark, for metadata and bookmarks. */
+/** UTF-16BE hex with a byte order mark */
 export function pdfTextString(text: string): string {
 	let hex = "FEFF";
 
@@ -140,7 +131,7 @@ function contentStream(page: PdfPage): string {
 	return ops.join("\n");
 }
 
-/** Writes `doc` as PDF bytes. Pages need at least one entry; images must be baseline JPEGs. */
+/** Pages need at least one entry; images must be baseline JPEGs. */
 export function createPdf(doc: PdfDocument): Uint8Array {
 	if (!doc.pages.length) throw new Error("A PDF needs at least one page");
 	const chunks: Uint8Array[] = [];
@@ -154,7 +145,7 @@ export function createPdf(doc: PdfDocument): Uint8Array {
 
 	const text = (value: string) => push(latin1(value));
 
-	// Object numbers, decided up front so objects can point at each other
+	// Object numbers decided up front so objects can point at each other
 	let next = 1;
 	const catalog = next++;
 	const pagesRoot = next++;
@@ -253,7 +244,7 @@ export function createPdf(doc: PdfDocument): Uint8Array {
 	return out;
 }
 
-/** Width and height of a JPEG, from its first SOF marker; `null` when it isn't one. */
+/** From the first SOF marker */
 export function jpegSize(bytes: Uint8Array): { width: number; height: number } | null {
 	if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
 	let i = 2;

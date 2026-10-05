@@ -35,17 +35,14 @@ export type CanvasHandle = {
 	zoomBy: (factor: number) => void;
 	fitTo: (rects: Rect[]) => void;
 	resetZoom: () => void;
-	/** Edits the text of a screen element in place (Enter on a selected element) */
 	editText: (element: ElementRef) => void;
-	/** A text edit is in progress: keys go to the frame */
 	isEditingText: () => boolean;
-	/** Ends the text edit in progress, keeping or dropping the new text */
 	endTextEdit: (commit: boolean) => void;
-	/** The innermost element of `file` at frame-local `point`, if the frame shows the current source */
+	/** Null unless the frame shows the current source */
 	elementAt: (file: string, point: Point) => Promise<ElementRef | null>;
 };
 
-/** An element of a screen: its file and its start offset in the file's current source. */
+/** `start` is the element's offset in the file's current source */
 export type ElementRef = { file: string; start: number };
 
 export type FrameMove = { file: string; x: number; y: number };
@@ -64,55 +61,39 @@ const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
 type CanvasProps = {
 	frames: Frame[];
 	files: ProjectFiles;
-	/** A running generation: placeholder frames, finished files and files being written */
 	drafts?: GenerationDrafts | null;
 	selection: string[];
 	onSelectionChange: (selection: string[]) => void;
-	/** Called on every pointer move of a drag; `dragId` is stable for one drag */
+	/** `dragId` is stable for one drag */
 	onMoveFrames: (moves: FrameMove[], dragId: string) => void;
-	/** The drag that moved frames ended */
 	onMoveEnd: () => void;
 	tool: Tool;
 	viewport: Viewport;
 	onViewportChange: (viewport: Viewport) => void;
 	handleRef?: Ref<CanvasHandle>;
-	/** Opens compare mode for the variation group of `base` */
 	onCompare?: (base: string) => void;
-	/** Picks the alternate `file` of its variation group */
 	onPick?: (file: string) => void;
-	/**
-	 * An item from the components panel was dropped: the frame under the pointer
-	 * (`null` outside every frame) and the screen element there, if any.
-	 */
+	/** `file` is `null` when dropped outside every frame */
 	onDropItem?: (drop: { file: string | null; data: string; hit: FrameHit | null }) => void;
-	/** The element selected inside a screen */
 	element?: ElementRef | null;
-	/**
-	 * Selects an element of a screen (click on a selected screen, or ⌘-click),
-	 * or clears it (`null`): `file` is the screen, which becomes the selection.
-	 */
+	/** Click on a selected screen, or ⌘-click; `null` clears the element. `file` becomes the selection */
 	onSelectElement?: (file: string, element: ElementRef | null) => void;
-	/** In-place text editing ended with `text` for `element` */
 	onEditText?: (element: ElementRef, text: string) => void;
-	/** The element's text can't be edited in place (it holds more than text): edit it elsewhere */
+	/** For elements that hold more than text */
 	onEditTextElsewhere?: (element: ElementRef) => void;
-	/** With the comment tool, a click places a comment pin at this canvas point */
 	onPlaceComment?: (point: Point) => void;
-	/** Rendered in canvas coordinates, above the frames (comment pins) */
 	overlay?: React.ReactNode;
 	children?: React.ReactNode;
 };
 
-/** How a frame relates to its variation group */
 type Variation = "picked" | "alternate";
 
-/** Canvas-space padding around a group's frames, in screen pixels (divided by zoom) */
+/** In screen pixels (divided by zoom) */
 const GROUP_PADDING = 16;
 
-/** Extra room above a group's frames for their labels, in screen pixels */
+/** In screen pixels */
 const GROUP_LABEL_ROOM = 24;
 
-/** A variation group with the canvas bounds of its frames, drafts included. */
 function groupLayouts(frames: Frame[], drafts: Frame[] = []): { group: VariationGroup; bounds: Rect; name: string }[] {
 	const all = [...frames, ...drafts];
 	const byFile = new Map(all.map((frame) => [frame.file, frame]));
@@ -145,15 +126,8 @@ type Drag =
 	  }
 	| { kind: "marquee"; start: Point; current: Point; base: string[]; additive: boolean; moved: boolean };
 
-/** The latest pointer position to hit-test for hover, while one is in flight. */
 type HoverRequest = { clientX: number; clientY: number; deep: boolean };
 
-/**
- * Infinite canvas: wheel pans, ⌘/ctrl + wheel (or pinch) zooms around the
- * cursor, space, the hand tool or the middle button drags the view. In move
- * mode, frames drag (the whole selection moves together) and empty space
- * draws a selection marquee.
- */
 export function Canvas({
 	frames,
 	files,
@@ -184,13 +158,10 @@ export function Canvas({
 	// Stable for the memoized frames, whatever the parent passes
 	const pickRef = useRef(onPick);
 	const pick = useCallback((file: string) => pickRef.current?.(file), []);
-	/** The frame a dragged component would land on */
 	const [dropFile, setDropFile] = useState<string | null>(null);
 	const draggingComponent = useSyncExternalStore(componentDrag.subscribe, () => componentDrag.current() !== null);
-	/** The element under the pointer, outlined on hover */
 	const [hover, setHover] = useState<{ file: string; start: number; box: Box } | null>(null);
 	const hovering = useRef<{ busy: boolean; next: HoverRequest | null }>({ busy: false, next: null });
-	/** The screen whose element's text is being edited in place */
 	const [editing, setEditing] = useState<ElementRef | null>(null);
 	const editingRef = useRef(editing);
 	const rendered = drafts?.files ?? files;
@@ -241,18 +212,13 @@ export function Canvas({
 		[onViewportChange],
 	);
 
-	/** The host feeding the frame of `file`, found through its iframe. */
 	const hostFor = useCallback(
 		(file: string) =>
 			hostOf(containerRef.current?.querySelector<HTMLIFrameElement>(`[data-frame-file="${CSS.escape(file)}"] iframe`)),
 		[],
 	);
 
-	/**
-	 * Edits an element's text in place, in the instance under frame-local
-	 * `point` when given. Elements that hold more than text, or whose rendered
-	 * DOM doesn't match their source text, go to `onEditTextElsewhere`.
-	 */
+	/** Falls back to `onEditTextElsewhere` when the element holds more than text or its DOM doesn't match the source */
 	const editText = useCallback(
 		(target: ElementRef, point?: Point) => {
 			const source = filesRef.current[target.file];
@@ -366,7 +332,6 @@ export function Canvas({
 		};
 	};
 
-	/** The topmost frame under a client point, if any. */
 	const frameAt = (clientX: number, clientY: number) => {
 		const point = toCanvas(clientX, clientY);
 
@@ -379,7 +344,7 @@ export function Canvas({
 		return undefined;
 	};
 
-	// Components dragged from the panel. The frames ignore pointer input, so the canvas gets every drag event.
+	// The frames ignore pointer input, so the canvas gets every drag event
 	const isComponentDrag = (event: React.DragEvent) =>
 		!!onDropItem && (componentDrag.current() !== null || event.dataTransfer.types.includes(COMPONENT_MIME));
 
@@ -432,11 +397,7 @@ export function Canvas({
 		});
 	};
 
-	/**
-	 * The screen elements at a client point of `frame`, innermost first, when
-	 * the frame shows the current source (offsets of an older render would
-	 * point at the wrong elements).
-	 */
+	/** `null` unless the frame shows the current source: offsets of an older render point at the wrong elements */
 	const elementsAt = async (frame: Frame, clientX: number, clientY: number) => {
 		const host = hostFor(frame.file);
 		const source = filesRef.current[frame.file];
@@ -450,7 +411,6 @@ export function Canvas({
 		return starts && hit ? { starts, boxes: hit.boxes ?? [], point: local } : null;
 	};
 
-	/** Selects the innermost element under a client point in `frame` (or clears the element). */
 	const pickElement = async (frame: Frame, clientX: number, clientY: number) => {
 		const found = await elementsAt(frame, clientX, clientY);
 		onSelectElement?.(frame.file, found ? { file: frame.file, start: found.starts[0]! } : null);
@@ -458,7 +418,6 @@ export function Canvas({
 		return found;
 	};
 
-	/** Hover outlines: elements of the selected screen, or of any screen while ⌘ is held. */
 	const updateHover = (clientX: number, clientY: number, deep: boolean) => {
 		const state = hovering.current;
 		state.next = { clientX, clientY, deep };
@@ -608,7 +567,6 @@ export function Canvas({
 		setDrag(null);
 	};
 
-	/** Double-click: select the element under the pointer and edit its text in place. */
 	const onDoubleClick = (event: React.MouseEvent) => {
 		if (!onSelectElement || panning || tool !== "move" || editingRef.current) return;
 		const frame = frameAt(event.clientX, event.clientY);
@@ -751,7 +709,7 @@ export function Canvas({
 	);
 }
 
-/** One frame: its label and the sandboxed screen. Memoized so drags of other frames don't re-render it. */
+/** Memoized so drags of other frames don't re-render it */
 const FrameView = memo(function FrameView({
 	frame,
 	files,
@@ -768,15 +726,12 @@ const FrameView = memo(function FrameView({
 	files: ProjectFiles;
 	selected: boolean;
 	zoom: number;
-	/** The generation is writing this file */
 	writing?: WritingFile;
 	variation?: Variation;
 	onPick?: (file: string) => void;
 	/** A screen that doesn't exist yet: not selectable, shows its code until the file is complete */
 	draft?: boolean;
-	/** A component dragged from the panel would land here */
 	dropTarget?: boolean;
-	/** An element's text is being edited in place: the frame takes pointer input */
 	editing?: boolean;
 }) {
 	const streaming = writing && !writing.done;
@@ -865,7 +820,6 @@ const FrameView = memo(function FrameView({
 	);
 });
 
-/** `box` clipped to the frame's bounds, in frame coordinates; `null` when nothing is left. */
 function clip(box: Box, frame: Frame): Box | null {
 	const x = Math.max(0, box.x);
 	const y = Math.max(0, box.y);
@@ -875,7 +829,6 @@ function clip(box: Box, frame: Frame): Box | null {
 	return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
-/** Outlines of a screen element's boxes, over its frame. Hover is thin; a selection is solid and labelled. */
 function ElementOutline({
 	frame,
 	boxes,
@@ -888,7 +841,6 @@ function ElementOutline({
 	boxes: Box[];
 	zoom: number;
 	label?: string;
-	/** A component usage: drawn in the component color */
 	component?: boolean;
 	selected?: boolean;
 }) {
@@ -935,11 +887,7 @@ function ElementOutline({
 	);
 }
 
-/**
- * The selected element's outline. The frame reports its boxes for the source
- * version the canvas shows, and again whenever the layout changes; the last
- * boxes stay up while a newer version renders, so edits don't flicker.
- */
+/** The last boxes stay up while a newer version renders, so edits don't flicker */
 function SelectedElement({
 	element,
 	frame,
@@ -983,10 +931,6 @@ function SelectedElement({
 	);
 }
 
-/**
- * A quiet dashed outline around a variation group's frames, with a counter-scaled
- * label chip above it. Only the chip takes pointer input.
- */
 function GroupOutline({
 	group,
 	bounds,
@@ -1045,7 +989,6 @@ function GroupOutline({
 	);
 }
 
-/** The tail of a file as it streams in, shown in a frame before the screen can render. */
 function StreamingCode({ text }: { text: string }) {
 	const lines = text.split("\n");
 

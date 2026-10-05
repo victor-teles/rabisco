@@ -31,7 +31,6 @@ async function collect(events: AsyncIterable<GenerationEvent>) {
 	return out;
 }
 
-/** What an agent found in the staging dir's context files. */
 type SeenContext = { product: string | null; design: string | null };
 
 const stagingDirs = (root: string) => readdirSync(root).filter((name) => name.startsWith("rabisco-staging-"));

@@ -24,7 +24,7 @@ const ALLOWED = new Set([
 
 const importsOf = (source: string) => [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]!);
 
-/** Stand-ins for the shadcn modules: every named export renders its children. */
+/** Every named export renders its children. */
 const ui = new Proxy(
 	{},
 	{
@@ -35,12 +35,10 @@ const ui = new Proxy(
 	},
 );
 
-/** What a compiled screen or component module exports, as far as the test reads it. */
 type ModuleExports = { default?: FunctionComponent };
 
 type CommonJsModule = { exports: ModuleExports };
 
-/** Renders a screen with a tiny module registry, the way a frame will. */
 function render(entry: string, files: ProjectFiles) {
 	const cache = new Map<string, ModuleExports>();
 

@@ -5,20 +5,15 @@ import { extractRequires, isRelative, joinPath } from "../../mainview/lib/render
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { cachedComponentApi } from "../../shared/components/usages";
 
-/**
- * Checks 1–4 of decision 0003 (path, compile, imports, exports) for files a
- * provider wrote, plus one for components: no export that another component
- * file already has. Check 5 (render) happens in the frame.
- */
+// Checks 1–4 of decision 0003; check 5 (render) happens in the frame.
 
-/** `@/components/ui/*` modules the frame runtime provides; the list lives with the prompt */
 const UI_NAMES = Object.keys(UI_MODULES);
 
 const UI_SET = new Set(UI_NAMES);
 
 const UI_PREFIX = "@/components/ui/";
 
-/** Inserted by Sucrase's automatic JSX runtime, never written by the provider */
+/** Inserted by Sucrase's automatic JSX runtime */
 const JSX_RUNTIME = "react/jsx-runtime";
 
 export type FileKindOf = "screen" | "component" | null;
@@ -31,7 +26,7 @@ export function fileKindOf(path: string): FileKindOf {
 	return null;
 }
 
-/** Problem with the path itself, or `null` when the path is writable. `alternates` are names Rabisco assigned, which pass. */
+/** `null` when the path is writable; `alternates` are names Rabisco assigned. */
 export function checkPath(path: string, alternates?: ReadonlySet<string>): string | null {
 	if (FILE_RULES.paths.screen.test(path) || FILE_RULES.paths.component.test(path)) return null;
 
@@ -47,19 +42,17 @@ export function checkPath(path: string, alternates?: ReadonlySet<string>): strin
 	return FILE_RULES.paths.context.test(path) ? `${path} is the user's file: follow it, don't write it. ${rule}` : rule;
 }
 
-/** Sucrase syntax errors carry the `{line, column}` they point at. */
 function isSourceLocation(value: unknown): value is { line: number } {
 	return typeof value === "object" && value !== null && "line" in value && typeof value.line === "number";
 }
 
-/** The line a compile error points at, when it says. */
 function errorLine(cause: unknown): number | undefined {
 	if (!(cause instanceof Error) || !("loc" in cause)) return undefined;
 
 	return isSourceLocation(cause.loc) ? cause.loc.line : undefined;
 }
 
-/** Same Sucrase options as the webview (src/mainview/lib/render/compile.ts). */
+/** Keep in sync with src/mainview/lib/render/compile.ts. */
 function compile(path: string, content: string): { code: string } | { message: string; line?: number } {
 	try {
 		const { code } = transform(content, {
@@ -79,7 +72,7 @@ function compile(path: string, content: string): { code: string } | { message: s
 	}
 }
 
-/** 1-based line of the first `import`/`export … from` that mentions `specifier`. */
+/** 1-based */
 function importLine(source: string, specifier: string) {
 	const lines = source.split("\n");
 	const quoted = [`"${specifier}"`, `'${specifier}'`];
@@ -88,7 +81,7 @@ function importLine(source: string, specifier: string) {
 	return index === -1 ? undefined : index + 1;
 }
 
-/** Value imports as written in the source (type-only imports are erased, so they don't count). */
+/** Type-only imports are erased by compile, so they don't count. */
 function sourceImports(source: string) {
 	const found = new Set<string>();
 
@@ -100,7 +93,7 @@ function sourceImports(source: string) {
 }
 
 type ImportContext = {
-	/** Component paths that exist after this change */
+	/** After this change */
 	components: Set<string>;
 };
 
@@ -137,7 +130,6 @@ function checkImport(from: string, specifier: string, ctx: ImportContext): strin
 	return `"${specifier}" can't be imported. Allowed: react, lucide-react, @/components/ui/*, @/lib/utils and project components.`;
 }
 
-/** Literal default exports (`export default "x"`, `export default {}`) aren't components. */
 const LITERAL_DEFAULT = /\bexports\.\s*default\s*=\s*(?:["'`\d[{]|null\b|true\b|false\b|undefined\b)/;
 
 function checkExports(path: string, kind: "screen" | "component", code: string, source: string): Problem[] {
@@ -191,12 +183,7 @@ function checkExports(path: string, kind: "screen" | "component", code: string, 
 const componentNames = (path: string, source: string | undefined) =>
 	source === undefined ? [] : cachedComponentApi(path, source).exports.map((exp) => exp.name);
 
-/**
- * A written component file must not export a component another component file
- * already exports: the model should import that one (or extend it) instead.
- * Names the file already exported before this change are fine. Of two new
- * files with the same export, the later one is flagged.
- */
+/** Names the file already exported are fine; of two new files with the same export, the later is flagged. */
 function checkDuplicateExports(written: ProjectFile[], project: ProjectFiles, gone: Set<string>): Problem[] {
 	const after = new Map<string, string>();
 
@@ -240,13 +227,12 @@ function checkDuplicateExports(written: ProjectFile[], project: ProjectFiles, go
 }
 
 export type ValidateOptions = {
-	/** The file a `context` task writes (`PRODUCT.md` or `DESIGN.md`); it is then the only writable path */
+	/** When set, it is the only writable path */
 	contextTarget?: string;
-	/** Alternate names Rabisco assigned to a variation run (`*.alt-N.tsx`); any other alternate path is rejected */
+	/** Any other `*.alt-N.tsx` path is rejected */
 	alternates?: ReadonlySet<string>;
 };
 
-/** A `context` task writes its one Markdown file: no screens, no components, no deletes. */
 function validateContextTask(written: ProjectFile[], deleted: string[], target: string): Problem[] {
 	const problems: Problem[] = [];
 	const only = `This task writes only ${target}. Don't write or delete anything else.`;
@@ -267,10 +253,6 @@ function validateContextTask(written: ProjectFile[], deleted: string[], target: 
 	return problems;
 }
 
-/**
- * Validates provider writes against the project they apply to. `deleted` are
- * paths the same generation removes. Returns every problem found, in file order.
- */
 export function validateFiles(
 	written: ProjectFile[],
 	project: ProjectFiles,
@@ -298,7 +280,7 @@ export function validateFiles(
 
 		if (pathProblem) problems.push({ path, message: pathProblem });
 
-		if (FILE_RULES.paths.context.test(path)) continue; // Markdown: nothing to compile
+		if (FILE_RULES.paths.context.test(path)) continue;
 
 		if (content.length > FILE_RULES.maxFileLength) {
 			problems.push({

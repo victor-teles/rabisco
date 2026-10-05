@@ -1,5 +1,3 @@
-/** Small text helpers shared by the JSX modules: entities, JSX whitespace, indentation and names. */
-
 const ENTITIES = new Map(
 	Object.entries({
 		amp: "&",
@@ -22,7 +20,7 @@ const ENTITIES = new Map(
 	}),
 );
 
-/** Decodes the HTML entities JSX understands in text and attribute strings (`&amp;`, `&#123;`, `&#x7B;`). */
+/** `&amp;`, `&#123;`, `&#x7B;` */
 export function decodeEntities(text: string) {
 	if (!text.includes("&")) return text;
 
@@ -37,7 +35,7 @@ export function decodeEntities(text: string) {
 	});
 }
 
-/** JSX text as React renders it: lines trimmed and joined by one space, blank lines dropped, entities decoded. */
+/** As React renders it: lines trimmed and joined by one space, blank lines dropped */
 export function jsxTextValue(raw: string) {
 	const lines = raw.split(/\r?\n/);
 
@@ -56,17 +54,17 @@ export function jsxTextValue(raw: string) {
 	return decodeEntities(kept.join(" "));
 }
 
-/** An attribute value for a string: `"Save"`, or `{"Say \"hi\""}` when plain quotes can't hold it. */
+/** `"Save"`, or `{"Say \"hi\""}` when plain quotes can't hold it */
 export function attrValue(value: string) {
 	return /["\n\r\\]|&(#?\w+);|[{}]/.test(value) ? `{${JSON.stringify(value)}}` : `"${value}"`;
 }
 
-/** Text that is safe as a JSX child: plain when possible, otherwise a string expression. */
+/** Plain when possible, otherwise a string expression */
 export function childText(value: string) {
 	return /[{}<>&]|^\s|\s$|\n/.test(value) ? `{${JSON.stringify(value)}}` : value;
 }
 
-/** The indent unit of a file: a tab, or its smallest space indent; tabs when unknown. */
+/** A tab, or the smallest space indent; tabs when unknown */
 export function indentUnit(source: string) {
 	let spaces = 0;
 
@@ -88,18 +86,16 @@ export function lineEnd(source: string, offset: number) {
 	return end === -1 ? source.length : end;
 }
 
-/** Leading whitespace of the line containing `offset`. */
 export function indentAt(source: string, offset: number) {
 	const start = lineStart(source, offset);
 
 	return /^[ \t]*/.exec(source.slice(start, offset))![0];
 }
 
-/** True when only spaces or tabs sit between the start of its line and `offset`. */
 export const startsLine = (source: string, offset: number) =>
 	/^[ \t]*$/.test(source.slice(lineStart(source, offset), offset));
 
-/** Removes the common leading whitespace of every line but the first (which starts mid-line in its source). */
+/** Skips the first line, which starts mid-line in its source. */
 export function dedent(text: string, indent?: string) {
 	const lines = text.split("\n");
 	const rest = lines.slice(1).filter((line) => line.trim());
@@ -123,10 +119,7 @@ export function dedent(text: string, indent?: string) {
 		.join("\n");
 }
 
-/**
- * Re-indents a snippet: dedents it fully, then prefixes every non-empty line
- * with `indent`. With `unit`, the snippet's own indent levels are converted to it.
- */
+/** With `unit`, the snippet's own indent levels are converted to it. */
 export function reindent(snippet: string, indent: string, unit?: string) {
 	const lines = snippet
 		.replace(/^\s*\n/, "")
@@ -153,7 +146,7 @@ export function reindent(snippet: string, indent: string, unit?: string) {
 		.join("\n");
 }
 
-/** `stat card` / `stat-card` → `StatCard`; empty when nothing usable is left. */
+/** `stat-card` → `StatCard`; empty when nothing usable is left */
 export function toPascal(text: string) {
 	const words = text
 		.normalize("NFKD")

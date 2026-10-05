@@ -1,8 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { clampVariations } from "@/lib/variations";
 
-/** How many variations a create generates. One preference for every composer, kept in localStorage like the theme. */
-
 const STORAGE_KEY = "rabisco:variations";
 
 const listeners = new Set<() => void>();

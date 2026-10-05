@@ -1,14 +1,10 @@
-/**
- * Source-to-source edits of JSX elements, addressed by the element's start
- * offset. Each returns the new source, or `null` when the file does not parse
- * or has no element starting there.
- */
+// Each edit returns `null` when the file does not parse or no element starts at the offset.
 
 import { isNumber } from "../guards";
 import { attrValue, indentAt, indentUnit, lineEnd, lineStart, reindent, startsLine } from "./text";
 import { findElement, flatten, parseFile, type JsxElement } from "./tree";
 
-/** The attribute that maps a DOM node back to its element: the element's start offset in the original source. */
+/** Value is the element's start offset in the original source. */
 export const LOC_ATTRIBUTE = "data-rabisco-loc";
 
 function elementIn(source: string, start: number): JsxElement | null {
@@ -20,11 +16,7 @@ function elementIn(source: string, start: number): JsxElement | null {
 const splice = (source: string, from: number, to: number, text: string) =>
 	source.slice(0, from) + text + source.slice(to);
 
-/**
- * Inserts JSX `snippet` as the last child of the element at `parentStart`,
- * re-indented one level deeper than the parent. A self-closing parent gets a
- * closing tag. Fragments work too.
- */
+/** As the last child; a self-closing parent gets a closing tag. */
 export function insertChild(source: string, parentStart: number, snippet: string): string | null {
 	const parent = elementIn(source, parentStart);
 
@@ -59,11 +51,7 @@ export function insertChild(source: string, parentStart: number, snippet: string
 	return splice(source, trimmedEnd, closing, `\n${child}\n${parentIndent}`);
 }
 
-/**
- * Sets an attribute: a string becomes `name="…"` (or `name={"…"}` when quotes
- * can't hold it), a number `name={3}`, `true` a bare `name`; `false` and `null`
- * remove it. Replaces the attribute in place, or appends it after the others.
- */
+/** `true` writes a bare `name`; `false` and `null` remove it. */
 export function setAttribute(
 	source: string,
 	elementStart: number,
@@ -123,11 +111,7 @@ export function setAttribute(
 /** Keywords after which `(…)` is grouping, not a call: `return (`, `yield (`… */
 const GROUPING_KEYWORD = /(?:^|[^\w$.])(?:return|yield|await|case|default|else|do|typeof|void|in|of|throw)$/;
 
-/**
- * Replaces a JSX root (no parent element, no container) with `null`, along with
- * grouping parens that would hold nothing else: `return (\n<main/>\n);` →
- * `return null;`, `() => (<div />)` → `() => null`, `const x = <div />;` → `const x = null;`.
- */
+/** Also drops grouping parens that would hold nothing else: `return (<main/>);` → `return null;` */
 function replaceRoot(source: string, element: JsxElement): string {
 	let from = element.start;
 	let to = element.end;
@@ -153,11 +137,7 @@ function replaceRoot(source: string, element: JsxElement): string {
 	return splice(source, from, to, text);
 }
 
-/**
- * Removes the element. Lines it leaves empty go too. Inside an expression it
- * becomes `null` (`{open && null}`, `icon={null}`), and a `{…}` child that held
- * only it is removed. A root (what a function returns, or a `const`) becomes `null`.
- */
+/** Inside an expression or as a root it becomes `null`; a `{…}` child that held only it is removed. */
 export function removeElement(source: string, start: number): string | null {
 	const element = elementIn(source, start);
 
@@ -193,7 +173,7 @@ export function removeElement(source: string, start: number): string | null {
 	return splice(source, from, to, "");
 }
 
-/** `screens/home.tsx:120` → `{ path, start }`; a bare offset (`120`) has no path. `null` when malformed. */
+/** `screens/home.tsx:120` → `{ path, start }`; a bare offset (`120`) has no path. */
 export function parseLocation(value: string | null | undefined): { path: string | null; start: number } | null {
 	if (!value) return null;
 	const colon = value.lastIndexOf(":");
@@ -208,16 +188,8 @@ export function parseLocation(value: string | null | undefined): { path: string 
 const isFragment = (element: JsxElement) =>
 	element.name === null || element.name === "Fragment" || element.name.endsWith(".Fragment");
 
-/**
- * Adds `data-rabisco-loc="<start>"` to every element but fragments, right
- * after its tag name, with the start offset in `source`. DOM elements carry it
- * as an attribute; component elements receive it as a prop, which the screen
- * runtime reads from React's tree, so a component usage maps back to its JSX
- * even when the component doesn't pass the prop on. With `path`, the value is
- * `<path>:<start>`, so a node maps back to its file too (see `parseLocation`).
- * Positions only move within their line, so compile errors keep their line
- * numbers. Returns the source unchanged when it does not parse.
- */
+// Components get it as a prop the runtime reads from React's tree, so it works even if they don't pass it on.
+// Insertions stay within their line, so compile errors keep their line numbers.
 export function injectLocations(source: string, path?: string): string {
 	const parsed = parseFile(source);
 

@@ -1,8 +1,3 @@
-/**
- * Realistic generated screens: TypeScript types, hooks, list rendering,
- * shadcn imports and dense Tailwind class lists.
- */
-
 export const SMALL = `import { Button } from "@/components/ui/button";
 
 type Props = { title: string };
@@ -178,7 +173,7 @@ export default function Home() {
 }
 `;
 
-/** ~5× MEDIUM: a dense desktop dashboard. Component names are made unique per copy. */
+/** ~5× MEDIUM; component names are made unique per copy. */
 export const LARGE = (() => {
 	const body = MEDIUM.split("\n")
 		.filter((line) => !line.startsWith("import "))
@@ -204,7 +199,6 @@ export const LARGE = (() => {
 	);
 })();
 
-/** Local project components, to measure bundling a screen with its own components. */
 export const LOCAL_COMPONENTS = {
 	"/project/components/stat-card.tsx": `import { Card } from "@/components/ui/card";
 export function StatCard({ label, value }: { label: string; value: string }) {

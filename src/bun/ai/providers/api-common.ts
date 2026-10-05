@@ -1,8 +1,3 @@
-/**
- * Shared pieces of the API providers (Anthropic, OpenAI-compatible): options,
- * SSE reading, error mapping and the text-protocol generation loop.
- */
-
 import type {
 	GenerationEvent,
 	GenerationRequest,
@@ -17,12 +12,11 @@ import { createTextProtocolParser } from "../protocol";
 
 export type ApiProviderOptions = {
 	config: ProviderConfig;
-	/** Reads the key from the keychain; null when none is stored */
+	/** null when none is stored */
 	getApiKey: () => Promise<string | null>;
-	fetch?: typeof fetch; // injectable for tests
+	fetch?: typeof fetch;
 };
 
-/** A failure with a contract error code. */
 export class ProviderError extends Error {
 	code: ProviderErrorCode;
 	retryable: boolean;
@@ -34,18 +28,15 @@ export class ProviderError extends Error {
 	}
 }
 
-/** `config.baseUrl`, or the type's default, without a trailing slash. */
 export function baseUrlFor(config: ProviderConfig): string | null {
 	const url = config.baseUrl?.trim() || PROVIDER_TYPES.find((info) => info.type === config.type)?.defaultBaseUrl;
 
 	return url ? url.replace(/\/+$/, "") : null;
 }
 
-// ---------------------------------------------------------------- errors
-
 const CONTEXT_PATTERN = /context|too long|too many tokens|maximum.*tokens|token limit/i;
 
-/** The human message inside an API error body (`{error: {message}}`, `{message}` or plain text). */
+/** Handles `{error: {message}}`, `{error}`, `{message}` or plain text. */
 export function errorMessage(body: string): string {
 	try {
 		const json = objectOr(parseJson(body));
@@ -58,7 +49,6 @@ export function errorMessage(body: string): string {
 	}
 }
 
-/** Maps an HTTP status (and its message) to an error code. */
 export function errorFromStatus(status: number, message: string): ProviderError {
 	const text = message.trim().slice(0, 500) || `HTTP ${status}`;
 
@@ -80,7 +70,6 @@ export async function errorFromResponse(response: Response): Promise<ProviderErr
 	return errorFromStatus(response.status, errorMessage(body));
 }
 
-/** Any thrown value as a ProviderError: aborts, network failures, or the error itself. */
 export function toProviderError(cause: unknown, signal?: AbortSignal): ProviderError {
 	if (signal?.aborted || (cause instanceof Error && cause.name === "AbortError"))
 		return new ProviderError("aborted", "Generation stopped");
@@ -106,11 +95,8 @@ export function healthError(error: ProviderError, fix?: string): ProviderHealth 
 	return health;
 }
 
-// ---------------------------------------------------------------- SSE
-
 export type SseEvent = { event?: string; data: string };
 
-/** Reads a `text/event-stream` body into events. Handles any chunking and CRLF. */
 export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
 	const decoder = new TextDecoder();
 	const reader = body.getReader();
@@ -166,21 +152,14 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator
 	}
 }
 
-// ---------------------------------------------------------------- generation loop
-
-/** What an API stream reports, before the text protocol is applied. */
 export type StreamPart =
 	| { type: "text"; text: string }
 	| { type: "status"; label: string; detail?: string }
 	| { type: "usage"; usage: Usage }
-	/** Why the model stopped: `end`, `max_tokens`, `refusal` or the provider's own reason */
+	/** `end`, `max_tokens`, `refusal` or the provider's own reason */
 	| { type: "stop"; reason: string };
 
-/**
- * Runs the text protocol over a provider stream and ends it with exactly one
- * `done` or `error`. Zero complete files for a task that needs them is
- * `invalid_output` (an edit answered with text only is accepted as a reply).
- */
+/** No files is `invalid_output`, except an edit answered with text only, which is a reply. */
 export async function* runTextGeneration(
 	request: GenerationRequest,
 	signal: AbortSignal,

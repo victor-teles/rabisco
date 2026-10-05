@@ -1,8 +1,3 @@
-/**
- * Anthropic Messages API provider: plain fetch + SSE, text protocol output.
- * https://docs.anthropic.com/en/api/messages-streaming
- */
-
 import type { GenerationRequest, Provider, ProviderModel } from "../../../shared/ai/contract";
 import type { JsonObject } from "../../../shared/json";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
@@ -40,7 +35,7 @@ type ContentBlock =
 
 type Message = { role: "user" | "assistant"; content: string | ContentBlock[] };
 
-/** History as alternating messages starting with a user turn, then the request as the last user turn. */
+/** Alternating turns starting with a user turn; the request is the last user turn. */
 export function anthropicMessages(request: GenerationRequest): Message[] {
 	const history = (request.history ?? []).filter((turn) => turn.content.trim());
 
@@ -58,13 +53,12 @@ export function anthropicMessages(request: GenerationRequest): Message[] {
 	return messages;
 }
 
-/** Prompt tokens of a `usage` object, cached or not. */
+/** Cached or not. */
 const inputTokens = (usage: JsonObject) =>
 	(optionalNumber(usage.input_tokens) ?? 0) +
 	(optionalNumber(usage.cache_read_input_tokens) ?? 0) +
 	(optionalNumber(usage.cache_creation_input_tokens) ?? 0);
 
-/** The ProviderError for an `error` stream event's `{type, message}`. */
 function streamError(error: JsonObject): ProviderError {
 	const message = optionalString(error.message) || "The Anthropic stream failed";
 

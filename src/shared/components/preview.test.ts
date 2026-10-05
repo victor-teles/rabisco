@@ -175,7 +175,7 @@ describe("libraryPreviewModule", () => {
 });
 
 describe("previews render", () => {
-	/** Evaluates `entry` from `files` like the frame does: runtime externals, relative project imports. */
+	/** Evaluates like the frame does: runtime externals, relative project imports. */
 	const render = async (files: Record<string, string>, entry: string) => {
 		const { externals, isExternalSpecifier } = await import("../../mainview/runtime/externals");
 		const { joinPath } = await import("../../mainview/lib/render/resolve");

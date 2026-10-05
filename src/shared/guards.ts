@@ -1,5 +1,3 @@
-/** Primitive checks as type guards, for values whose type is a union of a few representations. */
-
 export const isString = <T>(value: T): value is T & string => typeof value === "string";
 
 export const isNumber = <T>(value: T): value is T & number => typeof value === "number";

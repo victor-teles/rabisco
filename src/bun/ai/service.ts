@@ -24,23 +24,17 @@ import { createSettingsStore, type NewProvider, type ProviderPatch, type Detecte
 export type AiServiceOptions = {
 	userDataDir: string;
 	secrets: SecretStore;
-	/** The mock provider, for development builds only */
+	/** Development builds only */
 	includeMock: boolean;
 	send: (message: GenerationEventMessage) => void;
 	fetch?: typeof fetch;
 	spawn?: ProviderDeps["spawn"];
 	detect?: () => Promise<Detected>;
-	/** Builds providers from their configs; tests swap in fakes */
 	createProvider?: RegistryOptions["create"];
 };
 
-/** Earlier chat turns sent with a prompt */
 const HISTORY_TURNS = 12;
 
-/**
- * Everything the webview needs from the provider layer: settings, health,
- * models and generations. Nothing outside src/bun/ai knows which provider runs.
- */
 export function createAiService(options: AiServiceOptions) {
 	const store = createSettingsStore({
 		userDataDir: options.userDataDir,
@@ -187,8 +181,8 @@ export function createAiService(options: AiServiceOptions) {
 					({ role, content }) => ({ role, content }),
 				);
 
-				// The webview appends the prompt before generating; it is the request itself, not history.
-				// A focused prompt's message names the element first (`focusNote`), so it ends with the prompt.
+				// The webview appends the prompt before generating; it is the request, not history.
+				// A focused prompt's message starts with `focusNote`, so it ends with the prompt.
 				const lastTurn = history.at(-1);
 
 				if (
@@ -327,11 +321,11 @@ export type AiService = ReturnType<typeof createAiService>;
 const isContextTarget = (targets: string[] | undefined) =>
 	targets?.length === 1 && (targets[0] === "PRODUCT.md" || targets[0] === "DESIGN.md");
 
-/** `vary` takes exactly one screen that exists (an alternate is fine: its base is what gets new alternates). */
+/** An alternate is fine: its base is what gets new alternates. */
 const isVaryTarget = (targets: string[] | undefined, files: ProjectFiles) =>
 	targets?.length === 1 && isScreenFile(targets[0]!) && targets[0]! in files;
 
-/** The task to build; `repair` and `vary` start as an edit of their targets (a repair becomes one once built). */
+/** `repair` and `vary` start as an edit of their targets. */
 function taskOf(params: GenerateParams): BuildRequestParams["task"] {
 	if (params.task === "context") return "context";
 

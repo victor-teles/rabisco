@@ -1,9 +1,3 @@
-/**
- * Claude Code CLI provider: runs `claude -p` in a staging dir with file tools
- * only, and maps its `stream-json` output to generation events. Uses the
- * user's own Claude Code login.
- */
-
 import type { GenerationEvent, Provider, ProviderModel, Usage } from "../../../shared/ai/contract";
 import type { ProviderConfig } from "../../../shared/ai/settings";
 import {
@@ -32,7 +26,7 @@ import { runInStaging } from "../staging";
 
 export type CliProviderOptions = { config: ProviderConfig; spawn?: SpawnFn; stagingRoot?: string };
 
-/** The only tools the agent gets: it reads and writes files, nothing else. */
+/** File tools only: the agent can't run commands. */
 export const CLAUDE_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"];
 
 export const CLAUDE_DENIED_TOOLS = ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"];
@@ -68,7 +62,6 @@ function toolEvent(dir: string, name: string | undefined, input: JsonObject): Ge
 	}
 }
 
-/** Token counts and cost of a successful `result` line. */
 function resultUsage(line: JsonObject): Usage {
 	const usage: Usage = {};
 	const tokens = optionalObject(line.usage);
@@ -85,10 +78,7 @@ function resultUsage(line: JsonObject): Usage {
 	return usage;
 }
 
-/**
- * Maps Claude Code `stream-json` lines (and Agent SDK messages, which share the
- * format) to events. Stateful: create one per run.
- */
+/** Also maps Agent SDK messages, which share the format. Stateful: create one per run. */
 export function createClaudeMapper(dir: string, type: "claude-code" | "claude-agent-sdk" = "claude-code"): LineMapper {
 	const text = new MessageText();
 
@@ -138,7 +128,7 @@ export function createClaudeMapper(dir: string, type: "claude-code" | "claude-ag
 	};
 }
 
-/** The `claude` arguments for one generation; the prompt goes on stdin. */
+/** The prompt goes on stdin. */
 export function claudeArgs(model: string) {
 	return [
 		"-p",

@@ -1,4 +1,3 @@
-/** The Export menu's Code section: copy a screen or component as code, and export a Vite project. */
 import { toast } from "sonner";
 import { api } from "@/lib/rpc";
 import { UI_SOURCES } from "@/lib/ui-sources";
@@ -6,21 +5,19 @@ import { codeToCopy, localDependencies } from "../../../../shared/export/code";
 import { packageName, viteProject } from "../../../../shared/export/vite-project";
 import type { ExportContext } from "./export-menu";
 
-/** The file "Copy code" copies: the component open in the Components tab, else the first selected screen. */
+/** The component open in the Components tab, else the first selected screen */
 export function copyTarget(context: ExportContext): string | null {
 	const target = context.selectedComponent ?? context.selected[0]?.file ?? null;
 
 	return target && Object.hasOwn(context.files, target) ? target : null;
 }
 
-/** Whether the copy target imports project components, so "Copy with components" adds something. */
 export function hasLocalImports(context: ExportContext) {
 	const target = copyTarget(context);
 
 	return target !== null && localDependencies(context.files, target).length > 0;
 }
 
-/** Copies the target's source, with `withComponents` the project files it imports too. */
 export async function copyCode(context: ExportContext, withComponents: boolean) {
 	const target = copyTarget(context);
 
@@ -42,7 +39,6 @@ export async function copyCode(context: ExportContext, withComponents: boolean) 
 	}
 }
 
-/** Asks for a folder and writes a runnable Vite + React + Tailwind project of the canvas into it. */
 export async function exportViteProject(context: ExportContext) {
 	try {
 		const project = viteProject({

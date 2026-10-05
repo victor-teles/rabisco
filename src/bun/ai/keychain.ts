@@ -1,14 +1,5 @@
-/**
- * API keys live in the OS keychain, never in `providers.json`.
- *
- * macOS: `/usr/bin/security`. Writes go through `security -i`, which reads the
- * command from stdin, so the secret never appears in argv (visible in `ps`).
- * The secret is passed hex-encoded (`-X`), which avoids any quoting. Reads use
- * `find-generic-password -w`, which prints non-ASCII secrets as hex; secrets are
- * therefore limited to printable ASCII (every API key format is).
- *
- * Linux: `secret-tool` (libsecret), which reads the secret from stdin.
- */
+// Secrets go via stdin, never argv (visible in `ps`). `find-generic-password -w` prints non-ASCII
+// secrets as hex, so secrets are limited to printable ASCII (every API key format is).
 
 export const KEYCHAIN_SERVICE = "app.rabisco.desktop";
 
@@ -18,10 +9,8 @@ export interface SecretStore {
 	delete(account: string): Promise<void>;
 }
 
-/** Keychain account holding a provider's API key. */
 export const apiKeyAccount = (providerId: string) => `provider:${providerId}`;
 
-/** Runs a command, optionally writing `stdin`, and returns its exit code and output. */
 export type RunCommand = (
 	argv: string[],
 	stdin?: string,
@@ -140,7 +129,7 @@ export function createLinuxSecretStore(run: RunCommand = runCommand, service = K
 	};
 }
 
-/** The OS keychain for this platform. Throws on platforms without one. */
+/** Throws on platforms without a keychain. */
 export function createSecretStore(platform: NodeJS.Platform = process.platform): SecretStore {
 	if (platform === "darwin") return createMacSecretStore();
 
@@ -150,7 +139,6 @@ export function createSecretStore(platform: NodeJS.Platform = process.platform):
 	);
 }
 
-/** In-memory store for tests. */
 export function createMemorySecretStore(
 	initial: Record<string, string> = {},
 ): SecretStore & { entries(): Record<string, string> } {

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, join, relative, resolve } from "path";
 import type { ExportFile } from "../shared/types";
 
-/** `dir`-relative path of an export file; throws when it is absolute or leaves `dir`. */
+/** Throws when the path is absolute or leaves `dir`. */
 export function assertExportPath(dir: string, path: string) {
 	const target = resolve(dir, path);
 	const inside = relative(resolve(dir), target);
@@ -14,10 +14,7 @@ export function assertExportPath(dir: string, path: string) {
 	return target;
 }
 
-/**
- * Writes `files` into `dir` (created when missing), after validating every path,
- * so a bad path writes nothing. `base64` content is written as bytes.
- */
+/** Validates every path first, so a bad path writes nothing. `base64` content is written as bytes. */
 export function writeExportFiles(dir: string, files: ExportFile[]) {
 	if (!isAbsolute(dir)) throw new Error(`Export folder must be an absolute path (got "${dir}")`);
 	const targets = files.map((file) => assertExportPath(dir, file.path));
@@ -28,7 +25,7 @@ export function writeExportFiles(dir: string, files: ExportFile[]) {
 	});
 }
 
-/** `<parent>/<name>`, with `-2`, `-3`… when taken, so an export never overwrites an earlier one. */
+/** Appends `-2`, `-3`… so an export never overwrites an earlier one. */
 export function freeExportDir(parent: string, name: string) {
 	let dir = join(parent, name);
 

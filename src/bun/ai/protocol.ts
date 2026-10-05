@@ -1,10 +1,4 @@
-/**
- * Streaming parser for the text protocol of API providers (decision 0003):
- * `<rabisco-file …>…</rabisco-file>` becomes `file.*` events, `<rabisco-delete … />`
- * becomes `file.delete`, and text outside tags becomes `message.delta`.
- * Chunks may split anything anywhere, tag names included. The parser never
- * emits `done` or `error`; providers end the stream.
- */
+// Decision 0003. Chunks may split anything anywhere, tag names included; providers emit `done`/`error`.
 
 import type { FileKind, GenerationEvent, ScreenMeta } from "../../shared/ai/contract";
 import { screenNameFromPath, toKebab } from "../../shared/project";
@@ -20,27 +14,24 @@ const TAGS = [OPEN, DELETE, CLOSE];
 /** An unterminated `<rabisco-file …` longer than this is treated as plain text */
 const MAX_TAG_LENGTH = 2000;
 
-/** `status.label` emitted for a file that was still open when the stream ended (`detail` is its path). */
+/** For a file still open when the stream ended; `detail` is its path. */
 export const TRUNCATED_STATUS = "File cut off";
 
 export type TextProtocolParser = {
 	push(chunk: string): GenerationEvent[];
-	/** Flushes buffered text. A file still open is truncated: no `file.end`, a `status` instead. */
+	/** A file still open gets a `status` instead of `file.end`. */
 	end(): GenerationEvent[];
-	/** Paths with a `file.end` */
 	readonly written: readonly string[];
 	readonly deleted: readonly string[];
-	/** Paths that were still open at `end()`; the caller should turn them into repair problems */
+	/** The caller should turn these into repair problems */
 	readonly truncated: readonly string[];
-	/** Whether any non-whitespace text was emitted as `message.delta` */
 	readonly hasMessage: boolean;
 };
 
 type OpenFile = {
-	/** null: a tag without a usable path; its content is swallowed */
+	/** null: no usable path; content is swallowed */
 	path: string | null;
 	raw: string;
-	/** Characters of the cleaned content already sent as `file.delta` */
 	sent: number;
 	body: { start: number; fenced: boolean } | null;
 };
@@ -70,7 +61,6 @@ const normalizePath = (path: string) =>
 		.replace(/\\/g, "/")
 		.replace(/^(?:\.\/|\/)+/, "");
 
-/** `kind` from the attribute when valid, otherwise from the path. */
 export const inferKind = (path: string, kind?: string): FileKind =>
 	kind === "screen" || kind === "component" || kind === "context"
 		? kind
@@ -80,7 +70,7 @@ export const inferKind = (path: string, kind?: string): FileKind =>
 				? "context"
 				: "screen";
 
-/** Where the file body starts: after the tag's own newline, and after a ```tsx fence line. null: not known yet. */
+/** After the tag's newline and any ```tsx fence line; null when not known yet. */
 function bodyStart(raw: string, final: boolean): { start: number; fenced: boolean } | null {
 	const lead = raw.length - raw.trimStart().length;
 	const rest = raw.slice(lead);
@@ -98,7 +88,7 @@ function bodyStart(raw: string, final: boolean): { start: number; fenced: boolea
 	return { start: raw.startsWith("\r\n") ? 2 : raw.startsWith("\n") ? 1 : 0, fenced: false };
 }
 
-/** Length of `body` that can't change anymore: trailing whitespace and a possible closing fence are held back. */
+/** Holds back trailing whitespace and a possible closing fence. */
 function stableLength(body: string, fenced: boolean): number {
 	let end = body.trimEnd().length;
 
@@ -112,7 +102,6 @@ function stableLength(body: string, fenced: boolean): number {
 	return end;
 }
 
-/** Final file content: no tag newlines, no fence wrapper, exactly one trailing newline. */
 function finalContent(body: string, fenced: boolean): string {
 	let content = body.trimEnd();
 
@@ -121,7 +110,6 @@ function finalContent(body: string, fenced: boolean): string {
 	return content ? `${content}\n` : "";
 }
 
-/** Length of the longest suffix of `text` that is a proper prefix of `token`. */
 function partialSuffix(text: string, token: string): number {
 	for (let n = Math.min(token.length - 1, text.length); n > 0; n--) {
 		if (token.startsWith(text.slice(text.length - n))) return n;
@@ -175,7 +163,6 @@ export function createTextProtocolParser(): TextProtocolParser {
 		}
 	}
 
-	/** Sends the stable part of the open file's content as a delta. */
 	function flushFile(events: GenerationEvent[], final: boolean) {
 		const current = file!;
 		current.body ??= bodyStart(current.raw, final);
@@ -193,7 +180,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 		}
 	}
 
-	/** Text state: returns false when it must wait for more input. */
+	/** false: wait for more input */
 	function stepText(events: GenerationEvent[]): boolean {
 		const lt = buffer.indexOf("<");
 
@@ -209,7 +196,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 
 		for (const tag of TAGS) {
 			if (buffer.length <= tag.length) {
-				if (tag.startsWith(buffer)) return false; // could still become this tag
+				if (tag.startsWith(buffer)) return false;
 				continue;
 			}
 
@@ -217,7 +204,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 			const next = buffer[tag.length]!;
 
 			if (tag === CLOSE) {
-				buffer = buffer.slice(tag.length); // stray closing tag: drop it
+				buffer = buffer.slice(tag.length);
 
 				return true;
 			}
@@ -243,14 +230,13 @@ export function createTextProtocolParser(): TextProtocolParser {
 			return true;
 		}
 
-		// Not one of ours
 		text(events, "<");
 		buffer = buffer.slice(1);
 
 		return true;
 	}
 
-	/** File state: returns false when it must wait for more input. */
+	/** false: wait for more input */
 	function stepFile(events: GenerationEvent[]): boolean {
 		const current = file!;
 		const close = buffer.indexOf(CLOSE);

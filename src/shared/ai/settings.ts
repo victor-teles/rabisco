@@ -1,51 +1,42 @@
-/**
- * Provider settings, shared by the main process and the webview.
- * Stored in `<userData>/providers.json`. Secrets never live here: API keys go
- * to the OS keychain, and CLI providers use their own login.
- */
+// Secrets never live here: API keys go to the OS keychain, CLI providers use their own login.
 
 import type { ProviderCapabilities, ProviderErrorCode, ProviderKind, ProviderModel } from "./contract";
 
-/** Every provider Rabisco knows how to run. */
 export type ProviderType =
 	| "anthropic"
 	| "openai"
 	| "openrouter"
 	| "ollama"
-	/** Any OpenAI-compatible endpoint (LM Studio, vLLM, Together, Groq…) */
 	| "openai-compatible"
 	| "claude-code"
 	| "codex"
 	| "gemini-cli"
 	| "claude-agent-sdk"
-	/** Development only: the canned generator from Phase 0 */
+	/** Development only */
 	| "mock";
 
-/** A configured provider. One type can be added more than once (two OpenAI-compatible endpoints). */
+/** One type can be added more than once (two OpenAI-compatible endpoints). */
 export type ProviderConfig = {
-	/** Stable id, e.g. `anthropic` or `openai-compatible-2`. Used in `ModelRef`. */
+	/** e.g. `anthropic` or `openai-compatible-2` */
 	id: string;
 	type: ProviderType;
 	label: string;
 	enabled: boolean;
-	/** API providers: base URL override (required for `openai-compatible`, defaults for the others) */
+	/** Required for `openai-compatible` */
 	baseUrl?: string;
-	/** CLI providers: absolute path to the binary when it isn't on PATH */
+	/** CLI binary path when it isn't on PATH */
 	binPath?: string;
-	/** Model used when the composer has no explicit pick */
 	defaultModel?: string;
-	/** True when an API key is stored in the keychain for this provider */
+	/** An API key is in the keychain */
 	hasKey?: boolean;
 };
 
 export type ProviderSettings = {
 	version: 1;
 	providers: ProviderConfig[];
-	/** `ModelRef` used for new generations */
 	defaultModel?: string;
 };
 
-/** What the UI shows for each provider type before it is configured. */
 export type ProviderTypeInfo = {
 	type: ProviderType;
 	kind: ProviderKind;
@@ -54,7 +45,6 @@ export type ProviderTypeInfo = {
 	needsKey: boolean;
 	needsBaseUrl: boolean;
 	defaultBaseUrl?: string;
-	/** Where to get a key or how to install the CLI */
 	helpUrl?: string;
 };
 
@@ -145,7 +135,6 @@ export const PROVIDER_TYPES: readonly ProviderTypeInfo[] = [
 	},
 ];
 
-/** Status of one configured provider, as shown in Settings and the model picker. */
 export type ProviderStatus = {
 	id: string;
 	type: ProviderType;
@@ -157,10 +146,7 @@ export type ProviderStatus = {
 	models: ProviderModel[];
 };
 
-/**
- * A model is picked as `<providerId>:<modelId>`, e.g. `anthropic:claude-sonnet-5-5`
- * or `ollama:qwen3-coder:30b` (only the first colon separates).
- */
+/** `<providerId>:<modelId>`; only the first colon separates (`ollama:qwen3-coder:30b`). */
 export type ModelRef = string;
 
 export function parseModelRef(ref: ModelRef): { providerId: string; model: string } | null {

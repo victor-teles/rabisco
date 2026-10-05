@@ -1,9 +1,3 @@
-/**
- * Prompts for AI providers (decision 0003). API providers get the text
- * protocol (`<rabisco-file>` tags); agentic providers write files with their
- * own tools in a staging directory. Both get the same design and file rules.
- */
-
 import type { ElementFocus, GenerationRequest } from "../../shared/ai/contract";
 import { FILE_RULES } from "../../shared/ai/contract";
 import { contextBody } from "../../shared/context/body";
@@ -11,7 +5,7 @@ import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
 
-/** Bump when the prompt changes in a way that affects output; logged with each generation. */
+/** Bump when a prompt change affects output; logged with each generation. */
 export const PROMPT_VERSION = 6;
 
 export type PromptMode = "text" | "agent";
@@ -28,8 +22,6 @@ const frameOf = (request: GenerationRequest) => {
 
 	return `${request.device}, ${width}×${height} px`;
 };
-
-// ---------------------------------------------------------------- system
 
 const ROLE = `You are the design engine of Rabisco, a design canvas. You design app screens as React + Tailwind CSS v4 TSX files. Each screen renders live in a fixed-size frame on the canvas, like a static mockup that is real code.`;
 
@@ -110,11 +102,9 @@ Rules for the Tokens section:
 const PRODUCT_MD_FORMAT = `# PRODUCT.md format
 Sections, in this order: Product (what it is and the problem it solves, in a few sentences), Audience (who uses it, their situation and what they need), Voice (how the product speaks: tone, words to use and avoid, with an example line), Constraints (platforms, accessibility, legal, content or brand limits). Use "## " headings. Plain, specific sentences in the user's own terms; don't invent facts they didn't give.`;
 
-/** The context file a request writes or repairs, if any. */
 const contextFileOf = (request: GenerationRequest) =>
 	request.targets?.find((path) => FILE_RULES.paths.context.test(path));
 
-/** System prompt: role, design rules, file rules, available modules, frame size, and the output protocol for the mode. */
 export function systemPrompt(request: GenerationRequest, mode: PromptMode): string {
 	const output = mode === "text" ? TEXT_PROTOCOL_RULES.replace("DEVICE", request.device) : AGENT_RULES;
 	const target = contextFileOf(request);
@@ -122,8 +112,6 @@ export function systemPrompt(request: GenerationRequest, mode: PromptMode): stri
 
 	return [ROLE, DESIGN_RULES, FILE_RULES_TEXT(request), TASKS, ...format, output].join("\n\n");
 }
-
-// ---------------------------------------------------------------- user
 
 const section = (tag: string, body: string) => `<${tag}>\n${body.trim()}\n</${tag}>`;
 
@@ -173,10 +161,7 @@ function contextTaskText(request: GenerationRequest, mode: PromptMode): string {
 	return `Task: context. Write PRODUCT.md from the answers in the request below: what the product is, who it's for, its voice and its constraints.${current} ${output}`;
 }
 
-/**
- * The prompt of a "vary" run: an edit of the one target screen that comes back
- * as a new alternate. `direction` is the user's (e.g. "bolder"), or empty.
- */
+/** `direction` is the user's (e.g. "bolder"), or empty. */
 export function varyPrompt(direction: string) {
 	return [
 		"Make a new variation of this screen. Keep its purpose and content (the same information, actions and copy), and explore a different layout and visual treatment.",
@@ -185,7 +170,6 @@ export function varyPrompt(direction: string) {
 	].join("\n");
 }
 
-/** The project's components with their signatures; listed in every task but `context`. */
 function componentsText(request: GenerationRequest, mode: PromptMode): string | null {
 	if (request.task === "context") return null;
 
@@ -215,10 +199,10 @@ Reuse these for any matching UI: import them (\`import { Name } from "../compone
 ${entries.join("\n")}`;
 }
 
-/** Longest element source the focus section quotes; a bigger one is cut, the file has the rest */
+/** Longer elements are cut; the file has the rest */
 const FOCUS_LINES = 120;
 
-/** The focused element's lines, numbered like an editor: whole lines from the file when it is in `files`, else the snippet. */
+/** Whole lines from the file when it is in `files`, else the snippet. */
 export function numberedSnippet(focus: ElementFocus, content?: string): string {
 	const whole = content !== undefined && content.slice(focus.start, focus.end) === focus.snippet;
 	const lines = whole ? content.split("\n").slice(focus.startLine - 1, focus.endLine) : focus.snippet.split("\n");
@@ -232,10 +216,7 @@ export function numberedSnippet(focus: ElementFocus, content?: string): string {
 	return numbered.join("\n");
 }
 
-/**
- * Point and prompt: the element an edit is about, with its source. A repair of
- * the focused file only gets a reminder; its lines moved with the first attempt.
- */
+/** A repair only gets a reminder: the element's lines moved with the first attempt. */
 function focusText(request: GenerationRequest, mode: PromptMode): string | null {
 	const focus = request.focus;
 
@@ -265,7 +246,6 @@ function variationText(variation: NonNullable<GenerationRequest["variation"]>) {
 	return `This is variation ${variation.index + 1} of ${variation.count}. The others answer the same request separately, so take a visibly distinct direction: a different layout, composition and emphasis, while keeping the project's tokens and DESIGN.md. Use the file paths you would use anyway.`;
 }
 
-/** User turn: PRODUCT.md / DESIGN.md without their comments, the readable files, the component catalog, the task with its targets or problems (and the focused element), then the prompt. */
 export function userPrompt(request: GenerationRequest, mode: PromptMode): string {
 	const parts: string[] = [];
 	const product = contextBody(request.context.product);

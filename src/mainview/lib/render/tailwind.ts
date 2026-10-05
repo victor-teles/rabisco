@@ -3,17 +3,14 @@ import { SCREEN_THEME_CSS } from "./theme";
 
 type Compiler = { build(candidates: string[]): string };
 
-/** Stylesheets `@import`ed by the screen input, keyed by import id. */
 export type StylesheetSources = Record<string, string>;
 
-/** Input CSS shared by every screen: Tailwind, animations and the theme tokens. */
 export function screenInput(stylesheets: StylesheetSources) {
 	const imports = Object.keys(stylesheets).map((id) => `@import "${id}";`);
 
 	return `${imports.join("\n")}\n${SCREEN_THEME_CSS}`;
 }
 
-/** Creates a Tailwind compiler that resolves `@import`s from in-memory stylesheets. */
 export function createCompiler(stylesheets: StylesheetSources): Promise<Compiler> {
 	return compile(screenInput(stylesheets), {
 		base: "/",
@@ -27,10 +24,7 @@ export function createCompiler(stylesheets: StylesheetSources): Promise<Compiler
 	});
 }
 
-/**
- * Incremental Tailwind build shared by all frames. Keeps the union of class candidates and
- * builds only when that union gains a class. The candidate set only grows during a session.
- */
+/** Rebuilds only when the candidate union gains a class; the set only grows during a session. */
 export class TailwindBuilder {
 	#compiler: Compiler | null = null;
 	#ready: Promise<void>;
@@ -56,7 +50,6 @@ export class TailwindBuilder {
 		return this.#ready;
 	}
 
-	/** Adds candidates and rebuilds if any is new. Returns whether the CSS changed. */
 	add(candidates: Iterable<string>): boolean {
 		const fresh: string[] = [];
 
@@ -72,7 +65,6 @@ export class TailwindBuilder {
 		return this.#build(fresh);
 	}
 
-	/** Called with the new stylesheet whenever it changes. */
 	subscribe(listener: (css: string) => void) {
 		this.#listeners.add(listener);
 

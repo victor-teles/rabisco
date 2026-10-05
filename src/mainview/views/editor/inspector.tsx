@@ -63,35 +63,26 @@ type InspectorProps = {
 	selection: string[];
 	tab: InspectorTab;
 	onTabChange: (tab: InspectorTab) => void;
-	/** List click; `additive` with ⇧ */
+	/** `additive` with ⇧ */
 	onSelect: (file: string, additive: boolean) => void;
 	/** `step` groups edits of one field focus into a single undo step */
 	onChange: (file: string, patch: FramePatch, step?: string) => void;
-	/** A field lost focus: its burst of edits is one finished step */
+	/** Seals the current burst of edits as one undo step */
 	onEndStep: () => void;
 	onAlign: (alignment: Alignment) => void;
 	onDistribute: (axis: Axis) => void;
 	onDuplicate: () => void;
 	onDelete: () => void;
-	/** A generation runs: AI actions wait */
 	busy: boolean;
-	/** Makes an alternate the picked version (undoable) */
 	onPick: (file: string) => void;
-	/** Opens compare mode on a variation group */
 	onCompare: (base: string) => void;
-	/** "Vary this": `count` new alternates of `target`, with an optional direction */
 	onVary: (target: string, direction: string, count: number) => void;
-	/** Takes `section` of `source` into `receiver` */
 	onMix: (receiver: string, source: string, section: string) => void;
-	/** Content of the Context tab (PRODUCT.md and DESIGN.md) */
 	contextPanel: React.ReactNode;
-	/** Content of the Components tab */
 	componentsPanel: React.ReactNode;
-	/** Content of the Code tab: the selected file's structure and source */
 	codePanel: React.ReactNode;
-	/** Top of the Design tab: props of the element selected in the structure */
+	/** Top of the Design tab */
 	propsPanel?: React.ReactNode;
-	/** Suggestions the user hasn't seen yet, shown on the Components tab */
 	componentsBadge?: number;
 };
 
@@ -271,11 +262,7 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 	);
 }
 
-/**
- * The selected screen's variation group (decision 0004): pick, compare, vary
- * and mix. Groups follow from file names, so a screen without alternates just
- * offers "Vary this".
- */
+/** Variation groups (decision 0004) follow from file names */
 function Variations({
 	frame,
 	frames,
@@ -558,10 +545,7 @@ function IconAction({
 	);
 }
 
-/**
- * Undo-step keys for inspector fields: every focus starts a new burst, and
- * edits within it share one key (`onBlur` seals it).
- */
+/** Every focus starts a new undo burst; edits within it share one key (`onBlur` seals it) */
 function useFieldSteps(file: string) {
 	const burst = useRef(0);
 
@@ -582,7 +566,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 	);
 }
 
-/** Number input that tolerates partial text ("-", "") while typing and only reports valid numbers. */
+/** Tolerates partial text ("-", "") while typing and only reports valid numbers */
 function NumberField({
 	label,
 	value,

@@ -26,7 +26,7 @@ const SAVE_DELAY_MS = 400;
 
 export type ProjectState = {
 	path: string;
-	/** `canvas.frames` and `canvas.comments` always mirror `history.present` */
+	/** `canvas.frames` and `canvas.comments` always mirror `history.present`. */
 	canvas: CanvasDoc;
 	files: ProjectFiles;
 	messages: ChatMessage[];
@@ -34,25 +34,17 @@ export type ProjectState = {
 };
 
 export type ChangeOptions = {
-	/** Commits sharing a key coalesce into one undo step (drags, typing bursts) */
+	/** Commits sharing a key coalesce into one undo step (drags, typing bursts). */
 	coalesce?: string;
-	/** Selection after the change; not part of the undo step */
+	/** Not part of the undo step. */
 	select?: string[];
 };
 
-/**
- * Opens a project folder and owns its state. Frames, files and comments go through an
- * undo history; selection, name, device and chat do not. Every state change is
- * persisted by diffing against what was last written: canvas saves are
- * debounced, file writes are immediate and only contain changed paths.
- */
 export function useProject(path: string) {
 	const [state, setState] = useState<ProjectState | null>(null);
-	// Kept with the path it belongs to, so opening another project starts without one
 	const [failure, setFailure] = useState<{ path: string; message: string } | null>(null);
 	const error = failure?.path === path ? failure.message : null;
 	const stateRef = useRef<ProjectState | null>(null);
-	// What we believe is on disk, so writes only carry the paths that changed
 	const diskFiles = useRef<ProjectFiles>({});
 	const savedCanvas = useRef<CanvasDoc | null>(null);
 	const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -73,7 +65,6 @@ export function useProject(path: string) {
 		await api.saveCanvas({ path, canvas }).catch(reportSaveError);
 	}, [path]);
 
-	/** Swaps in the next state and persists whatever differs from disk. */
 	const apply = useCallback(
 		(next: ProjectState) => {
 			stateRef.current = next;
@@ -114,9 +105,7 @@ export function useProject(path: string) {
 				if (!cancelled) setFailure({ path, message: reason instanceof Error ? reason.message : String(reason) });
 			});
 
-		// External edits are facts, not steps: they are folded into every
-		// snapshot (see `rebase`), so undo/redo never revert them and the
-		// stacks stay consistent with the disk.
+		// External edits are folded into every snapshot (see `rebase`) so undo/redo never reverts them.
 		const unsubscribe = onFilesChanged((message) => {
 			const current = stateRef.current;
 
@@ -146,7 +135,6 @@ export function useProject(path: string) {
 		};
 	}, [path, apply, flushCanvas]);
 
-	/** One undoable change to frames, files and/or comments. */
 	const change = useCallback(
 		(recipe: (snapshot: Snapshot) => Snapshot, options: ChangeOptions = {}) => {
 			const current = stateRef.current;
@@ -161,7 +149,6 @@ export function useProject(path: string) {
 		[apply],
 	);
 
-	/** Closes the current coalescing run (pointer up, input blur). */
 	const endStep = useCallback(() => {
 		const current = stateRef.current;
 
@@ -193,7 +180,6 @@ export function useProject(path: string) {
 		[apply],
 	);
 
-	/** Project-level fields; not undoable. */
 	const setMeta = useCallback(
 		(patch: { name?: string; device?: Device }) => {
 			const current = stateRef.current;
@@ -214,11 +200,7 @@ export function useProject(path: string) {
 		[apply, path],
 	);
 
-	/**
-	 * Reads `rabisco.json` and the files again after something outside the editor
-	 * replaced them (a git pull). The folder watcher doesn't watch the canvas file,
-	 * and history starts over, as when the project opens.
-	 */
+	/** The folder watcher doesn't watch the canvas file, so external replacements (git pull) need this. */
 	const reloadFromDisk = useCallback(async () => {
 		clearTimeout(saveTimer.current);
 		const project = await api.openProject({ path });
@@ -239,10 +221,8 @@ export function useProject(path: string) {
 	return {
 		project: state,
 		error,
-		/** Writes a pending canvas save now */
 		flushCanvas,
 		reloadFromDisk,
-		/** Latest state, for callbacks that run after an await */
 		stateRef,
 		canUndo: state ? canUndo(state.history) : false,
 		canRedo: state ? canRedo(state.history) : false,
@@ -261,11 +241,10 @@ function reportSaveError(cause: unknown) {
 	toast.error("Couldn’t save changes", { id: "save-error", description: String(cause) });
 }
 
-/** Rebuilds the derived fields after the history moved. */
 function withHistory(current: ProjectState, history: History, selection?: string[]): ProjectState {
 	const { frames, files, comments = current.canvas.comments } = history.present;
 
-	// Selection holds frames, plus at most component files (selected in the components panel), while they exist
+	// Selection may also hold component files picked in the components panel
 	const nextSelection = (selection ?? current.canvas.selection).filter(
 		(file) => frames.some((f) => f.file === file) || (isComponentFile(file) && file in files),
 	);

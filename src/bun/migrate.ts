@@ -8,7 +8,7 @@ import { appendChat, freeProjectDir, isChatMessage, writeCanvas, writeProjectFil
 import { arrayOr, objectOr, optionalString, parseJson } from "./json";
 import type { RecentEntry } from "./recents";
 
-/** A screen of a pre-Phase-1 project, with the fields that were missing or invalid left out. */
+/** Missing or invalid fields are left out. */
 export type LegacyScreen = {
 	name?: string;
 	device?: Device;
@@ -19,7 +19,7 @@ export type LegacyScreen = {
 	html: string;
 };
 
-/** A pre-Phase-1 `userData/projects/<id>.json` file, decoded. */
+/** Pre-Phase-1 `userData/projects/<id>.json` */
 export type LegacyProject = {
 	name?: string;
 	device?: Device;
@@ -48,7 +48,6 @@ function parseLegacyScreen(value: Json): LegacyScreen {
 	};
 }
 
-/** Decodes a legacy project file. Throws when it isn't one. */
 function parseLegacyProject(value: Json): LegacyProject {
 	if (!isJsonObject(value) || !isJsonArray(value.screens)) throw new Error("not a legacy project");
 
@@ -62,7 +61,7 @@ function parseLegacyProject(value: Json): LegacyProject {
 	};
 }
 
-/** `order history` → `OrderHistory`; always a valid identifier. */
+/** Always a valid identifier. */
 export function componentName(name: string) {
 	const pascal = name
 		.normalize("NFKD")
@@ -77,7 +76,6 @@ export function componentName(name: string) {
 	return /^[A-Za-z]/.test(pascal) ? pascal : `Screen${pascal}`;
 }
 
-/** Splits a full HTML document into its `<style>` contents and `<body>` inner HTML. */
 export function splitHtmlDocument(html: string) {
 	const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]!.trim()).join("\n");
 	const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -93,7 +91,6 @@ export function splitHtmlDocument(html: string) {
 	return { css, markup: markup.trim() };
 }
 
-/** A TSX screen that renders a legacy HTML screen as it looked before. */
 export function legacyHtmlToTsx(html: string, name: string) {
 	const { css, markup } = splitHtmlDocument(html);
 
@@ -113,7 +110,6 @@ export default function ${componentName(name)}() {
 `;
 }
 
-/** Files, canvas and chat of the folder that replaces a legacy project. */
 export function convertLegacyProject(legacy: LegacyProject) {
 	const device = legacy.device ?? "mobile";
 	const changes: FileChange[] = [];
@@ -152,11 +148,7 @@ export function convertLegacyProject(legacy: LegacyProject) {
 	return { canvas, changes, messages: legacy.messages };
 }
 
-/**
- * Moves every `<legacyDir>/*.json` into a project folder under `projectsDir`
- * and renames the old file to `*.json.migrated`, so it runs once. A file that
- * can't be migrated is left in place and logged.
- */
+/** Renames migrated files to `*.json.migrated` so it runs once; failures stay in place and are logged. */
 export function migrateLegacyProjects(legacyDir: string, projectsDir: string): RecentEntry[] {
 	let names: string[];
 

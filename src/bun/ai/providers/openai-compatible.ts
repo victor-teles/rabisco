@@ -1,8 +1,3 @@
-/**
- * OpenAI chat-completions provider for `openai`, `openrouter`, `ollama` and
- * any `openai-compatible` endpoint: plain fetch + SSE, text protocol output.
- */
-
 import type { GenerationRequest, Provider, ProviderCapabilities, ProviderModel } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import { isString } from "../../../shared/guards";
@@ -32,7 +27,7 @@ type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_u
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string | ContentPart[] };
 
-/** System prompt, history, then the request with its images as data URLs. */
+/** Images go as data URLs. */
 export function openAIMessages(request: GenerationRequest): ChatMessage[] {
 	const messages: ChatMessage[] = [{ role: "system", content: systemPrompt(request, "text") }];
 

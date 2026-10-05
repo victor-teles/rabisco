@@ -1,8 +1,3 @@
-/**
- * "Make component": moves a JSX subtree to `components/<kebab>.tsx` and replaces
- * it, and every structurally equivalent subtree in the project (see shape.ts),
- * with a usage of the new component. Never throws.
- */
 
 import { isComponentFile, isScreenFile, toKebab } from "../project";
 import type { FileChange } from "../types";
@@ -15,35 +10,26 @@ import { attrValue, dedent, indentAt, indentUnit, reindent, toPascal, toSentence
 import { findElement, flatten, parseFile, type JsxAttribute, type JsxElement, type ParsedFile } from "./tree";
 
 export type ExtractInput = {
-	/** Project files by path (`screens/*.tsx`, `components/*.tsx`, …) */
 	files: Record<string, string>;
-	/** File of the selected element */
 	path: string;
-	/** Start offset of the selected element in that file */
 	start: number;
-	/** What the user called it: `Stat card`, `stat-card` or `StatCard` */
+	/** `Stat card`, `stat-card` or `StatCard` */
 	name: string;
-	/**
-	 * Replace only these subtrees (e.g. a duplicate suggestion's occurrences) instead
-	 * of every equivalent one in the project. The selected element is always replaced.
-	 */
+	/** Replace only these instead of every equivalent subtree; the selection is always replaced. */
 	occurrences?: readonly { path: string; start: number }[];
 };
 
-/** A prop of the extracted component. `slot` props come from text or strings that differ between occurrences. */
+/** `slot` props come from text or strings that differ between occurrences. */
 export type ExtractedProp = { name: string; type: string; source: "slot" | "identifier" };
 
 export type ExtractResult =
 	| {
 			ok: true;
-			/** `components/stat-card.tsx` */
 			componentPath: string;
-			/** `StatCard` */
 			exportName: string;
 			props: ExtractedProp[];
-			/** The new component file first, then every file that now uses it */
+			/** The new component file first */
 			changes: FileChange[];
-			/** Occurrences replaced per file, selection included */
 			replaced: { path: string; count: number }[];
 	  }
 	| { ok: false; reason: string };
@@ -65,7 +51,7 @@ type Occurrence = {
 const keyOf = (element: JsxElement) =>
 	element.attributes.find((a) => a.kind === "attribute" && a.name === "key") ?? null;
 
-/** Imports and declared names of a parsed file, computed once per file: `findDuplicates` asks for many subtrees of it. */
+/** Per file: `findDuplicates` asks for many subtrees of the same file. */
 const fileFacts = new WeakMap<ParsedFile, { imports: ImportDecl[]; declared: ReturnType<typeof declaredNames> }>();
 
 function factsOf(file: ParsedFile) {
@@ -79,10 +65,8 @@ function factsOf(file: ParsedFile) {
 	return facts;
 }
 
-/** The subtree's bindings, or why it can't move. */
 type BindingsResult = { ok: true; bindings: Map<string, Binding> } | { ok: false; reason: string };
 
-/** How each free identifier of the subtree is bound in its file, or why it can't move. */
 function bindingsOf(path: string, file: ParsedFile, element: JsxElement): BindingsResult {
 	const key = keyOf(element);
 	const free = freeIdentifiers(file, element, key ? [key] : []);
@@ -118,7 +102,7 @@ function bindingsOf(path: string, file: ParsedFile, element: JsxElement): Bindin
 	return { ok: true, bindings };
 }
 
-/** The free identifiers and how they are bound (imports by resolved module): equal for subtrees that can share a component. */
+/** Equal for subtrees that can share a component; imports compared by resolved module. */
 function bindingSignature(path: string, bindings: Map<string, Binding>) {
 	return [...bindings]
 		.map(([name, binding]) =>
@@ -130,17 +114,10 @@ function bindingSignature(path: string, bindings: Map<string, Binding>) {
 		.join("|");
 }
 
-/** Same free identifiers, bound the same way (imports compared by resolved module). */
 const sameBindings = (a: Occurrence, b: Occurrence) =>
 	bindingSignature(a.path, a.bindings) === bindingSignature(b.path, b.bindings);
 
-/**
- * How "Make component" sees `element` in `path`: subtrees with the same shape
- * (shape.ts) and the same signature become one component, and an extraction
- * replaces them together. `null` when the element can't be extracted (it uses a
- * component defined in its own file). `findDuplicates` groups by this too, so
- * a suggestion lists exactly what its "Make component" replaces.
- */
+/** `findDuplicates` groups by this too, so a suggestion lists exactly what extraction replaces. */
 export function extractionSignature(path: string, file: ParsedFile, element: JsxElement): string | null {
 	const result = bindingsOf(path, file, element);
 
@@ -152,7 +129,7 @@ const sourceFiles = (files: Record<string, string>) =>
 		.filter((path) => isScreenFile(path) || isComponentFile(path))
 		.sort();
 
-/** Import lines for the component file: the bindings it uses, in the order the source file imports them. */
+/** In the order the source file imports them */
 function importLines(occurrence: Occurrence, componentPath: string) {
 	const lines: string[] = [];
 
@@ -181,7 +158,7 @@ function importLines(occurrence: Occurrence, componentPath: string) {
 	return lines;
 }
 
-/** Every equivalent subtree in the project with the same bindings, the selection first. */
+/** The selection first */
 function findOccurrences(files: Record<string, string>, selected: Occurrence) {
 	const key = structureKey(selected.element);
 	const size = subtreeSize(selected.element);
@@ -214,7 +191,6 @@ function findOccurrences(files: Record<string, string>, selected: Occurrence) {
 	return found;
 }
 
-/** Extracts the element at `start` in `path` into a new component, replacing it and its repeats. */
 export function extractComponent(input: ExtractInput): ExtractResult {
 	try {
 		return extract(input);
@@ -299,7 +275,6 @@ function extract({ files, path, start, name, occurrences: only }: ExtractInput):
 		varying.map(({ slot }, i) => ({ slot, name: slotNames[i]! })),
 	);
 
-	// Call sites
 	const changes: FileChange[] = [{ path: componentPath, content: componentSource }];
 	const replaced: { path: string; count: number }[] = [];
 	const byPath = new Map<string, Occurrence[]>();
@@ -335,7 +310,6 @@ function extract({ files, path, start, name, occurrences: only }: ExtractInput):
 	return { ok: true, componentPath, exportName, props, changes, replaced };
 }
 
-/** Source of the component file for the selected occurrence. */
 function componentFile(
 	selected: Occurrence,
 	componentPath: string,
