@@ -24,9 +24,10 @@ The UI also runs in a plain browser: `hutch run hmr`, then open http://localhost
 src/
   bun/                  main process (Cottontail)
     index.ts            window and RPC handlers
-    store.ts            projects as JSON in the userData dir
-    ai/generate.ts      prompt → screens (mock today, plug a model in here)
-  shared/               types, RPC schema and the mock generator, used by both sides
+    store.ts            project folders, recents and file watching
+    ai/                 provider layer (decision 0003): settings, keychain, validation, repair loop
+      providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Gemini CLI, Claude Agent SDK
+  shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback
     views/home.tsx      prompt hero and recent projects
@@ -44,9 +45,20 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 
 | Key | Action |
 | --- | --- |
-| `V` / `H` | Move / hand tool |
+| `V` / `H` / `C` | Move / hand / comment tool |
 | `Space` + drag | Pan |
 | Scroll / ⌘ + scroll | Pan / zoom |
 | `⇧1` | Zoom to fit |
 | `⌘0`, `⌘+`, `⌘-` | Reset zoom, zoom in, zoom out |
 | `⌘D`, `⌫` | Duplicate, delete the selected screen |
+| Click inside the selected screen, or `⌘`-click | Select the element under the pointer (hover outlines it) |
+| Double-click, or `Enter` on a selected element | Edit its text in place (`Enter` keeps it, `Esc` cancels) |
+| `Esc` / `⌫` (element selected) | Select its parent / delete it |
+| Prompt with an element selected | Change only that element (point and prompt) |
+| `⌥2` | Components panel: project components, the shadcn library and suggestions |
+| `/` or `⌘F` (Components panel open) | Search components |
+| Drag from the Components panel | Add the component to the screen under the pointer |
+| `⇧D` | Code tab: the selected screen's or component's structure and editable source |
+| `↑` `↓` / `←` `→` (Structure) | Move through elements / collapse, expand |
+| `⌥⌘K` or `Enter` (Structure) | Make component from the selected element, and replace its repeats |
+| `⌫` (Structure) | Delete the selected element |

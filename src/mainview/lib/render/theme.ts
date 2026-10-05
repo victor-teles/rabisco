@@ -1,6 +1,9 @@
+import { parseDesignTokens, tokensToCss } from "../../../shared/context/tokens";
+import type { ProjectFiles } from "../../../shared/types";
+
 /**
- * Default theme for screens: the shadcn token set with neutral colors. Phase 3 replaces the
- * values with tokens from DESIGN.md; the token names stay.
+ * Default theme for screens: the shadcn token set with neutral colors. Tokens from DESIGN.md
+ * override the values in a second stylesheet (`designThemeCss`); the token names stay.
  */
 export const SCREEN_THEME_CSS = `
 @custom-variant dark (&:is(.dark *));
@@ -103,3 +106,15 @@ export const SCREEN_THEME_CSS = `
 	}
 }
 `;
+
+let lastDesign: { source: string; css: string } | null = null;
+
+/**
+ * Override CSS for the tokens in the project's DESIGN.md, loaded after the shared Tailwind
+ * stylesheet so it re-themes every screen without a rebuild. Cached by content; `''` without tokens.
+ */
+export function designThemeCss(files: ProjectFiles): string {
+	const source = files["DESIGN.md"] ?? "";
+	if (lastDesign?.source !== source) lastDesign = { source, css: source ? tokensToCss(parseDesignTokens(source)) : "" };
+	return lastDesign.css;
+}

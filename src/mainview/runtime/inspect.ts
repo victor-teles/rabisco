@@ -1,0 +1,107 @@
+/**
+ * Maps the rendered screen back to its source through React's fiber tree.
+ * Every element carries a `data-rabisco-loc` prop (see `injectLocations`):
+ * DOM elements as an attribute, component elements as a prop that only the
+ * fiber keeps when the component doesn't pass it on. Falls back to the DOM
+ * attributes when React's internals aren't there.
+ */
+import { LOC_ATTRIBUTE, type Box } from "../lib/render/protocol";
+
+/** The fields of a React fiber this module reads. */
+export type Fiber = {
+	memoizedProps: Record<string, unknown> | null;
+	stateNode: unknown;
+	return: Fiber | null;
+	child: Fiber | null;
+	sibling: Fiber | null;
+};
+
+const internalKey = (node: object, prefix: string) => Object.keys(node).find((key) => key.startsWith(prefix));
+
+export function fiberOf(node: Node): Fiber | null {
+	const key = internalKey(node, "__reactFiber$");
+	return key ? ((node as unknown as Record<string, Fiber>)[key] ?? null) : null;
+}
+
+/** The current tree under a React root container (its HostRoot's committed fiber). */
+export function rootFiber(container: Element): Fiber | null {
+	const key = internalKey(container, "__reactContainer$");
+	const hostRoot = key ? (container as unknown as Record<string, Fiber>)[key] : null;
+	const current = (hostRoot?.stateNode as { current?: Fiber } | undefined)?.current;
+	return current ?? hostRoot ?? null;
+}
+
+const locOf = (fiber: Fiber) => {
+	const value = fiber.memoizedProps?.[LOC_ATTRIBUTE];
+	return typeof value === "string" ? value : null;
+};
+
+/** A fiber's outermost DOM elements: itself when it is one, else the first ones below it. */
+export function hostElements(fiber: Fiber): Element[] {
+	if (fiber.stateNode instanceof Element) return [fiber.stateNode];
+	const found: Element[] = [];
+	for (let child = fiber.child; child; child = child.sibling) found.push(...hostElements(child));
+	return found;
+}
+
+/** The union of `elements`' boxes, in frame CSS pixels; `null` when nothing has a size. */
+function unionBox(elements: Element[]): Box | null {
+	let box: { left: number; top: number; right: number; bottom: number } | null = null;
+	for (const element of elements) {
+		const rect = element.getBoundingClientRect();
+		if (!rect.width && !rect.height) continue;
+		box = box
+			? { left: Math.min(box.left, rect.left), top: Math.min(box.top, rect.top), right: Math.max(box.right, rect.right), bottom: Math.max(box.bottom, rect.bottom) }
+			: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+	}
+	return box && { x: box.left, y: box.top, width: box.right - box.left, height: box.bottom - box.top };
+}
+
+/** One rendered source element: its `data-rabisco-loc` value and its outermost DOM elements. */
+export type Located = { loc: string; elements: Element[] };
+
+/**
+ * The located elements at `x`, `y`: the one under the point, then its
+ * ancestors, innermost first, components included. A component that passes
+ * the prop on to its root shows up once.
+ */
+export function locatedAt(x: number, y: number): Located[] {
+	const target = document.elementFromPoint(x, y);
+	if (!target) return [];
+	const found: Located[] = [];
+	const fiber = fiberOf(target);
+	if (fiber) {
+		for (let node: Fiber | null = fiber; node; node = node.return) {
+			const loc = locOf(node);
+			if (loc && found[found.length - 1]?.loc !== loc) found.push({ loc, elements: hostElements(node) });
+		}
+		return found;
+	}
+	const selector = `[${LOC_ATTRIBUTE}]`;
+	for (let element = target.closest(selector); element; element = element.parentElement?.closest(selector) ?? null) {
+		found.push({ loc: element.getAttribute(LOC_ATTRIBUTE)!, elements: [element] });
+	}
+	return found;
+}
+
+/** Every rendered instance of the source element `loc` (more than one inside a `.map`). */
+export function instancesOf(container: Element, loc: string): Element[][] {
+	const root = rootFiber(container);
+	if (!root) return [...container.querySelectorAll(`[${LOC_ATTRIBUTE}="${CSS.escape(loc)}"]`)].map((element) => [element]);
+	const found: Element[][] = [];
+	const visit = (fiber: Fiber) => {
+		// Iterative over siblings, recursive over depth: screens are shallow enough
+		for (let node: Fiber | null = fiber; node; node = node.sibling) {
+			// A component that passes the prop to its root matches twice: keep the outer one
+			if (locOf(node) === loc) found.push(hostElements(node));
+			else if (node.child) visit(node.child);
+		}
+	};
+	if (root.child) visit(root.child);
+	return found;
+}
+
+/** The boxes of `instances`, skipping the ones with no size. */
+export const boxesOf = (instances: Element[][]) => instances.flatMap((elements) => unionBox(elements) ?? []);
+
+export const boxOf = (elements: Element[]) => unionBox(elements);

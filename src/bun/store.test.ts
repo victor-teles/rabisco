@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { join } from "path";
+import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import type { FileChange } from "../shared/types";
-import { assertProjectFilePath, freeProjectDir, loadProject, parseChat, writeProjectFiles } from "./project-folder";
+import {
+	assertProjectFilePath,
+	createProjectFolder,
+	freeProjectDir,
+	loadProject,
+	normalizeCanvas,
+	parseChat,
+	writeProjectFiles,
+} from "./project-folder";
 import { createProjectStore, type ProjectStore } from "./store";
 import { tempDir } from "./test-utils";
 
@@ -66,11 +75,42 @@ describe("project files", () => {
 		expect(JSON.parse(readFileSync(join(dir, "rabisco.json"), "utf-8")).frames).toHaveLength(1);
 	});
 
+	test("new projects start with the context templates, opened folders don't get them", () => {
+		const parent = tempDir();
+		const created = loadProject(createProjectFolder(parent, "Fresh", "mobile"));
+		expect(created.files).toEqual({ "PRODUCT.md": PRODUCT_TEMPLATE, "DESIGN.md": DESIGN_TEMPLATE });
+
+		const existing = join(parent, "existing");
+		mkdirSync(existing);
+		writeFileSync(join(existing, "DESIGN.md"), "# Mine");
+		expect(loadProject(existing).files).toEqual({ "DESIGN.md": "# Mine" });
+		expect(existsSync(join(existing, "PRODUCT.md"))).toBe(false);
+	});
+
 	test("rejects paths that aren't folders", () => {
 		const dir = tempDir();
 		writeFileSync(join(dir, "file.txt"), "");
 		expect(() => loadProject(join(dir, "file.txt"))).toThrow(/Not a folder/);
 		expect(() => loadProject(join(dir, "nope"))).toThrow(/not found/);
+	});
+
+	test("old rabisco.json without comments loads; malformed comments are dropped", () => {
+		const old = { version: 1, name: "Old", device: "mobile", createdAt: "a", updatedAt: "b", frames: [], selection: [], alternates: [] };
+		expect(normalizeCanvas(old, "x").comments).toEqual([]);
+		const withComments = { ...old, comments: [{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }, { id: "2", text: "no position" }] };
+		expect(normalizeCanvas(withComments, "x").comments).toEqual([{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }]);
+	});
+
+	test("comments round-trip through rabisco.json and survive a screen deleted on disk", () => {
+		const dir = createProjectFolder(tempDir(), "Pins", "mobile");
+		writeProjectFiles(dir, [{ path: "screens/home.tsx", content: "export default () => null" }]);
+		const first = loadProject(dir);
+		const frame = first.canvas.frames[0]!;
+		const comments = [{ id: "c", file: frame.file, x: 10, y: 20, text: "Bigger title", createdAt: "t" }];
+		writeFileSync(join(dir, "rabisco.json"), JSON.stringify({ ...first.canvas, comments }));
+		expect(loadProject(dir).canvas.comments).toEqual(comments);
+		writeProjectFiles(dir, [{ path: "screens/home.tsx", content: null }]);
+		expect(loadProject(dir).canvas.comments).toEqual([{ id: "c", x: frame.x + 10, y: frame.y + 20, text: "Bigger title", createdAt: "t" }]);
 	});
 
 	test("chat parsing skips bad lines", () => {
@@ -117,6 +157,7 @@ describe("project store", () => {
 		const a = store.createProject("Alpha", "desktop");
 		expect(a.path).toBe(join(root, "Documents/Rabisco/alpha.rabisco"));
 		expect(a.canvas.device).toBe("desktop");
+		expect(Object.keys(a.files).sort()).toEqual(["DESIGN.md", "PRODUCT.md"]);
 		await settle(5);
 		const b = store.createProject("Beta", "mobile");
 		store.writeFiles(b.path, [
@@ -129,8 +170,10 @@ describe("project store", () => {
 		expect(recents.map((r) => r.name)).toEqual(["Beta", "Alpha"]);
 		expect(recents[0]!.cover).toMatchObject({
 			entry: "screens/home.tsx",
-			files: { "screens/home.tsx": "home", "components/card.tsx": "card" },
+			files: { "screens/home.tsx": "home", "components/card.tsx": "card", "DESIGN.md": DESIGN_TEMPLATE },
 		});
+		// The cover carries DESIGN.md for its theme, not PRODUCT.md
+		expect(Object.keys(recents[0]!.cover!.files).sort()).toEqual(["DESIGN.md", "components/card.tsx", "screens/home.tsx"]);
 
 		renameSync(a.path, `${a.path}.moved`);
 		expect(store.listRecents()[1]).toMatchObject({ name: "alpha", missing: true });

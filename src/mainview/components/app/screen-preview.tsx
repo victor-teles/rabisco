@@ -5,8 +5,11 @@ import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 /**
  * Renders the screen `entry` from `files` in a sandboxed frame running the screen runtime.
  * `allow-scripts` without `allow-same-origin` keeps generated code away from the app.
- * Non-interactive: the canvas handles pointer input. The frame re-renders only when a file
- * in the entry's module graph, or the shared CSS, changes.
+ * Non-interactive unless `interactive` (text editing in place): the canvas handles pointer input. The frame re-renders only when a file
+ * in the entry's module graph, or the shared CSS, changes. `onContentHeight` receives the
+ * screen's content height whenever it changes (compare mode sizes frames to it).
+ * `play` turns on play mode (decision 0007): clicks on linked elements call
+ * `onNavigate` with the link as written, and Escape inside the frame calls `onEscape`.
  */
 export function ScreenFrame({
 	entry,
@@ -14,18 +17,37 @@ export function ScreenFrame({
 	width,
 	height,
 	className,
+	interactive = false,
+	play = false,
+	onContentHeight,
+	onNavigate,
+	onEscape,
 }: {
 	entry: string;
 	files: ProjectFiles;
 	width: number;
 	height: number;
 	className?: string;
+	interactive?: boolean;
+	play?: boolean;
+	onContentHeight?: (height: number) => void;
+	onNavigate?: (to: string) => void;
+	onEscape?: () => void;
 }) {
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const hostRef = useRef<FrameHost | null>(null);
+	const contentHeightRef = useRef(onContentHeight);
+	contentHeightRef.current = onContentHeight;
+	const navigateRef = useRef(onNavigate);
+	navigateRef.current = onNavigate;
+	const escapeRef = useRef(onEscape);
+	escapeRef.current = onEscape;
 
 	useEffect(() => {
 		const host = new FrameHost(frameRef.current!);
+		host.onContentHeight = (contentHeight) => contentHeightRef.current?.(contentHeight);
+		host.onNavigate = (to) => navigateRef.current?.(to);
+		host.onEscape = () => escapeRef.current?.();
 		hostRef.current = host;
 		return () => {
 			host.dispose();
@@ -37,6 +59,10 @@ export function ScreenFrame({
 		hostRef.current?.update(entry, files);
 	}, [entry, files]);
 
+	useEffect(() => {
+		hostRef.current?.setPlay(play);
+	}, [play]);
+
 	return (
 		<iframe
 			ref={frameRef}
@@ -45,7 +71,7 @@ export function ScreenFrame({
 			sandbox="allow-scripts"
 			tabIndex={-1}
 			className={className}
-			style={{ width, height, border: 0, pointerEvents: "none", display: "block" }}
+			style={{ width, height, border: 0, pointerEvents: interactive ? "auto" : "none", display: "block" }}
 		/>
 	);
 }

@@ -1,4 +1,5 @@
 import { transform } from "sucrase";
+import { injectLocations } from "../../../shared/jsx/transforms";
 import { extractCandidates } from "./candidates";
 import { SOURCE_URL_PREFIX, type CompileError } from "./protocol";
 import { extractRequires } from "./resolve";
@@ -39,12 +40,20 @@ function importsFromSource(source: string) {
 	return [...found];
 }
 
-/** Compiles one file with Sucrase. Never throws: errors come back in `error`. */
+/** Files whose DOM elements get `data-rabisco-loc`, so the canvas can map a point back to source (drops, direct editing). */
+const LOCATED = /\.(tsx|jsx)$/;
+
+/**
+ * Compiles one file with Sucrase. Never throws: errors come back in `error`.
+ * TSX is compiled with `data-rabisco-loc="<path>:<offset>"` on every DOM element
+ * (offsets into `source`, which stays the original). The attributes only move
+ * text within a line, so error lines still match `source`.
+ */
 export function compileSource(path: string, source: string): CompiledModule {
 	const hash = hashString(`${path}\0${source}`);
 	const candidates = extractCandidates(source);
 	try {
-		const { code } = transform(source, {
+		const { code } = transform(LOCATED.test(path) ? injectLocations(source, path) : source, {
 			transforms: ["typescript", "jsx", "imports"],
 			jsxRuntime: "automatic",
 			production: true,

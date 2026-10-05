@@ -8,6 +8,7 @@ import {
 	commit,
 	createHistory,
 	diffFiles,
+	nextSnapshot,
 	rebase,
 	redo,
 	seal,
@@ -16,14 +17,16 @@ import {
 	type Snapshot,
 } from "@/lib/history";
 import { sameSelection } from "@/lib/selection";
-import { reconcileFrames } from "../../shared/project";
+import { detachComments } from "../../shared/comments";
+import { isComponentFile, reconcileFrames } from "../../shared/project";
+import { alternatesOf } from "../../shared/variations";
 import type { CanvasDoc, ChatMessage, Device, ProjectFiles } from "../../shared/types";
 
 const SAVE_DELAY_MS = 400;
 
 export type ProjectState = {
 	path: string;
-	/** `canvas.frames` always mirrors `history.present.frames` */
+	/** `canvas.frames` and `canvas.comments` always mirror `history.present` */
 	canvas: CanvasDoc;
 	files: ProjectFiles;
 	messages: ChatMessage[];
@@ -38,7 +41,7 @@ export type ChangeOptions = {
 };
 
 /**
- * Opens a project folder and owns its state. Frames and files go through an
+ * Opens a project folder and owns its state. Frames, files and comments go through an
  * undo history; selection, name, device and chat do not. Every state change is
  * persisted by diffing against what was last written: canvas saves are
  * debounced, file writes are immediate and only contain changed paths.
@@ -52,12 +55,13 @@ export function useProject(path: string) {
 	const savedCanvas = useRef<CanvasDoc | null>(null);
 	const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-	const flushCanvas = useCallback(() => {
+	const flushCanvas = useCallback(async () => {
 		clearTimeout(saveTimer.current);
 		const current = stateRef.current;
 		if (!current || current.canvas === savedCanvas.current) return;
 		savedCanvas.current = current.canvas;
-		api.saveCanvas({ path, canvas: { ...current.canvas, updatedAt: new Date().toISOString() } }).catch(reportSaveError);
+		const canvas = { ...current.canvas, alternates: alternatesOf(Object.keys(current.files)), updatedAt: new Date().toISOString() };
+		await api.saveCanvas({ path, canvas }).catch(reportSaveError);
 	}, [path]);
 
 	/** Swaps in the next state and persists whatever differs from disk. */
@@ -93,7 +97,7 @@ export function useProject(path: string) {
 					canvas,
 					files: project.files,
 					messages: project.messages,
-					history: createHistory({ frames: canvas.frames, files: project.files }),
+					history: createHistory({ frames: canvas.frames, files: project.files, comments: canvas.comments ?? [] }),
 				});
 			})
 			.catch((reason) => {
@@ -109,7 +113,8 @@ export function useProject(path: string) {
 			diskFiles.current = applyFileChanges(diskFiles.current, message.changes);
 			const reconcile = (snapshot: Snapshot): Snapshot => {
 				const canvas = reconcileFrames({ ...current.canvas, frames: snapshot.frames, selection: [] }, snapshot.files);
-				return canvas.frames === snapshot.frames ? snapshot : { ...snapshot, frames: canvas.frames };
+				if (canvas.frames === snapshot.frames) return snapshot;
+				return { ...snapshot, frames: canvas.frames, comments: detachComments(snapshot.comments ?? [], snapshot.frames, canvas.frames) };
 			};
 			apply(withHistory(current, rebase(current.history, message.changes, reconcile)));
 		});
@@ -122,12 +127,12 @@ export function useProject(path: string) {
 		};
 	}, [path]);
 
-	/** One undoable change to frames and/or files. */
+	/** One undoable change to frames, files and/or comments. */
 	const change = useCallback(
 		(recipe: (snapshot: Snapshot) => Snapshot, options: ChangeOptions = {}) => {
 			const current = stateRef.current;
 			if (!current) return;
-			const next = recipe(current.history.present);
+			const next = nextSnapshot(current.history.present, recipe(current.history.present));
 			const history = commit(current.history, next, { coalesce: options.coalesce });
 			if (history === current.history && !options.select) return;
 			apply(withHistory(current, history, options.select));
@@ -182,9 +187,33 @@ export function useProject(path: string) {
 		[apply, path],
 	);
 
+	/**
+	 * Reads `rabisco.json` and the files again after something outside the editor
+	 * replaced them (a git pull). The folder watcher doesn't watch the canvas file,
+	 * and history starts over, as when the project opens.
+	 */
+	const reloadFromDisk = useCallback(async () => {
+		clearTimeout(saveTimer.current);
+		const project = await api.openProject({ path });
+		const current = stateRef.current;
+		if (!current) return;
+		const canvas = reconcileFrames(project.canvas, project.files);
+		diskFiles.current = project.files;
+		savedCanvas.current = project.canvas;
+		apply({
+			...current,
+			canvas,
+			files: project.files,
+			history: createHistory({ frames: canvas.frames, files: project.files, comments: canvas.comments ?? [] }),
+		});
+	}, [path, apply]);
+
 	return {
 		project: state,
 		error,
+		/** Writes a pending canvas save now */
+		flushCanvas,
+		reloadFromDisk,
 		/** Latest state, for callbacks that run after an await */
 		stateRef,
 		canUndo: state ? canUndo(state.history) : false,
@@ -206,12 +235,15 @@ function reportSaveError(error: unknown) {
 
 /** Rebuilds the derived fields after the history moved. */
 function withHistory(current: ProjectState, history: History, selection?: string[]): ProjectState {
-	const { frames, files } = history.present;
-	const nextSelection = (selection ?? current.canvas.selection).filter((file) => frames.some((f) => f.file === file));
+	const { frames, files, comments = current.canvas.comments } = history.present;
+	// Selection holds frames, plus at most component files (selected in the components panel), while they exist
+	const nextSelection = (selection ?? current.canvas.selection).filter(
+		(file) => frames.some((f) => f.file === file) || (isComponentFile(file) && file in files),
+	);
 	const canvas =
-		frames === current.canvas.frames && sameSelection(nextSelection, current.canvas.selection)
+		frames === current.canvas.frames && comments === current.canvas.comments && sameSelection(nextSelection, current.canvas.selection)
 			? current.canvas
-			: { ...current.canvas, frames, selection: nextSelection };
+			: { ...current.canvas, frames, comments, selection: nextSelection };
 	return { ...current, history, files, canvas };
 }
 

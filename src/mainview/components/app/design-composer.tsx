@@ -1,35 +1,50 @@
-import { Monitor, Smartphone } from "lucide-react";
+import { Fragment } from "react";
+import { ChevronDown, Monitor, Settings2, Smartphone, Square } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	PromptComposer,
 	PromptComposerActions,
 	PromptComposerAdd,
 	PromptComposerFileItem,
 	PromptComposerInput,
-	PromptComposerModelSelect,
 	PromptComposerSubmit,
 	type PromptComposerVariant,
 } from "@/components/ui/uai/prompt-composer";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
+import { cn } from "@/lib/utils";
 import type { Device } from "../../../shared/types";
-
-export const MODELS = [
-	{ id: "claude-opus-5-5", label: "Opus 5.5" },
-	{ id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-	{ id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-] as const;
+import { MAX_VARIATIONS } from "../../../shared/variations";
 
 export type DesignComposerProps = {
 	value?: string;
 	onValueChange?: (value: string) => void;
 	device: Device;
 	onDeviceChange: (device: Device) => void;
-	model: string;
-	onModelChange: (model: string) => void;
-	onSubmit: (prompt: string) => void;
+	/** Reference images come along as files */
+	onSubmit: (prompt: string, files: File[]) => void;
 	busy?: boolean;
+	/** Shown instead of the send button while busy */
+	onStop?: () => void;
 	placeholder?: string;
 	variant?: PromptComposerVariant;
-	/** Render the device and model pickers inside the composer; narrow layouts place them outside */
+	/** How many variations a create generates (1–MAX_VARIATIONS); the picker shows when `onVariationsChange` is set */
+	variations?: number;
+	onVariationsChange?: (variations: number) => void;
+	/** Why the count doesn't apply right now (e.g. editing selected screens); dims the picker */
+	variationsHint?: string;
+	/** Render the device, variations and model pickers inside the composer; narrow layouts place them outside */
 	inlineOptions?: boolean;
 	className?: string;
 };
@@ -40,12 +55,14 @@ export function DesignComposer({
 	onValueChange,
 	device,
 	onDeviceChange,
-	model,
-	onModelChange,
 	onSubmit,
 	busy,
+	onStop,
 	placeholder = "Describe a screen, flow or change…",
 	variant = "rounded",
+	variations = 1,
+	onVariationsChange,
+	variationsHint,
 	inlineOptions = true,
 	className,
 }: DesignComposerProps) {
@@ -55,7 +72,7 @@ export function DesignComposer({
 			busy={busy}
 			value={value}
 			onValueChange={onValueChange}
-			onSubmit={(prompt) => onSubmit(prompt)}
+			onSubmit={(prompt, files) => onSubmit(prompt, files)}
 			className={className}
 		>
 			<PromptComposerAdd>
@@ -70,10 +87,25 @@ export function DesignComposer({
 				{inlineOptions ? (
 					<>
 						<DeviceToggle device={device} onDeviceChange={onDeviceChange} />
-						<PromptComposerModelSelect models={MODELS} value={model} onValueChange={onModelChange} />
+						{onVariationsChange ? (
+							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
+						) : null}
+						<ModelPicker />
 					</>
 				) : null}
-				<PromptComposerSubmit />
+				{busy && onStop ? (
+					<Button
+						type="button"
+						size="icon"
+						aria-label="Stop generating"
+						onClick={onStop}
+						className="size-8 rounded-full bg-foreground text-card hover:bg-foreground/90"
+					>
+						<Square className="size-3 fill-current" />
+					</Button>
+				) : (
+					<PromptComposerSubmit />
+				)}
 			</PromptComposerActions>
 		</PromptComposer>
 	);
@@ -102,5 +134,126 @@ export function DeviceToggle({
 				<Monitor className="size-3.5" />
 			</ToggleGroupItem>
 		</ToggleGroup>
+	);
+}
+
+const COUNTS = Array.from({ length: MAX_VARIATIONS }, (_, i) => i + 1);
+
+/**
+ * How many variations to generate: `1×` … `4×`. With a `hint` the count
+ * doesn't apply (edits change the selected screens), so it dims and says why.
+ */
+export function VariationsPicker({
+	value,
+	onChange,
+	hint,
+	className,
+}: {
+	value: number;
+	onChange: (value: number) => void;
+	hint?: string;
+	className?: string;
+}) {
+	const trigger = (
+		<Button
+			type="button"
+			variant="ghost"
+			size="xs"
+			aria-label={`Variations: ${value}`}
+			aria-disabled={hint ? true : undefined}
+			className={cn("h-7 gap-0.5 px-1.5 text-muted-foreground tabular-nums", hint && "opacity-40 hover:bg-transparent", className)}
+		>
+			{value}×
+			{hint ? null : <ChevronDown className="size-3 shrink-0" />}
+		</Button>
+	);
+	if (hint) {
+		return (
+			<Tooltip>
+				<TooltipTrigger asChild>{trigger}</TooltipTrigger>
+				<TooltipContent side="top" className="max-w-56">
+					{hint}
+				</TooltipContent>
+			</Tooltip>
+		);
+	}
+	return (
+		<DropdownMenu modal={false}>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+				</TooltipTrigger>
+				<TooltipContent side="top">Variations</TooltipContent>
+			</Tooltip>
+			<DropdownMenuContent align="start" side="top" className="min-w-40">
+				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">Variations per screen</DropdownMenuLabel>
+				<DropdownMenuRadioGroup value={String(value)} onValueChange={(next) => onChange(Number(next))}>
+					{COUNTS.map((count) => (
+						<DropdownMenuRadioItem key={count} value={String(count)} className="text-[13px]">
+							{count === 1 ? "1 version" : `${count} variations`}
+						</DropdownMenuRadioItem>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+/** Models of every working provider, grouped by provider, plus a way into Settings. */
+export function ModelPicker({ className }: { className?: string }) {
+	const { models, model, loading } = useProviders();
+	const groups = new Map<string, ModelOption[]>();
+	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
+
+	if (!loading && models.length === 0) {
+		return (
+			<Button
+				type="button"
+				variant="ghost"
+				size="xs"
+				className={cn("h-7 gap-1 text-muted-foreground", className)}
+				onClick={() => openSettings()}
+			>
+				<Settings2 />
+				Set up a model
+			</Button>
+		);
+	}
+
+	return (
+		<DropdownMenu modal={false}>
+			<DropdownMenuTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="xs"
+					aria-label="Choose model"
+					className={cn("h-7 max-w-44 gap-1 text-muted-foreground", className)}
+				>
+					<span className="truncate">{loading && !model ? "Loading…" : modelLabel(model)}</span>
+					<ChevronDown className="size-3 shrink-0" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start" side="top" className="max-h-80 min-w-52">
+				<DropdownMenuRadioGroup value={model ?? ""} onValueChange={selectModel}>
+					{[...groups].map(([provider, options], index) => (
+						<Fragment key={provider}>
+							{index > 0 ? <DropdownMenuSeparator /> : null}
+							<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">{provider}</DropdownMenuLabel>
+							{options.map((option) => (
+								<DropdownMenuRadioItem key={option.id} value={option.id} className="text-[13px]">
+									{option.label}
+								</DropdownMenuRadioItem>
+							))}
+						</Fragment>
+					))}
+				</DropdownMenuRadioGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem className="text-[13px]" onSelect={() => openSettings()}>
+					<Settings2 />
+					Manage providers…
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

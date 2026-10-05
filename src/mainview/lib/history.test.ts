@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Frame } from "../../shared/types";
+import type { CanvasComment, Frame } from "../../shared/types";
 import {
 	applyFileChanges,
 	canRedo,
@@ -7,6 +7,7 @@ import {
 	commit,
 	createHistory,
 	diffFiles,
+	nextSnapshot,
 	rebase,
 	redo,
 	seal,
@@ -148,5 +149,47 @@ describe("rebase (external edits)", () => {
 	test("no changes is a no-op", () => {
 		const h = createHistory(snap({}));
 		expect(rebase(h, [])).toBe(h);
+	});
+});
+
+describe("comments in the history", () => {
+	const pin = (id: string, rest: Partial<CanvasComment> = {}): CanvasComment => ({ id, x: 5, y: 5, text: id, createdAt: "t", ...rest });
+
+	test("recipes that leave comments out keep the present ones", () => {
+		const present = { ...snap({}, [frame("screens/a.tsx")]), comments: [pin("1")] };
+		const next = nextSnapshot(present, { files: { a: "1" }, frames: present.frames });
+		expect(next.comments).toBe(present.comments);
+	});
+
+	test("an unchanged recipe result is the present", () => {
+		const present = { ...snap({}), comments: [pin("1")] };
+		expect(nextSnapshot(present, present)).toBe(present);
+	});
+
+	test("deleting a frame detaches its pins; undo puts them back on the frame", () => {
+		const a = frame("screens/a.tsx", 100);
+		const start = { ...snap({ "screens/a.tsx": "a" }, [a]), comments: [pin("1", { file: a.file })] };
+		let h = createHistory(start);
+		h = commit(h, nextSnapshot(h.present, { frames: [], files: {} }));
+		expect(h.present.comments).toEqual([{ id: "1", x: 105, y: 5, text: "1", createdAt: "t" }]);
+		h = undo(h);
+		expect(h.present.comments![0]!.file).toBe("screens/a.tsx");
+	});
+
+	test("adding, editing and resolving are steps; a typing burst is one", () => {
+		let h = createHistory({ ...snap({}), comments: [] });
+		h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1")] }));
+		for (const text of ["H", "He", "Hey"]) {
+			h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1", { text })] }), { coalesce: "comment-text:1" });
+		}
+		h = seal(h);
+		h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1", { text: "Hey", resolved: true })] }));
+		expect(h.past.length).toBe(3);
+		h = undo(h);
+		expect(h.present.comments![0]).toEqual(pin("1", { text: "Hey" }));
+		h = undo(h);
+		expect(h.present.comments![0]!.text).toBe("1");
+		h = undo(h);
+		expect(h.present.comments).toEqual([]);
 	});
 });

@@ -8,25 +8,39 @@ import {
 	AlignStartHorizontal,
 	AlignStartVertical,
 	AlignVerticalSpaceAround,
+	Check,
+	ChevronDown,
+	Columns2,
 	Copy,
 	Monitor,
+	Shuffle,
 	Smartphone,
 	Trash2,
 	type LucideIcon,
 } from "lucide-react";
-import { DeviceToggle } from "@/components/app/design-composer";
+import { DeviceToggle, VariationsPicker } from "@/components/app/design-composer";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useVariations } from "@/hooks/use-variations";
 import type { Alignment, Axis } from "@/lib/align";
 import { cn } from "@/lib/utils";
+import { variationName } from "@/lib/variations";
+import { isScreenFile } from "../../../shared/project";
 import type { Device, Frame, ProjectFiles } from "../../../shared/types";
-import { CodeView } from "./code-view";
-import { ALIGN_SHORTCUTS, CODE_VIEW_KEYS, DISTRIBUTE_SHORTCUTS } from "./shortcuts";
+import { groupOf, isAlternate } from "../../../shared/variations";
+import { ALIGN_SHORTCUTS, CODE_VIEW_KEYS, COMPARE_KEYS, COMPONENTS_VIEW_KEYS, CONTEXT_VIEW_KEYS, DISTRIBUTE_SHORTCUTS } from "./shortcuts";
 
-export type InspectorTab = "design" | "code";
+export type InspectorTab = "design" | "code" | "context" | "components";
 
 export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device">>;
 
@@ -46,6 +60,26 @@ type InspectorProps = {
 	onDistribute: (axis: Axis) => void;
 	onDuplicate: () => void;
 	onDelete: () => void;
+	/** A generation runs: AI actions wait */
+	busy: boolean;
+	/** Makes an alternate the picked version (undoable) */
+	onPick: (file: string) => void;
+	/** Opens compare mode on a variation group */
+	onCompare: (base: string) => void;
+	/** "Vary this": `count` new alternates of `target`, with an optional direction */
+	onVary: (target: string, direction: string, count: number) => void;
+	/** Takes `section` of `source` into `receiver` */
+	onMix: (receiver: string, source: string, section: string) => void;
+	/** Content of the Context tab (PRODUCT.md and DESIGN.md) */
+	contextPanel: React.ReactNode;
+	/** Content of the Components tab */
+	componentsPanel: React.ReactNode;
+	/** Content of the Code tab: the selected file's structure and source */
+	codePanel: React.ReactNode;
+	/** Top of the Design tab: props of the element selected in the structure */
+	propsPanel?: React.ReactNode;
+	/** Suggestions the user hasn't seen yet, shown on the Components tab */
+	componentsBadge?: number;
 };
 
 const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
@@ -63,7 +97,7 @@ const DISTRIBUTE_ICONS: Record<Axis, LucideIcon> = {
 };
 
 export function Inspector(props: InspectorProps) {
-	const { frames, files, selection, tab, onTabChange, onSelect } = props;
+	const { frames, selection, tab, onTabChange, onSelect } = props;
 	const selectedSet = new Set(selection);
 	const selected = frames.filter((frame) => selectedSet.has(frame.file));
 	const single = selected.length === 1 ? selected[0]! : null;
@@ -72,7 +106,7 @@ export function Inspector(props: InspectorProps) {
 		<aside
 			className={cn(
 				"flex shrink-0 flex-col border-l bg-background transition-[width] duration-150",
-				tab === "code" ? "w-[440px]" : "w-64",
+				tab === "design" ? "w-72" : "w-[440px]",
 			)}
 		>
 			<Tabs value={tab} onValueChange={(value) => onTabChange(value as InspectorTab)} className="gap-0">
@@ -91,26 +125,54 @@ export function Inspector(props: InspectorProps) {
 								Code view <Kbd>{CODE_VIEW_KEYS}</Kbd>
 							</TooltipContent>
 						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<TabsTrigger value="context" className="px-2 text-[13px]">
+									Context
+								</TabsTrigger>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								PRODUCT.md and DESIGN.md <Kbd>{CONTEXT_VIEW_KEYS}</Kbd>
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<TabsTrigger value="components" className="gap-1 px-2 text-[13px]">
+									Components
+									{props.componentsBadge ? (
+										<span
+											className="min-w-4 rounded-full bg-primary/12 px-1 text-[11px] leading-4 font-medium text-primary tabular-nums"
+											aria-label={`${props.componentsBadge} new ${props.componentsBadge === 1 ? "suggestion" : "suggestions"}`}
+										>
+											{props.componentsBadge}
+										</span>
+									) : null}
+								</TabsTrigger>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								Project components and the library <Kbd>{COMPONENTS_VIEW_KEYS}</Kbd>
+							</TooltipContent>
+						</Tooltip>
 					</TabsList>
 				</div>
 			</Tabs>
 
-			{tab === "code" ? (
-				single ? (
-					<CodeView path={single.file} source={files[single.file]} />
-				) : (
-					<p className="p-4 text-[13px] text-subtle-foreground">
-						{selected.length ? "Select a single screen to see its code." : "Select a screen to see its code."}
-					</p>
-				)
+			{tab === "context" ? (
+				props.contextPanel
+			) : tab === "components" ? (
+				props.componentsPanel
+			) : tab === "code" ? (
+				props.codePanel
 			) : (
-				<>
+				// One scroll for the whole tab, so long props lists never push the screens away
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{props.propsPanel}
 					{single ? <FrameDetails frame={single} {...props} /> : null}
 					{selected.length > 1 ? <MultiDetails count={selected.length} {...props} /> : null}
 
-					<div className={cn("flex min-h-0 flex-1 flex-col", selected.length > 0 && "border-t")}>
+					<div className={cn("flex flex-col", selected.length > 0 && "border-t")}>
 						<div className="px-4 pt-4 pb-2 text-xs font-medium text-subtle-foreground">Screens</div>
-						<div className="flex flex-col gap-0.5 overflow-y-auto px-2 pb-3">
+						<div className="flex flex-col gap-0.5 px-2 pb-3">
 							{frames.length === 0 ? (
 								<p className="px-2 text-[13px] text-subtle-foreground">No screens yet.</p>
 							) : (
@@ -135,13 +197,14 @@ export function Inspector(props: InspectorProps) {
 							)}
 						</div>
 					</div>
-				</>
+				</div>
 			)}
 		</aside>
 	);
 }
 
-function FrameDetails({ frame, onChange, onEndStep, onDuplicate, onDelete }: InspectorProps & { frame: Frame }) {
+function FrameDetails(props: InspectorProps & { frame: Frame }) {
+	const { frame, onChange, onEndStep, onDuplicate, onDelete } = props;
 	const field = useFieldSteps(frame.file);
 	return (
 		<div className="flex flex-col gap-4 p-4">
@@ -180,9 +243,157 @@ function FrameDetails({ frame, onChange, onEndStep, onDuplicate, onDelete }: Ins
 					/>
 				</div>
 			</Section>
+			{isScreenFile(frame.file) ? <Variations key={frame.file} {...props} /> : null}
 			<Separator />
 			<SelectionActions label="screen" onDuplicate={onDuplicate} onDelete={onDelete} />
 		</div>
+	);
+}
+
+/**
+ * The selected screen's variation group (decision 0004): pick, compare, vary
+ * and mix. Groups follow from file names, so a screen without alternates just
+ * offers "Vary this".
+ */
+function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, onVary, onMix }: InspectorProps & { frame: Frame }) {
+	const group = groupOf(frame.file, Object.keys(files));
+	const [preferred] = useVariations();
+	const [direction, setDirection] = useState("");
+	const [count, setCount] = useState(preferred > 1 ? preferred : 2);
+	const others = group?.files.filter((file) => file !== frame.file) ?? [];
+	const [source, setSource] = useState<string | null>(null);
+	const [section, setSection] = useState("");
+	const mixSource = source && others.includes(source) ? source : (others[0] ?? null);
+
+	const vary = () => {
+		onVary(frame.file, direction, count);
+		setDirection("");
+	};
+	const mix = () => {
+		if (!mixSource || !section.trim()) return;
+		onMix(frame.file, mixSource, section);
+		setSection("");
+	};
+
+	return (
+		<>
+			<Separator />
+			<section className="flex flex-col gap-2">
+				<div className="flex h-5 items-center justify-between">
+					<h3 className="text-xs font-medium text-subtle-foreground">Variations</h3>
+					{group ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button variant="ghost" size="xs" className="-mr-1.5 text-muted-foreground" onClick={() => onCompare(group.base)}>
+									<Columns2 />
+									Compare
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								Compare side by side <Kbd>{COMPARE_KEYS}</Kbd>
+							</TooltipContent>
+						</Tooltip>
+					) : null}
+				</div>
+
+				{group ? (
+					<div className="flex flex-col gap-0.5">
+						{group.files.map((file) => {
+							const picked = file === group.picked;
+							return (
+								<div
+									key={file}
+									className={cn(
+										"group/row flex h-7 items-center gap-1 rounded-md pr-0.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+										file === frame.file && "bg-accent text-accent-foreground",
+									)}
+								>
+									<button
+										type="button"
+										title={file}
+										onClick={() => onSelect(file, false)}
+										className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+									>
+										<Check className={cn("size-3.5 shrink-0", !picked && "invisible")} aria-label={picked ? "Picked" : undefined} />
+										<span className="truncate">{variationName(file, frames)}</span>
+									</button>
+									{isAlternate(file) ? (
+										<Button
+											variant="ghost"
+											size="xs"
+											disabled={busy}
+											onClick={() => onPick(file)}
+											title={`Make this ${group.picked ? `${variationName(group.base, frames)}; the current one becomes an alternate` : "the screen again"}`}
+											className="h-6 px-1.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+										>
+											Pick
+										</Button>
+									) : null}
+								</div>
+							);
+						})}
+						{group.picked ? null : (
+							<p className="px-2 pt-1 text-xs text-subtle-foreground">The picked version was deleted. Pick one to take its place.</p>
+						)}
+					</div>
+				) : null}
+
+				<div className="flex flex-col gap-1.5">
+					<input
+						value={direction}
+						onChange={(event) => setDirection(event.target.value)}
+						onKeyDown={(event) => event.key === "Enter" && !busy && vary()}
+						placeholder="bolder, denser…"
+						aria-label="Direction for new variations (optional)"
+						className="h-8 w-full min-w-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none placeholder:text-subtle-foreground focus:border-ring"
+					/>
+					<div className="flex items-center gap-1">
+						<VariationsPicker value={count} onChange={setCount} />
+						<Button variant="outline" size="sm" className="flex-1" disabled={busy} onClick={vary}>
+							<Shuffle />
+							Vary this
+						</Button>
+					</div>
+				</div>
+
+				{group && mixSource ? (
+					<div className="flex flex-col gap-1.5 pt-1">
+						<span className="text-xs text-muted-foreground">Mix in a section</span>
+						<div className="flex items-center gap-1">
+							<input
+								value={section}
+								onChange={(event) => setSection(event.target.value)}
+								onKeyDown={(event) => event.key === "Enter" && !busy && mix()}
+								placeholder="header"
+								aria-label="Section to take"
+								className="h-8 w-20 min-w-0 shrink-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none placeholder:text-subtle-foreground focus:border-ring"
+							/>
+							<span className="text-xs text-subtle-foreground">from</span>
+							<DropdownMenu modal={false}>
+								<DropdownMenuTrigger asChild>
+									<Button variant="ghost" size="xs" className="h-8 min-w-0 flex-1 justify-between gap-1 px-2 text-[13px] text-muted-foreground" aria-label="Variation to take it from">
+										<span className="truncate">{variationName(mixSource, frames)}</span>
+										<ChevronDown className="size-3 shrink-0" />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="min-w-44">
+									<DropdownMenuRadioGroup value={mixSource} onValueChange={setSource}>
+										{others.map((file) => (
+											<DropdownMenuRadioItem key={file} value={file} className="text-[13px]">
+												{variationName(file, frames)}
+											</DropdownMenuRadioItem>
+										))}
+									</DropdownMenuRadioGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</div>
+						<Button variant="outline" size="sm" disabled={busy || !section.trim()} onClick={mix}>
+							<span className="truncate">Mix into {variationName(frame.file, frames)}</span>
+						</Button>
+					</div>
+				) : null}
+			</section>
+		</>
 	);
 }
 

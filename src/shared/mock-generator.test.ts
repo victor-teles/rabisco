@@ -3,10 +3,10 @@ import * as Lucide from "lucide-react";
 import React, { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transform } from "sucrase";
-import { generateMockScreens } from "../../shared/mock-generator";
-import { FRAME_GAP, FRAME_SIZE, isComponentFile, isScreenFile } from "../../shared/project";
-import type { ProjectFiles } from "../../shared/types";
-import { compileTsx } from "../test-utils";
+import { generateMockScreens } from "./mock-generator";
+import { FRAME_GAP, FRAME_SIZE, isComponentFile, isScreenFile } from "./project";
+import type { ProjectFiles } from "./types";
+import { compileTsx } from "../bun/test-utils";
 
 const ALLOWED = new Set([
 	"react",

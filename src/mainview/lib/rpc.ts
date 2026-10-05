@@ -1,8 +1,10 @@
 import { Electroview } from "electrobun/view";
-import { GENERATION_STEPS, generateMockScreens } from "../../shared/mock-generator";
+import { normalizeComments } from "../../shared/comments";
+import { CONTEXT_TEMPLATES } from "../../shared/context/templates";
 import { emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
 import type { RabiscoRPC } from "../../shared/rpc";
-import type { CanvasDoc, ChatMessage, FileChange, GenerationStep, Project, ProjectFiles } from "../../shared/types";
+import type { CanvasDoc, ChatMessage, FileChange, GenerationEventMessage, Project, ProjectFiles } from "../../shared/types";
+import { createBrowserGenerator } from "./browser-generate";
 
 type Requests = RabiscoRPC["bun"]["requests"];
 
@@ -26,39 +28,30 @@ function listenerSet<T>() {
 	};
 }
 
-const steps = listenerSet<GenerationStep>();
+const generationEvents = listenerSet<GenerationEventMessage>();
 const fileChanges = listenerSet<FilesChanged>();
 
-export const onGenerationStep = steps.add;
+/** Events of running generations. Returns an unsubscribe function. */
+export const onGenerationEvent = generationEvents.add;
 
 /** Files edited on disk outside Rabisco. Returns an unsubscribe function. */
 export const onFilesChanged = fileChanges.add;
 
 function createElectrobunApi(): RabiscoApi {
 	const rpc = Electroview.defineRPC<RabiscoRPC>({
-		maxRequestTime: 5 * 60_000,
+		// Generations can run for minutes with agentic providers
+		maxRequestTime: 15 * 60_000,
 		handlers: {
 			requests: {},
-			messages: { generationStep: steps.emit, filesChanged: fileChanges.emit },
+			messages: { generationEvent: generationEvents.emit, filesChanged: fileChanges.emit },
 		},
 	});
 	new Electroview({ rpc });
-	const r = rpc.request;
-
-	return {
-		listRecents: (params) => r.listRecents(params),
-		pickProjectFolder: (params) => r.pickProjectFolder(params),
-		openProject: (params) => r.openProject(params),
-		closeProject: (params) => r.closeProject(params),
-		createProject: (params) => r.createProject(params),
-		saveCanvas: (params) => r.saveCanvas(params),
-		writeFiles: (params) => r.writeFiles(params),
-		appendMessages: (params) => r.appendMessages(params),
-		removeRecent: (params) => r.removeRecent(params),
-		deleteProject: (params) => r.deleteProject(params),
-		revealProject: (params) => r.revealProject(params),
-		generateScreens: (params) => r.generateScreens(params),
-	};
+	const request = rpc.request as unknown as Record<string, (params: unknown) => Promise<unknown>>;
+	// Every request maps 1:1 to the main-process handler of the same name
+	return new Proxy({} as RabiscoApi, {
+		get: (_, name: string) => (params: unknown) => request[name]!(params),
+	});
 }
 
 /**
@@ -98,12 +91,13 @@ function createBrowserApi(): RabiscoApi {
 	const writeRecents = (list: Recent[]) =>
 		localStorage.setItem(RECENTS, JSON.stringify([...list].sort((a, b) => b.openedAt.localeCompare(a.openedAt))));
 	const forget = (path: string) => writeRecents(readRecents().filter((r) => r.path !== path));
-	const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 	async function openProject({ path }: { path: string }): Promise<Project> {
 		const stored = mustRead(path);
-		const canvas = reconcileFrames(stored.canvas, stored.files);
-		if (canvas !== stored.canvas) write(path, { ...stored, canvas });
+		// Projects stored before comments existed have none
+		const normalized = { ...stored.canvas, comments: normalizeComments(stored.canvas.comments) };
+		const canvas = reconcileFrames(normalized, stored.files);
+		if (canvas !== normalized) write(path, { ...stored, canvas });
 		writeRecents([{ path, openedAt: new Date().toISOString() }, ...readRecents().filter((r) => r.path !== path)]);
 		return { path, canvas, files: stored.files, messages: stored.messages };
 	}
@@ -117,6 +111,8 @@ function createBrowserApi(): RabiscoApi {
 		}
 		return next;
 	}
+
+	const generator = createBrowserGenerator(generationEvents.emit, (path) => mustRead(path).files);
 
 	return {
 		async listRecents() {
@@ -137,7 +133,8 @@ function createBrowserApi(): RabiscoApi {
 		},
 		async createProject({ name, device }) {
 			const path = `browser://${crypto.randomUUID()}`;
-			write(path, { canvas: emptyCanvas(name.trim() || "Untitled", device), files: {}, messages: [] });
+			// Same starting point as the desktop app: both context files, as templates
+			write(path, { canvas: emptyCanvas(name.trim() || "Untitled", device), files: { ...CONTEXT_TEMPLATES }, messages: [] });
 			return openProject({ path });
 		},
 		async saveCanvas({ path, canvas }) {
@@ -166,15 +163,59 @@ function createBrowserApi(): RabiscoApi {
 		async revealProject() {
 			return ok;
 		},
-		async generateScreens(params) {
-			for (const step of GENERATION_STEPS) {
-				steps.emit({ generationId: params.generationId, label: step.label });
-				await wait(450);
-			}
-			return generateMockScreens({ prompt: params.prompt, device: params.device, existingFiles: params.existingFiles });
+		async openExternal({ url }) {
+			window.open(url, "_blank", "noopener");
+			return ok;
 		},
+		async importContext() {
+			throw new Error("Import needs the desktop app");
+		},
+		async pickExportFolder() {
+			return "browser://downloads";
+		},
+		// No file system here: a single file downloads, a folder needs the desktop app
+		async writeExport({ dir, files }) {
+			if (files.length !== 1) throw new Error("Exporting a folder needs the desktop app");
+			const [file] = files as [(typeof files)[number]];
+			const bytes = file.encoding === "base64" ? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0)) : file.content;
+			const link = document.createElement("a");
+			link.href = URL.createObjectURL(new Blob([bytes]));
+			link.download = file.path.split("/").pop()!;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+			return { dir };
+		},
+		// Share links and git need the main process (a server, the git CLI)
+		async sharePublish() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async shareStatus() {
+			return null;
+		},
+		async shareStop() {
+			return ok;
+		},
+		async exportViewer() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async gitStatus() {
+			return { state: "unavailable", error: DESKTOP_ONLY } as const;
+		},
+		async gitInit() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async gitSetRemote() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async gitSync() {
+			return { ok: false, error: DESKTOP_ONLY } as const;
+		},
+		...generator,
 	};
 }
+
+/** Why sharing and git aren't available in the browser fallback. */
+export const DESKTOP_ONLY = "Sharing and git sync need the Rabisco desktop app.";
 
 export const isDesktop = typeof window !== "undefined" && Boolean(window.__electrobun);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Download, Hand, Maximize, Minus, MousePointer2, Plus, Redo2, Share2, Undo2 } from "lucide-react";
+import { ChevronLeft, Hand, Maximize, MessageCircle, Minus, MousePointer2, Play, Plus, Redo2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import { SettingsButton } from "@/components/app/settings-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import { Button } from "@/components/ui/button";
@@ -14,24 +15,47 @@ import {
 	EmptyStateHeader,
 	EmptyStateTitle,
 } from "@/components/ui/uai/empty-state";
+import { useComments } from "@/hooks/use-comments";
+import { useComponents } from "@/hooks/use-components";
+import { useGeneration } from "@/hooks/use-generation";
+import { useInterview } from "@/hooks/use-interview";
+import { useProviders } from "@/hooks/use-providers";
 import { useProject } from "@/hooks/use-project";
+import { useStructure } from "@/hooks/use-structure";
 import type { Theme } from "@/hooks/use-theme";
+import { useVariations } from "@/hooks/use-variations";
 import { align, boundsOf, distribute, type Alignment, type Axis } from "@/lib/align";
 import { applyFileChanges } from "@/lib/history";
-import { api, onGenerationStep } from "@/lib/rpc";
 import { selectedFrames, toggleInSelection } from "@/lib/selection";
 import { cn } from "@/lib/utils";
-import { FRAME_GAP, FRAME_SIZE, nextFrameX, uniqueScreenPath } from "../../../shared/project";
-import type { ChatMessage, Device, Frame, ProjectFiles } from "../../../shared/types";
-import { Canvas, type CanvasHandle, type FrameMove, type Tool, type Viewport } from "./canvas";
-import { ChatPanel, type Generation } from "./chat-panel";
+import { focusOf } from "../../../shared/ai/focus";
+import { LINK_ATTRIBUTE } from "../../../shared/prototype/links";
+import { findElement, parseJsx } from "../../../shared/jsx";
+import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
+import type { CanvasComment, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
+import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
+import { Canvas, type CanvasHandle, type ElementRef, type FrameMove, type Tool, type Viewport } from "./canvas";
+import { ChatPanel } from "./chat-panel";
+import { CommentsLayer } from "./comments-layer";
+import { CodePanel } from "./code-panel";
+import { CompareView } from "./compare-view";
+import { ComponentsPanel } from "./components-panel";
+import { ContextPanel } from "./context-panel";
 import { Inspector, type FramePatch, type InspectorTab } from "./inspector";
-import { ALIGN_SHORTCUTS, DISTRIBUTE_SHORTCUTS, isTyping } from "./shortcuts";
+import { LinkControl } from "./link-control";
+import { NodeProps } from "./node-props";
+import { ExportMenu, type ExportContext } from "./export/export-menu";
+import { ShareButton } from "./export/share-button";
+import { PlayView } from "./play-view";
+import { ALIGN_SHORTCUTS, COMPONENTS_VIEW_CODE, DISTRIBUTE_SHORTCUTS, isPlay, isTyping, PLAY_KEYS } from "./shortcuts";
 
 type EditorProps = {
 	projectPath: string;
 	initialPrompt?: string;
-	initialModel: string;
+	/** Reference images sent with the initial prompt */
+	initialFiles?: File[];
+	/** Variations for the initial prompt, chosen on Home */
+	initialVariations?: number;
 	theme: Theme;
 	onToggleTheme: () => void;
 	onBack: () => void;
@@ -40,15 +64,9 @@ type EditorProps = {
 const NO_FRAMES: Frame[] = [];
 const NO_FILES: ProjectFiles = {};
 const NO_SELECTION: string[] = [];
+const NO_MESSAGES: ChatMessage[] = [];
 /** Arrow-key nudges closer together than this are one undo step */
 const NUDGE_BURST_MS = 800;
-
-const message = (role: ChatMessage["role"], content: string): ChatMessage => ({
-	id: crypto.randomUUID(),
-	role,
-	content,
-	createdAt: new Date().toISOString(),
-});
 
 /** Replaces frames by file, keeping canvas order. */
 const withMoves = (frames: Frame[], moves: FrameMove[]) => {
@@ -59,14 +77,18 @@ const withMoves = (frames: Frame[], moves: FrameMove[]) => {
 	});
 };
 
-export function EditorView({ projectPath, initialPrompt, initialModel, theme, onToggleTheme, onBack }: EditorProps) {
-	const { project, error, stateRef, canUndo, canRedo, change, endStep, undo, redo, setSelection, setMeta, addMessages } =
+export function EditorView({ projectPath, initialPrompt, initialFiles, initialVariations, theme, onToggleTheme, onBack }: EditorProps) {
+	const { project, error, stateRef, canUndo, canRedo, change, endStep, undo, redo, setSelection, setMeta, addMessages, flushCanvas, reloadFromDisk } =
 		useProject(projectPath);
 	const [tool, setTool] = useState<Tool>("move");
 	const [tab, setTab] = useState<InspectorTab>("design");
+	const [contextFile, setContextFile] = useState<ContextFileName>("PRODUCT.md");
 	const [viewport, setViewport] = useState<Viewport>({ x: 80, y: 80, zoom: 0.6 });
-	const [generation, setGeneration] = useState<Generation | null>(null);
-	const [model, setModel] = useState(initialModel);
+	/** The variation group open in compare mode, by its base path */
+	const [compareBase, setCompareBase] = useState<string | null>(null);
+	/** The screen play mode started from, while it is open */
+	const [playStart, setPlayStart] = useState<string | null>(null);
+	const [variations, setVariations] = useVariations();
 	const canvasRef = useRef<CanvasHandle>(null);
 	const startedInitialPrompt = useRef(false);
 	const fittedOnLoad = useRef(false);
@@ -76,78 +98,207 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 	const files = project?.files ?? NO_FILES;
 	const selection = project?.canvas.selection ?? NO_SELECTION;
 	const device = project?.canvas.device ?? "mobile";
+	const messages = project?.messages ?? NO_MESSAGES;
 	const selected = useMemo(() => selectedFrames(frames, selection), [frames, selection]);
 
 	// Frame existing work once the project opens
 	useEffect(() => {
 		if (!project || fittedOnLoad.current) return;
 		fittedOnLoad.current = true;
-		const initial = project.canvas.selection.length ? selected : project.canvas.frames;
+		const initial = selected.length ? selected : project.canvas.frames;
 		if (initial.length) requestAnimationFrame(() => canvasRef.current?.fitTo(initial));
 	}, [project, selected]);
 
-	useEffect(
-		() =>
-			onGenerationStep((step) =>
-				setGeneration((current) =>
-					current && current.id === step.generationId
-						? { ...current, steps: [...current.steps, step.label] }
-						: current,
-				),
-			),
-		[],
-	);
+	const onPlaced = useCallback((placed: Frame[]) => requestAnimationFrame(() => canvasRef.current?.fitTo(placed)), []);
+	const { generation, drafts, failure, dismissFailure, send, vary, mix, writeContext, stop, retry } = useGeneration({
+		projectPath,
+		stateRef,
+		change,
+		addMessages,
+		files,
+		frames,
+		device,
+		onPlaced,
+	});
 
-	const send = useCallback(
-		async (prompt: string) => {
-			if (!stateRef.current || generation) return;
-			const generationId = crypto.randomUUID();
-			addMessages([message("user", prompt)]);
-			setGeneration({ id: generationId, steps: [] });
+	const openContext = useCallback((file: ContextFileName) => {
+		setContextFile(file);
+		setTab("context");
+	}, []);
 
-			try {
-				const result = await api.generateScreens({
-					generationId,
-					projectPath,
-					prompt,
-					device,
-					model,
-					existingFiles: Object.keys(stateRef.current.files),
-				});
-				const current = stateRef.current;
-				if (!current) return;
-				// Files, frames and the reply land together; files + frames are one undo step
-				const placedFiles = new Set(current.canvas.frames.map((frame) => frame.file));
-				const offset = nextFrameX(current.canvas.frames);
-				const placed = result.frames
-					.filter((frame) => !placedFiles.has(frame.file))
-					.map((frame) => ({ ...frame, x: frame.x + offset }));
-				change(
-					(snapshot) => {
-						const nextFiles = applyFileChanges(snapshot.files, result.changes);
-						return {
-							files: nextFiles,
-							frames: [...snapshot.frames, ...placed].filter((frame) => frame.file in nextFiles),
-						};
-					},
-					{ select: placed.map((frame) => frame.file) },
-				);
-				addMessages([message("assistant", result.reply)]);
-				if (placed.length) requestAnimationFrame(() => canvasRef.current?.fitTo(placed));
-			} catch (reason) {
-				toast.error("Generation failed", { description: String(reason) });
-			} finally {
-				setGeneration(null);
-			}
+	const openProduct = useCallback(() => openContext("PRODUCT.md"), [openContext]);
+	const { interview, start: startInterview, answer, skip, cancel: cancelInterview } = useInterview({
+		projectName: project?.canvas.name ?? "",
+		addMessages,
+		change,
+		writeContext,
+		onWritten: openProduct,
+	});
+
+	const writeDesign = useCallback(async () => {
+		const prompt =
+			"Write DESIGN.md from the existing screens and components: the tokens they use (colors, radius, fonts), typography, layout and spacing, and the component rules they follow.";
+		if (await writeContext("DESIGN.md", prompt, "Write DESIGN.md from my screens")) openContext("DESIGN.md");
+	}, [writeContext, openContext]);
+
+	const busy = generation !== null || interview !== null;
+	// The components panel: suggestions, Make component from them, drops onto screens, the selected component
+	const {
+		components,
+		suggestions,
+		unseenSuggestions,
+		dismissSuggestion,
+		makeComponent,
+		drop: dropComponent,
+		selectedComponent,
+	} = useComponents({ projectPath, files, selection, stateRef, change, undo, busy, open: tab === "components" });
+	const selectComponent = useCallback((path: string | null) => setSelection(path ? [path] : []), [setSelection]);
+
+	const exportContext: ExportContext = {
+		projectPath,
+		projectName: project?.canvas.name ?? "Untitled design",
+		frames,
+		files,
+		selected,
+		selectedComponent: selectedComponent?.path ?? null,
+		flushCanvas,
+		reloadFromDisk,
+	};
+
+	// The Code tab's structure outline: element selection, Make component, prop controls and code edits
+	const codeFile = selection.length === 1 ? selection[0]! : null;
+	const showCode = useCallback(() => setTab("code"), []);
+	const structure = useStructure({ files, file: codeFile, stateRef, change, onShowCode: showCode, busy });
+	/** The element a prompt would change (point and prompt), when one is selected in the selected screen */
+	const focus = useMemo(() => focusOf(files, structure.node), [files, structure.node]);
+
+	/**
+	 * During the PRODUCT.md interview the composer answers its questions. Otherwise,
+	 * with an element selected, the prompt changes only that element; with screens
+	 * selected, it edits them; without, it creates new screens.
+	 */
+	const sendPrompt = useCallback(
+		(prompt: string, attachments: File[] = []) => {
+			if (interview) answer(prompt);
+			else send(prompt, { targets: selection, files: attachments, variations, focus: structure.node });
 		},
-		[stateRef, generation, addMessages, projectPath, device, model, change],
+		[interview, answer, send, selection, variations, structure.node],
 	);
 
+	/** Selects an element of a screen from the canvas (the screen becomes the selection), or clears it. */
+	const selectElement = useCallback(
+		(file: string, element: ElementRef | null) => {
+			const current = stateRef.current?.canvas.selection;
+			if (!current || current.length !== 1 || current[0] !== file) setSelection([file]);
+			structure.select(element);
+			// Element props and styles live in the Design tab; the Code tab follows the selection in its outline
+			if (element) setTab((tab) => (tab === "context" || tab === "components" ? "design" : tab));
+		},
+		[stateRef, setSelection, structure.select],
+	);
+	const editElementText = useCallback((element: ElementRef, text: string) => structure.setChildren(element, text), [structure.setChildren]);
+	// Text with more than text in it (an icon, a nested element) is edited in the Design tab's props
+	const editTextElsewhere = useCallback(() => setTab("design"), []);
+
+	/** The element's nearest ancestor that has props of its own (fragments have none), or null. */
+	const parentElement = (element: ElementRef): ElementRef | null => {
+		const source = files[element.file];
+		let parent = source === undefined ? null : (findElement(parseJsx(source), element.start)?.parent ?? null);
+		while (parent && parent.name === null) parent = parent.parent;
+		return parent ? { file: element.file, start: parent.start } : null;
+	};
+
+	const showScreens = useCallback(
+		(targets: string[]) => {
+			setSelection(targets);
+			const shown = selectedFrames(frames, targets);
+			if (shown.length) canvasRef.current?.fitTo(shown);
+		},
+		[frames, setSelection],
+	);
+
+	const comments = useComments({ comments: project?.canvas.comments, frames, change, endStep });
+	/**
+	 * "Ask AI" on a comment: a change to the element under the pin (point and
+	 * prompt), else to the screen it is pinned to; a canvas pin creates new screens.
+	 */
+	const askAboutComment = useCallback(
+		async (comment: CanvasComment) => {
+			if (!comment.file) return send(comment.text, { variations });
+			const element = (await canvasRef.current?.elementAt(comment.file, comment)) ?? null;
+			send(comment.text, { targets: [comment.file], focus: element });
+		},
+		[send, variations],
+	);
+
+	const groups = useMemo(() => variationGroups(Object.keys(files)), [files]);
+	const compareGroup = compareBase ? (groups.find((group) => group.base === compareBase) ?? null) : null;
+	// Close compare when its group is gone (deleted, or down to one file)
 	useEffect(() => {
-		if (!project || !initialPrompt || startedInitialPrompt.current) return;
+		if (compareBase && !compareGroup) setCompareBase(null);
+	}, [compareBase, compareGroup]);
+
+	/**
+	 * Picks a variation: swaps its content into the screen's own file (decision
+	 * 0004), one undo step. Frames stay where they are; the selection follows the content.
+	 */
+	const pick = useCallback(
+		(file: string) => {
+			if (generation) {
+				toast("Wait for the generation to finish");
+				return;
+			}
+			const current = stateRef.current;
+			if (!current) return;
+			change(
+				(snapshot) => {
+					const files = applyFileChanges(snapshot.files, pickVariation(snapshot.files, file));
+					// When the screen's own file was gone, the alternate's frame takes its name
+					const base = baseOf(file);
+					const hasBaseFrame = snapshot.frames.some((frame) => frame.file === base);
+					const frames = hasBaseFrame
+						? snapshot.frames
+						: snapshot.frames.map((frame) => (frame.file === file ? { ...frame, file: base } : frame));
+					return { ...snapshot, files, frames: frames.filter((frame) => frame.file in files) };
+				},
+				{ select: selectionAfterPick(current.canvas.selection, file) },
+			);
+		},
+		[generation, stateRef, change],
+	);
+
+	/** Edits of the context files go through the undo history like any other file change. */
+	const editContext = useCallback(
+		(file: ContextFileName, text: string, step: string) =>
+			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: text } }), { coalesce: step }),
+		[change],
+	);
+	const replaceContext = useCallback(
+		(replacements: Partial<Record<ContextFileName, string>>) =>
+			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, ...replacements } })),
+		[change],
+	);
+
+	// The context files the latest generation followed. Older replies and interview questions have no `context`.
+	const lastUsed = useMemo(() => {
+		for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === "assistant" && messages[i]!.context) return messages[i]!.context!;
+		return null;
+	}, [messages]);
+
+	// The model comes from the providers, so wait for them before sending the first prompt
+	const { loading: providersLoading } = useProviders();
+	useEffect(() => {
+		if (!project || !initialPrompt || providersLoading || startedInitialPrompt.current) return;
 		startedInitialPrompt.current = true;
-		send(initialPrompt);
-	}, [project, initialPrompt, send]);
+		send(initialPrompt, { files: initialFiles, variations: initialVariations });
+	}, [project, initialPrompt, initialFiles, initialVariations, providersLoading, send]);
+
+	// Show new screens as they start streaming in
+	const draftCount = drafts?.frames.length ?? 0;
+	useEffect(() => {
+		if (draftCount === 1 && drafts) canvasRef.current?.fitTo([...frames, ...drafts.frames]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [draftCount]);
 
 	const patchFrame = useCallback(
 		(file: string, patch: FramePatch, step?: string) =>
@@ -190,10 +341,10 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 		[change, selection],
 	);
 
-	/** Deleting a frame deletes its screen file; undo brings both back. */
+	/** Deleting a frame deletes its screen file; undo brings both back. A selected component file is never deleted this way. */
 	const deleteSelection = useCallback(() => {
-		if (!selection.length) return;
-		const doomed = new Set(selection);
+		const doomed = new Set(selectedFrames(frames, selection).map((frame) => frame.file));
+		if (!doomed.size) return;
 		change(
 			(snapshot) => ({
 				frames: snapshot.frames.filter((frame) => !doomed.has(frame.file)),
@@ -201,7 +352,7 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 			}),
 			{ select: [] },
 		);
-	}, [change, selection]);
+	}, [change, frames, selection]);
 
 	/** Copies each selected screen to a new file, placed below the selection. */
 	const duplicateSelection = useCallback(() => {
@@ -256,8 +407,23 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 	// reads the latest render through a ref so it is registered once.
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || isTyping(event.target) || !project) return;
+		// Text being edited in a frame owns the keys; Escape still cancels it if focus stayed here
+		if (canvasRef.current?.isEditingText()) {
+			if (event.key === "Escape") canvasRef.current.endTextEdit(false);
+			return;
+		}
+		const element = structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
 		const code = event.code;
+		// Play mode handles its own keys
+		if (playStart) return;
+		if (isPlay(event)) {
+			event.preventDefault();
+			startPlay();
+			return;
+		}
+		// Compare mode handles its own keys (Esc closes it); only undo/redo stay global
+		if (compareBase && !(mod && (code === "KeyZ" || code === "KeyY"))) return;
 
 		if (mod && code === "KeyZ") {
 			event.preventDefault();
@@ -289,7 +455,10 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 			}
 		} else if (event.altKey && !event.metaKey && !event.ctrlKey) {
 			const item = ALIGN_SHORTCUTS.find((s) => s.code === code);
-			if (item) {
+			if (code === COMPONENTS_VIEW_CODE) {
+				event.preventDefault();
+				setTab((current) => (current === "components" ? "design" : "components"));
+			} else if (item) {
 				event.preventDefault();
 				alignSelection(item.alignment);
 			}
@@ -297,16 +466,31 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 			return;
 		} else if (event.shiftKey && code === "KeyD") {
 			setTab((current) => (current === "code" ? "design" : "code"));
+		} else if (event.shiftKey && code === "KeyC") {
+			setTab((current) => (current === "context" ? "design" : "context"));
+		} else if (event.shiftKey && code === "KeyV") {
+			const group = selected.length === 1 ? groups.find((g) => g.base === baseOf(selected[0]!.file)) : undefined;
+			if (group) setCompareBase(group.base);
+			else if (selected.length === 1) toast("This screen has no variations yet", { description: "Use Vary this in the inspector." });
 		} else if (event.shiftKey && code === "Digit1") {
 			canvasRef.current?.fitTo(frames);
 		} else if (event.shiftKey && code === "Digit2") {
 			if (selected.length) canvasRef.current?.fitTo(selected);
 		} else if (event.key === "v") setTool("move");
 		else if (event.key === "h") setTool("hand");
-		else if (event.key === "Escape") setSelection([]);
-		else if (event.key === "Backspace" || event.key === "Delete") {
+		else if (event.key === "c") setTool("comment");
+		else if (event.key === "Escape") {
+			// Figma: Escape walks up to the parent, then out to the screen, then clears
+			if (tool === "comment") setTool("move");
+			else if (element) structure.select(parentElement(element));
+			else setSelection([]);
+		} else if (event.key === "Enter" && element) {
 			event.preventDefault();
-			deleteSelection();
+			canvasRef.current?.editText(element);
+		} else if (event.key === "Backspace" || event.key === "Delete") {
+			event.preventDefault();
+			if (element) structure.removeNode();
+			else deleteSelection();
 		} else if (event.key.startsWith("Arrow") && selected.length) {
 			event.preventDefault();
 			const step = event.shiftKey ? 10 : 1;
@@ -315,6 +499,13 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 			nudgeSelection(dx, dy);
 		}
 	};
+	/** Plays the prototype from the selected screen, or the first one. */
+	function startPlay() {
+		const start = selected.find((frame) => frame.file.startsWith("screens/"))?.file ?? frames[0]?.file;
+		if (start) setPlayStart(start);
+		else toast("Add a screen to play the prototype");
+	}
+
 	const keyHandler = useRef(onKeyDown);
 	keyHandler.current = onKeyDown;
 	useEffect(() => {
@@ -356,34 +547,52 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 				</NoDrag>
 				<div className="flex-1" />
 				<NoDrag className="flex items-center gap-1">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button variant="ghost" size="icon-sm" aria-label="Play prototype" onClick={startPlay} disabled={frames.length === 0}>
+								<Play />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">
+							Play prototype <Kbd>{PLAY_KEYS}</Kbd>
+						</TooltipContent>
+					</Tooltip>
+					<SettingsButton />
 					<ThemeToggle theme={theme} onToggle={onToggleTheme} />
-					<Button variant="ghost" size="sm" onClick={() => toast("Sharing is coming soon")}>
-						<Share2 />
-						Share
-					</Button>
-					<Button size="sm" onClick={() => toast("Export to code is coming soon")}>
-						<Download />
-						Export
-					</Button>
+					<ShareButton {...exportContext} />
+					<ExportMenu {...exportContext} />
 				</NoDrag>
 			</TitleBar>
 
 			<div className="flex min-h-0 flex-1">
 				<ChatPanel
-					messages={project?.messages ?? []}
+					messages={messages}
 					generation={generation}
+					failure={failure}
 					device={device}
 					onDeviceChange={(next: Device) => setMeta({ device: next })}
-					model={model}
-					onModelChange={setModel}
-					onSend={send}
-					selectedScreenName={selected.length === 1 ? selected[0]!.name : undefined}
+					onSend={sendPrompt}
+					onStop={stop}
+					onRetry={retry}
+					onDismissFailure={dismissFailure}
+					selectedScreenName={interview ? undefined : selected.length === 1 ? selected[0]!.name : selectedComponent?.name}
+					editingCount={interview ? 0 : selection.length}
+					focusLabel={interview ? undefined : focus?.label}
+					onClearFocus={() => structure.select(null)}
+					variations={variations}
+					onVariationsChange={setVariations}
+					onOpenContext={openContext}
+					interview={interview}
+					onStartInterview={startInterview}
+					onSkipQuestion={skip}
+					onCancelInterview={cancelInterview}
 				/>
 
 				<div className="relative min-w-0 flex-1">
 					<Canvas
 						frames={frames}
 						files={files}
+						drafts={drafts}
 						selection={selection}
 						onSelectionChange={setSelection}
 						onMoveFrames={moveFrames}
@@ -392,6 +601,15 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 						viewport={viewport}
 						onViewportChange={setViewport}
 						handleRef={canvasRef}
+						onCompare={setCompareBase}
+						onPick={pick}
+						onDropItem={dropComponent}
+						element={structure.node}
+						onSelectElement={selectElement}
+						onEditText={editElementText}
+						onEditTextElsewhere={editTextElsewhere}
+						onPlaceComment={comments.startDraft}
+						overlay={<CommentsLayer controller={comments} frames={frames} zoom={viewport.zoom} onAskAI={(comment) => void askAboutComment(comment)} />}
 					>
 						{project && frames.length === 0 && !generation ? (
 							<div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -424,6 +642,16 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 						onReset={() => canvasRef.current?.resetZoom()}
 						onFit={() => canvasRef.current?.fitTo(frames)}
 					/>
+					{playStart ? <PlayView start={playStart} frames={frames} files={files} onClose={() => setPlayStart(null)} /> : null}
+					{compareGroup ? (
+						<CompareView
+							group={compareGroup}
+							frames={frames}
+							files={files}
+							onPick={pick}
+							onClose={() => setCompareBase(null)}
+						/>
+					) : null}
 				</div>
 
 				<Inspector
@@ -439,6 +667,67 @@ export function EditorView({ projectPath, initialPrompt, initialModel, theme, on
 					onDistribute={distributeSelection}
 					onDuplicate={duplicateSelection}
 					onDelete={deleteSelection}
+					busy={generation !== null || interview !== null}
+					onPick={pick}
+					onCompare={setCompareBase}
+					onVary={vary}
+					onMix={mix}
+					componentsBadge={unseenSuggestions}
+					codePanel={
+						<CodePanel
+							path={codeFile}
+							source={codeFile ? files[codeFile] : undefined}
+							emptyMessage={selection.length ? "Select a single screen or component to see its code." : "Select a screen to see its code."}
+							structure={structure}
+							onEndStep={endStep}
+							onUndo={undo}
+							onRedo={redo}
+							onShowProps={() => setTab("design")}
+						/>
+					}
+					propsPanel={
+						<>
+							<NodeProps files={files} file={codeFile} structure={structure} onEndStep={endStep} onOpenComponent={selectComponent} />
+							<LinkControl
+								files={files}
+								frames={frames}
+								element={structure.node}
+								disabled={structure.busy}
+								onChange={(element, to) => structure.setProp(element, LINK_ATTRIBUTE, to)}
+							/>
+						</>
+					}
+					componentsPanel={
+						<ComponentsPanel
+							files={files}
+							frames={frames}
+							components={components}
+							selectedComponent={selectedComponent?.path ?? null}
+							suggestions={suggestions}
+							busy={busy}
+							onSelectComponent={selectComponent}
+							onShowScreens={showScreens}
+							onMakeComponent={makeComponent}
+							onDismissSuggestion={dismissSuggestion}
+						/>
+					}
+					contextPanel={
+						<ContextPanel
+							files={files}
+							file={contextFile}
+							onFileChange={setContextFile}
+							onEdit={editContext}
+							onReplace={replaceContext}
+							onEndStep={endStep}
+							onUndo={undo}
+							onRedo={redo}
+							lastUsed={lastUsed}
+							hasScreens={frames.length > 0}
+							busy={generation !== null || interview !== null}
+							onWriteDesign={() => void writeDesign()}
+							onInterview={startInterview}
+						/>
+					}
 				/>
 			</div>
 		</div>
@@ -466,6 +755,7 @@ function Toolbar({
 	const tools = [
 		{ id: "move" as const, label: "Move", shortcut: "V", icon: MousePointer2 },
 		{ id: "hand" as const, label: "Hand", shortcut: "H", icon: Hand },
+		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
 	];
 	const history = [
 		{ label: "Undo", shortcut: "⌘Z", icon: Undo2, enabled: canUndo, onClick: onUndo },

@@ -57,7 +57,9 @@ export type GenerationTask =
 	/** Change existing screens or components */
 	| "edit"
 	/** Fix files that failed validation; `request.problems` lists the errors */
-	| "repair";
+	| "repair"
+	/** Write PRODUCT.md or DESIGN.md (the one path in `targets`) from the prompt and the project's screens */
+	| "context";
 
 export type ProjectFile = {
 	/** Project-relative path with forward slashes, e.g. `screens/welcome.tsx` */
@@ -76,6 +78,32 @@ export type Problem = {
 	path: string;
 	message: string;
 	line?: number;
+};
+
+/** A project component as the prompt lists it: one signature per exported component. */
+export type ComponentSignature = {
+	/** `components/<kebab>.tsx` */
+	path: string;
+	/** e.g. `StatCard({ label: string; tone?: "default" | "success" = "default" })` */
+	signature: string[];
+	/** Files that import it */
+	usedBy?: string[];
+};
+
+/** One JSX element of a file, as the file is now (`src/shared/ai/focus.ts` builds it) */
+export type ElementFocus = {
+	/** Project-relative path of the file it is in */
+	file: string;
+	/** Source offsets: `<` of the opening tag to the end of the closing tag (or of `/>`) */
+	start: number;
+	end: number;
+	/** 1-based lines of `start` and of the last character */
+	startLine: number;
+	endLine: number;
+	/** The element's source, `start` to `end` */
+	snippet: string;
+	/** Readable name for people and prompts: `<Button> “Get started”`, `<section#pricing>` */
+	label: string;
 };
 
 export type GenerationRequest = {
@@ -98,11 +126,35 @@ export type GenerationRequest = {
 	 */
 	files: ProjectFile[];
 
+	/**
+	 * Every component in the project, built from all of its files, so the
+	 * catalog is complete even when component sources don't fit in `files`.
+	 * The provider must reuse these before writing new markup.
+	 */
+	components?: ComponentSignature[];
+
 	/** For `edit` and `repair`: the files the change is about */
 	targets?: string[];
 
 	/** For `repair`: what failed validation in the previous attempt */
 	problems?: Problem[];
+
+	/** Paths in `files` the provider reads but must not change, e.g. the variation a "Mix" takes a section from. Writes to them are dropped. */
+	references?: string[];
+
+	/**
+	 * Set when the request is one of several parallel generations of the same
+	 * task (decision 0003): the prompt asks for a direction distinct from the
+	 * others. `index` is 0-based. Paths stay logical; Rabisco renames the results.
+	 */
+	variation?: { index: number; count: number };
+
+	/**
+	 * Point and prompt: for an `edit` of `focus.file`, the one element the
+	 * request is about. The provider changes that element (plus the imports or
+	 * helper it needs) and keeps the rest of the file as it is. Repairs keep it.
+	 */
+	focus?: ElementFocus;
 
 	attachments?: Attachment[];
 
@@ -112,7 +164,7 @@ export type GenerationRequest = {
 
 // ---------------------------------------------------------------- events
 
-export type FileKind = "screen" | "component";
+export type FileKind = "screen" | "component" | "context";
 
 /** Metadata for a new screen; ignored for components and for edits to existing files */
 export type ScreenMeta = {
@@ -133,7 +185,8 @@ export type GenerationEvent =
 	| { type: "file.end"; path: string; content: string }
 	| { type: "file.delete"; path: string }
 	| { type: "done"; usage?: Usage }
-	| { type: "error"; code: ProviderErrorCode; message: string; retryable: boolean };
+	/** `fix` tells the user what to do, e.g. "Run `claude` in a terminal and log in" */
+	| { type: "error"; code: ProviderErrorCode; message: string; retryable: boolean; fix?: string };
 
 export type Usage = {
 	inputTokens?: number;
@@ -162,9 +215,11 @@ export const FILE_RULES = {
 	paths: {
 		screen: /^screens\/[a-z0-9]+(?:-[a-z0-9]+)*\.tsx$/,
 		component: /^components\/[a-z0-9]+(?:-[a-z0-9]+)*\.tsx$/,
+		/** Only for the `context` task, and only the file in `targets` */
+		context: /^(?:PRODUCT|DESIGN)\.md$/,
 	},
 	/** Allowed import specifiers; local imports must point to existing or co-written files */
-	imports: [/^react$/, /^lucide-react$/, /^@\/components\/ui\/[a-z0-9-]+$/, /^@\/lib\/utils$/, /^\.\.?\/components\/[a-z0-9-]+$/],
+	imports: [/^react$/, /^lucide-react$/, /^@\/components\/ui\/[a-z0-9-]+$/, /^@\/lib\/utils$/, /^\.\.?\/components\/[a-z0-9-]+$/, /^\.\/[a-z0-9-]+$/],
 	/** Screens default-export one React component; components use named exports */
 	exports: { screen: "default", component: "named" },
 	/** Upper bound for a single file, in characters */

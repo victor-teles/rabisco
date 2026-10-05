@@ -34,12 +34,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DesignComposer, MODELS } from "@/components/app/design-composer";
+import { DesignComposer } from "@/components/app/design-composer";
+import { SettingsButton } from "@/components/app/settings-button";
 import { Logo } from "@/components/app/logo";
 import { ScreenPreview } from "@/components/app/screen-preview";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
+import { useVariations } from "@/hooks/use-variations";
 import { api, isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import type { Device, ProjectSummary } from "../../shared/types";
@@ -67,7 +69,7 @@ const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
 	},
 ];
 
-export type StartDesign = (input: { prompt: string; device: Device; model: string }) => void;
+export type StartDesign = (input: { prompt: string; device: Device; files?: File[]; variations?: number }) => void;
 
 type HomeProps = {
 	theme: Theme;
@@ -79,7 +81,7 @@ type HomeProps = {
 export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeProps) {
 	const [prompt, setPrompt] = useState("");
 	const [device, setDevice] = useState<Device>("mobile");
-	const [model, setModel] = useState<string>(MODELS[0].id);
+	const [variations, setVariations] = useVariations();
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
 
@@ -126,13 +128,14 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 			<TitleBar className="border-b-0 bg-muted/40">
 				<Logo />
 				<div className="flex-1" />
-				<NoDrag>
+				<NoDrag className="flex items-center gap-1">
+					<SettingsButton />
 					<ThemeToggle theme={theme} onToggle={onToggleTheme} />
 				</NoDrag>
 			</TitleBar>
 
 			<div className="flex min-h-0 flex-1">
-				<Sidebar onNew={() => onStart({ prompt: "", device, model })} onOpenFolder={openFolder} />
+				<Sidebar onNew={() => onStart({ prompt: "", device })} onOpenFolder={openFolder} />
 
 				<ScrollArea className="min-w-0 flex-1 rounded-tl-2xl border-t border-l bg-background">
 					<main className="mx-auto flex max-w-5xl flex-col px-10 pb-16">
@@ -154,10 +157,10 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								onValueChange={setPrompt}
 								device={device}
 								onDeviceChange={setDevice}
-								model={model}
-								onModelChange={setModel}
+								variations={variations}
+								onVariationsChange={setVariations}
 								placeholder="A meditation app with a soft, editorial feel…"
-								onSubmit={(text) => onStart({ prompt: text, device, model })}
+								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations })}
 							/>
 
 							<div className="mt-4 flex flex-wrap justify-center gap-1.5">

@@ -1,7 +1,23 @@
-import type { FileChange, Frame, ProjectFiles } from "../../shared/types";
+import { detachComments } from "../../shared/comments";
+import type { CanvasComment, FileChange, Frame, ProjectFiles } from "../../shared/types";
 
-/** What one undo step restores: frame layout and file contents. Selection and chat are not part of it. */
-export type Snapshot = { frames: Frame[]; files: ProjectFiles };
+/**
+ * What one undo step restores: frame layout, file contents and comments. Selection and chat are not part of it.
+ * Recipes that only touch frames or files may leave `comments` out: `nextSnapshot` carries them over,
+ * so every snapshot in a history has them.
+ */
+export type Snapshot = { frames: Frame[]; files: ProjectFiles; comments?: CanvasComment[] };
+
+/**
+ * Completes a recipe's result: missing comments are carried over from `present`,
+ * and pins on frames the change removed stay where they were, on the canvas
+ * (`detachComments`), in the same step so undo puts them back on their frame.
+ */
+export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
+	if (update === present) return present;
+	const comments = detachComments(update.comments ?? present.comments ?? [], present.frames, update.frames);
+	return comments === update.comments ? update : { ...update, comments };
+}
 
 export type History = {
 	past: Snapshot[];

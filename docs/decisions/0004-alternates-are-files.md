@@ -32,5 +32,6 @@ screens/
 
 ## Consequences
 
-- File watching must recognise the `*.alt-N.tsx` pattern and group those files with their screen.
+- File watching must recognise the `*.alt-N.tsx` pattern and group those files with their screen. Groups are derived from the file names (`src/shared/variations.ts`), and `rabisco.json` mirrors them when the canvas is saved.
+- A variation run that writes components gets them as `components/<name>-vN.tsx`, with its imports rewritten, unless the content matches the primary's version.
 - If the user renames a file outside Rabisco, it becomes an independent screen. That is acceptable and visible.

@@ -9,6 +9,7 @@ import { collectGraph, withDependents } from "./graph";
 import type { ModulePayload } from "./protocol";
 import { extractRequires, joinPath, resolveRelative } from "./resolve";
 import { createCompiler, TailwindBuilder } from "./tailwind";
+import { designThemeCss } from "./theme";
 
 const SCREEN = `import { Button } from "@/components/ui/button";
 import { Card } from "../components/stat-card";
@@ -66,6 +67,24 @@ describe("compile", () => {
 		expect(compiled.error!.line).toBe(2);
 		expect(compiled.error!.message).not.toContain("Error transforming");
 		expect(compiled.error!.message.length).toBeGreaterThan(0);
+	});
+	test("tags DOM elements with their file and original offset", () => {
+		const compiled = compileSource("screens/home.tsx", SCREEN);
+		expect(compiled.source).toBe(SCREEN);
+		const div = SCREEN.indexOf("<div");
+		expect(compiled.code).toContain(`'data-rabisco-loc': "screens/home.tsx:${div}"`);
+		// Component usages carry one too, as a prop the runtime reads from React's tree
+		expect(compiled.code).toContain(`'data-rabisco-loc': "screens/home.tsx:${SCREEN.indexOf("<Card")}"`);
+		expect(compiled.code!.match(/data-rabisco-loc/g)!.length).toBe(4);
+		expect(compileSource("components/pill.tsx", PILL).code).toContain(`'data-rabisco-loc': "components/pill.tsx:${PILL.indexOf("<span")}"`);
+	});
+	test("error lines still point at the original source", () => {
+		const source = `export default function A() {\n\tconst x = null as any;\n\treturn <div className="p-4">{x.boom}</div>;\n}\n`;
+		const compiled = compileSource("screens/a.tsx", source);
+		expect(compiled.code!.split("\n")[2]).toContain("x.boom");
+		const bad = compileSource("screens/bad.tsx", "export default function A() {\n\treturn <div className=\"a\">\n\t\t<span>;\n}\n");
+		expect(bad.error!.line).toBeGreaterThanOrEqual(3);
+		expect(bad.source).not.toContain("data-rabisco-loc");
 	});
 	test("caches by content", () => {
 		const cache = new CompileCache();
@@ -213,5 +232,25 @@ describe("tailwind", () => {
 		expect(builder.builds).toBe(builds);
 		expect(builder.add(["bg-primary", "animate-in"])).toBe(true);
 		expect(builder.css).toContain(".bg-primary");
+	});
+
+	test("DESIGN.md tokens override the theme variables the build uses", async () => {
+		const builder = new TailwindBuilder(() => createCompiler(stylesheets), ["bg-primary", "rounded-lg", "font-mono"]);
+		await builder.whenReady();
+		// Preflight reads the body font through --default-font-family, which points at --font-sans
+		expect(builder.css).toMatch(/--default-font-family: var\(--font-sans\)/);
+		expect(builder.css).toMatch(/font-family: var\(--default-font-family/);
+		expect(builder.css).toContain("background-color: var(--primary)");
+		expect(builder.css).toContain("border-radius: var(--radius)");
+		expect(builder.css).toContain("font-family: var(--font-mono)");
+
+		const design = "# Design\n\n## Tokens\n\n- primary: #2563eb\n- font-sans: Inter, sans-serif\n";
+		const theme = designThemeCss({ "DESIGN.md": design });
+		expect(theme).toContain("--primary: #2563eb;");
+		expect(theme).toContain("--font-sans: Inter, sans-serif;");
+		// Unlayered, so it beats the theme layer; cached by content
+		expect(theme).not.toContain("@layer");
+		expect(designThemeCss({ "DESIGN.md": design, "screens/a.tsx": "" })).toBe(theme);
+		expect(designThemeCss({})).toBe("");
 	});
 });

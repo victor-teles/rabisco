@@ -1,5 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
+import { CONTEXT_TEMPLATES } from "../shared/context/templates";
+import { normalizeComments } from "../shared/comments";
 import { emptyCanvas, isProjectFile, projectNameFromPath, reconcileFrames, toKebab } from "../shared/project";
 import type { CanvasDoc, ChatMessage, Device, FileChange, Project, ProjectFiles } from "../shared/types";
 
@@ -72,6 +74,7 @@ export function normalizeCanvas(raw: unknown, fallbackName: string): CanvasDoc {
 			: [],
 		selection: Array.isArray(doc.selection) ? doc.selection.filter((s) => typeof s === "string") : [],
 		alternates: Array.isArray(doc.alternates) ? doc.alternates : [],
+		comments: normalizeComments(doc.comments),
 	};
 }
 
@@ -155,9 +158,11 @@ export function freeProjectDir(parent: string, name: string) {
 	return dir;
 }
 
+/** A new project folder with an empty canvas and the PRODUCT.md and DESIGN.md templates. */
 export function createProjectFolder(parent: string, name: string, device: Device) {
 	const dir = freeProjectDir(parent, name);
 	mkdirSync(dir, { recursive: true });
 	writeCanvas(dir, emptyCanvas(name.trim() || "Untitled", device));
+	for (const [file, template] of Object.entries(CONTEXT_TEMPLATES)) writeFileSync(join(dir, file), template);
 	return dir;
 }
