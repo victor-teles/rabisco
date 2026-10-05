@@ -16,7 +16,9 @@ export default function Welcome() {
 `;
 
 const PATH = "screens/welcome.tsx";
+
 const focus = elementFocus(BEFORE, PATH, BEFORE.indexOf("<Button"))!;
+
 const BUTTON = `<Button size="lg">Get started</Button>`;
 
 describe("changesOutside", () => {
@@ -26,9 +28,13 @@ describe("changesOutside", () => {
 	});
 
 	test("new imports and a new top-level helper are allowed; blank lines are ignored", () => {
-		const after = BEFORE.replace(`import { Button } from "@/components/ui/button";`, `import { ArrowRight } from "lucide-react";\nimport {\n\tButton,\n} from "@/components/ui/button";`)
+		const after = BEFORE.replace(
+			`import { Button } from "@/components/ui/button";`,
+			`import { ArrowRight } from "lucide-react";\nimport {\n\tButton,\n} from "@/components/ui/button";`,
+		)
 			.replace("export default function", `function Cta() {\n\treturn <ArrowRight />;\n}\n\n\nexport default function`)
 			.replace(BUTTON, `<Button size="lg">Get started <Cta /></Button>`);
+
 		expect(changesOutside(BEFORE, after, focus)).toEqual([]);
 	});
 
@@ -42,12 +48,20 @@ describe("changesOutside", () => {
 	});
 
 	test("a change next to a rewritten element is still reported", () => {
-		const after = BEFORE.replace(BUTTON, `<Button size="lg">\n\t\t\t\tStart now\n\t\t\t</Button>`).replace("Terms apply", "No card needed");
+		const after = BEFORE.replace(BUTTON, `<Button size="lg">\n\t\t\t\tStart now\n\t\t\t</Button>`).replace(
+			"Terms apply",
+			"No card needed",
+		);
+
 		expect(changesOutside(BEFORE, after, focus)).toEqual([10]);
 	});
 
 	test("a removed import is fine", () => {
-		const after = BEFORE.replace(`import { Button } from "@/components/ui/button";\n`, "").replace(BUTTON, `<button>Get started</button>`);
+		const after = BEFORE.replace(`import { Button } from "@/components/ui/button";\n`, "").replace(
+			BUTTON,
+			`<button>Get started</button>`,
+		);
+
 		expect(changesOutside(BEFORE, after, focus)).toEqual([]);
 	});
 });

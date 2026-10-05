@@ -41,14 +41,27 @@ const NONE = "";
 export function LinkControl({ files, frames, element, onChange, disabled }: LinkControlProps) {
 	const source = element ? files[element.file] : undefined;
 	const node = element && source !== undefined ? findElement(parseJsx(source), element.start) : null;
+
 	if (!element || !node || node.name === null) return null;
 
 	const written = linkOfElement(node);
 	const target = written === null ? null : resolveLink(written, files);
 	const value = !target ? NONE : target.kind === "screen" ? target.file : target.kind === "back" ? BACK : written!;
-	const screens = frames.filter((frame) => isScreenFile(frame.file) && files[frame.file] !== undefined && frame.file !== element.file);
+
+	const screens = frames.filter(
+		(frame) => isScreenFile(frame.file) && files[frame.file] !== undefined && frame.file !== element.file,
+	);
+
 	const nameOf = (file: string) => frames.find((frame) => frame.file === file)?.name || screenNameFromPath(file);
-	const label = !target ? "None" : target.kind === "screen" ? nameOf(target.file) : target.kind === "back" ? "Back" : `Missing: ${target.to}`;
+
+	const label = !target
+		? "None"
+		: target.kind === "screen"
+			? nameOf(target.file)
+			: target.kind === "back"
+				? "Back"
+				: `Missing: ${target.to}`;
+
 	const code = hasExpressionLink(node);
 
 	return (
@@ -58,7 +71,10 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 				<span className="w-[72px] shrink-0 truncate text-xs text-muted-foreground">Link to</span>
 				<div className="flex min-w-0 flex-1 items-center">
 					{code ? (
-						<span className="truncate font-mono text-[11px] text-subtle-foreground" title="Written as code: edit it in the Code tab">
+						<span
+							className="truncate font-mono text-[11px] text-subtle-foreground"
+							title="Written as code: edit it in the Code tab"
+						>
 							Set in code
 						</span>
 					) : (
@@ -94,7 +110,9 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 										None
 									</DropdownMenuRadioItem>
 									<DropdownMenuSeparator />
-									{screens.length === 0 ? <p className="px-2 py-1.5 text-xs text-subtle-foreground">No other screens yet</p> : null}
+									{screens.length === 0 ? (
+										<p className="px-2 py-1.5 text-xs text-subtle-foreground">No other screens yet</p>
+									) : null}
 									{screens.map((screen) => (
 										<DropdownMenuRadioItem key={screen.file} value={screen.file} className="text-[13px]">
 											<span className="truncate">{nameOf(screen.file)}</span>

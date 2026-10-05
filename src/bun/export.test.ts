@@ -17,9 +17,16 @@ describe("writeExportFiles", () => {
 
 	test("rejects paths outside the folder and writes nothing", () => {
 		const dir = join(tempDir(), "out");
+
 		for (const path of ["../escape.txt", "/etc/passwd", "a/../../b", ""]) {
-			expect(() => writeExportFiles(dir, [{ path: "ok.txt", content: "" }, { path, content: "" }])).toThrow();
+			expect(() =>
+				writeExportFiles(dir, [
+					{ path: "ok.txt", content: "" },
+					{ path, content: "" },
+				]),
+			).toThrow();
 		}
+
 		expect(existsSync(join(dir, "ok.txt"))).toBe(false);
 	});
 

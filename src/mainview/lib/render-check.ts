@@ -22,11 +22,18 @@ export type RenderCheck = {
  * break screens the generation never touched.
  */
 export function renderCheckOf(files: ProjectFiles, changes: FileChange[]): RenderCheck {
-	const written = changes.filter((c) => c.content !== null && c.path in files).map((c) => c.path);
+	const written = changes.flatMap((c) => (c.content !== null && c.path in files ? [c.path] : []));
 	const direct = new Set(written.filter(isScreenFile));
-	const via = new Map([...screensUsing(files, written.filter(isComponentFile))].filter(([screen]) => !direct.has(screen)));
+
+	const via = new Map(
+		[...screensUsing(files, written.filter(isComponentFile))].filter(([screen]) => !direct.has(screen)),
+	);
+
 	return { screens: [...direct, ...via.keys()], via };
 }
+
+/** The files a render repair may change, and the problems it fixes. */
+export type RenderRepair = { targets: string[]; problems: Problem[] };
 
 /**
  * The repair for render errors: the failing files, plus the components that
@@ -34,15 +41,23 @@ export function renderCheckOf(files: ProjectFiles, changes: FileChange[]): Rende
  * component or at its call sites. Problems of those screens say which
  * component changed.
  */
-export function renderRepairOf(failures: { entry: string; problem: Problem }[], via: Map<string, string[]>): { targets: string[]; problems: Problem[] } {
+export function renderRepairOf(
+	failures: { entry: string; problem: Problem }[],
+	via: Map<string, string[]>,
+): RenderRepair {
 	const targets = new Set<string>();
+
 	const problems = failures.map(({ entry, problem }) => {
 		targets.add(problem.path);
 		const components = via.get(entry);
+
 		if (!components?.length) return problem;
 		targets.add(entry);
+
 		for (const component of components) targets.add(component);
+
 		return { ...problem, message: `${problem.message} (${entry} uses ${components.join(", ")}, which just changed)` };
 	});
+
 	return { targets: [...targets], problems };
 }

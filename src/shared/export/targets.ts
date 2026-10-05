@@ -12,6 +12,7 @@ import { isAlternate } from "../variations";
 export function imageTargets(frames: Frame[], selected: Frame[], files: ProjectFiles): Frame[] {
 	const exists = (frame: Frame) => isScreenFile(frame.file) && files[frame.file] !== undefined;
 	const chosen = selected.filter(exists);
+
 	return chosen.length ? chosen : frames.filter((frame) => exists(frame) && !isAlternate(frame.file));
 }
 
@@ -21,11 +22,19 @@ export function imageTargets(frames: Frame[], selected: Frame[], files: ProjectF
  */
 export function imageFileNames(paths: string[], extension: string): string[] {
 	const used = new Set<string>();
+
 	return paths.map((path) => {
-		const base = path.split("/").pop()!.replace(/\.tsx$/, "") || "screen";
+		const base =
+			path
+				.split("/")
+				.pop()!
+				.replace(/\.tsx$/, "") || "screen";
+
 		let name = `${base}.${extension}`;
+
 		for (let n = 2; used.has(name); n++) name = `${base}-${n}.${extension}`;
 		used.add(name);
+
 		return name;
 	});
 }
@@ -33,5 +42,6 @@ export function imageFileNames(paths: string[], extension: string): string[] {
 /** A file-system friendly project name: `My App` → `my-app`. */
 export function exportSlug(projectName: string) {
 	const name = projectName.replace(/\.rabisco$/i, "").normalize("NFKD");
+
 	return /[a-z0-9]/i.test(name) ? toKebab(name) : "rabisco";
 }

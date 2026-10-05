@@ -4,6 +4,8 @@
  */
 
 import type { GenerationRequest, Provider, ProviderModel } from "../../../shared/ai/contract";
+import type { JsonObject } from "../../../shared/json";
+import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
 import { systemPrompt, userPrompt } from "../prompt";
 import {
 	type ApiProviderOptions,
@@ -18,7 +20,9 @@ import {
 } from "./api-common";
 
 const API_VERSION = "2023-06-01";
+
 const MAX_TOKENS = 32_000;
+
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5";
 
 /** Shown when `/v1/models` can't be reached */
@@ -39,32 +43,32 @@ type Message = { role: "user" | "assistant"; content: string | ContentBlock[] };
 /** History as alternating messages starting with a user turn, then the request as the last user turn. */
 export function anthropicMessages(request: GenerationRequest): Message[] {
 	const history = (request.history ?? []).filter((turn) => turn.content.trim());
+
 	while (history[0]?.role === "assistant") history.shift();
 	const messages: Message[] = history.map((turn) => ({ role: turn.role, content: turn.content }));
+
 	const content: ContentBlock[] = (request.attachments ?? []).map((image) => ({
 		type: "image",
 		source: { type: "base64", media_type: image.mediaType, data: image.data },
 	}));
+
 	content.push({ type: "text", text: userPrompt(request, "text") });
 	messages.push({ role: "user", content });
+
 	return messages;
 }
 
-type AnthropicEvent = {
-	type: string;
-	message?: { usage?: Usage };
-	content_block?: { type: string };
-	delta?: { type?: string; text?: string; stop_reason?: string | null };
-	usage?: Usage;
-	error?: { type?: string; message?: string };
-};
-type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+/** Prompt tokens of a `usage` object, cached or not. */
+const inputTokens = (usage: JsonObject) =>
+	(optionalNumber(usage.input_tokens) ?? 0) +
+	(optionalNumber(usage.cache_read_input_tokens) ?? 0) +
+	(optionalNumber(usage.cache_creation_input_tokens) ?? 0);
 
-const inputTokens = (usage: Usage) => (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+/** The ProviderError for an `error` stream event's `{type, message}`. */
+function streamError(error: JsonObject): ProviderError {
+	const message = optionalString(error.message) || "The Anthropic stream failed";
 
-function streamError(error: AnthropicEvent["error"]): ProviderError {
-	const message = error?.message || "The Anthropic stream failed";
-	switch (error?.type) {
+	switch (error.type) {
 		case "overloaded_error":
 		case "rate_limit_error":
 			return new ProviderError("rate_limited", message, true);
@@ -93,19 +97,28 @@ export function createAnthropicProvider(options: ApiProviderOptions): Provider {
 
 	async function requireKey() {
 		const key = await getApiKey();
+
 		if (!key) throw new ProviderError("not_authenticated", "No Anthropic API key");
+
 		return key;
 	}
 
 	async function fetchModels(key: string, signal?: AbortSignal): Promise<ProviderModel[]> {
 		const response = await fetcher(`${base}/v1/models?limit=100`, { headers: headers(key), signal });
+
 		if (!response.ok) throw await errorFromResponse(response);
-		const json = (await response.json()) as { data?: { id: string; display_name?: string }[] };
-		return (json.data ?? []).map((model) => ({ id: model.id, label: model.display_name || model.id }));
+
+		return arrayOr(objectOr(parseJson(await response.text())).data).flatMap((entry) => {
+			const model = objectOr(entry);
+			const id = optionalString(model.id);
+
+			return id ? [{ id, label: optionalString(model.display_name) || id }] : [];
+		});
 	}
 
 	async function* stream(request: GenerationRequest, signal: AbortSignal): AsyncGenerator<StreamPart> {
 		const key = await requireKey();
+
 		const response = await fetcher(`${base}/v1/messages`, {
 			method: "POST",
 			headers: headers(key),
@@ -119,32 +132,57 @@ export function createAnthropicProvider(options: ApiProviderOptions): Provider {
 				messages: anthropicMessages(request),
 			}),
 		});
+
 		if (!response.ok) throw await errorFromResponse(response);
+
 		if (!response.body) throw new ProviderError("network", "Empty response from Anthropic", true);
 
 		for await (const sse of readSse(response.body)) {
-			let event: AnthropicEvent;
+			let event: JsonObject;
+
 			try {
-				event = JSON.parse(sse.data) as AnthropicEvent;
+				event = objectOr(parseJson(sse.data));
 			} catch {
 				continue;
 			}
+
+			const delta = objectOr(event.delta);
+
 			switch (event.type) {
-				case "message_start":
-					if (event.message?.usage) yield { type: "usage", usage: { inputTokens: inputTokens(event.message.usage) } };
+				case "message_start": {
+					const usage = optionalObject(objectOr(event.message).usage);
+
+					if (usage) yield { type: "usage", usage: { inputTokens: inputTokens(usage) } };
 					break;
-				case "content_block_start":
-					if (event.content_block?.type === "thinking" || event.content_block?.type === "redacted_thinking") yield { type: "status", label: "Thinking" };
+				}
+
+				case "content_block_start": {
+					const block = objectOr(event.content_block);
+
+					if (block.type === "thinking" || block.type === "redacted_thinking")
+						yield { type: "status", label: "Thinking" };
 					break;
-				case "content_block_delta":
-					if (event.delta?.type === "text_delta" && event.delta.text) yield { type: "text", text: event.delta.text };
+				}
+
+				case "content_block_delta": {
+					const text = optionalString(delta.text);
+
+					if (delta.type === "text_delta" && text) yield { type: "text", text };
 					break;
-				case "message_delta":
-					if (event.usage?.output_tokens !== undefined) yield { type: "usage", usage: { outputTokens: event.usage.output_tokens } };
-					if (event.delta?.stop_reason) yield { type: "stop", reason: event.delta.stop_reason === "end_turn" ? "end" : event.delta.stop_reason };
+				}
+
+				case "message_delta": {
+					const outputTokens = optionalNumber(objectOr(event.usage).output_tokens);
+					const stopReason = optionalString(delta.stop_reason);
+
+					if (outputTokens !== undefined) yield { type: "usage", usage: { outputTokens } };
+
+					if (stopReason) yield { type: "stop", reason: stopReason === "end_turn" ? "end" : stopReason };
 					break;
+				}
+
 				case "error":
-					throw streamError(event.error);
+					throw streamError(objectOr(event.error));
 			}
 		}
 	}
@@ -157,12 +195,16 @@ export function createAnthropicProvider(options: ApiProviderOptions): Provider {
 
 		async health() {
 			const key = await getApiKey();
+
 			if (!key) return { ok: false, code: "not_authenticated", message: "No Anthropic API key", fix: KEY_FIX };
+
 			try {
 				await fetchModels(key);
+
 				return { ok: true };
 			} catch (error) {
 				const failure = toProviderError(error);
+
 				return healthError(failure, failure.code === "not_authenticated" ? KEY_FIX : undefined);
 			}
 		},
@@ -170,8 +212,10 @@ export function createAnthropicProvider(options: ApiProviderOptions): Provider {
 		async listModels() {
 			try {
 				const key = await getApiKey();
+
 				if (!key) return ANTHROPIC_FALLBACK_MODELS;
 				const models = await fetchModels(key);
+
 				return models.length ? models : ANTHROPIC_FALLBACK_MODELS;
 			} catch {
 				return ANTHROPIC_FALLBACK_MODELS;

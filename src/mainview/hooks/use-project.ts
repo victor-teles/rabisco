@@ -48,7 +48,9 @@ export type ChangeOptions = {
  */
 export function useProject(path: string) {
 	const [state, setState] = useState<ProjectState | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	// Kept with the path it belongs to, so opening another project starts without one
+	const [failure, setFailure] = useState<{ path: string; message: string } | null>(null);
+	const error = failure?.path === path ? failure.message : null;
 	const stateRef = useRef<ProjectState | null>(null);
 	// What we believe is on disk, so writes only carry the paths that changed
 	const diskFiles = useRef<ProjectFiles>({});
@@ -58,9 +60,16 @@ export function useProject(path: string) {
 	const flushCanvas = useCallback(async () => {
 		clearTimeout(saveTimer.current);
 		const current = stateRef.current;
+
 		if (!current || current.canvas === savedCanvas.current) return;
 		savedCanvas.current = current.canvas;
-		const canvas = { ...current.canvas, alternates: alternatesOf(Object.keys(current.files)), updatedAt: new Date().toISOString() };
+
+		const canvas = {
+			...current.canvas,
+			alternates: alternatesOf(Object.keys(current.files)),
+			updatedAt: new Date().toISOString(),
+		};
+
 		await api.saveCanvas({ path, canvas }).catch(reportSaveError);
 	}, [path]);
 
@@ -70,10 +79,12 @@ export function useProject(path: string) {
 			stateRef.current = next;
 			setState(next);
 			const changes = diffFiles(diskFiles.current, next.files);
+
 			if (changes.length) {
 				diskFiles.current = next.files;
 				api.writeFiles({ path, changes }).catch(reportSaveError);
 			}
+
 			if (next.canvas !== savedCanvas.current) {
 				clearTimeout(saveTimer.current);
 				saveTimer.current = setTimeout(flushCanvas, SAVE_DELAY_MS);
@@ -84,7 +95,6 @@ export function useProject(path: string) {
 
 	useEffect(() => {
 		let cancelled = false;
-		setError(null);
 		api
 			.openProject({ path })
 			.then((project) => {
@@ -101,7 +111,7 @@ export function useProject(path: string) {
 				});
 			})
 			.catch((reason) => {
-				if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
+				if (!cancelled) setFailure({ path, message: reason instanceof Error ? reason.message : String(reason) });
 			});
 
 		// External edits are facts, not steps: they are folded into every
@@ -109,13 +119,22 @@ export function useProject(path: string) {
 		// stacks stay consistent with the disk.
 		const unsubscribe = onFilesChanged((message) => {
 			const current = stateRef.current;
+
 			if (cancelled || message.path !== path || !current) return;
 			diskFiles.current = applyFileChanges(diskFiles.current, message.changes);
+
 			const reconcile = (snapshot: Snapshot): Snapshot => {
 				const canvas = reconcileFrames({ ...current.canvas, frames: snapshot.frames, selection: [] }, snapshot.files);
+
 				if (canvas.frames === snapshot.frames) return snapshot;
-				return { ...snapshot, frames: canvas.frames, comments: detachComments(snapshot.comments ?? [], snapshot.frames, canvas.frames) };
+
+				return {
+					...snapshot,
+					frames: canvas.frames,
+					comments: detachComments(snapshot.comments ?? [], snapshot.frames, canvas.frames),
+				};
 			};
+
 			apply(withHistory(current, rebase(current.history, message.changes, reconcile)));
 		});
 
@@ -125,15 +144,17 @@ export function useProject(path: string) {
 			flushCanvas();
 			api.closeProject({ path }).catch(() => {});
 		};
-	}, [path]);
+	}, [path, apply, flushCanvas]);
 
 	/** One undoable change to frames, files and/or comments. */
 	const change = useCallback(
 		(recipe: (snapshot: Snapshot) => Snapshot, options: ChangeOptions = {}) => {
 			const current = stateRef.current;
+
 			if (!current) return;
 			const next = nextSnapshot(current.history.present, recipe(current.history.present));
 			const history = commit(current.history, next, { coalesce: options.coalesce });
+
 			if (history === current.history && !options.select) return;
 			apply(withHistory(current, history, options.select));
 		},
@@ -143,6 +164,7 @@ export function useProject(path: string) {
 	/** Closes the current coalescing run (pointer up, input blur). */
 	const endStep = useCallback(() => {
 		const current = stateRef.current;
+
 		if (current && current.history.coalesceKey !== null) {
 			stateRef.current = { ...current, history: seal(current.history) };
 			setState(stateRef.current);
@@ -151,17 +173,20 @@ export function useProject(path: string) {
 
 	const undoStep = useCallback(() => {
 		const current = stateRef.current;
+
 		if (current && canUndo(current.history)) apply(withHistory(current, undo(current.history)));
 	}, [apply]);
 
 	const redoStep = useCallback(() => {
 		const current = stateRef.current;
+
 		if (current && canRedo(current.history)) apply(withHistory(current, redo(current.history)));
 	}, [apply]);
 
 	const setSelection = useCallback(
 		(selection: string[]) => {
 			const current = stateRef.current;
+
 			if (!current || sameSelection(selection, current.canvas.selection)) return;
 			apply(withHistory(current, current.history, selection));
 		},
@@ -172,6 +197,7 @@ export function useProject(path: string) {
 	const setMeta = useCallback(
 		(patch: { name?: string; device?: Device }) => {
 			const current = stateRef.current;
+
 			if (current) apply({ ...current, canvas: { ...current.canvas, ...patch } });
 		},
 		[apply],
@@ -180,6 +206,7 @@ export function useProject(path: string) {
 	const addMessages = useCallback(
 		(messages: ChatMessage[]) => {
 			const current = stateRef.current;
+
 			if (!current || !messages.length) return;
 			apply({ ...current, messages: [...current.messages, ...messages] });
 			api.appendMessages({ path, messages }).catch(reportSaveError);
@@ -196,6 +223,7 @@ export function useProject(path: string) {
 		clearTimeout(saveTimer.current);
 		const project = await api.openProject({ path });
 		const current = stateRef.current;
+
 		if (!current) return;
 		const canvas = reconcileFrames(project.canvas, project.files);
 		diskFiles.current = project.files;
@@ -228,22 +256,26 @@ export function useProject(path: string) {
 	};
 }
 
-function reportSaveError(error: unknown) {
-	console.error("[rabisco] save failed", error);
-	toast.error("Couldn’t save changes", { id: "save-error", description: String(error) });
+function reportSaveError(cause: unknown) {
+	console.error("[rabisco] save failed", cause);
+	toast.error("Couldn’t save changes", { id: "save-error", description: String(cause) });
 }
 
 /** Rebuilds the derived fields after the history moved. */
 function withHistory(current: ProjectState, history: History, selection?: string[]): ProjectState {
 	const { frames, files, comments = current.canvas.comments } = history.present;
+
 	// Selection holds frames, plus at most component files (selected in the components panel), while they exist
 	const nextSelection = (selection ?? current.canvas.selection).filter(
 		(file) => frames.some((f) => f.file === file) || (isComponentFile(file) && file in files),
 	);
+
 	const canvas =
-		frames === current.canvas.frames && comments === current.canvas.comments && sameSelection(nextSelection, current.canvas.selection)
+		frames === current.canvas.frames &&
+		comments === current.canvas.comments &&
+		sameSelection(nextSelection, current.canvas.selection)
 			? current.canvas
 			: { ...current.canvas, frames, comments, selection: nextSelection };
+
 	return { ...current, history, files, canvas };
 }
-

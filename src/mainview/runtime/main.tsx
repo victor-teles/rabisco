@@ -4,7 +4,15 @@
  */
 import { Component, useEffect, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { heightReporter, locationOf, resolveHit, sourceVersion, type FrameError, type FrameMessage, type HostMessage } from "../lib/render/protocol";
+import {
+	heightReporter,
+	locationOf,
+	resolveHit,
+	sourceVersion,
+	type FrameError,
+	type FrameMessage,
+	type HostMessage,
+} from "../lib/render/protocol";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
 import { boxesOf, boxOf, instancesOf, locatedAt } from "./inspect";
@@ -15,15 +23,22 @@ import { captureScene, contentHeight } from "./snapshot";
 import { startTextEdit, type TextEdit } from "./text-edit";
 
 const registry = new ModuleRegistry(externals);
+
 const style = document.getElementById("rabisco-css") ?? document.head.appendChild(document.createElement("style"));
+
 /** DESIGN.md token overrides; after the main stylesheet so they win */
 const themeStyle = document.head.appendChild(document.createElement("style"));
+
 let entry = "";
+
 let version = 0;
+
 /** `sourceVersion` of the entry source the DOM was rendered from: hit offsets refer to it */
 let renderedVersion: string | null = null;
+
 /** The element whose boxes the host tracks, and the last boxes sent for it */
 let tracked: { start: number; version: string; sent: string } | null = null;
+
 let textEdit: TextEdit | null = null;
 
 function post(message: FrameMessage) {
@@ -31,8 +46,8 @@ function post(message: FrameMessage) {
 	window.parent.postMessage(message, "*");
 }
 
-function reportError(error: unknown) {
-	const described: FrameError = describeError(error, (path) => registry.source(path));
+function reportError(cause: unknown) {
+	const described: FrameError = describeError(cause, (path) => registry.source(path));
 	showOverlay(described);
 	post({ type: "error", error: described });
 }
@@ -51,7 +66,9 @@ const reportHeight = heightReporter((height) => post({ type: "size", height }));
 function measure() {
 	if (rootElement.scrollHeight > rootElement.clientHeight) return reportHeight(rootElement.scrollHeight);
 	let bottom = 0;
-	for (const child of rootElement.children) bottom = Math.max(bottom, child.getBoundingClientRect().bottom + window.scrollY);
+
+	for (const child of rootElement.children)
+		bottom = Math.max(bottom, child.getBoundingClientRect().bottom + window.scrollY);
 	reportHeight(bottom);
 }
 
@@ -60,29 +77,37 @@ function reportBoxes() {
 	if (!tracked || !entry || tracked.version !== renderedVersion) return;
 	const boxes = boxesOf(instancesOf(rootElement, locationOf(entry, tracked.start)));
 	const sent = JSON.stringify(boxes);
+
 	if (sent === tracked.sent) return;
 	tracked.sent = sent;
 	post({ type: "boxes", start: tracked.start, version: tracked.version, boxes });
 }
 
 let measuring = 0;
+
 const scheduleMeasure = () => {
 	cancelAnimationFrame(measuring);
 	measuring = requestAnimationFrame(() => {
 		measure();
 		reportBoxes();
+
 		if (play.playing) play.refresh();
 	});
 };
+
 const resizes = new ResizeObserver(scheduleMeasure);
+
 resizes.observe(rootElement);
+
 // Re-observe the screen's top-level elements whenever the tree changes
 new MutationObserver(() => {
 	for (const child of rootElement.children) resizes.observe(child);
 	scheduleMeasure();
 }).observe(rootElement, { childList: true, subtree: true, characterData: true });
+
 // Images and fonts change the height after the first layout
 document.addEventListener("load", scheduleMeasure, true);
+
 void document.fonts?.ready.then(scheduleMeasure);
 
 const root = createRoot(rootElement, {
@@ -94,8 +119,8 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
 	static getDerivedStateFromError() {
 		return { failed: true };
 	}
-	componentDidCatch(error: unknown, _info: ErrorInfo) {
-		reportError(error);
+	componentDidCatch(cause: unknown, _info: ErrorInfo) {
+		reportError(cause);
 	}
 	render() {
 		return this.state.failed ? null : this.props.children;
@@ -110,19 +135,34 @@ function Rendered({ source, children }: { source: string; children: ReactNode })
 		post({ type: "rendered" });
 		scheduleMeasure();
 	}, [source]);
+
 	return children;
+}
+
+/** A React component: a function or class, or an exotic one such as `memo` or `forwardRef` (tagged `$$typeof`). */
+function isComponent(value: unknown): value is ComponentType {
+	return typeof value === "function" || (typeof value === "object" && value !== null && "$$typeof" in value);
 }
 
 function render() {
 	let Screen: ComponentType;
+
 	try {
-		Screen = registry.load(entry).default as ComponentType;
-		const isComponent = typeof Screen === "function" || (typeof Screen === "object" && Screen !== null && "$$typeof" in Screen);
-		if (!isComponent) throw new RenderError("runtime", `${entry} has no default export. Add \`export default function Screen() {…}\`.`, entry);
+		const exported = registry.load(entry).default;
+
+		if (!isComponent(exported))
+			throw new RenderError(
+				"runtime",
+				`${entry} has no default export. Add \`export default function Screen() {…}\`.`,
+				entry,
+			);
+		Screen = exported;
 	} catch (error) {
 		reportError(error);
+
 		return;
 	}
+
 	version++;
 	textEdit?.finish(false);
 	root.render(
@@ -137,15 +177,28 @@ function render() {
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	if (event.source !== window.parent) return;
 	const message = event.data;
+
 	if (message?.type === "hit-test") {
 		const located = entry && renderedVersion ? locatedAt(message.x, message.y) : [];
-		const hit = located.length ? resolveHit(located.map((item) => item.loc), entry) : null;
+
+		const hit = located.length
+			? resolveHit(
+					located.map((item) => item.loc),
+					entry,
+				)
+			: null;
+
 		post({
 			type: "hit",
 			id: message.id,
 			hit:
 				hit && renderedVersion
-					? { path: hit.path, starts: hit.starts, version: renderedVersion, boxes: hit.indices.map((i) => boxOf(located[i]!.elements)) }
+					? {
+							path: hit.path,
+							starts: hit.starts,
+							version: renderedVersion,
+							boxes: hit.indices.map((i) => boxOf(located[i]!.elements)),
+						}
 					: null,
 		});
 	} else if (message?.type === "track") {
@@ -155,14 +208,21 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		textEdit?.finish(true);
 		const { start, version: editVersion } = message;
 		const refuse = () => post({ type: "text-edit", start, version: editVersion, state: "refused" });
+
 		if (!entry || editVersion !== renderedVersion) return refuse();
 		const loc = locationOf(entry, start);
-		const under = message.x === undefined || message.y === undefined ? undefined : locatedAt(message.x, message.y).find((item) => item.loc === loc);
+
+		const under =
+			message.x === undefined || message.y === undefined
+				? undefined
+				: locatedAt(message.x, message.y).find((item) => item.loc === loc);
+
 		const elements = under?.elements ?? instancesOf(rootElement, loc)[0] ?? [];
 		textEdit = startTextEdit(elements, message.text, (text) => {
 			textEdit = null;
 			post({ type: "text-edit", start, version: editVersion, state: "done", text });
 		});
+
 		if (textEdit) post({ type: "text-edit", start, version: editVersion, state: "editing" });
 		else refuse();
 	} else if (message?.type === "end-edit") {
@@ -176,7 +236,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			try {
 				const scene = await captureScene(rootElement);
 				const image = raster ? await rasterize(scene, raster) : undefined;
-				post({ type: "snapshot", id, scene, ...(image ? { raster: { dataUrl: image.dataUrl, scale: image.scale } } : {}) });
+				post(
+					image
+						? { type: "snapshot", id, scene, raster: { dataUrl: image.dataUrl, scale: image.scale } }
+						: { type: "snapshot", id, scene },
+				);
 			} catch (error) {
 				post({ type: "snapshot", id, error: error instanceof Error ? error.message : String(error) });
 			}
@@ -189,18 +253,22 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		themeStyle.textContent = message.css;
 	} else if (message?.type === "modules") {
 		if (message.css !== undefined) style.textContent = message.css;
+
 		if (message.theme !== undefined) themeStyle.textContent = message.theme;
 		const invalid = registry.apply(message.modules, message.reset);
 		const entryChanged = message.entry !== entry;
+
 		// Another screen starts at its top (play mode navigates within one frame)
 		if (entryChanged && entry) window.scrollTo(0, 0);
 		entry = message.entry;
+
 		// Re-run only when the entry or something it loaded changed (or it never loaded)
 		if (entryChanged || invalid.has(entry) || !registry.isLoaded(entry)) render();
 	}
 });
 
 window.addEventListener("error", (event) => reportError(event.error ?? event.message));
+
 window.addEventListener("unhandledrejection", (event) => reportError(event.reason));
 
 post({ type: "ready" });

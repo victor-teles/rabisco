@@ -1,6 +1,7 @@
 /** Messages between the host webview and the screen runtime inside each frame. */
 
 import type { Scene } from "../../../shared/export/scene";
+import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
 
 /** Where an error points to in project source. Lines and columns are 1-based. */
@@ -122,8 +123,10 @@ export const sourceVersion = (source: string) => hashString(source);
 /** Calls `post` with whole-pixel heights, and only when the height changed. */
 export function heightReporter(post: (height: number) => void) {
 	let last = -1;
+
 	return (height: number) => {
 		const rounded = Math.ceil(height);
+
 		if (!Number.isFinite(rounded) || rounded < 0 || rounded === last) return;
 		last = rounded;
 		post(rounded);
@@ -142,21 +145,28 @@ export const LOC_ATTRIBUTE = "data-rabisco-loc";
  * order. Elements rendered by a component module are skipped, so a drop on a
  * card lands in the screen element that holds the card. `null` when there are none.
  */
-export function resolveHit(values: Iterable<string | null>, entry: string): { path: string; starts: number[]; indices: number[] } | null {
+export function resolveHit(
+	values: Iterable<string | null>,
+	entry: string,
+): { path: string; starts: number[]; indices: number[] } | null {
 	const prefix = `${entry}:`;
 	const starts: number[] = [];
 	/** Position of each start in `values`, so callers can pair them with what they found there */
 	const indices: number[] = [];
 	let index = -1;
+
 	for (const value of values) {
 		index++;
+
 		if (!value?.startsWith(prefix)) continue;
 		const start = Number(value.slice(prefix.length));
+
 		if (Number.isInteger(start) && start >= 0 && !starts.includes(start)) {
 			starts.push(start);
 			indices.push(index);
 		}
 	}
+
 	return starts.length ? { path: entry, starts, indices } : null;
 }
 
@@ -166,14 +176,116 @@ export const LINK_TO_ATTRIBUTE = "data-link-to";
 /** `data-rabisco-loc` value of the entry element at `start`. */
 export const locationOf = (entry: string, start: number) => `${entry}:${start}`;
 
-const isBox = (box: unknown): box is Box =>
-	!!box && typeof box === "object" && (["x", "y", "width", "height"] as const).every((key) => Number.isFinite((box as Box)[key]));
+const isObject = (value: unknown): value is object => typeof value === "object" && value !== null;
 
-/** `boxes` from a frame, or `null` when any of them isn't a box. */
-export const validBoxes = (boxes: unknown): Box[] | null => (Array.isArray(boxes) && boxes.every(isBox) ? boxes : null);
+const hasId = (value: unknown): value is { id: number } => isObject(value) && "id" in value && isNumber(value.id);
 
-/** Hit boxes from a frame, aligned with `count` starts; missing or malformed entries become `null`. */
-export function hitBoxes(boxes: unknown, count: number): (Box | null)[] {
-	const list = Array.isArray(boxes) ? boxes : [];
-	return Array.from({ length: count }, (_, i) => (isBox(list[i]) ? list[i] : null));
+function isBox(box: unknown): box is Box {
+	return (
+		isObject(box) &&
+		"x" in box &&
+		"y" in box &&
+		"width" in box &&
+		"height" in box &&
+		[box.x, box.y, box.width, box.height].every((n) => Number.isFinite(n))
+	);
+}
+
+const isBoxOrNull = (box: unknown): box is Box | null => box === null || isBox(box);
+
+function isFrameHit(hit: unknown): hit is FrameHit {
+	if (!isObject(hit) || !("path" in hit) || !("starts" in hit) || !("version" in hit)) return false;
+	const boxes = "boxes" in hit ? hit.boxes : undefined;
+
+	return (
+		isString(hit.path) &&
+		isString(hit.version) &&
+		Array.isArray(hit.starts) &&
+		hit.starts.every(isNumber) &&
+		(boxes === undefined || (Array.isArray(boxes) && boxes.every(isBoxOrNull)))
+	);
+}
+
+const FRAME_ERROR_KINDS: readonly string[] = ["compile", "runtime", "missing-module"] satisfies FrameError["kind"][];
+
+function isFrameError(error: unknown): error is FrameError {
+	return (
+		isObject(error) &&
+		"kind" in error &&
+		"message" in error &&
+		isString(error.kind) &&
+		FRAME_ERROR_KINDS.includes(error.kind) &&
+		isString(error.message)
+	);
+}
+
+function isScene(scene: unknown): scene is Scene {
+	return (
+		isObject(scene) &&
+		"ops" in scene &&
+		"width" in scene &&
+		"height" in scene &&
+		Array.isArray(scene.ops) &&
+		Number.isFinite(scene.width) &&
+		Number.isFinite(scene.height)
+	);
+}
+
+function isRaster(raster: unknown): raster is { dataUrl: string; scale: number } {
+	return (
+		isObject(raster) && "dataUrl" in raster && "scale" in raster && isString(raster.dataUrl) && isNumber(raster.scale)
+	);
+}
+
+const isTracked = (value: unknown): value is { start: number; version: string } =>
+	isObject(value) && "start" in value && "version" in value && isNumber(value.start) && isString(value.version);
+
+/**
+ * Frames run project code, so what they post is checked before the host acts on it.
+ * Holds when `data` is a well-formed `FrameMessage`; anything else is dropped.
+ */
+export function isFrameMessage(data: unknown): data is FrameMessage {
+	if (!isObject(data) || !("type" in data)) return false;
+
+	switch (data.type) {
+		case "ready":
+		case "rendered":
+		case "escape":
+			return true;
+		case "error":
+			return "error" in data && isFrameError(data.error);
+		case "size":
+			return "height" in data && isNumber(data.height);
+		case "hit":
+			return hasId(data) && "hit" in data && (data.hit === null || isFrameHit(data.hit));
+		case "boxes":
+			return isTracked(data) && "boxes" in data && Array.isArray(data.boxes) && data.boxes.every(isBox);
+		case "text-edit":
+			if (!isTracked(data) || !("state" in data)) return false;
+
+			if (data.state === "done") return "text" in data && (data.text === null || isString(data.text));
+
+			return data.state === "editing" || data.state === "refused";
+		case "navigate":
+			return "to" in data && isString(data.to);
+		case "measured":
+			return hasId(data) && "height" in data && isNumber(data.height);
+		case "snapshot":
+			if (!hasId(data)) return false;
+
+			if ("error" in data) return isString(data.error);
+
+			return (
+				"scene" in data &&
+				isScene(data.scene) &&
+				(!("raster" in data) || data.raster === undefined || isRaster(data.raster))
+			);
+		default:
+			return false;
+	}
+}
+
+/** Hit boxes aligned with `count` starts; missing entries become `null`. */
+export function hitBoxes(boxes: (Box | null)[] | undefined, count: number): (Box | null)[] {
+	return Array.from({ length: count }, (_, i) => boxes?.[i] ?? null);
 }

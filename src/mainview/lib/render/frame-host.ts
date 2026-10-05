@@ -2,7 +2,17 @@ import type { Scene } from "../../../shared/export/scene";
 import type { ProjectFiles } from "../../../shared/types";
 import { compileCache, type CompiledModule } from "./compile";
 import { collectGraph } from "./graph";
-import { hitBoxes, validBoxes, type Box, type FrameError, type FrameHit, type FrameMessage, type HostMessage, type ModulePayload, type SnapshotRaster } from "./protocol";
+import {
+	hitBoxes,
+	isFrameMessage,
+	type Box,
+	type FrameError,
+	type FrameHit,
+	type FrameMessage,
+	type HostMessage,
+	type ModulePayload,
+	type SnapshotRaster,
+} from "./protocol";
 import { screenStyles } from "./styles";
 import { designThemeCss } from "./theme";
 
@@ -16,6 +26,7 @@ const statusListeners = new Set<(status: FrameStatus) => void>();
 /** Subscribes to status changes of every screen frame. Returns an unsubscribe function. */
 export function onFrameStatus(listener: (status: FrameStatus) => void) {
 	statusListeners.add(listener);
+
 	return () => void statusListeners.delete(listener);
 }
 
@@ -25,17 +36,20 @@ export function runtimeUrl() {
 }
 
 const hosts = new Set<FrameHost>();
+
 let listening = false;
 
 function listen() {
 	if (listening) return;
 	listening = true;
-	window.addEventListener("message", (event: MessageEvent<FrameMessage>) => {
-		if (!event.source) return;
+	window.addEventListener("message", (event: MessageEvent) => {
+		if (!event.source || !isFrameMessage(event.data)) return;
+
 		for (const host of hosts) {
 			// Only trust messages that come from the frame's own window
 			if (event.source === host.frame.contentWindow) {
 				host.receive(event.data);
+
 				return;
 			}
 		}
@@ -45,15 +59,22 @@ function listen() {
 /** The host feeding `frame`, if it has one. */
 export function hostOf(frame: HTMLIFrameElement | null | undefined): FrameHost | undefined {
 	if (!frame) return undefined;
+
 	for (const host of hosts) if (host.frame === frame) return host;
+
 	return undefined;
 }
 
 /** How long `hitTest` waits for the frame before giving up */
 const HIT_TEST_TIMEOUT_MS = 500;
+
 let hitTestId = 0;
+
 /** Ids of `measure` and `snapshot` requests */
 let requestId = 0;
+
+/** The entry element `track` follows, in the entry source with `version`; `start: null` follows nothing. */
+type TrackedElement = { start: number | null; version: string };
 
 /** What `FrameHost.snapshot` resolves with: the screen as a scene, and its raster when asked for. */
 export type Snapshot = { scene: Scene; raster?: { dataUrl: string; scale: number } };
@@ -88,7 +109,7 @@ export class FrameHost {
 	/** Unanswered `hitTest` calls by id */
 	#hitTests = new Map<number, (hit: FrameHit | null) => void>();
 	/** What `track` asked for, re-sent when the frame reloads */
-	#tracked: { start: number | null; version: string } = { start: null, version: "" };
+	#tracked: TrackedElement = { start: null, version: "" };
 	/** Receives the tracked element's boxes */
 	onBoxes: ((boxes: { start: number; version: string; boxes: Box[] }) => void) | null = null;
 	/** The text edit in progress, as `editText` started it */
@@ -114,12 +135,15 @@ export class FrameHost {
 	dispose() {
 		hosts.delete(this);
 		this.#unsubscribe();
+
 		for (const resolve of this.#hitTests.values()) resolve(null);
 		this.#hitTests.clear();
 		this.#textEdit?.resolve(null);
 		this.#textEdit = null;
+
 		for (const resolve of this.#requests.values()) resolve(null);
 		this.#requests.clear();
+
 		for (const waiter of this.#renderWaiters) waiter("loading");
 		this.#renderWaiters.clear();
 	}
@@ -131,19 +155,29 @@ export class FrameHost {
 	 */
 	whenRendered(timeoutMs = 15_000): Promise<void> {
 		if (this.status === "rendered") return Promise.resolve();
+
 		if (this.status === "error") return Promise.reject(new Error(this.error?.message ?? "The screen didn't render"));
+
 		return new Promise((resolve, reject) => {
 			const done = (status: FrameStatus["status"]) => {
 				if (status === "ready") return;
 				clearTimeout(timer);
 				this.#renderWaiters.delete(done);
+
 				if (status === "rendered") resolve();
-				else reject(new Error(status === "error" ? (this.error?.message ?? "The screen didn't render") : "The frame was closed"));
+				else
+					reject(
+						new Error(
+							status === "error" ? (this.error?.message ?? "The screen didn't render") : "The frame was closed",
+						),
+					);
 			};
+
 			const timer = setTimeout(() => {
 				this.#renderWaiters.delete(done);
 				reject(new Error("The screen took too long to render"));
 			}, timeoutMs);
+
 			this.#renderWaiters.add(done);
 		});
 	}
@@ -151,6 +185,7 @@ export class FrameHost {
 	/** Image export: the screen's content height in CSS pixels; `null` when the frame doesn't answer. */
 	async measure(timeoutMs = 5_000): Promise<number | null> {
 		const reply = await this.#request({ type: "measure", id: ++requestId }, timeoutMs);
+
 		return reply?.type === "measured" && Number.isFinite(reply.height) ? reply.height : null;
 	}
 
@@ -160,24 +195,32 @@ export class FrameHost {
 	 */
 	async snapshot(raster?: SnapshotRaster, timeoutMs = 60_000): Promise<Snapshot> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
-		const reply = await this.#request({ type: "snapshot", id: ++requestId, ...(raster ? { raster } : {}) }, timeoutMs);
-		if (reply?.type !== "snapshot") throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+		const request: HostMessage & { id: number } = { type: "snapshot", id: ++requestId };
+
+		if (raster) request.raster = raster;
+		const reply = await this.#request(request, timeoutMs);
+
+		if (reply?.type !== "snapshot")
+			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+
 		if ("error" in reply) throw new Error(reply.error);
-		const { scene } = reply;
-		if (!scene || !Array.isArray(scene.ops) || !Number.isFinite(scene.width) || !Number.isFinite(scene.height)) throw new Error("The screen sent an invalid snapshot");
-		const image = reply.raster && typeof reply.raster.dataUrl === "string" ? reply.raster : undefined;
+		const { scene, raster: image } = reply;
+
 		if (raster && !image) throw new Error("The screen sent no image");
+
 		return image ? { scene, raster: image } : { scene };
 	}
 
 	/** Posts `message` and resolves with the reply that has its id, or `null` on timeout or dispose. */
 	#request(message: HostMessage & { id: number }, timeoutMs: number): Promise<FrameMessage | null> {
 		if (!this.#ready) return Promise.resolve(null);
+
 		return new Promise((resolve) => {
 			const timer = setTimeout(() => {
 				this.#requests.delete(message.id);
 				resolve(null);
 			}, timeoutMs);
+
 			this.#requests.set(message.id, (reply) => {
 				clearTimeout(timer);
 				this.#requests.delete(message.id);
@@ -195,6 +238,7 @@ export class FrameHost {
 	track(start: number | null, version: string) {
 		if (start === this.#tracked.start && version === this.#tracked.version) return;
 		this.#tracked = { start, version };
+
 		if (this.#ready) this.#post({ type: "track", start, version });
 	}
 
@@ -205,11 +249,20 @@ export class FrameHost {
 	 * refused (its DOM doesn't hold just that text: edit it elsewhere).
 	 * `onStart` runs once the frame is editing.
 	 */
-	editText(edit: { start: number; version: string; text: string; x?: number; y?: number }, onStart?: () => void): Promise<string | null | undefined> {
+	editText(
+		edit: { start: number; version: string; text: string; x?: number; y?: number },
+		onStart?: () => void,
+	): Promise<string | null | undefined> {
 		this.#textEdit?.resolve(null);
+
 		if (!this.#ready) return Promise.resolve(undefined);
+
 		return new Promise((resolve) => {
-			this.#textEdit = { start: edit.start, version: edit.version, resolve: (text) => (this.#textEdit = null, resolve(text)) };
+			this.#textEdit = {
+				start: edit.start,
+				version: edit.version,
+				resolve: (text) => ((this.#textEdit = null), resolve(text)),
+			};
 			this.#onTextEditStart = onStart ?? null;
 			this.#post({ type: "edit-text", ...edit });
 		});
@@ -222,6 +275,7 @@ export class FrameHost {
 	setPlay(on: boolean) {
 		if (on === this.#play) return;
 		this.#play = on;
+
 		if (this.#ready) this.#post({ type: "play", on });
 	}
 
@@ -242,11 +296,13 @@ export class FrameHost {
 	hitTest(x: number, y: number): Promise<FrameHit | null> {
 		if (!this.#ready || !this.#sentEntry) return Promise.resolve(null);
 		const id = ++hitTestId;
+
 		return new Promise((resolve) => {
 			const timer = setTimeout(() => {
 				this.#hitTests.delete(id);
 				resolve(null);
 			}, HIT_TEST_TIMEOUT_MS);
+
 			this.#hitTests.set(id, (hit) => {
 				clearTimeout(timer);
 				this.#hitTests.delete(id);
@@ -273,7 +329,9 @@ export class FrameHost {
 			this.#textEdit?.resolve(null);
 			this.#emit({ status: "ready" });
 			this.#sync();
+
 			if (this.#tracked.start !== null) this.#post({ type: "track", ...this.#tracked });
+
 			if (this.#play) this.#post({ type: "play", on: true });
 		} else if (message?.type === "rendered") {
 			this.#emit({ status: "rendered" });
@@ -282,33 +340,42 @@ export class FrameHost {
 		} else if (message?.type === "hit") {
 			// Only the entry's own elements are drop targets
 			const hit = message.hit;
+
 			const valid =
 				!!hit &&
 				hit.path === this.#sentEntry &&
-				typeof hit.version === "string" &&
-				Array.isArray(hit.starts) &&
 				hit.starts.length > 0 &&
 				hit.starts.every((start) => Number.isInteger(start) && start >= 0);
+
 			this.#hitTests.get(message.id)?.(
-				hit && valid ? { path: hit.path, starts: [...hit.starts], version: hit.version, boxes: hitBoxes(hit.boxes, hit.starts.length) } : null,
+				hit && valid
+					? {
+							path: hit.path,
+							starts: [...hit.starts],
+							version: hit.version,
+							boxes: hitBoxes(hit.boxes, hit.starts.length),
+						}
+					: null,
 			);
 		} else if (message?.type === "boxes") {
-			const boxes = validBoxes(message.boxes);
 			const current = message.start === this.#tracked.start && message.version === this.#tracked.version;
-			if (boxes && current) this.onBoxes?.({ start: message.start, version: message.version, boxes });
+
+			if (current) this.onBoxes?.({ start: message.start, version: message.version, boxes: message.boxes });
 		} else if (message?.type === "text-edit") {
 			const edit = this.#textEdit;
+
 			if (!edit || message.start !== edit.start || message.version !== edit.version) return;
+
 			if (message.state === "editing") this.#onTextEditStart?.();
 			else if (message.state === "refused") edit.resolve(undefined);
-			else if (message.state === "done") edit.resolve(typeof message.text === "string" ? message.text : null);
+			else if (message.state === "done") edit.resolve(message.text);
 		} else if (message?.type === "navigate") {
-			if (this.#play && typeof message.to === "string" && message.to.trim()) this.onNavigate?.(message.to);
-		} else if ((message?.type === "measured" || message?.type === "snapshot") && typeof message.id === "number") {
+			if (this.#play && message.to.trim()) this.onNavigate?.(message.to);
+		} else if (message?.type === "measured" || message?.type === "snapshot") {
 			this.#requests.get(message.id)?.(message);
 		} else if (message?.type === "escape") {
 			if (this.#play) this.onEscape?.();
-		} else if (message?.type === "size" && typeof message.height === "number" && message.height !== this.contentHeight) {
+		} else if (message?.type === "size" && message.height !== this.contentHeight) {
 			this.contentHeight = message.height;
 			this.onContentHeight?.(message.height);
 		}
@@ -317,9 +384,12 @@ export class FrameHost {
 	#emit(status: { status: "ready" | "rendered" } | { status: "error"; error: FrameError }) {
 		this.status = status.status;
 		this.error = status.status === "error" ? status.error : null;
-		const event = { frame: this.frame, entry: this.#entry, ...status } as FrameStatus;
+		const event: FrameStatus = { frame: this.frame, entry: this.#entry, ...status };
+
 		for (const listener of statusListeners) listener(event);
-		for (const waiter of [...this.#renderWaiters]) waiter(status.status);
+
+		// A waiter removes itself when called, which a Set's iteration tolerates
+		for (const waiter of this.#renderWaiters) waiter(status.status);
 	}
 
 	#post(message: HostMessage) {
@@ -335,6 +405,7 @@ export class FrameHost {
 
 	#sync() {
 		if (!this.#ready || !this.#entry) return;
+
 		if (!screenStyles.ready) {
 			if (!this.#waitingForStyles) {
 				this.#waitingForStyles = true;
@@ -343,43 +414,54 @@ export class FrameHost {
 					this.#sync();
 				});
 			}
+
 			return;
 		}
+
 		const graph = collectGraph(this.#entry, this.#files, compileCache);
 		const modules: Record<string, ModulePayload | null> = {};
 		let changed = false;
+
 		for (const [path, module] of graph.modules) {
 			if (this.#sent.get(path) === module.hash) continue;
 			screenStyles.add(module.candidates);
 			modules[path] = payloadOf(module);
 			changed = true;
 		}
+
 		for (const path of this.#sent.keys()) {
 			if (!graph.modules.has(path)) {
 				modules[path] = null;
 				changed = true;
 			}
 		}
+
 		const reset = this.#sentEntry === "";
 		const css = screenStyles.css !== this.#sentCss ? screenStyles.css : undefined;
 		const themeCss = designThemeCss(this.#files);
 		const theme = themeCss !== this.#sentTheme ? themeCss : undefined;
+
 		if (!changed && !reset && this.#entry === this.#sentEntry && css === undefined) {
 			// Only the tokens changed: restyle without touching the modules
 			if (theme !== undefined) {
 				this.#sentTheme = theme;
 				this.#post({ type: "theme", css: theme });
 			}
+
 			return;
 		}
 
 		this.#post({ type: "modules", entry: this.#entry, modules, css, theme, reset });
+
 		for (const [path, payload] of Object.entries(modules)) {
 			if (payload) this.#sent.set(path, graph.modules.get(path)!.hash);
 			else this.#sent.delete(path);
 		}
+
 		this.#sentEntry = this.#entry;
+
 		if (css !== undefined) this.#sentCss = css;
+
 		if (theme !== undefined) this.#sentTheme = theme;
 	}
 }

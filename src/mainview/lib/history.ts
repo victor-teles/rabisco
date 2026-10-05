@@ -16,6 +16,7 @@ export type Snapshot = { frames: Frame[]; files: ProjectFiles; comments?: Canvas
 export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	if (update === present) return present;
 	const comments = detachComments(update.comments ?? present.comments ?? [], present.frames, update.frames);
+
 	return comments === update.comments ? update : { ...update, comments };
 }
 
@@ -40,10 +41,13 @@ export function createHistory(present: Snapshot): History {
 export function commit(history: History, next: Snapshot, options: { coalesce?: string; limit?: number } = {}): History {
 	if (next === history.present) return history;
 	const key = options.coalesce ?? null;
+
 	if (key !== null && key === history.coalesceKey) return { ...history, present: next, future: [] };
 	const limit = options.limit ?? HISTORY_LIMIT;
 	const past = [...history.past, history.present];
+
 	if (past.length > limit) past.splice(0, past.length - limit);
+
 	return { past, present: next, future: [], coalesceKey: key };
 }
 
@@ -53,10 +57,12 @@ export function seal(history: History): History {
 }
 
 export const canUndo = (history: History) => history.past.length > 0;
+
 export const canRedo = (history: History) => history.future.length > 0;
 
 export function undo(history: History): History {
 	if (!canUndo(history)) return history;
+
 	return {
 		past: history.past.slice(0, -1),
 		present: history.past.at(-1)!,
@@ -67,6 +73,7 @@ export function undo(history: History): History {
 
 export function redo(history: History): History {
 	if (!canRedo(history)) return history;
+
 	return {
 		past: [...history.past, history.present],
 		present: history.future[0]!,
@@ -78,10 +85,12 @@ export function redo(history: History): History {
 export function applyFileChanges(files: ProjectFiles, changes: FileChange[]): ProjectFiles {
 	if (!changes.length) return files;
 	const next = { ...files };
+
 	for (const change of changes) {
 		if (change.content === null) delete next[change.path];
 		else next[change.path] = change.content;
 	}
+
 	return next;
 }
 
@@ -89,8 +98,11 @@ export function applyFileChanges(files: ProjectFiles, changes: FileChange[]): Pr
 export function diffFiles(from: ProjectFiles, to: ProjectFiles): FileChange[] {
 	if (from === to) return [];
 	const changes: FileChange[] = [];
+
 	for (const path of Object.keys(from)) if (!(path in to)) changes.push({ path, content: null });
+
 	for (const [path, content] of Object.entries(to)) if (from[path] !== content) changes.push({ path, content });
+
 	return changes.sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -108,16 +120,22 @@ export function rebase(
 ): History {
 	if (!changes.length) return history;
 	const existing = history.present.files;
+
 	const fold = (snapshot: Snapshot): Snapshot => {
 		let files = snapshot.files;
+
 		for (const change of changes) {
 			const isEdit = change.content !== null && change.path in existing;
+
 			if (isEdit && !(change.path in files)) continue;
+
 			if (change.content === null ? !(change.path in files) : files[change.path] === change.content) continue;
 			files = applyFileChanges(files, [change]);
 		}
+
 		return reconcile(files === snapshot.files ? snapshot : { ...snapshot, files });
 	};
+
 	return {
 		past: history.past.map(fold),
 		present: fold(history.present),

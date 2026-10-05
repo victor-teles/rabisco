@@ -1,19 +1,42 @@
 import type { GenerationEvent, GenerationRequest, ScreenMeta } from "../../shared/ai/contract";
 import type { ProviderStatus } from "../../shared/ai/settings";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
-import { clampVariations, combineVariations, createVariantRenamer, variationsNote, type VariantOutput } from "../../shared/ai/variants";
+import {
+	clampVariations,
+	combineVariations,
+	createVariantRenamer,
+	variationsNote,
+	type VariantOutput,
+} from "../../shared/ai/variants";
 import type { RabiscoRPC } from "../../shared/rpc";
 import { contextBody } from "../../shared/context/body";
 import { resolveFocus } from "../../shared/ai/focus";
 import { DESIGN_TEMPLATE } from "../../shared/context/templates";
-import type { ContextFileName, GenerateParams, GenerationEventMessage, GenerationFailure, ProjectFiles } from "../../shared/types";
+import type {
+	ContextFileName,
+	GenerateParams,
+	GenerationEventMessage,
+	GenerationFailure,
+	ProjectFiles,
+} from "../../shared/types";
 import { INTERVIEW_QUESTIONS, productFromAnswers } from "./interview";
 
 type Requests = RabiscoRPC["bun"]["requests"];
+
 type Handler<K extends keyof Requests> = (params: Requests[K]["params"]) => Promise<Requests[K]["response"]>;
 
 type BrowserGenerator = {
-	[K in "generate" | "stopGeneration" | "listProviders" | "addProvider" | "updateProvider" | "removeProvider" | "testProvider" | "setDefaultModel"]: Handler<K>;
+	[
+		K in
+			| "generate"
+			| "stopGeneration"
+			| "listProviders"
+			| "addProvider"
+			| "updateProvider"
+			| "removeProvider"
+			| "testProvider"
+			| "setDefaultModel"
+	]: Handler<K>;
 };
 
 const MOCK_STATUS: ProviderStatus = {
@@ -29,6 +52,22 @@ const MOCK_STATUS: ProviderStatus = {
 
 type VariantRun = VariantOutput & { reply: string };
 
+/** An `error` event of the mock provider, carried out of a variant's run. */
+class MockGenerationError extends Error {
+	readonly failure: GenerationFailure;
+
+	constructor(failure: GenerationFailure) {
+		super(failure.message);
+		this.failure = failure;
+	}
+}
+
+function failureOf(cause: unknown): GenerationFailure {
+	if (cause instanceof MockGenerationError) return cause.failure;
+
+	return { code: "unknown", message: cause instanceof Error ? cause.message : String(cause), retryable: true };
+}
+
 const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 
 /** DESIGN.md for the browser: the template with a filled Tokens section */
@@ -41,9 +80,17 @@ const BROWSER_DESIGN = DESIGN_TEMPLATE.replace(
 function browserProduct(prompt: string) {
 	const answers = INTERVIEW_QUESTIONS.map(({ question }) => {
 		const at = prompt.indexOf(`Q: ${question}\nA: `);
-		return at === -1 ? "" : prompt.slice(at + question.length + 7).split("\n\nQ: ")[0]!.trim();
+
+		return at === -1
+			? ""
+			: prompt
+					.slice(at + question.length + 7)
+					.split("\n\nQ: ")[0]!
+					.trim();
 	});
+
 	if (!answers.some(Boolean)) answers[0] = prompt.trim();
+
 	return productFromAnswers({ step: answers.length, answers }, "Product");
 }
 
@@ -63,6 +110,7 @@ async function* contextEvents(params: GenerateParams): AsyncGenerator<Generation
 async function mockEvents(request: GenerationRequest, signal: AbortSignal) {
 	if (!import.meta.env.DEV) throw new Error("The mock provider is only available in development.");
 	const { createMockProvider } = await import("../../bun/ai/providers/mock");
+
 	return createMockProvider().generate(request, signal);
 }
 
@@ -81,9 +129,13 @@ export function createBrowserGenerator(
 	readFiles: (path: string) => ProjectFiles,
 ): BrowserGenerator {
 	const running = new Map<string, AbortController>();
+
 	return {
 		async listProviders() {
-			return { settings: { version: 1, providers: [], defaultModel: "mock:mock" }, statuses: import.meta.env.DEV ? [MOCK_STATUS] : [] };
+			return {
+				settings: { version: 1, providers: [], defaultModel: "mock:mock" },
+				statuses: import.meta.env.DEV ? [MOCK_STATUS] : [],
+			};
 		},
 		async testProvider() {
 			return MOCK_STATUS;
@@ -98,31 +150,57 @@ export function createBrowserGenerator(
 		},
 		async stopGeneration({ generationId }) {
 			running.get(generationId)?.abort();
+
 			return { ok: true };
 		},
 		async generate(params) {
 			const task = params.task ?? "create";
+
 			// The context task needs no model, so it works in every build
 			if (task !== "context" && !import.meta.env.DEV) {
-				return { ok: false, error: { code: "not_installed", message: "No AI provider in the browser.", retryable: false } };
+				return {
+					ok: false,
+					error: { code: "not_installed", message: "No AI provider in the browser.", retryable: false },
+				};
 			}
+
 			const files = readFiles(params.projectPath);
 			const vary = task === "vary";
+
 			if (vary && !(params.targets?.length === 1 && isScreenFile(params.targets[0]!) && params.targets[0]! in files)) {
-				return { ok: false, error: { code: "unknown", message: "Varying needs exactly one existing screen as its target.", retryable: false } };
+				return {
+					ok: false,
+					error: {
+						code: "unknown",
+						message: "Varying needs exactly one existing screen as its target.",
+						retryable: false,
+					},
+				};
 			}
+
 			// What shaped this result: the context files that say something (the one being written doesn't count)
-			const context = CONTEXT_FILES.filter((path) => contextBody(files[path]) && !(task === "context" && params.targets?.includes(path)));
+			const context = CONTEXT_FILES.filter(
+				(path) => contextBody(files[path]) && !(task === "context" && params.targets?.includes(path)),
+			);
+
 			const controller = new AbortController();
 			running.set(params.generationId, controller);
-			const requestTask: GenerationRequest["task"] = params.task === "vary" ? "edit" : (params.task ?? (params.targets?.length ? "edit" : "create"));
+
+			const requestTask: GenerationRequest["task"] =
+				params.task === "vary" ? "edit" : (params.task ?? (params.targets?.length ? "edit" : "create"));
+
 			const isCreate = requestTask === "create";
 			const count = vary || isCreate ? clampVariations(params.variations) : 1;
 			const variants = Array.from({ length: count }, (_, i) => (vary ? i + 1 : i));
 			const multi = vary || count > 1;
 			const references = (params.references ?? []).filter((path) => path in files);
+
 			// Point and prompt: an edit of the element's file, checked like the main process does
-			const focus = requestTask === "edit" && !vary && params.targets?.includes(params.focus?.file ?? "") ? resolveFocus(params.focus, files) : null;
+			const focus =
+				requestTask === "edit" && !vary && params.targets?.includes(params.focus?.file ?? "")
+					? resolveFocus(params.focus, files)
+					: null;
+
 			const base: GenerationRequest = {
 				id: params.generationId,
 				task: requestTask,
@@ -131,50 +209,90 @@ export function createBrowserGenerator(
 				device: params.device,
 				context: { product: contextBody(files["PRODUCT.md"]), design: contextBody(files["DESIGN.md"]) },
 				files: Object.entries(files).map(([path, content]) => ({ path, content })),
-				...(params.targets?.length ? { targets: params.targets } : {}),
-				...(references.length ? { references } : {}),
-				...(focus ? { focus } : {}),
 			};
+
+			if (params.targets?.length) base.targets = params.targets;
+
+			if (references.length) base.references = references;
+
+			if (focus) base.focus = focus;
 
 			const run = async (variant: number, index: number): Promise<VariantRun> => {
 				const renamer = createVariantRenamer({ variant, taken: Object.keys(files), readOnly: references });
-				const request = multi ? { ...base, id: `${base.id}-v${variant}`, ...(count > 1 ? { variation: { index, count } } : {}) } : base;
+
+				const request: GenerationRequest = multi ? { ...base, id: `${base.id}-v${variant}` } : base;
+
+				if (multi && count > 1) request.variation = { index, count };
+
 				const written = new Map<string, string>();
 				const screens: Record<string, ScreenMeta | undefined> = {};
 				let reply = "";
 				const events = task === "context" ? contextEvents(params) : await mockEvents(request, controller.signal);
+
 				for await (const raw of events) {
 					for (const event of renamer.transform(raw)) {
-						emit({ generationId: params.generationId, attempt: 1, ...(multi ? { variant } : {}), event });
+						const message: GenerationEventMessage = { generationId: params.generationId, attempt: 1, event };
+
+						if (multi) message.variant = variant;
+						emit(message);
+
 						if (event.type === "file.start" && event.kind === "screen") screens[event.path] = event.screen;
 						else if (event.type === "file.end") written.set(event.path, event.content);
 						else if (event.type === "message.delta") reply += event.text;
-						else if (event.type === "error") throw { code: event.code, message: event.message, retryable: event.retryable };
+						else if (event.type === "error")
+							throw new MockGenerationError({
+								code: event.code,
+								message: event.message,
+								retryable: event.retryable,
+							});
 					}
 				}
-				return { variant, reply, screens, renames: renamer.renames, changes: [...written].map(([path, content]) => ({ path, content })) };
+
+				return {
+					variant,
+					reply,
+					screens,
+					renames: renamer.renames,
+					changes: [...written].map(([path, content]) => ({ path, content })),
+				};
 			};
 
 			try {
 				const settled = await Promise.allSettled(variants.map(run));
 				const done = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
-				if (controller.signal.aborted) return { ok: false, error: { code: "aborted", message: "Generation stopped.", retryable: true } };
-				if (!done.length) {
-					const reason = (settled[0] as PromiseRejectedResult).reason;
-					const error = reason && typeof reason === "object" && "code" in reason
-						? (reason as GenerationFailure)
-						: { code: "unknown" as const, message: reason instanceof Error ? reason.message : String(reason), retryable: true };
-					return { ok: false, error };
-				}
+
+				if (controller.signal.aborted)
+					return { ok: false, error: { code: "aborted", message: "Generation stopped.", retryable: true } };
+
+				const [first] = settled;
+
+				if (!done.length && first?.status === "rejected") return { ok: false, error: failureOf(first.reason) };
+
 				if (!multi) {
 					const { changes, screens, reply } = done[0]!;
 					const created = changes.filter((c) => !(c.path in files)).map((c) => c.path);
-					return { ok: true, changes, frames: framesForNewScreens(created, screens, params.device), reply, problems: [], context };
+
+					return {
+						ok: true,
+						changes,
+						frames: framesForNewScreens(created, screens, params.device),
+						reply,
+						problems: [],
+						context,
+					};
 				}
-				const combined = combineVariations({ mode: vary ? "vary" : "create", outputs: done, projectFiles: files, device: params.device });
+
+				const combined = combineVariations({
+					mode: vary ? "vary" : "create",
+					outputs: done,
+					projectFiles: files,
+					device: params.device,
+				});
+
 				const lead = done.find((d) => d.variant === combined.primary) ?? done[0]!;
 				const note = variationsNote(done.length, settled.length - done.length, combined.dropped.length);
 				const reply = [lead.reply, note].filter(Boolean).join("\n\n");
+
 				return { ok: true, changes: combined.changes, frames: combined.frames, reply, problems: [], context };
 			} finally {
 				running.delete(params.generationId);

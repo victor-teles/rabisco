@@ -5,6 +5,8 @@
  * them. Only string literals count: an expression is code, not a link.
  */
 
+import { isString } from "../guards";
+import type { Json } from "../json";
 import { setAttribute } from "../jsx/transforms";
 import { findElement, flatten, parseFile, type JsxElement } from "../jsx/tree";
 import { isComponentFile, isScreenFile } from "../project";
@@ -29,16 +31,22 @@ export type ResolvedLink = { kind: "screen"; file: string } | { kind: "back" } |
 function stringLiteral(text: string): string | undefined {
 	const trimmed = text.trim();
 	const match = /^(["'`])([\s\S]*)\1$/.exec(trimmed);
+
 	if (!match) return undefined;
 	const [, quote, body] = match;
+
 	if (quote === "`") return body!.includes("${") || body!.includes("`") ? undefined : body;
+
 	if (quote === '"') {
 		try {
-			return JSON.parse(trimmed) as string;
+			const value: Json = JSON.parse(trimmed);
+
+			return isString(value) ? value : undefined;
 		} catch {
 			return undefined;
 		}
 	}
+
 	return body!.includes("'") || body!.includes("\\") ? undefined : body;
 }
 
@@ -48,23 +56,28 @@ function stringLiteral(text: string): string | undefined {
  */
 export function linkOfElement(element: JsxElement): string | null {
 	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === LINK_ATTRIBUTE);
+
 	if (attribute?.kind !== "attribute" || !attribute.value) return null;
 	const value = attribute.value.kind === "string" ? attribute.value.value : stringLiteral(attribute.value.text);
+
 	return value?.trim() ? value.trim() : null;
 }
 
 /** Whether `element` has a `data-link-to` whose value is code rather than a string (read-only in the inspector). */
 export function hasExpressionLink(element: JsxElement): boolean {
 	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === LINK_ATTRIBUTE);
+
 	return attribute?.kind === "attribute" && attribute.value?.kind === "expression" && linkOfElement(element) === null;
 }
 
 /** The link of the element at `ref`, as written; `null` when it has none, or the file or element is gone. */
 export function readLink(files: ProjectFiles, ref: ElementRef): string | null {
 	const source = files[ref.file];
+
 	if (source === undefined) return null;
 	const parsed = parseFile(source);
 	const element = parsed.ok ? findElement(parsed, ref.start) : null;
+
 	return element ? linkOfElement(element) : null;
 }
 
@@ -86,16 +99,22 @@ const canLink = (path: string) => isScreenFile(path) || isComponentFile(path);
  */
 export function listLinks(files: ProjectFiles): ProjectLink[] {
 	const links: ProjectLink[] = [];
+
 	for (const file of Object.keys(files).filter(canLink).sort()) {
 		const source = files[file]!;
+
 		if (!source.includes(LINK_ATTRIBUTE)) continue;
 		const parsed = parseFile(source);
+
 		if (!parsed.ok) continue;
+
 		for (const element of flatten(parsed)) {
 			const to = linkOfElement(element);
+
 			if (to !== null) links.push({ file, start: element.start, to });
 		}
 	}
+
 	return links;
 }
 
@@ -105,9 +124,15 @@ export function listLinks(files: ProjectFiles): ProjectLink[] {
  * all mean `screens/settings.tsx`.
  */
 export function normalizeTarget(to: string): string {
-	let path = to.trim().replace(/\\/g, "/").replace(/^(\.\/|\/)+/, "");
+	let path = to
+		.trim()
+		.replace(/\\/g, "/")
+		.replace(/^(\.\/|\/)+/, "");
+
 	if (!path.includes("/")) path = `screens/${path}`;
+
 	if (!path.endsWith(".tsx")) path = `${path}.tsx`;
+
 	return path;
 }
 
@@ -118,6 +143,7 @@ export function normalizeTarget(to: string): string {
 export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 	if (to.trim().toLowerCase() === BACK) return { kind: "back" };
 	const file = normalizeTarget(to);
+
 	return isScreenFile(file) && files[file] !== undefined ? { kind: "screen", file } : { kind: "broken", to };
 }
 
@@ -128,14 +154,20 @@ export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 export function retargetLinks(files: ProjectFiles, from: string, to: string): FileChange[] {
 	const changes: FileChange[] = [];
 	const byFile = new Map<string, ProjectLink[]>();
+
 	for (const link of listLinks(files)) {
-		if (link.to.trim().toLowerCase() !== BACK && normalizeTarget(link.to) === from) byFile.set(link.file, [...(byFile.get(link.file) ?? []), link]);
+		if (link.to.trim().toLowerCase() !== BACK && normalizeTarget(link.to) === from)
+			byFile.set(link.file, [...(byFile.get(link.file) ?? []), link]);
 	}
+
 	for (const [file, links] of byFile) {
 		// Last first, so earlier offsets stay valid
 		let source = files[file]!;
+
 		for (const link of [...links].reverse()) source = setLink(source, link.start, to) ?? source;
+
 		if (source !== files[file]) changes.push({ path: file, content: source });
 	}
+
 	return changes;
 }

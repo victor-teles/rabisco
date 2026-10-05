@@ -27,14 +27,21 @@ export function toKebab(text: string) {
 
 /** `screens/order-history.tsx` → `Order history` */
 export function screenNameFromPath(path: string) {
-	const base = path.split("/").pop()!.replace(/\.tsx$/, "").replace(/\.alt-(\d+)$/, " (alt $1)");
+	const base = path
+		.split("/")
+		.pop()!
+		.replace(/\.tsx$/, "")
+		.replace(/\.alt-(\d+)$/, " (alt $1)");
+
 	const words = base.replace(/-/g, " ");
+
 	return words[0]!.toUpperCase() + words.slice(1);
 }
 
 /** A frame name for `path`: alternates get their number, `Welcome` → `Welcome (alt 2)`. */
 export function frameName(name: string, path: string) {
 	const alt = /\.alt-(\d+)\.tsx$/.exec(path);
+
 	return alt && !name.endsWith(`(alt ${alt[1]})`) ? `${name} (alt ${alt[1]})` : name;
 }
 
@@ -43,13 +50,16 @@ export function uniqueScreenPath(name: string, taken: Iterable<string>) {
 	const used = new Set(taken);
 	const base = toKebab(name);
 	let path = `screens/${base}.tsx`;
+
 	for (let n = 2; used.has(path); n++) path = `screens/${base}-${n}.tsx`;
+
 	return path;
 }
 
 /** x for the next frame placed to the right of everything on the canvas. */
 export function nextFrameX(frames: Frame[]) {
 	if (!frames.length) return 0;
+
 	return Math.max(...frames.map((f) => f.x + f.width)) + FRAME_GAP * 2;
 }
 
@@ -57,15 +67,31 @@ export function nextFrameX(frames: Frame[]) {
  * Frames for screens a generation created, left to right from the canvas origin
  * in the order they were written; the editor offsets them. `meta` comes from `file.start`.
  */
-export function framesForNewScreens(paths: string[], meta: Record<string, ScreenMeta | undefined>, device: Device): Frame[] {
+export function framesForNewScreens(
+	paths: string[],
+	meta: Record<string, ScreenMeta | undefined>,
+	device: Device,
+): Frame[] {
+	const frames: Frame[] = [];
 	let x = 0;
-	return paths.filter(isScreenFile).map((file) => {
+
+	for (const file of paths) {
+		if (!isScreenFile(file)) continue;
 		const frameDevice = meta[file]?.device ?? device;
 		const size = FRAME_SIZE[frameDevice];
-		const frame = { file, name: frameName(meta[file]?.name?.trim() || screenNameFromPath(file), file), device: frameDevice, x, y: 0, ...size };
+
+		frames.push({
+			file,
+			name: frameName(meta[file]?.name?.trim() || screenNameFromPath(file), file),
+			device: frameDevice,
+			x,
+			y: 0,
+			...size,
+		});
 		x += size.width + FRAME_GAP;
-		return frame;
-	});
+	}
+
+	return frames;
 }
 
 /**
@@ -77,6 +103,7 @@ export function reconcileFrames(canvas: CanvasDoc, files: ProjectFiles): CanvasD
 	const kept = canvas.frames.filter((frame) => frame.file in files);
 	const placed = new Set(kept.map((frame) => frame.file));
 	const frames = [...kept];
+
 	for (const path of Object.keys(files).sort()) {
 		if (!isScreenFile(path) || placed.has(path)) continue;
 		const size = FRAME_SIZE[canvas.device];
@@ -87,18 +114,30 @@ export function reconcileFrames(canvas: CanvasDoc, files: ProjectFiles): CanvasD
 		const y = group.length ? Math.max(...group.map((frame) => frame.y + frame.height)) + FRAME_GAP : 0;
 		frames.push({ file: path, name: screenNameFromPath(path), device: canvas.device, x, y, ...size });
 	}
+
 	if (frames.length === canvas.frames.length && kept.length === canvas.frames.length) return canvas;
-	return {
-		...canvas,
-		frames,
-		selection: canvas.selection.filter((file) => file in files),
-		...(canvas.comments ? { comments: detachComments(canvas.comments, canvas.frames, kept) } : {}),
-	};
+
+	const next: CanvasDoc = { ...canvas, frames, selection: canvas.selection.filter((file) => file in files) };
+
+	if (canvas.comments) next.comments = detachComments(canvas.comments, canvas.frames, kept);
+
+	return next;
 }
 
 export function emptyCanvas(name: string, device: Device): CanvasDoc {
 	const now = new Date().toISOString();
-	return { version: 1, name, device, createdAt: now, updatedAt: now, frames: [], selection: [], alternates: [], comments: [] };
+
+	return {
+		version: 1,
+		name,
+		device,
+		createdAt: now,
+		updatedAt: now,
+		frames: [],
+		selection: [],
+		alternates: [],
+		comments: [],
+	};
 }
 
 export const isContextFile = (path: string) => path === "PRODUCT.md" || path === "DESIGN.md";
@@ -108,7 +147,12 @@ export const isProjectFile = (path: string) => isScreenFile(path) || isComponent
 
 /** `~/Documents/Rabisco/my-app.rabisco` → `my-app` */
 export function projectNameFromPath(path: string) {
-	const base = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Untitled";
+	const base =
+		path
+			.replace(/[\\/]+$/, "")
+			.split(/[\\/]/)
+			.pop() || "Untitled";
+
 	return base.replace(/\.rabisco$/i, "") || "Untitled";
 }
 
@@ -118,9 +162,13 @@ export function projectNameFromPath(path: string) {
  */
 export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource | null {
 	const frame = canvas.frames.find((f) => f.file in files);
+
 	if (!frame) return null;
 	const coverFiles: ProjectFiles = { [frame.file]: files[frame.file]! };
-	for (const [path, content] of Object.entries(files)) if (isComponentFile(path) || path === "DESIGN.md") coverFiles[path] = content;
+
+	for (const [path, content] of Object.entries(files))
+		if (isComponentFile(path) || path === "DESIGN.md") coverFiles[path] = content;
+
 	return { entry: frame.file, device: frame.device, width: frame.width, height: frame.height, files: coverFiles };
 }
 

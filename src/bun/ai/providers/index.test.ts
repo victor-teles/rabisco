@@ -39,7 +39,10 @@ describe("ProviderRegistry", () => {
 
 	test("resolves model refs", () => {
 		const registry = new ProviderRegistry({ secrets, create: (c) => fake(c) }, configs);
-		expect(registry.resolve("ollama:qwen3-coder:30b")).toMatchObject({ model: "qwen3-coder:30b", config: { id: "ollama" } });
+		expect(registry.resolve("ollama:qwen3-coder:30b")).toMatchObject({
+			model: "qwen3-coder:30b",
+			config: { id: "ollama" },
+		});
 		expect(registry.resolve("anthropic")).toMatchObject({ model: "claude" });
 		expect(registry.resolve("ollama")).toBeNull();
 		expect(registry.resolve("openai:gpt")).toBeNull();
@@ -60,11 +63,15 @@ describe("ProviderRegistry", () => {
 				statusTimeoutMs: 20,
 				create: (c) =>
 					c.id === "anthropic"
-						? fake(c, { health: async () => ({ ok: false, code: "not_authenticated", message: "No key" }), listModels: () => Promise.reject(new Error("401")) })
+						? fake(c, {
+								health: async () => ({ ok: false, code: "not_authenticated", message: "No key" }),
+								listModels: () => Promise.reject(new Error("401")),
+							})
 						: fake(c, { health: () => new Promise(() => {}) }),
 			},
 			configs,
 		);
+
 		const statuses = await registry.statuses();
 		expect(statuses.map((s) => [s.id, s.health && s.health.ok, s.models.length])).toEqual([
 			["anthropic", false, 0],
@@ -78,6 +85,7 @@ describe("ProviderRegistry", () => {
 	test("createProvider builds the right kind for each type", () => {
 		const make = (type: ProviderConfig["type"], extra: Partial<ProviderConfig> = {}) =>
 			createProvider({ id: type, type, label: type, enabled: true, ...extra }, { secrets });
+
 		expect(make("anthropic").kind).toBe("api");
 		expect(make("openai-compatible", { baseUrl: "http://localhost:1234/v1" }).kind).toBe("api");
 		expect(make("claude-code").kind).toBe("cli");

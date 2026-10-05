@@ -2,12 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { transform } from "sucrase";
 import { componentApi, type ComponentExport } from "./api";
 import { LIBRARY } from "./library";
-import { humanize, libraryPreviewModule, previewImport, previewLayout, previewModule, previewPath, sampleProps, variantAxes, variantGridModule } from "./preview";
+import {
+	humanize,
+	libraryPreviewModule,
+	previewImport,
+	previewLayout,
+	previewModule,
+	previewPath,
+	sampleProps,
+	variantAxes,
+	variantGridModule,
+} from "./preview";
 
 const compiles = (source: string) => {
 	transform(source, { transforms: ["typescript", "jsx", "imports"], jsxRuntime: "automatic", production: true });
+
 	return true;
 };
+
 const exp = (source: string) => componentApi("components/x.tsx", source).exports[0]!;
 
 const METRIC = exp(`import type { LucideIcon } from "lucide-react";
@@ -46,31 +58,55 @@ describe("sampleProps", () => {
 	test("names become readable, special names get plausible values", () => {
 		expect(humanize("firstName")).toBe("First name");
 		expect(humanize("due_date")).toBe("Due date");
-		const card = exp(`export function ContactCard({ fullName, email, href, dueDate, count }: { fullName: string; email: string; href: string; dueDate: string; count: number }) { return null; }`);
-		expect(sampleProps(card)).toEqual({ fullName: "Full name", email: "ana@example.com", href: "#", dueDate: "Mar 14", count: 3 });
+
+		const card = exp(
+			`export function ContactCard({ fullName, email, href, dueDate, count }: { fullName: string; email: string; href: string; dueDate: string; count: number }) { return null; }`,
+		);
+
+		expect(sampleProps(card)).toEqual({
+			fullName: "Full name",
+			email: "ana@example.com",
+			href: "#",
+			dueDate: "Mar 14",
+			count: 3,
+		});
 	});
 
 	test("enum default wins over the first option; elements that take children get a label", () => {
 		const button = exp(`import { cva, type VariantProps } from "class-variance-authority";
 const v = cva("", { variants: { size: { sm: "", lg: "" } }, defaultVariants: { size: "lg" } });
 export function Action(props: React.ComponentProps<"button"> & VariantProps<typeof v>) { return <button {...props} />; }`);
+
 		expect(sampleProps(button)).toEqual({ size: "lg", children: "Action" });
 	});
 });
 
 describe("previewModule", () => {
 	test("renders the component with its props, centered on the background", () => {
-		const source = previewModule({ componentPath: "components/metric-tile.tsx", exportName: "MetricTile", props: sampleProps(METRIC) });
+		const source = previewModule({
+			componentPath: "components/metric-tile.tsx",
+			exportName: "MetricTile",
+			props: sampleProps(METRIC),
+		});
+
 		expect(source).toContain('import { Star as StarIcon } from "lucide-react";');
 		expect(source).toContain('import { MetricTile } from "../components/metric-tile";');
 		expect(source).toContain("export default function MetricTilePreview()");
 		expect(source).toContain("flex min-h-full items-center justify-center bg-background p-8");
-		expect(source).toContain('<MetricTile label={"Label"} value={42} percent={64} icon={StarIcon} tone={"neutral"} live={false} tags={["Design","Research","Launch"]} rows={[]}>{"Metric tile"}</MetricTile>');
+		expect(source).toContain(
+			'<MetricTile label={"Label"} value={42} percent={64} icon={StarIcon} tone={"neutral"} live={false} tags={["Design","Research","Launch"]} rows={[]}>{"Metric tile"}</MetricTile>',
+		);
 		expect(compiles(source)).toBe(true);
 	});
 
 	test("layouts", () => {
-		const stretch = previewModule({ componentPath: "components/a.tsx", exportName: "A", props: { on: true }, layout: "stretch" });
+		const stretch = previewModule({
+			componentPath: "components/a.tsx",
+			exportName: "A",
+			props: { on: true },
+			layout: "stretch",
+		});
+
 		expect(stretch).toContain('<div className="w-full max-w-md">');
 		expect(stretch).toContain("<A on />");
 		const fill = previewModule({ componentPath: "components/a.tsx", exportName: "A", props: {}, layout: "fill" });
@@ -82,7 +118,12 @@ describe("previewModule", () => {
 	});
 
 	test("strings that would break JSX are escaped", () => {
-		const source = previewModule({ componentPath: "components/a.tsx", exportName: "A", props: { title: 'Say "hi" {now} </A>', children: "<b>" } });
+		const source = previewModule({
+			componentPath: "components/a.tsx",
+			exportName: "A",
+			props: { title: 'Say "hi" {now} </A>', children: "<b>" },
+		});
+
 		expect(compiles(source)).toBe(true);
 	});
 
@@ -96,6 +137,7 @@ describe("variantGridModule", () => {
 	test("one labelled instance per option of each axis", () => {
 		const source = variantGridModule({ componentPath: "components/metric-tile.tsx", component: METRIC })!;
 		expect(source).toContain('<p className="text-xs font-medium text-muted-foreground">tone</p>');
+
 		for (const tone of ["neutral", "positive", "negative"]) expect(source).toContain(`tone={"${tone}"}`);
 		expect(source).toContain('{"positive"}</span>');
 		expect(source).toContain("export default function MetricTilePreviewVariants()");
@@ -106,8 +148,11 @@ describe("variantGridModule", () => {
 		const pill = exp(`import { cva, type VariantProps } from "class-variance-authority";
 const v = cva("", { variants: { tone: { a: "", b: "" }, size: { sm: "", md: "" } } });
 export function Pill({ shape = "round" }: VariantProps<typeof v> & { shape?: "round" | "square" }) { return null; }`);
+
 		expect(variantAxes(pill).map((a) => a.name)).toEqual(["tone", "size"]);
-		expect(compiles(variantGridModule({ componentPath: "components/pill.tsx", component: pill, props: {} })!)).toBe(true);
+		expect(compiles(variantGridModule({ componentPath: "components/pill.tsx", component: pill, props: {} })!)).toBe(
+			true,
+		);
 	});
 
 	test("null without variants", () => {
@@ -121,7 +166,9 @@ describe("libraryPreviewModule", () => {
 		for (const item of LIBRARY) {
 			const source = libraryPreviewModule(item);
 			expect(compiles(source)).toBe(true);
-			for (const { from, names } of item.imports) expect(source).toContain(`import { ${names.join(", ")} } from "${from}";`);
+
+			for (const { from, names } of item.imports)
+				expect(source).toContain(`import { ${names.join(", ")} } from "${from}";`);
 			expect(source).toMatch(/export default function [A-Z]\w*Preview\(\)/);
 		}
 	});
@@ -130,25 +177,44 @@ describe("libraryPreviewModule", () => {
 describe("previews render", () => {
 	/** Evaluates `entry` from `files` like the frame does: runtime externals, relative project imports. */
 	const render = async (files: Record<string, string>, entry: string) => {
-		const { externals } = await import("../../mainview/runtime/externals");
+		const { externals, isExternalSpecifier } = await import("../../mainview/runtime/externals");
 		const { joinPath } = await import("../../mainview/lib/render/resolve");
 		const { renderToString } = await import("react-dom/server");
 		const { createElement } = await import("react");
 		const cache = new Map<string, unknown>();
+
 		const load = (path: string): any => {
 			if (cache.has(path)) return cache.get(path);
-			const { code } = transform(files[path]!, { transforms: ["typescript", "jsx", "imports"], jsxRuntime: "automatic", production: true });
-			const module = { exports: {} as Record<string, unknown> };
+
+			const { code } = transform(files[path]!, {
+				transforms: ["typescript", "jsx", "imports"],
+				jsxRuntime: "automatic",
+				production: true,
+			});
+
+			const module = { exports: {} };
 			cache.set(path, module.exports);
-			const require = (specifier: string) => (specifier.startsWith(".") ? load(`${joinPath(path, specifier)}.tsx`) : externals[specifier]);
+
+			const require = (specifier: string) =>
+				specifier.startsWith(".")
+					? load(`${joinPath(path, specifier)}.tsx`)
+					: isExternalSpecifier(specifier)
+						? externals[specifier]
+						: undefined;
+
 			new Function("require", "module", "exports", code)(require, module, module.exports);
+
 			return module.exports;
 		};
+
 		return renderToString(createElement(load(entry).default));
 	};
 
 	test("library items", async () => {
-		for (const item of LIBRARY) expect((await render({ "preview/item.tsx": libraryPreviewModule(item) }, "preview/item.tsx")).length).toBeGreaterThan(100);
+		for (const item of LIBRARY)
+			expect(
+				(await render({ "preview/item.tsx": libraryPreviewModule(item) }, "preview/item.tsx")).length,
+			).toBeGreaterThan(100);
 	});
 
 	test("a project component, its sample props and its variant grid", async () => {
@@ -158,13 +224,30 @@ export function MetricTile({ label, value, icon: Icon, tone = "neutral", tags }:
 	return <div className="rounded-lg border p-4"><Icon className="size-4" /><p>{label}</p><p>{value}</p><Badge>{tone}</Badge>{tags.map((t) => <span key={t}>{t}</span>)}</div>;
 }
 `;
+
 		const tile = exp(source);
-		const preview = previewModule({ componentPath: "components/metric-tile.tsx", exportName: "MetricTile", props: sampleProps(tile), layout: previewLayout(tile.name) });
-		const html = await render({ "components/metric-tile.tsx": source, [previewPath(tile.name)]: preview }, previewPath(tile.name));
+
+		const preview = previewModule({
+			componentPath: "components/metric-tile.tsx",
+			exportName: "MetricTile",
+			props: sampleProps(tile),
+			layout: previewLayout(tile.name),
+		});
+
+		const html = await render(
+			{ "components/metric-tile.tsx": source, [previewPath(tile.name)]: preview },
+			previewPath(tile.name),
+		);
+
 		expect(html).toContain("Label");
 		expect(html).toContain("Research");
 		const grid = variantGridModule({ componentPath: "components/metric-tile.tsx", component: tile })!;
-		const gridHtml = await render({ "components/metric-tile.tsx": source, "preview/grid.tsx": grid }, "preview/grid.tsx");
+
+		const gridHtml = await render(
+			{ "components/metric-tile.tsx": source, "preview/grid.tsx": grid },
+			"preview/grid.tsx",
+		);
+
 		expect(gridHtml).toContain("positive");
 	});
 });

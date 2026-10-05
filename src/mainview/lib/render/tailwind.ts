@@ -9,6 +9,7 @@ export type StylesheetSources = Record<string, string>;
 /** Input CSS shared by every screen: Tailwind, animations and the theme tokens. */
 export function screenInput(stylesheets: StylesheetSources) {
 	const imports = Object.keys(stylesheets).map((id) => `@import "${id}";`);
+
 	return `${imports.join("\n")}\n${SCREEN_THEME_CSS}`;
 }
 
@@ -18,7 +19,9 @@ export function createCompiler(stylesheets: StylesheetSources): Promise<Compiler
 		base: "/",
 		loadStylesheet: async (id, base) => {
 			const content = stylesheets[id];
+
 			if (content === undefined) throw new Error(`Unknown stylesheet ${id}`);
+
 			return { path: id, base, content };
 		},
 	});
@@ -56,28 +59,35 @@ export class TailwindBuilder {
 	/** Adds candidates and rebuilds if any is new. Returns whether the CSS changed. */
 	add(candidates: Iterable<string>): boolean {
 		const fresh: string[] = [];
+
 		for (const candidate of candidates) {
 			if (!this.#known.has(candidate)) {
 				this.#known.add(candidate);
 				fresh.push(candidate);
 			}
 		}
+
 		if (fresh.length === 0 || !this.#compiler) return false;
+
 		return this.#build(fresh);
 	}
 
 	/** Called with the new stylesheet whenever it changes. */
 	subscribe(listener: (css: string) => void) {
 		this.#listeners.add(listener);
+
 		return () => void this.#listeners.delete(listener);
 	}
 
 	#build(fresh: string[]) {
 		this.builds++;
 		const css = this.#compiler!.build(fresh);
+
 		if (css === this.css) return false;
 		this.css = css;
+
 		for (const listener of this.#listeners) listener(css);
+
 		return true;
 	}
 }

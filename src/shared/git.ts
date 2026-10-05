@@ -56,7 +56,8 @@ export type ChangedPath = { status: string; path: string };
 
 type Verb = "add" | "update" | "remove";
 
-const verbOf = (status: string): Verb => (status === "A" || status === "?" ? "add" : status === "D" ? "remove" : "update");
+const verbOf = (status: string): Verb =>
+	status === "A" || status === "?" ? "add" : status === "D" ? "remove" : "update";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
@@ -69,36 +70,52 @@ const shortName = (path: string) => screenNameFromPath(path).toLowerCase();
  */
 export function commitMessage(changes: ChangedPath[]): string {
 	const parts: string[] = [];
+
 	const describe = (kind: "screen" | "component", test: (path: string) => boolean) => {
 		const byVerb = new Map<Verb, string[]>();
+
 		for (const change of changes) {
 			if (!test(change.path)) continue;
 			const verb = verbOf(change.status);
 			byVerb.set(verb, [...(byVerb.get(verb) ?? []), change.path]);
 		}
+
 		for (const verb of ["add", "update", "remove"] as const) {
 			const paths = byVerb.get(verb);
+
 			if (!paths) continue;
-			parts.push(paths.length === 1 ? `${verb} ${shortName(paths[0]!)} ${kind}` : `${verb} ${plural(paths.length, kind)}`);
+			parts.push(
+				paths.length === 1 ? `${verb} ${shortName(paths[0]!)} ${kind}` : `${verb} ${plural(paths.length, kind)}`,
+			);
 		}
 	};
+
 	describe("screen", isScreenFile);
 	describe("component", isComponentFile);
 	const paths = new Set(changes.map((change) => change.path));
+
 	for (const file of ["PRODUCT.md", "DESIGN.md"]) if (paths.has(file)) parts.push(`update ${file}`);
-	const known = (path: string) => isScreenFile(path) || isComponentFile(path) || path === "PRODUCT.md" || path === "DESIGN.md";
+
+	const known = (path: string) =>
+		isScreenFile(path) || isComponentFile(path) || path === "PRODUCT.md" || path === "DESIGN.md";
+
 	if (paths.has("rabisco.json")) parts.push("update the canvas");
 	const others = [...paths].filter((path) => !known(path) && path !== "rabisco.json" && path !== "chat.jsonl");
+
 	if (others.length) parts.push(`update ${plural(others.length, "other file")}`);
+
 	if (parts.length === 0 && paths.has("chat.jsonl")) parts.push("update the chat");
+
 	if (parts.length === 0) parts.push("update the project");
 
 	const shown = parts.length > 3 ? [...parts.slice(0, 3), "more"] : parts;
 	const subject = `Rabisco: ${shown.join(", ")}`;
+
 	const body = [...changes]
 		.sort((a, b) => a.path.localeCompare(b.path))
 		.map((change) => `- ${verbOf(change.status)} ${change.path}`)
 		.join("\n");
+
 	return `${subject}\n\n${body}\n`;
 }
 

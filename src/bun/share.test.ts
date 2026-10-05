@@ -13,12 +13,17 @@ const snapshot = (name = "Shop </title>"): ShareSnapshot => ({
 	createdAt: "2026-10-04T00:00:00.000Z",
 	start: "screens/welcome.tsx",
 	screens: [{ file: "screens/welcome.tsx", name: "Welcome", device: "mobile", width: 390, height: 844 }],
-	modules: { "screens/welcome.tsx": { source: "export default () => <p>Hi</p>", code: "exports.default = () => null;" } },
+	modules: {
+		"screens/welcome.tsx": { source: "export default () => <p>Hi</p>", code: "exports.default = () => null;" },
+	},
 	css: ".p{color:red}",
 	theme: "",
 });
 
-const runtime = { html: '<!doctype html><div id="root"></div><script src="./frame.js"></script>', js: "/* runtime */".padEnd(4000, " ") };
+const runtime = {
+	html: '<!doctype html><div id="root"></div><script src="./frame.js"></script>',
+	js: "/* runtime */".padEnd(4000, " "),
+};
 
 describe("viewerFiles", () => {
 	test("a static site with relative URLs and the snapshot as a classic script", () => {
@@ -27,9 +32,9 @@ describe("viewerFiles", () => {
 		expect(files["index.html"]).toContain("<title>Shop &lt;/title&gt;</title>");
 		expect(files["index.html"]).toContain('sandbox="allow-scripts" src="runtime/frame.html"');
 		expect(files["index.html"]).not.toMatch(/(src|href)="\//);
-		const window: Record<string, unknown> = {};
+		const window = {};
 		new Function("window", files["snapshot.js"]!)(window);
-		expect(window[SNAPSHOT_GLOBAL]).toEqual(snapshot());
+		expect(window).toEqual({ [SNAPSHOT_GLOBAL]: snapshot() });
 		expect(files["runtime/frame.html"]).toBe(`<!doctype html><div id="root"></div><script>${runtime.js}</script>`);
 	});
 
@@ -41,8 +46,18 @@ describe("viewerFiles", () => {
 	});
 
 	test("the viewer's link resolution matches the app's", () => {
+		// SAFETY: NORMALIZE_TARGET_JS declares the viewer's `normalizeTarget(to: string): string`
 		const normalize = new Function(`${NORMALIZE_TARGET_JS}; return normalizeTarget;`)() as (to: string) => string;
-		for (const to of ["settings", "./settings.tsx", "/screens/settings.tsx", "screens/settings", " a\\b ", "components/x", "../up"]) {
+
+		for (const to of [
+			"settings",
+			"./settings.tsx",
+			"/screens/settings.tsx",
+			"screens/settings",
+			" a\\b ",
+			"components/x",
+			"../up",
+		]) {
 			expect(normalize(to)).toBe(normalizeTarget(to));
 		}
 	});
@@ -58,7 +73,12 @@ describe("share service", () => {
 	afterEach(() => service?.stopAll());
 
 	const create = () =>
-		(service = createShareService({ readRuntime: () => runtime, hostname: "127.0.0.1", lanAddress: () => "192.168.1.20", token: () => "tok123" }));
+		(service = createShareService({
+			readRuntime: () => runtime,
+			hostname: "127.0.0.1",
+			lanAddress: () => "192.168.1.20",
+			token: () => "tok123",
+		}));
 
 	test("serves the viewer under the token, read-only", async () => {
 		const shares = create();
@@ -94,7 +114,11 @@ describe("share service", () => {
 	test("compresses large files when asked", () => {
 		const shares = create();
 		shares.publish("/p/app.rabisco", snapshot());
-		const response = shares.handle(new Request("http://x/tok123/runtime/frame.html", { headers: { "Accept-Encoding": "gzip, br" } }));
+
+		const response = shares.handle(
+			new Request("http://x/tok123/runtime/frame.html", { headers: { "Accept-Encoding": "gzip, br" } }),
+		);
+
 		expect(response.headers.get("content-encoding")).toBe("gzip");
 	});
 
@@ -133,7 +157,12 @@ test("readScreenRuntime reads the first folder that has the runtime", () => {
 test("shareScreens keeps picked screens in canvas order", () => {
 	const frame = (file: string) => ({ file, name: "", device: "mobile" as const, x: 0, y: 0, width: 390, height: 844 });
 	const files = { "screens/b.tsx": "", "screens/a.tsx": "", "screens/a.alt-1.tsx": "", "components/c.tsx": "" };
-	const screens = shareScreens([frame("screens/b.tsx"), frame("screens/a.alt-1.tsx"), frame("screens/a.tsx"), frame("screens/gone.tsx")], files);
+
+	const screens = shareScreens(
+		[frame("screens/b.tsx"), frame("screens/a.alt-1.tsx"), frame("screens/a.tsx"), frame("screens/gone.tsx")],
+		files,
+	);
+
 	expect(screens.map((screen) => [screen.file, screen.name])).toEqual([
 		["screens/b.tsx", "B"],
 		["screens/a.tsx", "A"],

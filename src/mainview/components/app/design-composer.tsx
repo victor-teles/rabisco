@@ -111,19 +111,17 @@ export function DesignComposer({
 	);
 }
 
-export function DeviceToggle({
-	device,
-	onDeviceChange,
-}: {
-	device: Device;
-	onDeviceChange: (device: Device) => void;
-}) {
+const isDevice = (value: string): value is Device => value === "mobile" || value === "desktop";
+
+export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDeviceChange: (device: Device) => void }) {
 	return (
 		<ToggleGroup
 			type="single"
 			size="sm"
 			value={device}
-			onValueChange={(next) => next && onDeviceChange(next as Device)}
+			onValueChange={(next) => {
+				if (isDevice(next)) onDeviceChange(next);
+			}}
 			aria-label="Target device"
 			className="h-7"
 		>
@@ -161,12 +159,16 @@ export function VariationsPicker({
 			size="xs"
 			aria-label={`Variations: ${value}`}
 			aria-disabled={hint ? true : undefined}
-			className={cn("h-7 gap-0.5 px-1.5 text-muted-foreground tabular-nums", hint && "opacity-40 hover:bg-transparent", className)}
+			className={cn(
+				"h-7 gap-0.5 px-1.5 text-muted-foreground tabular-nums",
+				hint && "opacity-40 hover:bg-transparent",
+				className,
+			)}
 		>
-			{value}×
-			{hint ? null : <ChevronDown className="size-3 shrink-0" />}
+			{value}×{hint ? null : <ChevronDown className="size-3 shrink-0" />}
 		</Button>
 	);
+
 	if (hint) {
 		return (
 			<Tooltip>
@@ -177,6 +179,7 @@ export function VariationsPicker({
 			</Tooltip>
 		);
 	}
+
 	return (
 		<DropdownMenu modal={false}>
 			<Tooltip>
@@ -186,7 +189,9 @@ export function VariationsPicker({
 				<TooltipContent side="top">Variations</TooltipContent>
 			</Tooltip>
 			<DropdownMenuContent align="start" side="top" className="min-w-40">
-				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">Variations per screen</DropdownMenuLabel>
+				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+					Variations per screen
+				</DropdownMenuLabel>
 				<DropdownMenuRadioGroup value={String(value)} onValueChange={(next) => onChange(Number(next))}>
 					{COUNTS.map((count) => (
 						<DropdownMenuRadioItem key={count} value={String(count)} className="text-[13px]">
@@ -203,6 +208,7 @@ export function VariationsPicker({
 export function ModelPicker({ className }: { className?: string }) {
 	const { models, model, loading } = useProviders();
 	const groups = new Map<string, ModelOption[]>();
+
 	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
 
 	if (!loading && models.length === 0) {

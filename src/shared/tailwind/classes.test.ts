@@ -28,11 +28,14 @@ import {
 	SPACING_SCALE,
 	splitModifier,
 	styleClass,
+	type ClassHit,
 } from "./classes";
 
 const at = (source: string, needle: string) => {
 	const index = source.indexOf(needle);
+
 	if (index < 0) throw new Error(`missing ${needle}`);
+
 	return index;
 };
 
@@ -41,19 +44,33 @@ const screen = (jsx: string) => `export default function Screen() {\n\treturn (\
 describe("readClassName", () => {
 	test("a plain string attribute", () => {
 		const source = screen(`<div className="flex gap-2">Hi</div>`);
-		expect(readClassName(source, at(source, "<div"))).toEqual({ kind: "string", editable: true, classes: "flex gap-2", text: `"flex gap-2"` });
+		expect(readClassName(source, at(source, "<div"))).toEqual({
+			kind: "string",
+			editable: true,
+			classes: "flex gap-2",
+			text: `"flex gap-2"`,
+		});
 	});
 
 	test("a missing attribute is editable and empty", () => {
 		const source = screen(`<div>Hi</div>`);
-		expect(readClassName(source, at(source, "<div"))).toEqual({ kind: "none", editable: true, classes: "", text: null });
+		expect(readClassName(source, at(source, "<div"))).toEqual({
+			kind: "none",
+			editable: true,
+			classes: "",
+			text: null,
+		});
 	});
 
 	test("a string expression and a template literal without interpolation", () => {
 		const a = screen(`<div className={"p-4 'x'"} />`);
 		expect(readClassName(a, at(a, "<div"))).toMatchObject({ kind: "literal", editable: true, classes: "p-4 'x'" });
 		const b = screen("<div className={`p-4\n\t\t\tmt-2`} />");
-		expect(readClassName(b, at(b, "<div"))).toMatchObject({ kind: "literal", editable: true, classes: "p-4\n\t\t\tmt-2" });
+		expect(readClassName(b, at(b, "<div"))).toMatchObject({
+			kind: "literal",
+			editable: true,
+			classes: "p-4\n\t\t\tmt-2",
+		});
 		const c = screen(`<div className={ 'p-4' } />`);
 		expect(readClassName(c, at(c, "<div"))).toMatchObject({ kind: "literal", classes: "p-4" });
 	});
@@ -61,8 +78,13 @@ describe("readClassName", () => {
 	test("the first string argument of cn, clsx and cx", () => {
 		for (const fn of ["cn", "clsx", "cx"]) {
 			const source = screen(`<div className={${fn}("rounded-md border", active && "bg-accent")} />`);
-			expect(readClassName(source, at(source, "<div"))).toMatchObject({ kind: "call", editable: true, classes: "rounded-md border" });
+			expect(readClassName(source, at(source, "<div"))).toMatchObject({
+				kind: "call",
+				editable: true,
+				classes: "rounded-md border",
+			});
 		}
+
 		const multiline = screen(`<div className={cn(\n\t\t\t"p-4",\n\t\t\tclassName,\n\t\t)} />`);
 		expect(readClassName(multiline, at(multiline, "<div"))).toMatchObject({ kind: "call", classes: "p-4" });
 		const single = screen(`<div className={cn("p-4")} />`);
@@ -73,10 +95,10 @@ describe("readClassName", () => {
 		for (const value of [
 			"{styles.card}",
 			"{`p-4 ${size}`}",
-			"{open ? \"a\" : \"b\"}",
-			"{cn(base, \"p-4\")}",
-			"{\"p-4 \" + extra}",
-			"{other(\"p-4\")}",
+			'{open ? "a" : "b"}',
+			'{cn(base, "p-4")}',
+			'{"p-4 " + extra}',
+			'{other("p-4")}',
 		]) {
 			const source = screen(`<div className=${value} />`);
 			const info = readClassName(source, at(source, "<div"))!;
@@ -104,7 +126,9 @@ describe("readClassName", () => {
 describe("setClassName", () => {
 	test("edits a plain attribute in place", () => {
 		const source = screen(`<div className="flex gap-2" id="a">Hi</div>`);
-		expect(setClassName(source, at(source, "<div"), "grid gap-4")).toBe(screen(`<div className="grid gap-4" id="a">Hi</div>`));
+		expect(setClassName(source, at(source, "<div"), "grid gap-4")).toBe(
+			screen(`<div className="grid gap-4" id="a">Hi</div>`),
+		);
 	});
 
 	test("creates the attribute when missing", () => {
@@ -125,17 +149,27 @@ describe("setClassName", () => {
 
 	test("keeps quoting valid", () => {
 		const source = screen(`<div className="p-4" />`);
-		expect(setClassName(source, at(source, "<div"), `content-["x"] p-4`)).toBe(screen(`<div className={"content-[\\"x\\"] p-4"} />`));
+		expect(setClassName(source, at(source, "<div"), `content-["x"] p-4`)).toBe(
+			screen(`<div className={"content-[\\"x\\"] p-4"} />`),
+		);
 		const single = screen(`<div className={'p-4'} />`);
-		expect(setClassName(single, at(single, "<div"), `content-['x']`)).toBe(screen(`<div className={'content-[\\'x\\']'} />`));
+		expect(setClassName(single, at(single, "<div"), `content-['x']`)).toBe(
+			screen(`<div className={'content-[\\'x\\']'} />`),
+		);
 		const template = screen("<div className={`p-4`} />");
-		expect(setClassName(template, at(template, "<div"), "content-['`'] p-2")).toBe(screen("<div className={`content-['\\`'] p-2`} />"));
+		expect(setClassName(template, at(template, "<div"), "content-['`'] p-2")).toBe(
+			screen("<div className={`content-['\\`'] p-2`} />"),
+		);
 	});
 
 	test("edits the first literal of cn() and leaves the rest", () => {
 		const source = screen(`<div className={cn("p-4 flex", active && "bg-accent")} />`);
-		expect(setClassName(source, at(source, "<div"), "p-6 flex")).toBe(screen(`<div className={cn("p-6 flex", active && "bg-accent")} />`));
-		expect(setClassName(source, at(source, "<div"), "")).toBe(screen(`<div className={cn("", active && "bg-accent")} />`));
+		expect(setClassName(source, at(source, "<div"), "p-6 flex")).toBe(
+			screen(`<div className={cn("p-6 flex", active && "bg-accent")} />`),
+		);
+		expect(setClassName(source, at(source, "<div"), "")).toBe(
+			screen(`<div className={cn("", active && "bg-accent")} />`),
+		);
 	});
 
 	test("round-trips what it reads", () => {
@@ -160,7 +194,14 @@ describe("setClassName", () => {
 
 describe("parseClass", () => {
 	test("variants, important and negative", () => {
-		expect(parseClass("md:hover:!-mt-4")).toEqual({ raw: "md:hover:!-mt-4", variants: ["md", "hover"], important: true, importantLast: false, negative: true, utility: "mt-4" });
+		expect(parseClass("md:hover:!-mt-4")).toEqual({
+			raw: "md:hover:!-mt-4",
+			variants: ["md", "hover"],
+			important: true,
+			importantLast: false,
+			negative: true,
+			utility: "mt-4",
+		});
 		expect(parseClass("p-4!")).toMatchObject({ variants: [], important: true, importantLast: true, utility: "p-4" });
 		expect(parseClass("bg-[url(http://x)]")).toMatchObject({ variants: [], utility: "bg-[url(http://x)]" });
 		expect(parseClass("[&>svg]:size-4")).toMatchObject({ variants: ["[&>svg]"], utility: "size-4" });
@@ -174,7 +215,7 @@ describe("parseClass", () => {
 });
 
 describe("classifyClass", () => {
-	const cases: [string, string | null, string?, string?][] = [
+	const cases: [string, ClassHit["prop"] | null, string?, string?][] = [
 		["flex", "display", "", "flex"],
 		["inline-flex", "display", "", "inline-flex"],
 		["hidden", "display", "", "hidden"],
@@ -259,11 +300,13 @@ describe("classifyClass", () => {
 		["place-items-center", null],
 		["translate-x-2", null],
 	];
+
 	for (const [cls, prop, name, value] of cases) {
 		test(cls, () => {
 			const hit = classifyClass(cls);
+
 			if (prop === null) expect(hit).toBeNull();
-			else expect(hit).toEqual({ prop: prop as never, name: name!, value: value! });
+			else expect(hit).toEqual({ prop, name: name!, value: value! });
 		});
 	}
 });
@@ -282,7 +325,9 @@ describe("getStyle / setStyle", () => {
 	test("replaces in place and keeps everything else, order included", () => {
 		const classes = "flex md:text-lg text-sm hover:text-base text-primary";
 		expect(setStyle(classes, "fontSize", "xl")).toBe("flex md:text-lg text-xl hover:text-base text-primary");
-		expect(setStyle(classes, "textColor", "red-500/50")).toBe("flex md:text-lg text-sm hover:text-base text-red-500/50");
+		expect(setStyle(classes, "textColor", "red-500/50")).toBe(
+			"flex md:text-lg text-sm hover:text-base text-red-500/50",
+		);
 	});
 
 	test("appends when the property is unset", () => {
@@ -305,10 +350,18 @@ describe("getStyle / setStyle", () => {
 
 	test("ambiguous prefixes don't touch each other", () => {
 		const classes = "text-lg text-center text-primary border border-input font-semibold font-mono";
-		expect(setStyle(classes, "fontSize", "sm")).toBe("text-sm text-center text-primary border border-input font-semibold font-mono");
-		expect(setStyle(classes, "textAlign", "left")).toBe("text-lg text-left text-primary border border-input font-semibold font-mono");
-		expect(setStyle(classes, "borderColor", "ring")).toBe("text-lg text-center text-primary border border-ring font-semibold font-mono");
-		expect(setStyle(classes, "fontWeight", "bold")).toBe("text-lg text-center text-primary border border-input font-bold font-mono");
+		expect(setStyle(classes, "fontSize", "sm")).toBe(
+			"text-sm text-center text-primary border border-input font-semibold font-mono",
+		);
+		expect(setStyle(classes, "textAlign", "left")).toBe(
+			"text-lg text-left text-primary border border-input font-semibold font-mono",
+		);
+		expect(setStyle(classes, "borderColor", "ring")).toBe(
+			"text-lg text-center text-primary border border-ring font-semibold font-mono",
+		);
+		expect(setStyle(classes, "fontWeight", "bold")).toBe(
+			"text-lg text-center text-primary border border-input font-bold font-mono",
+		);
 	});
 
 	test("keeps !important", () => {
@@ -328,7 +381,9 @@ describe("getStyle / setStyle", () => {
 	});
 
 	test("keeps whitespace layout of the other classes", () => {
-		expect(setStyle("flex\n\t\titems-center\n\t\tbg-red-500", "backgroundColor", "card")).toBe("flex\n\t\titems-center\n\t\tbg-card");
+		expect(setStyle("flex\n\t\titems-center\n\t\tbg-red-500", "backgroundColor", "card")).toBe(
+			"flex\n\t\titems-center\n\t\tbg-card",
+		);
 		expect(setStyle("flex\n\t\tbg-red-500\n\t\titems-center", "backgroundColor", null)).toBe("flex\n\t\titems-center");
 	});
 
@@ -351,23 +406,40 @@ describe("boxes", () => {
 		expect(boxClasses("padding", { top: "4", right: "4", bottom: "4", left: "4" })).toEqual(["p-4"]);
 		expect(boxClasses("padding", { top: "2", right: "4", bottom: "2", left: "4" })).toEqual(["px-4", "py-2"]);
 		expect(boxClasses("padding", { top: "1", right: "4", bottom: "2", left: "4" })).toEqual(["px-4", "pt-1", "pb-2"]);
-		expect(boxClasses("padding", { top: "1", right: "2", bottom: "3", left: "4" })).toEqual(["pt-1", "pr-2", "pb-3", "pl-4"]);
+		expect(boxClasses("padding", { top: "1", right: "2", bottom: "3", left: "4" })).toEqual([
+			"pt-1",
+			"pr-2",
+			"pb-3",
+			"pl-4",
+		]);
 		expect(boxClasses("padding", { top: "2", right: null, bottom: "2", left: null })).toEqual(["py-2"]);
-		expect(boxClasses("margin", { top: "-2", right: "auto", bottom: "-2", left: "auto" })).toEqual(["mx-auto", "-my-2"]);
+		expect(boxClasses("margin", { top: "-2", right: "auto", bottom: "-2", left: "auto" })).toEqual([
+			"mx-auto",
+			"-my-2",
+		]);
 		expect(boxClasses("borderWidth", { top: "", right: "", bottom: "", left: "" })).toEqual(["border"]);
 		expect(boxClasses("borderWidth", { top: null, right: null, bottom: "2", left: null })).toEqual(["border-b-2"]);
-		expect(boxClasses("borderRadius", { tl: "lg", tr: "lg", br: "none", bl: "none" })).toEqual(["rounded-t-lg", "rounded-b-none"]);
+		expect(boxClasses("borderRadius", { tl: "lg", tr: "lg", br: "none", bl: "none" })).toEqual([
+			"rounded-t-lg",
+			"rounded-b-none",
+		]);
 		expect(boxClasses("size", { width: "4", height: "4" })).toEqual(["size-4"]);
 		expect(boxClasses("size", { width: "full", height: "12" })).toEqual(["w-full", "h-12"]);
 		expect(boxClasses("gap", { x: "2", y: "4" })).toEqual(["gap-x-2", "gap-y-4"]);
 	});
 
 	test("setBox replaces the group where it was", () => {
-		expect(setBox("flex pt-2 items-center px-4 pb-2", "padding", { top: "3", right: "4", bottom: "3", left: "4" })).toBe("flex px-4 py-3 items-center");
-		expect(setBox("flex pt-2 items-center px-4 pb-2", "padding", { top: "3", right: "4", bottom: "2", left: "4" })).toBe("flex px-4 pt-3 pb-2 items-center");
+		expect(
+			setBox("flex pt-2 items-center px-4 pb-2", "padding", { top: "3", right: "4", bottom: "3", left: "4" }),
+		).toBe("flex px-4 py-3 items-center");
+		expect(
+			setBox("flex pt-2 items-center px-4 pb-2", "padding", { top: "3", right: "4", bottom: "2", left: "4" }),
+		).toBe("flex px-4 pt-3 pb-2 items-center");
 		expect(setBox("flex px-4 py-2", "padding", { top: "3", right: "3", bottom: "3", left: "3" })).toBe("flex p-3");
 		expect(setBox("flex", "padding", { top: "3", right: "3", bottom: "3", left: "3" })).toBe("flex p-3");
-		expect(setBox("flex p-4 gap-2", "padding", { top: null, right: null, bottom: null, left: null })).toBe("flex gap-2");
+		expect(setBox("flex p-4 gap-2", "padding", { top: null, right: null, bottom: null, left: null })).toBe(
+			"flex gap-2",
+		);
 		expect(setBox("md:p-8 p-4", "padding", { top: "2", right: "2", bottom: "2", left: "2" })).toBe("md:p-8 p-2");
 	});
 
@@ -383,9 +455,15 @@ describe("boxes", () => {
 		expect(setBoxParts("size-4 rounded", "size", ["width"], "8")).toBe("w-8 h-4 rounded");
 		expect(setBoxParts("w-8 h-4", "size", ["height"], "8")).toBe("size-8");
 		expect(setBoxParts("gap-2", "gap", ["y"], "4")).toBe("gap-x-2 gap-y-4");
-		expect(setBoxParts("rounded-lg", "borderRadius", ["tl"], "none")).toBe("rounded-r-lg rounded-tl-none rounded-bl-lg");
-		expect(setBoxParts("border border-input", "borderWidth", ["top", "right", "bottom", "left"], "2")).toBe("border-2 border-input");
-		expect(setBoxParts("border-2 border-input", "borderWidth", ["top", "right", "bottom", "left"], null)).toBe("border-input");
+		expect(setBoxParts("rounded-lg", "borderRadius", ["tl"], "none")).toBe(
+			"rounded-r-lg rounded-tl-none rounded-bl-lg",
+		);
+		expect(setBoxParts("border border-input", "borderWidth", ["top", "right", "bottom", "left"], "2")).toBe(
+			"border-2 border-input",
+		);
+		expect(setBoxParts("border-2 border-input", "borderWidth", ["top", "right", "bottom", "left"], null)).toBe(
+			"border-input",
+		);
 	});
 
 	test("radius corners", () => {
@@ -401,10 +479,28 @@ describe("boxes", () => {
 
 describe("values", () => {
 	test("isColorValue", () => {
-		for (const value of ["primary", "muted-foreground", "red-500", "slate-950", "black", "white", "transparent", "current", "inherit", "primary/50", "[#fff]", "[oklch(0.5_0.1_20)]", "[color:var(--x)]", "(--brand)", "white/[0.3]"]) {
+		for (const value of [
+			"primary",
+			"muted-foreground",
+			"red-500",
+			"slate-950",
+			"black",
+			"white",
+			"transparent",
+			"current",
+			"inherit",
+			"primary/50",
+			"[#fff]",
+			"[oklch(0.5_0.1_20)]",
+			"[color:var(--x)]",
+			"(--brand)",
+			"white/[0.3]",
+		]) {
 			expect(isColorValue(value)).toBe(true);
 		}
-		for (const value of ["lg", "red-550", "cover", "[13px]", "[url(/a.png)]", "primary/abc"]) expect(isColorValue(value)).toBe(false);
+
+		for (const value of ["lg", "red-550", "cover", "[13px]", "[url(/a.png)]", "primary/abc"])
+			expect(isColorValue(value)).toBe(false);
 	});
 
 	test("parseScaleInput: spacing", () => {

@@ -6,11 +6,14 @@ import { validateFiles } from "./validate";
 import { variantProvider } from "./variant-provider";
 
 const SCREEN = `import { Row } from "../components/row";\nexport default function A() { return <Row /> }\n`;
+
 const ROW = `export function Row() { return <div /> }\n`;
+
 const BAD = `export default function A() { return <div> }\n`;
 
 function scripted(scripts: GenerationEvent[][]) {
 	const requests: GenerationRequest[] = [];
+
 	const provider: Provider = {
 		id: "fake",
 		kind: "api",
@@ -21,10 +24,12 @@ function scripted(scripts: GenerationEvent[][]) {
 		async *generate(request) {
 			const script = scripts[requests.length];
 			requests.push(request);
+
 			if (!script) throw new Error("unexpected call");
 			yield* script;
 		},
 	};
+
 	return { provider, requests };
 }
 
@@ -33,15 +38,28 @@ const file = (path: string, content: string): GenerationEvent[] => [
 	{ type: "file.end", path, content },
 ];
 
-const request: GenerationRequest = { id: "g1-v1", task: "create", model: "m", prompt: "a screen", device: "mobile", context: {}, files: [] };
+const request: GenerationRequest = {
+	id: "g1-v1",
+	task: "create",
+	model: "m",
+	prompt: "a screen",
+	device: "mobile",
+	context: {},
+	files: [],
+};
 
 describe("variantProvider", () => {
 	test("keeps the provider's identity and renames its stream", async () => {
-		const { provider } = scripted([[...file("screens/a.tsx", SCREEN), ...file("components/row.tsx", ROW), { type: "done" }]]);
+		const { provider } = scripted([
+			[...file("screens/a.tsx", SCREEN), ...file("components/row.tsx", ROW), { type: "done" }],
+		]);
+
 		const wrapped = variantProvider(provider, createVariantRenamer({ variant: 1, taken: ["screens/a.tsx"] }));
 		expect([wrapped.id, wrapped.kind, wrapped.label]).toEqual(["fake", "api", "Fake"]);
 		const paths: string[] = [];
-		for await (const event of wrapped.generate(request, new AbortController().signal)) if (event.type === "file.end") paths.push(event.path);
+
+		for await (const event of wrapped.generate(request, new AbortController().signal))
+			if (event.type === "file.end") paths.push(event.path);
 		expect(paths).toEqual(["screens/a.alt-1.tsx", "screens/a.alt-1.tsx", "components/row-v2.tsx"]);
 	});
 
@@ -50,7 +68,9 @@ describe("variantProvider", () => {
 			[...file("screens/a.tsx", BAD), ...file("components/row.tsx", ROW), { type: "done" }],
 			[...file("screens/a.alt-1.tsx", SCREEN.replace("row", "row-v2")), { type: "done" }],
 		]);
+
 		const renamer = createVariantRenamer({ variant: 1, taken: ["screens/a.tsx"] });
+
 		const result = await runGeneration({
 			provider: variantProvider(provider, renamer),
 			request,
@@ -59,6 +79,7 @@ describe("variantProvider", () => {
 			alternates: renamer.assigned,
 			onEvent: () => {},
 		});
+
 		expect(requests[1]!.targets).toEqual(["screens/a.alt-1.tsx"]);
 		expect(result.problems).toEqual([]);
 		expect(result.changes).toEqual([

@@ -64,18 +64,31 @@ export function useInterview({
 	const finish = useCallback(
 		async (done: InterviewState) => {
 			update(null);
+
 			if (!hasAnswers(done)) {
 				addMessages([message("assistant", "No answers, so I left PRODUCT.md as it was.")]);
+
 				return;
 			}
+
 			if (model) {
 				if (await writeContext("PRODUCT.md", interviewPrompt(done))) onWritten();
+
 				return;
 			}
+
 			// No model: the answers already are a PRODUCT.md
 			const content = productFromAnswers(done, projectName);
 			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "PRODUCT.md": content } }));
-			addMessages([{ ...message("assistant", "Wrote PRODUCT.md from your answers. Set up a model to have them written up properly."), context: [] }]);
+			addMessages([
+				{
+					...message(
+						"assistant",
+						"Wrote PRODUCT.md from your answers. Set up a model to have them written up properly.",
+					),
+					context: [],
+				},
+			]);
 			onWritten();
 		},
 		[model, projectName, addMessages, change, writeContext, onWritten],
@@ -85,8 +98,14 @@ export function useInterview({
 	const advance = useCallback(
 		(next: InterviewState, answer?: string) => {
 			const following = currentQuestion(next);
-			const messages = [answer === undefined ? null : message("user", answer), following ? message("assistant", questionText(following)) : null];
+
+			const messages = [
+				answer === undefined ? null : message("user", answer),
+				following ? message("assistant", questionText(following)) : null,
+			];
+
 			addMessages(messages.filter((m): m is ChatMessage => m !== null));
+
 			if (isInterviewDone(next)) void finish(next);
 			else update(next);
 		},
@@ -108,6 +127,7 @@ export function useInterview({
 	const answer = useCallback(
 		(text: string) => {
 			const current = live.current;
+
 			if (current && text.trim()) advance(answerQuestion(current, text), text.trim());
 		},
 		[advance],
@@ -115,6 +135,7 @@ export function useInterview({
 
 	const skip = useCallback(() => {
 		const current = live.current;
+
 		if (current) advance(skipQuestion(current));
 	}, [advance]);
 
@@ -125,5 +146,6 @@ export function useInterview({
 	}, [addMessages]);
 
 	const interview: Interview | null = state ? { step: state.step + 1, total: INTERVIEW_QUESTIONS.length } : null;
+
 	return { interview, start, answer, skip, cancel };
 }

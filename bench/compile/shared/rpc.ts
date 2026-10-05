@@ -8,7 +8,10 @@ export type BenchRPC = {
 		requests: {
 			ping: { params: { payload: string }; response: { payload: string } };
 			compileInMain: { params: { source: string; mode: CompileMode }; response: { code: string } };
-			report: { params: { env: Record<string, string>; results: Stat[]; checks: Record<string, string> }; response: { ok: true } };
+			report: {
+				params: { env: Record<string, string>; results: Stat[]; checks: Record<string, string> };
+				response: { ok: true };
+			};
 		};
 		messages: {};
 	}>;

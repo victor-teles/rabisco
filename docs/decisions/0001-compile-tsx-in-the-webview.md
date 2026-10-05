@@ -15,19 +15,19 @@ Screens are React components written in TSX ([principle 3](../PRINCIPLES.md#3-sc
 
 Median time per compile. The medium fixture is a 157-line screen, the large one has 753 lines.
 
-| Compiler | Where | Medium | Large | Cold start | Size cost |
-| --- | --- | --- | --- | --- | --- |
-| `Bun.Transpiler` | main | 0.011 ms | 0.047 ms | 0.8 ms | none (native) |
-| `Bun.build` | main | 0.59 ms | 1.58 ms | 4.9 ms | none (native) |
-| Sucrase | webview | **0.30 ms** | **1.35 ms** | 4 ms | ~1.5 MB unminified JS |
-| SWC (wasm) | webview | 0.40 ms | 1.35 ms | 68 ms init | 17 MB wasm |
-| esbuild (wasm) | webview | 1.8 ms | 5.1 ms | 81–314 ms init | 13 MB wasm |
+| Compiler         | Where   | Medium      | Large       | Cold start     | Size cost             |
+| ---------------- | ------- | ----------- | ----------- | -------------- | --------------------- |
+| `Bun.Transpiler` | main    | 0.011 ms    | 0.047 ms    | 0.8 ms         | none (native)         |
+| `Bun.build`      | main    | 0.59 ms     | 1.58 ms     | 4.9 ms         | none (native)         |
+| Sucrase          | webview | **0.30 ms** | **1.35 ms** | 4 ms           | ~1.5 MB unminified JS |
+| SWC (wasm)       | webview | 0.40 ms     | 1.35 ms     | 68 ms init     | 17 MB wasm            |
+| esbuild (wasm)   | webview | 1.8 ms      | 5.1 ms      | 81–314 ms init | 13 MB wasm            |
 
-| Cost | Median |
-| --- | --- |
-| RPC round trip webview → main, any payload from 0 to 40 KB | **~17.5 ms** |
-| Compile in main as seen from the webview (round trip included) | ~17.5 ms |
-| Sucrase in the main process (pure JS) | 15.5 ms (medium), 77 ms (large) |
+| Cost                                                           | Median                          |
+| -------------------------------------------------------------- | ------------------------------- |
+| RPC round trip webview → main, any payload from 0 to 40 KB     | **~17.5 ms**                    |
+| Compile in main as seen from the webview (round trip included) | ~17.5 ms                        |
+| Sucrase in the main process (pure JS)                          | 15.5 ms (medium), 77 ms (large) |
 
 ## Findings
 

@@ -4,7 +4,9 @@ import { listLinks, resolveLink, type ElementRef, type ProjectLink } from "../..
 import type { Frame, ProjectFiles } from "../../../shared/types";
 
 type Point = { x: number; y: number };
+
 type Rect = { x: number; y: number; width: number; height: number };
+
 type Side = "left" | "right" | "top" | "bottom";
 
 /**
@@ -19,48 +21,70 @@ type Connector = {
 
 /** Screen pixels: stroke widths, arrowheads and stubs keep their size at every zoom */
 const STROKE = 1.5;
+
 const STROKE_SELECTED = 2;
+
 const ARROW = 8;
+
 const DOT = 3;
+
 const STUB = 40;
+
 /** Canvas units: how far curves bow out of a frame's edge, at most */
 const MAX_BOW = 320;
 
 /** Where a connector leaves `a` and enters `b`, from where the frames sit. `null` when they overlap. */
 function sidesOf(a: Rect, b: Rect): [Side, Side] | null {
 	if (b.x >= a.x + a.width) return ["right", "left"];
+
 	if (b.x + b.width <= a.x) return ["left", "right"];
+
 	if (b.y >= a.y + a.height) return ["bottom", "top"];
+
 	if (b.y + b.height <= a.y) return ["top", "bottom"];
+
 	return null;
 }
 
 /** The point at `t` (0…1) along `side` of `rect`. */
 function pointOn(rect: Rect, side: Side, t: number): Point {
-	if (side === "left" || side === "right") return { x: side === "left" ? rect.x : rect.x + rect.width, y: rect.y + rect.height * t };
+	if (side === "left" || side === "right")
+		return { x: side === "left" ? rect.x : rect.x + rect.width, y: rect.y + rect.height * t };
+
 	return { x: rect.x + rect.width * t, y: side === "top" ? rect.y : rect.y + rect.height };
 }
 
-const OUTWARD: Record<Side, Point> = { left: { x: -1, y: 0 }, right: { x: 1, y: 0 }, top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 } };
+const OUTWARD: Record<Side, Point> = {
+	left: { x: -1, y: 0 },
+	right: { x: 1, y: 0 },
+	top: { x: 0, y: -1 },
+	bottom: { x: 0, y: 1 },
+};
 
 /** The frames' connectors, from the project's links. Links in components or frameless files aren't drawn. */
 function connectorsOf(frames: Frame[], files: ProjectFiles): Connector[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const connectors = new Map<string, Connector>();
+
 	for (const link of listLinks(files)) {
 		const source = byFile.get(link.file);
+
 		if (!source) continue;
 		const resolved = resolveLink(link.to, files);
 		const target = resolved.kind === "screen" ? byFile.get(resolved.file) : undefined;
+
 		// A link to the screen itself goes nowhere visible
 		if (resolved.kind === "screen" && (!target || target === source)) continue;
 		const key = `${source.file}→${resolved.kind === "screen" ? resolved.file : resolved.kind === "back" ? "back" : `?${resolved.to}`}`;
 		const existing = connectors.get(key);
+
 		if (existing) existing.links.push(link);
-		else if (resolved.kind === "screen") connectors.set(key, { key, source, links: [link], kind: "screen", target: target! });
+		else if (resolved.kind === "screen")
+			connectors.set(key, { key, source, links: [link], kind: "screen", target: target! });
 		else if (resolved.kind === "back") connectors.set(key, { key, source, links: [link], kind: "back" });
 		else connectors.set(key, { key, source, links: [link], kind: "broken", to: resolved.to });
 	}
+
 	return [...connectors.values()];
 }
 
@@ -72,10 +96,12 @@ type Route = { connector: Connector; from: Point; to: Point; fromSide: Side; toS
  */
 function routesOf(connectors: Connector[]): Route[] {
 	type End = { route: number; frame: Frame; side: Side; other: Point; outgoing: boolean };
+
 	const ends: End[] = [];
 	const sides: { fromSide: Side; toSide: Side | null }[] = [];
 	connectors.forEach((connector, route) => {
 		const source = connector.source;
+
 		if (connector.kind === "screen") {
 			const [fromSide, toSide] = sidesOf(source, connector.target) ?? ["right", "right"];
 			sides.push({ fromSide, toSide });
@@ -85,23 +111,35 @@ function routesOf(connectors: Connector[]): Route[] {
 		} else {
 			sides.push({ fromSide: "right", toSide: null });
 			// Stubs sit below the screen connectors of the side
-			ends.push({ route, frame: source, side: "right", other: { x: source.x + source.width, y: Number.MAX_SAFE_INTEGER - route }, outgoing: true });
+			ends.push({
+				route,
+				frame: source,
+				side: "right",
+				other: { x: source.x + source.width, y: Number.MAX_SAFE_INTEGER - route },
+				outgoing: true,
+			});
 		}
 	});
 	const points = new Map<string, Point>();
 	const groups = new Map<string, End[]>();
+
 	for (const end of ends) {
 		const key = `${end.frame.file}:${end.side}`;
 		groups.set(key, [...(groups.get(key) ?? []), end]);
 	}
+
 	for (const group of groups.values()) {
 		const vertical = group[0]!.side === "left" || group[0]!.side === "right";
 		group.sort((a, b) => (vertical ? a.other.y - b.other.y : a.other.x - b.other.x));
-		group.forEach((end, i) => points.set(`${end.route}:${end.outgoing}`, pointOn(end.frame, end.side, (i + 1) / (group.length + 1))));
+		group.forEach((end, i) =>
+			points.set(`${end.route}:${end.outgoing}`, pointOn(end.frame, end.side, (i + 1) / (group.length + 1))),
+		);
 	}
+
 	return connectors.map((connector, route) => {
 		const from = points.get(`${route}:true`)!;
 		const { fromSide, toSide } = sides[route]!;
+
 		return { connector, from, to: toSide ? points.get(`${route}:false`)! : from, fromSide, toSide };
 	});
 }
@@ -115,12 +153,25 @@ function routesOf(connectors: Connector[]): Route[] {
  * connector of the `selected` element is highlighted. Strokes and labels keep
  * their screen size at every zoom. Never takes pointer input.
  */
-export function LinksLayer({ frames, files, zoom, selected }: { frames: Frame[]; files: ProjectFiles; zoom: number; selected?: ElementRef | null }) {
+export function LinksLayer({
+	frames,
+	files,
+	zoom,
+	selected,
+}: {
+	frames: Frame[];
+	files: ProjectFiles;
+	zoom: number;
+	selected?: ElementRef | null;
+}) {
 	const routes = useMemo(() => routesOf(connectorsOf(frames, files)), [frames, files]);
+
 	if (!routes.length) return null;
 	const px = (n: number) => n / zoom;
+
 	const isSelected = (connector: Connector) =>
 		!!selected && connector.links.some((link) => link.file === selected.file && link.start === selected.start);
+
 	// The selected connector draws last, on top
 	const ordered = [...routes].sort((a, b) => Number(isSelected(a.connector)) - Number(isSelected(b.connector)));
 
@@ -135,6 +186,7 @@ export function LinksLayer({ frames, files, zoom, selected }: { frames: Frame[];
 					let path: string;
 					let end: Point;
 					let direction: Point;
+
 					if (toSide) {
 						const into = OUTWARD[toSide];
 						const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -151,10 +203,12 @@ export function LinksLayer({ frames, files, zoom, selected }: { frames: Frame[];
 						direction = out;
 						path = `M ${from.x} ${from.y} L ${end.x - out.x * px(ARROW)} ${end.y - out.y * px(ARROW)}`;
 					}
+
 					const normal = { x: -direction.y, y: direction.x };
 					const tail = { x: end.x - direction.x * px(ARROW), y: end.y - direction.y * px(ARROW) };
 					const half = px(ARROW) / 2;
 					const head = `${end.x},${end.y} ${tail.x + normal.x * half},${tail.y + normal.y * half} ${tail.x - normal.x * half},${tail.y - normal.y * half}`;
+
 					return (
 						<g key={connector.key} opacity={active ? 1 : broken ? 0.8 : 0.45}>
 							<path
@@ -177,8 +231,13 @@ export function LinksLayer({ frames, files, zoom, selected }: { frames: Frame[];
 				const at = { x: from.x + out.x * px(STUB + 4), y: from.y };
 				const missing = connector.kind === "broken" ? connector.to : null;
 				const broken = missing !== null;
+
 				return (
-					<div key={connector.key} className="pointer-events-none absolute" style={{ left: at.x, top: at.y, width: 0, height: 0 }}>
+					<div
+						key={connector.key}
+						className="pointer-events-none absolute"
+						style={{ left: at.x, top: at.y, width: 0, height: 0 }}
+					>
 						<div
 							className={cn(
 								"absolute top-0 left-0 rounded-full border bg-background px-1.5 text-[11px] leading-[18px] whitespace-nowrap shadow-xs",

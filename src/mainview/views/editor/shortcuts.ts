@@ -27,6 +27,7 @@ export const COMPARE_KEYS = "⇧V";
 
 /** Figma's Assets panel: ⌥2. Matched on `event.code` (`Digit2`) since ⌥ changes `event.key` on macOS */
 export const COMPONENTS_VIEW_KEYS = "⌥2";
+
 export const COMPONENTS_VIEW_CODE = "Digit2";
 
 /** Figma's create-component shortcut: make the selected structure a component */
@@ -38,8 +39,7 @@ export const isMakeComponent = (event: KeyboardEvent | React.KeyboardEvent) =>
 
 export function isTyping(target: EventTarget | null) {
 	return (
-		target instanceof HTMLElement &&
-		(target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))
+		target instanceof HTMLElement && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))
 	);
 }
 
@@ -55,4 +55,5 @@ export const isPlay = (event: KeyboardEvent | React.KeyboardEvent) =>
 
 /** Back and forward in play mode, as in a browser */
 export const PLAY_BACK_KEYS = "⌘[";
+
 export const PLAY_FORWARD_KEYS = "⌘]";

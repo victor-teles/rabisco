@@ -5,8 +5,18 @@ import { generateMockScreens } from "../mock-generator";
 import { componentApi, propsSignature, type ComponentExport } from "./api";
 
 const api = (source: string) => componentApi("components/x.tsx", source).exports;
+
 const one = (source: string) => api(source)[0]!;
+
 const prop = (exp: ComponentExport, name: string) => exp.props.find((p) => p.name === name);
+
+function named(exports: ComponentExport[], name: string): ComponentExport {
+	const found = exports.find((e) => e.name === name);
+
+	if (!found) throw new Error(`no export named ${name}`);
+
+	return found;
+}
 
 const STAT_CARD = `import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +45,9 @@ describe("componentApi", () => {
 		]);
 		expect(exp.acceptsChildren).toBe(false);
 		expect(exp.extendsElement).toBeUndefined();
-		expect(propsSignature(exp)).toBe('StatCard({ label: string; value: string; tone?: "default" | "success" = "default" })');
+		expect(propsSignature(exp)).toBe(
+			'StatCard({ label: string; value: string; tone?: "default" | "success" = "default" })',
+		);
 	});
 
 	test("named type alias, icons, handlers, children, arrays and objects", () => {
@@ -63,6 +75,7 @@ export function ListRow({ title, count = 3, icon: Icon, tone = "neutral", select
 	return <div>{title}{count}<Icon />{children}</div>;
 }
 `);
+
 		const types = Object.fromEntries(exp.props.map((p) => [p.name, p.type]));
 		expect(types).toEqual({
 			title: { kind: "string" },
@@ -101,8 +114,14 @@ export function Chip({ label, size = "sm", ...props }: ChipProps) {
 	return <span {...props}>{label}</span>;
 }
 `);
+
 		expect(exp.props.map((p) => p.name)).toEqual(["label", "size", "id", "disabled"]);
-		expect(prop(exp, "size")).toEqual({ name: "size", type: { kind: "enum", options: ["sm", "md"] }, optional: true, default: "sm" });
+		expect(prop(exp, "size")).toEqual({
+			name: "size",
+			type: { kind: "enum", options: ["sm", "md"] },
+			optional: true,
+			default: "sm",
+		});
 		expect(exp.extendsElement).toBe("span");
 		expect(exp.acceptsChildren).toBe(true);
 	});
@@ -125,6 +144,7 @@ export function Pill({ className, tone, size, ...props }: React.ComponentProps<"
 	return <button className={cn(pillVariants({ tone, size }), className)} {...props} />;
 }
 `);
+
 		expect(exp.variants).toEqual({
 			tone: { options: ["neutral", "success", "very-loud"], default: "neutral" },
 			size: { options: ["sm", "md"], default: "md" },
@@ -132,7 +152,12 @@ export function Pill({ className, tone, size, ...props }: React.ComponentProps<"
 		});
 		expect(exp.props).toEqual([
 			{ name: "label", type: { kind: "string" }, optional: true },
-			{ name: "tone", type: { kind: "enum", options: ["neutral", "success", "very-loud"] }, optional: true, default: "neutral" },
+			{
+				name: "tone",
+				type: { kind: "enum", options: ["neutral", "success", "very-loud"] },
+				optional: true,
+				default: "neutral",
+			},
 			{ name: "size", type: { kind: "enum", options: ["sm", "md"] }, optional: true, default: "md" },
 			{ name: "pressed", type: { kind: "boolean" }, optional: true, default: false },
 		]);
@@ -163,8 +188,16 @@ export const Section: React.FC<{ title: string; children?: React.ReactNode }> = 
 
 export const Heading = async ({ level }: { level: 1 | 2 | 3 }) => <h1>{level}</h1>;
 `);
+
 		expect(exports.map((e) => e.name)).toEqual(["Field", "Avatar", "Divider", "Price", "Section", "Heading"]);
-		const [field, avatar, divider, price, section, heading] = exports as [ComponentExport, ComponentExport, ComponentExport, ComponentExport, ComponentExport, ComponentExport];
+
+		const field = named(exports, "Field");
+		const avatar = named(exports, "Avatar");
+		const divider = named(exports, "Divider");
+		const price = named(exports, "Price");
+		const section = named(exports, "Section");
+		const heading = named(exports, "Heading");
+
 		expect(field.props.map((p) => p.name)).toEqual(["label", "hint"]);
 		expect(field.extendsElement).toBe("input");
 		expect(field.acceptsChildren).toBe(false);
@@ -185,6 +218,7 @@ export default function Ignored() { return null; }
 export type { ToolbarProps } from "./other";
 export { Toolbar, Toolbar as Bar, helper, items };
 `);
+
 		expect(exports.map((e) => e.name)).toEqual(["Toolbar", "Bar"]);
 		expect(exports[1]!.props).toEqual([{ name: "dense", type: { kind: "boolean" }, optional: true, default: false }]);
 	});
@@ -199,7 +233,8 @@ export function D({ children, open = true }: PropsWithChildren<{ open?: boolean 
 export function E({ label, size = 2 }) { return <div>{label}{size}</div>; }
 export function F(props) { return <div />; }
 `);
-		const [a, b, c, d, e, f] = exports as ComponentExport[];
+
+		const [a, b, c, d, e, f] = exports;
 		expect(a!.props.map((p) => p.name)).toEqual(["title", "subtitle"]);
 		expect(b!.props.every((p) => p.optional)).toBe(true);
 		expect(c!.props.map((p) => p.name)).toEqual(["title"]);
@@ -220,14 +255,23 @@ export function F(props) { return <div />; }
 type B = A & { b: number };
 export function Loop(props: A & Missing & Record<string, unknown>) { return null; }
 `);
+
 		expect(exp.props.map((p) => p.name).sort()).toEqual(["a", "b"]);
 	});
 
 	test("never throws: syntax errors, partial files and garbage give no exports", () => {
-		for (const source of ["", "export function Broken({ a }: { a: string ) {", "<<<>>>", STAT_CARD.slice(0, 200), "export { }", "export const X ="]) {
+		for (const source of [
+			"",
+			"export function Broken({ a }: { a: string ) {",
+			"<<<>>>",
+			STAT_CARD.slice(0, 200),
+			"export { }",
+			"export const X =",
+		]) {
 			expect(() => componentApi("components/x.tsx", source)).not.toThrow();
 			expect(Array.isArray(componentApi("components/x.tsx", source).exports)).toBe(true);
 		}
+
 		expect(api("export function Broken({ a }: { a: string ) {")).toEqual([]);
 	});
 
@@ -236,20 +280,39 @@ export function Loop(props: A & Missing & Record<string, unknown>) { return null
 		const tabBar = files.find((f) => f.path === "components/tab-bar.tsx")!;
 		expect(propsSignature(one(tabBar.content!))).toBe("TabBar({ active?: number = 0 })");
 		const statCard = files.find((f) => f.path === "components/stat-card.tsx")!;
-		expect(propsSignature(one(statCard.content!))).toBe("StatCard({ label: string; value: string; change?: string; icon?: LucideIcon; className?: string })");
+		expect(propsSignature(one(statCard.content!))).toBe(
+			"StatCard({ label: string; value: string; change?: string; icon?: LucideIcon; className?: string })",
+		);
 	});
 
 	test("shadcn ui modules", () => {
-		const read = (name: string) => readFileSync(join(import.meta.dir, `../../mainview/components/ui/${name}.tsx`), "utf8");
+		const read = (name: string) =>
+			readFileSync(join(import.meta.dir, `../../mainview/components/ui/${name}.tsx`), "utf8");
+
 		const button = componentApi("button", read("button")).exports.find((e) => e.name === "Button")!;
 		expect(button.variants.variant!.options).toContain("outline");
 		expect(button.variants.size!.default).toBe("default");
-		expect(prop(button, "asChild")).toEqual({ name: "asChild", type: { kind: "boolean" }, optional: true, default: false });
+		expect(prop(button, "asChild")).toEqual({
+			name: "asChild",
+			type: { kind: "boolean" },
+			optional: true,
+			default: false,
+		});
 		expect(button.extendsElement).toBe("button");
 		const card = componentApi("card", read("card")).exports.map((e) => e.name);
-		expect(card).toEqual(["Card", "CardHeader", "CardFooter", "CardTitle", "CardAction", "CardDescription", "CardContent"]);
+		expect(card).toEqual([
+			"Card",
+			"CardHeader",
+			"CardFooter",
+			"CardTitle",
+			"CardAction",
+			"CardDescription",
+			"CardContent",
+		]);
 		const avatar = componentApi("avatar", read("avatar")).exports[0]!;
 		expect(avatar.extendsElement).toBe("AvatarPrimitive.Root");
-		expect(propsSignature(avatar)).toBe('Avatar({ size?: "default" | "sm" | "lg" = "default"; ...props: ComponentProps<typeof AvatarPrimitive.Root> })');
+		expect(propsSignature(avatar)).toBe(
+			'Avatar({ size?: "default" | "sm" | "lg" = "default"; ...props: ComponentProps<typeof AvatarPrimitive.Root> })',
+		);
 	});
 });

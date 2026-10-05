@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
@@ -37,7 +37,10 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 /** "Made StatCard · replaced 4 in 3 files" */
 export function madeComponentMessage(exportName: string, replaced: { path: string; count: number }[]) {
 	const total = replaced.reduce((sum, item) => sum + item.count, 0);
-	return total > 1 ? `Made ${exportName} · replaced ${total} in ${plural(replaced.length, "file")}` : `Made ${exportName}`;
+
+	return total > 1
+		? `Made ${exportName} · replaced ${total} in ${plural(replaced.length, "file")}`
+		: `Made ${exportName}`;
 }
 
 /**
@@ -51,25 +54,33 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	const [naming, setNaming] = useState(false);
 	// Read in callbacks, so a generation that starts mid-burst refuses the next keystroke
 	const busyRef = useRef(busy);
-	busyRef.current = busy;
+
+	useLayoutEffect(() => {
+		busyRef.current = busy;
+	}, [busy]);
 
 	// Follow the element through edits; adjusting state while rendering avoids a frame with stale offsets
 	let node: Tracked | null = tracked;
+
 	if (tracked) {
 		const source = files[tracked.file];
+
 		if (tracked.file !== file || source === undefined) node = null;
 		else if (source !== tracked.source && parseJsx(source).ok) {
 			const start = remapStart(tracked.source, source, tracked.start);
 			node = start === null ? null : { file: tracked.file, start, source };
 		}
+
 		if (node !== tracked) setTracked(node);
 	}
+
 	if ((!node || busy) && naming) setNaming(false);
 
 	const select = useCallback(
 		(next: StructureNode | null) => {
 			const source = next ? stateRef.current?.files[next.file] : undefined;
 			setTracked(next && source !== undefined ? { ...next, source } : null);
+
 			if (!next) setNaming(false);
 		},
 		[stateRef],
@@ -83,7 +94,10 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 				(snapshot) => {
 					const source = snapshot.files[path];
 					const next = source === undefined ? null : edit(source);
-					return next === null || next === source ? snapshot : { ...snapshot, files: { ...snapshot.files, [path]: next } };
+
+					return next === null || next === source
+						? snapshot
+						: { ...snapshot, files: { ...snapshot.files, [path]: next } };
 				},
 				{ coalesce: step },
 			);
@@ -92,7 +106,10 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	);
 
 	/** Replaces a file's source; without `step`, the edit is an undo step of its own. */
-	const editCode = useCallback((path: string, text: string, step?: string) => editFile(path, () => text, step), [editFile]);
+	const editCode = useCallback(
+		(path: string, text: string, step?: string) => editFile(path, () => text, step),
+		[editFile],
+	);
 
 	const setProp = useCallback(
 		(target: StructureNode, name: string, value: Literal | null, spec?: PropSpec, step?: string) =>
@@ -101,19 +118,25 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	);
 
 	const setChildren = useCallback(
-		(target: StructureNode, text: string, step?: string) => editFile(target.file, (source) => setChildrenText(source, target.start, text), step),
+		(target: StructureNode, text: string, step?: string) =>
+			editFile(target.file, (source) => setChildrenText(source, target.start, text), step),
 		[editFile],
 	);
 
 	/** Deletes the selected element from its file (one undo step) and selects its parent. */
 	const removeNode = useCallback(() => {
 		const source = node ? stateRef.current?.files[node.file] : undefined;
+
 		if (!node || source === undefined) return;
+
 		if (busyRef.current) {
 			toast(BUSY_MESSAGE);
+
 			return;
 		}
+
 		const next = removeElement(source, node.start);
+
 		if (next === null || next === source) return;
 		const parent = findElement(parseJsx(source), node.start)?.parent ?? null;
 		change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [node.file]: next } }));
@@ -125,16 +148,23 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	const makeComponent = useCallback(
 		(name: string) => {
 			const current = stateRef.current;
+
 			if (!current || !node) return false;
+
 			if (busyRef.current) {
 				toast(BUSY_MESSAGE);
+
 				return false;
 			}
+
 			const result = extractComponent({ files: current.files, path: node.file, start: node.start, name });
+
 			if (!result.ok) {
 				toast(result.reason);
+
 				return false;
 			}
+
 			const before = current.files[node.file]!;
 			change((snapshot) => ({ ...snapshot, files: applyFileChanges(snapshot.files, result.changes) }));
 			toast(madeComponentMessage(result.exportName, result.replaced));
@@ -142,32 +172,45 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 			const after = result.changes.find((c) => c.path === node.file)?.content ?? before;
 			const path = pathOf(parseJsx(before), node.start);
 			const usage = path ? atPath(parseJsx(after), path) : null;
-			setTracked(usage && usage.name === result.exportName ? { file: node.file, start: usage.start, source: after } : null);
+			setTracked(
+				usage && usage.name === result.exportName ? { file: node.file, start: usage.start, source: after } : null,
+			);
 			setNaming(false);
+
 			return true;
 		},
 		[stateRef, node, change],
 	);
 
 	// ⌥⌘K, Figma's create-component shortcut, from anywhere in the editor
-	const shortcut = useRef<(event: KeyboardEvent) => void>(() => {});
-	shortcut.current = (event) => {
+	const shortcut = useEffectEvent((event: KeyboardEvent) => {
 		if (!isMakeComponent(event) || event.defaultPrevented) return;
 		event.preventDefault();
 		onShowCode();
+
 		if (busyRef.current) toast(BUSY_MESSAGE);
 		else if (node) setNaming(true);
-		else toast("Select an element in Structure first", { description: "The Code tab shows the structure of the selected screen." });
-	};
+		else
+			toast("Select an element in Structure first", {
+				description: "The Code tab shows the structure of the selected screen.",
+			});
+	});
+
 	useEffect(() => {
-		const listener = (event: KeyboardEvent) => shortcut.current(event);
+		const listener = (event: KeyboardEvent) => shortcut(event);
 		window.addEventListener("keydown", listener);
+
 		return () => window.removeEventListener("keydown", listener);
 	}, []);
 
 	const nodeFile = node?.file ?? null;
 	const nodeStart = node?.start ?? -1;
-	const selected = useMemo<StructureNode | null>(() => (nodeFile === null ? null : { file: nodeFile, start: nodeStart }), [nodeFile, nodeStart]);
+
+	const selected = useMemo<StructureNode | null>(
+		() => (nodeFile === null ? null : { file: nodeFile, start: nodeStart }),
+		[nodeFile, nodeStart],
+	);
+
 	return { node: selected, select, busy, naming, setNaming, makeComponent, removeNode, editCode, setProp, setChildren };
 }
 

@@ -3,18 +3,8 @@ import { AlertCircle, Crosshair, MessageSquareText, Sparkles, X } from "lucide-r
 import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-	Message,
-	MessageAvatar,
-	MessageBody,
-	MessageContent,
-} from "@/components/ui/uai/message";
-import {
-	Thinking,
-	ThinkingActivity,
-	ThinkingContent,
-	ThinkingTrigger,
-} from "@/components/ui/uai/thinking";
+import { Message, MessageAvatar, MessageBody, MessageContent } from "@/components/ui/uai/message";
+import { Thinking, ThinkingActivity, ThinkingContent, ThinkingTrigger } from "@/components/ui/uai/thinking";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import type { Generation } from "@/hooks/use-generation";
 import type { Interview } from "@/hooks/use-interview";
@@ -50,11 +40,18 @@ type ChatPanelProps = {
 	onCancelInterview: () => void;
 };
 
-const TASK_TITLE = { create: "Designing", edit: "Editing", repair: "Fixing", context: "Writing", vary: "Varying" } as const;
+const TASK_TITLE = {
+	create: "Designing",
+	edit: "Editing",
+	repair: "Fixing",
+	context: "Writing",
+	vary: "Varying",
+} as const;
 
 function generationTitle(generation: Generation) {
 	if (generation.attempt > 1) return "Fixing problems";
 	const title = TASK_TITLE[generation.task];
+
 	return generation.variations > 1 ? `${title} · ${generation.variations} variations` : title;
 }
 
@@ -91,7 +88,8 @@ export function ChatPanel({
 	const interviewing = interview !== null;
 	const composerRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		if (interviewing) composerRef.current?.querySelector<HTMLTextAreaElement>('[data-slot="prompt-composer-input"]')?.focus();
+		if (interviewing)
+			composerRef.current?.querySelector<HTMLTextAreaElement>('[data-slot="prompt-composer-input"]')?.focus();
 	}, [interviewing]);
 
 	return (
@@ -105,8 +103,7 @@ export function ChatPanel({
 							</span>
 							<p className="mt-4 text-sm font-medium">Start with a description</p>
 							<p className="mt-1 text-[13px]/5 text-muted-foreground">
-								Tell Rabisco what you're building and who it's for. You can refine each screen
-								afterwards.
+								Tell Rabisco what you're building and who it's for. You can refine each screen afterwards.
 							</p>
 							<Button variant="ghost" size="sm" className="mt-3 text-muted-foreground" onClick={onStartInterview}>
 								<MessageSquareText />
@@ -145,7 +142,10 @@ export function ChatPanel({
 										<ThinkingActivity key={path} type="progress">
 											{file.done ? "Wrote" : "Writing"} <span className="font-mono text-xs">{path}</span>
 											{file.done ? null : (
-												<span className="text-subtle-foreground tabular-nums"> · {file.text.split("\n").length} lines</span>
+												<span className="text-subtle-foreground tabular-nums">
+													{" "}
+													· {file.text.split("\n").length} lines
+												</span>
 											)}
 										</ThinkingActivity>
 									))}
@@ -171,7 +171,12 @@ export function ChatPanel({
 
 			<div ref={composerRef} className="p-3 pt-0">
 				{interview ? (
-					<InterviewBar step={interview.step} total={interview.total} onSkip={onSkipQuestion} onCancel={onCancelInterview} />
+					<InterviewBar
+						step={interview.step}
+						total={interview.total}
+						onSkip={onSkipQuestion}
+						onCancel={onCancelInterview}
+					/>
 				) : focusLabel ? (
 					<FocusChip label={focusLabel} where={selectedScreenName} onClear={onClearFocus} />
 				) : null}
@@ -248,12 +253,19 @@ function FocusChip({ label, where, onClear }: { label: string; where?: string; o
 				Editing <span className="font-mono text-[11px] text-foreground">{label}</span>
 				{where ? (
 					<>
-						{" "}in <span className="font-medium text-muted-foreground">{where}</span>
+						{" "}
+						in <span className="font-medium text-muted-foreground">{where}</span>
 					</>
 				) : null}
 			</span>
 			{onClear ? (
-				<Button variant="ghost" size="icon-xs" aria-label="Clear the selected element" title="Edit the whole screen" onClick={onClear}>
+				<Button
+					variant="ghost"
+					size="icon-xs"
+					aria-label="Clear the selected element"
+					title="Edit the whole screen"
+					onClick={onClear}
+				>
 					<X />
 				</Button>
 			) : null}
@@ -261,7 +273,17 @@ function FocusChip({ label, where, onClear }: { label: string; where?: string; o
 	);
 }
 
-function InterviewBar({ step, total, onSkip, onCancel }: { step: number; total: number; onSkip: () => void; onCancel: () => void }) {
+function InterviewBar({
+	step,
+	total,
+	onSkip,
+	onCancel,
+}: {
+	step: number;
+	total: number;
+	onSkip: () => void;
+	onCancel: () => void;
+}) {
 	const action = (label: string, onClick: () => void): ReactNode => (
 		<button
 			type="button"
@@ -271,11 +293,15 @@ function InterviewBar({ step, total, onSkip, onCancel }: { step: number; total: 
 			{label}
 		</button>
 	);
+
 	return (
 		<div className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-subtle-foreground" aria-live="polite">
 			<MessageSquareText className="size-3.5" strokeWidth={1.8} />
 			<span>
-				Interview · <span className="tabular-nums">{step} of {total}</span>
+				Interview ·{" "}
+				<span className="tabular-nums">
+					{step} of {total}
+				</span>
 			</span>
 			<span className="ml-auto flex items-center gap-1.5">
 				{action("Skip", onSkip)}
@@ -311,8 +337,12 @@ function FailureCard({
 	const type = settings.providers.find((p) => p.id === failure.providerId)?.type;
 	const providerType = PROVIDER_TYPES.find((t) => t.type === type);
 	const settingsFix = failure.code === "not_authenticated" || failure.code === "not_installed";
+
 	return (
-		<div role="alert" className="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-[13px]">
+		<div
+			role="alert"
+			className="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-[13px]"
+		>
 			<div className="flex items-start gap-2">
 				<AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
 				<div className="min-w-0 flex-1">
@@ -331,7 +361,11 @@ function FailureCard({
 					</Button>
 				) : null}
 				{settingsFix || !failure.retryable ? (
-					<Button size="xs" variant={failure.retryable ? "outline" : "default"} onClick={() => openSettings(failure.providerId ?? null)}>
+					<Button
+						size="xs"
+						variant={failure.retryable ? "outline" : "default"}
+						onClick={() => openSettings(failure.providerId ?? null)}
+					>
 						Open settings
 					</Button>
 				) : null}

@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { componentApi } from "../../shared/components/api";
 import { LIBRARY } from "../../shared/components/library";
-import { componentDrag, componentInsertion, dropParent, hitStarts, insertDrop, libraryInsertion, parseDragItem, screenRoot } from "./component-drop";
+import {
+	componentDrag,
+	componentInsertion,
+	dropParent,
+	hitStarts,
+	insertDrop,
+	libraryInsertion,
+	parseDragItem,
+	screenRoot,
+} from "./component-drop";
 import { sourceVersion } from "./render/protocol";
 
 const SCREEN = `import { Button } from "@/components/ui/button";
@@ -29,7 +38,9 @@ export default function Home() {
 
 const at = (source: string, needle: string) => {
 	const index = source.indexOf(needle);
+
 	if (index < 0) throw new Error(`missing ${needle}`);
+
 	return index;
 };
 
@@ -101,6 +112,7 @@ describe("screenRoot", () => {
 	);
 }
 `;
+
 		expect(screenRoot(source)).toBe(at(source, "<main"));
 	});
 
@@ -147,11 +159,17 @@ export default function Screen() {
 
 	test("the drop goes to the first screen ancestor that takes it", () => {
 		// The frame reports the helper's div, then the screen's <ul>, then <main>
-		const out = insertDrop(source, [at(source, `<div className="row"`), at(source, "<ul"), at(source, "<main")], { snippet: "<p>Hi</p>", imports: [] })!;
+		const out = insertDrop(source, [at(source, `<div className="row"`), at(source, "<ul"), at(source, "<main")], {
+			snippet: "<p>Hi</p>",
+			imports: [],
+		})!;
+
 		expect(out).toContain(`\t\t\t</ul>\n\t\t\t<p>Hi</p>\n\t\t</main>`);
 		expect(out).toContain(`return <div className="row">{label}</div>;`);
 		// Nothing usable: the root
-		expect(insertDrop(source, [at(source, `<div className="row"`)], { snippet: "<p>Hi</p>", imports: [] })).toContain(`\t\t\t<p>Hi</p>\n\t\t</main>`);
+		expect(insertDrop(source, [at(source, `<div className="row"`)], { snippet: "<p>Hi</p>", imports: [] })).toContain(
+			`\t\t\t<p>Hi</p>\n\t\t</main>`,
+		);
 	});
 });
 
@@ -161,6 +179,7 @@ describe("insertDrop", () => {
 			snippet: `<StatCard label="Revenue" />`,
 			imports: [{ from: "../components/stat-card", names: ["StatCard"] }],
 		})!;
+
 		expect(out).toContain(`\t\t\t\t<Button>Go</Button>\n\t\t\t\t<StatCard label="Revenue" />\n\t\t\t</header>`);
 		expect(out).toContain(`import { StatCard } from "../components/stat-card";`);
 	});
@@ -185,11 +204,16 @@ describe("insertDrop", () => {
 
 describe("hitStarts", () => {
 	test("offsets are used only for the source version the frame rendered", () => {
-		const hit = { path: "screens/a.tsx", starts: [at(SCREEN, "<h1"), at(SCREEN, "<header")], version: sourceVersion(SCREEN) };
+		const hit = {
+			path: "screens/a.tsx",
+			starts: [at(SCREEN, "<h1"), at(SCREEN, "<header")],
+			version: sourceVersion(SCREEN),
+		};
+
 		expect(hitStarts(hit, "screens/a.tsx", SCREEN)).toEqual(hit.starts);
 		expect(hitStarts(hit, "screens/b.tsx", SCREEN)).toBeNull();
 		// Edited since (or the edit failed to load in the frame): the old offsets would land elsewhere
-		const edited = SCREEN.replace("<main", "<div className=\"x\" />\n\t\t<main");
+		const edited = SCREEN.replace("<main", '<div className="x" />\n\t\t<main');
 		expect(hitStarts(hit, "screens/a.tsx", edited)).toBeNull();
 		expect(hitStarts(null, "screens/a.tsx", SCREEN)).toBeNull();
 	});

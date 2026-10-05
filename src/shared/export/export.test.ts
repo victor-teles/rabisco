@@ -3,12 +3,22 @@ import type { Frame } from "../types";
 import { mixOklab, parseColor, toHex, type Rgba } from "./color";
 import { flowDocument, flowOrder, fitText, type FlowScreen } from "./flow";
 import { createPdf, jpegSize, pdfString, pdfTextString, PT_PER_PX } from "./pdf";
-import { fitRadii, inset, parseBoxShadow, parseLinearGradient, rectPath, sceneToSvg, splitTopLevel, type Scene } from "./scene";
+import {
+	fitRadii,
+	inset,
+	parseBoxShadow,
+	parseLinearGradient,
+	rectPath,
+	sceneToSvg,
+	splitTopLevel,
+	type Scene,
+} from "./scene";
 import { exportSlug, imageFileNames, imageTargets } from "./targets";
 
 const near = (color: Rgba | null, expected: [number, number, number, number?], tolerance = 2) => {
 	expect(color).not.toBeNull();
 	const [r, g, b, a = 1] = expected;
+
 	for (const [actual, wanted] of [
 		[color!.r, r],
 		[color!.g, g],
@@ -75,11 +85,20 @@ describe("scene geometry", () => {
 	});
 
 	test("inset shrinks the box and its radii", () => {
-		expect(inset({ x: 0, y: 0, width: 10, height: 10, radii: [4, 0, 0, 0] }, 1)).toEqual({ x: 1, y: 1, width: 8, height: 8, radii: [3, 0, 0, 0] });
+		expect(inset({ x: 0, y: 0, width: 10, height: 10, radii: [4, 0, 0, 0] }, 1)).toEqual({
+			x: 1,
+			y: 1,
+			width: 8,
+			height: 8,
+			radii: [3, 0, 0, 0],
+		});
 	});
 
 	test("splitTopLevel ignores commas in functions", () => {
-		expect(splitTopLevel("rgb(0, 0, 0) 0px 1px, oklch(1 0 0 / 0.5) 0 0 0 2px")).toEqual(["rgb(0, 0, 0) 0px 1px", "oklch(1 0 0 / 0.5) 0 0 0 2px"]);
+		expect(splitTopLevel("rgb(0, 0, 0) 0px 1px, oklch(1 0 0 / 0.5) 0 0 0 2px")).toEqual([
+			"rgb(0, 0, 0) 0px 1px",
+			"oklch(1 0 0 / 0.5) 0 0 0 2px",
+		]);
 	});
 });
 
@@ -88,6 +107,7 @@ describe("parseBoxShadow", () => {
 		const shadows = parseBoxShadow(
 			"rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.708 0 0) 0px 0px 0px 2px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px",
 		);
+
 		expect(shadows).toHaveLength(3);
 		expect(shadows[0]).toMatchObject({ spread: 2, blur: 0, inset: false });
 		expect(shadows[1]).toMatchObject({ offsetY: 1, blur: 3 });
@@ -104,8 +124,13 @@ describe("parseLinearGradient", () => {
 	const box = { x: 0, y: 0, width: 200, height: 100 };
 
 	test("to right in oklab: stops resolved, oklab steps added", () => {
-		const paint = parseLinearGradient("linear-gradient(to right in oklab, oklch(0.623 0.214 259.815) 0%, oklch(0.585 0.233 277.117) 100%)", box);
+		const paint = parseLinearGradient(
+			"linear-gradient(to right in oklab, oklch(0.623 0.214 259.815) 0%, oklch(0.585 0.233 277.117) 100%)",
+			box,
+		);
+
 		expect(paint?.kind).toBe("linear");
+
 		if (paint?.kind !== "linear") return;
 		expect([paint.x1, paint.y1, paint.x2, paint.y2]).toEqual([0, 50, 200, 50]);
 		expect(paint.stops.length).toBeGreaterThan(2);
@@ -115,10 +140,12 @@ describe("parseLinearGradient", () => {
 
 	test("default direction, missing positions and angles", () => {
 		const paint = parseLinearGradient("linear-gradient(rgb(255, 0, 0), rgb(0, 255, 0), rgb(0, 0, 255))", box);
+
 		if (paint?.kind !== "linear") throw new Error("expected a gradient");
 		expect([paint.x1, paint.y1, paint.x2, paint.y2]).toEqual([100, 0, 100, 100]);
 		expect(paint.stops.map((s) => s.offset)).toEqual([0, 0.5, 1]);
 		const angled = parseLinearGradient("linear-gradient(90deg, red, blue)", box);
+
 		if (angled?.kind !== "linear") throw new Error("expected a gradient");
 		expect(Math.round(angled.x2)).toBe(200);
 	});
@@ -136,8 +163,20 @@ describe("sceneToSvg", () => {
 		background: { r: 255, g: 255, b: 255, a: 1 },
 		links: [],
 		ops: [
-			{ type: "fill", shape: { x: 16, y: 16, width: 100, height: 40, radii: [8, 8, 8, 8] }, paint: { kind: "color", color: { r: 23, g: 23, b: 23, a: 1 } } },
-			{ type: "shadow", shape: { x: 16, y: 16, width: 100, height: 40, radii: [8, 8, 8, 8] }, color: { r: 0, g: 0, b: 0, a: 0.1 }, offsetX: 0, offsetY: 1, blur: 3, spread: 0 },
+			{
+				type: "fill",
+				rect: { x: 16, y: 16, width: 100, height: 40, radii: [8, 8, 8, 8] },
+				paint: { kind: "color", color: { r: 23, g: 23, b: 23, a: 1 } },
+			},
+			{
+				type: "shadow",
+				rect: { x: 16, y: 16, width: 100, height: 40, radii: [8, 8, 8, 8] },
+				color: { r: 0, g: 0, b: 0, a: 0.1 },
+				offsetX: 0,
+				offsetY: 1,
+				blur: 3,
+				spread: 0,
+			},
 			{
 				type: "group",
 				opacity: 0.5,
@@ -155,7 +194,12 @@ describe("sceneToSvg", () => {
 					},
 				],
 			},
-			{ type: "path", d: "M5 12h14", transform: [1, 0, 0, 1, 10, 10], stroke: { color: { r: 0, g: 0, b: 0, a: 1 }, width: 2, cap: "round", join: "round", miterLimit: 4, dash: [] } },
+			{
+				type: "path",
+				d: "M5 12h14",
+				transform: [1, 0, 0, 1, 10, 10],
+				stroke: { color: { r: 0, g: 0, b: 0, a: 1 }, width: 2, cap: "round", join: "round", miterLimit: 4, dash: [] },
+			},
 		],
 	};
 
@@ -171,6 +215,7 @@ describe("sceneToSvg", () => {
 		expect(svg).toContain("<feGaussianBlur");
 		expect(svg).toContain('transform="matrix(1 0 0 1 10 10)"');
 		expect(svg).not.toContain("foreignObject");
+
 		// Every referenced id is defined
 		for (const [, id] of svg.matchAll(/url\(#([a-z]\d+)\)/g)) expect(svg).toContain(`id="${id}"`);
 	});
@@ -179,7 +224,31 @@ describe("sceneToSvg", () => {
 describe("pdf", () => {
 	// The smallest JPEG header the size reader needs: SOI, APP0 (skipped), SOF0
 	const fakeJpeg = (width: number, height: number) =>
-		Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 255, width >> 8, width & 255, 3, 0, 0, 0, 0xff, 0xd9]);
+		Uint8Array.from([
+			0xff,
+			0xd8,
+			0xff,
+			0xe0,
+			0x00,
+			0x04,
+			0x00,
+			0x00,
+			0xff,
+			0xc0,
+			0x00,
+			0x11,
+			0x08,
+			height >> 8,
+			height & 255,
+			width >> 8,
+			width & 255,
+			3,
+			0,
+			0,
+			0,
+			0xff,
+			0xd9,
+		]);
 
 	const latin = (bytes: Uint8Array) => String.fromCharCode(...bytes);
 
@@ -197,11 +266,20 @@ describe("pdf", () => {
 
 	test("a valid structure: header, objects, xref offsets, trailer", () => {
 		const jpeg = fakeJpeg(2, 2);
+
 		const bytes = createPdf({
 			title: "Flow",
 			images: [{ jpeg, width: 2, height: 2 }],
 			pages: [
-				{ width: 300, height: 600, draw: [{ type: "image", image: 0, x: 10, y: 10, width: 100, height: 100 }, { type: "text", text: "Welcome", x: 10, y: 140, size: 12, bold: true }], links: [{ x: 0, y: 0, width: 50, height: 50, page: 1 }] },
+				{
+					width: 300,
+					height: 600,
+					draw: [
+						{ type: "image", image: 0, x: 10, y: 10, width: 100, height: 100 },
+						{ type: "text", text: "Welcome", x: 10, y: 140, size: 12, bold: true },
+					],
+					links: [{ x: 0, y: 0, width: 50, height: 50, page: 1 }],
+				},
 				{ width: 900, height: 700, draw: [{ type: "rect", x: 0, y: 0, width: 10, height: 10, fill: [1, 0, 0] }] },
 			],
 			outline: [
@@ -209,6 +287,7 @@ describe("pdf", () => {
 				{ title: "Two", page: 1 },
 			],
 		});
+
 		const text = latin(bytes);
 		expect(text).toStartWith("%PDF-1.4\n");
 		expect(text.trimEnd()).toEndWith("%%EOF");
@@ -227,12 +306,14 @@ describe("pdf", () => {
 		const xref = text.slice(startxref).split("\n");
 		const count = Number(xref[1]!.split(" ")[1]);
 		expect(text).toContain(`/Size ${count}`);
+
 		for (let id = 1; id < count; id++) {
 			const entry = xref[2 + id]!;
 			expect(entry).toMatch(/^\d{10} 00000 n $/);
 			const offset = Number(entry.slice(0, 10));
 			expect(text.slice(offset, offset + `${id} 0 obj`.length)).toBe(`${id} 0 obj`);
 		}
+
 		// Top-left coordinates are flipped: the text baseline at 140 sits at 600 - 140
 		expect(text).toContain("10 460 Td");
 	});
@@ -243,7 +324,8 @@ describe("pdf", () => {
 });
 
 describe("flowOrder", () => {
-	const screen = (links: string[]) => `export default function S() { return <div>${links.map((to) => `<a data-link-to="${to}">x</a>`).join("")}</div>; }\n`;
+	const screen = (links: string[]) =>
+		`export default function S() { return <div>${links.map((to) => `<a data-link-to="${to}">x</a>`).join("")}</div>; }\n`;
 
 	test("breadth-first from the first screen, then the rest in canvas order", () => {
 		const files = {
@@ -254,9 +336,30 @@ describe("flowOrder", () => {
 			"screens/settings.tsx": screen([]),
 			"screens/about.tsx": screen(["screens/settings.tsx"]),
 		};
-		const canvas = ["screens/settings.tsx", "screens/welcome.tsx", "screens/home.tsx", "screens/login.tsx", "screens/signup.tsx", "screens/about.tsx"];
-		expect(flowOrder(canvas, files)).toEqual(["screens/settings.tsx", "screens/welcome.tsx", "screens/signup.tsx", "screens/login.tsx", "screens/home.tsx", "screens/about.tsx"]);
-		expect(flowOrder(["screens/welcome.tsx", "screens/settings.tsx", "screens/home.tsx", "screens/login.tsx", "screens/signup.tsx"], files)).toEqual([
+
+		const canvas = [
+			"screens/settings.tsx",
+			"screens/welcome.tsx",
+			"screens/home.tsx",
+			"screens/login.tsx",
+			"screens/signup.tsx",
+			"screens/about.tsx",
+		];
+
+		expect(flowOrder(canvas, files)).toEqual([
+			"screens/settings.tsx",
+			"screens/welcome.tsx",
+			"screens/signup.tsx",
+			"screens/login.tsx",
+			"screens/home.tsx",
+			"screens/about.tsx",
+		]);
+		expect(
+			flowOrder(
+				["screens/welcome.tsx", "screens/settings.tsx", "screens/home.tsx", "screens/login.tsx", "screens/signup.tsx"],
+				files,
+			),
+		).toEqual([
 			"screens/welcome.tsx",
 			"screens/signup.tsx",
 			"screens/login.tsx",
@@ -266,17 +369,34 @@ describe("flowOrder", () => {
 	});
 
 	test("links to screens outside the export are ignored", () => {
-		const files = { "screens/a.tsx": screen(["screens/b.tsx", "screens/c.tsx"]), "screens/b.tsx": screen([]), "screens/c.tsx": screen([]) };
+		const files = {
+			"screens/a.tsx": screen(["screens/b.tsx", "screens/c.tsx"]),
+			"screens/b.tsx": screen([]),
+			"screens/c.tsx": screen([]),
+		};
+
 		expect(flowOrder(["screens/c.tsx", "screens/a.tsx"], files)).toEqual(["screens/c.tsx", "screens/a.tsx"]);
 	});
 });
 
 describe("flowDocument", () => {
 	const image = { jpeg: new Uint8Array([0xff, 0xd8]), width: 780, height: 1688 };
+
 	const screens: FlowScreen[] = [
-		{ file: "screens/welcome.tsx", name: "Welcome", width: 390, height: 844, image, links: [{ to: "screens/home.tsx", box: { x: 16, y: 700, width: 358, height: 48 } }, { to: "back", box: { x: 0, y: 0, width: 40, height: 40 } }] },
+		{
+			file: "screens/welcome.tsx",
+			name: "Welcome",
+			width: 390,
+			height: 844,
+			image,
+			links: [
+				{ to: "screens/home.tsx", box: { x: 16, y: 700, width: 358, height: 48 } },
+				{ to: "back", box: { x: 0, y: 0, width: 40, height: 40 } },
+			],
+		},
 		{ file: "screens/home.tsx", name: "Home", width: 390, height: 1200, image, links: [] },
 	];
+
 	const files = { "screens/welcome.tsx": "", "screens/home.tsx": "" };
 
 	test("an overview page, then one page per screen sized to it", () => {
@@ -307,7 +427,13 @@ describe("flowDocument", () => {
 describe("targets", () => {
 	const frame = (file: string): Frame => ({ file, name: file, device: "mobile", x: 0, y: 0, width: 390, height: 844 });
 	const files = { "screens/a.tsx": "", "screens/a.alt-1.tsx": "", "screens/b.tsx": "" };
-	const frames = [frame("screens/a.tsx"), frame("screens/a.alt-1.tsx"), frame("screens/b.tsx"), frame("screens/gone.tsx")];
+
+	const frames = [
+		frame("screens/a.tsx"),
+		frame("screens/a.alt-1.tsx"),
+		frame("screens/b.tsx"),
+		frame("screens/gone.tsx"),
+	];
 
 	test("all screens without alternates, or exactly the selection", () => {
 		expect(imageTargets(frames, [], files).map((f) => f.file)).toEqual(["screens/a.tsx", "screens/b.tsx"]);
@@ -315,7 +441,11 @@ describe("targets", () => {
 	});
 
 	test("file names", () => {
-		expect(imageFileNames(["screens/welcome.tsx", "screens/welcome.alt-1.tsx", "x/welcome.tsx"], "png")).toEqual(["welcome.png", "welcome.alt-1.png", "welcome-2.png"]);
+		expect(imageFileNames(["screens/welcome.tsx", "screens/welcome.alt-1.tsx", "x/welcome.tsx"], "png")).toEqual([
+			"welcome.png",
+			"welcome.alt-1.png",
+			"welcome-2.png",
+		]);
 		expect(exportSlug("My App")).toBe("my-app");
 		expect(exportSlug("日本")).toBe("rabisco");
 	});

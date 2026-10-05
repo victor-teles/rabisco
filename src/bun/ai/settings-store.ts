@@ -1,6 +1,14 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import { PROVIDER_TYPES, parseModelRef, type ProviderConfig, type ProviderSettings, type ProviderType } from "../../shared/ai/settings";
+import {
+	PROVIDER_TYPES,
+	parseModelRef,
+	type ProviderConfig,
+	type ProviderSettings,
+	type ProviderType,
+} from "../../shared/ai/settings";
+import type { Json } from "../../shared/json";
+import { arrayOr, objectOr, optionalString, parseJson } from "../json";
 import { apiKeyAccount, type SecretStore } from "./keychain";
 
 /**
@@ -46,7 +54,6 @@ export type NewProvider = {
 
 export type ProviderPatch = Partial<Pick<ProviderConfig, "label" | "enabled" | "baseUrl" | "binPath" | "defaultModel">>;
 
-const KNOWN_TYPES = new Set<string>(PROVIDER_TYPES.map((t) => t.type));
 const typeInfo = (type: ProviderType) => PROVIDER_TYPES.find((t) => t.type === type);
 
 export const emptySettings = (): ProviderSettings => ({ version: 1, providers: [] });
@@ -55,58 +62,79 @@ export const emptySettings = (): ProviderSettings => ({ version: 1, providers: [
 export function uniqueProviderId(type: ProviderType, taken: Iterable<string>) {
 	const used = new Set(taken);
 	let id: string = type;
+
 	for (let n = 2; used.has(id); n++) id = `${type}-${n}`;
+
 	return id;
 }
 
-const optionalString = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
+/** The trimmed text, or undefined when the value isn't a string or is blank. */
+const nonBlank = (value: Json | undefined) => optionalString(value)?.trim() || undefined;
 
 /** Keeps valid entries of a hand-edited or older file; drops the rest. */
-export function normalizeSettings(raw: unknown): ProviderSettings {
-	if (!raw || typeof raw !== "object") return emptySettings();
-	const data = raw as Partial<ProviderSettings>;
+export function normalizeSettings(raw: Json): ProviderSettings {
+	const data = objectOr(raw);
 	const providers: ProviderConfig[] = [];
 	const ids = new Set<string>();
-	for (const entry of Array.isArray(data.providers) ? data.providers : []) {
-		const p = entry as Partial<ProviderConfig> | null;
-		if (!p || typeof p.id !== "string" || !/^[a-z0-9-]+$/.test(p.id) || ids.has(p.id)) continue;
-		if (typeof p.type !== "string" || !KNOWN_TYPES.has(p.type)) continue;
-		ids.add(p.id);
+
+	for (const entry of arrayOr(data.providers)) {
+		const p = objectOr(entry);
+		const id = optionalString(p.id);
+
+		if (!id || !/^[a-z0-9-]+$/.test(id) || ids.has(id)) continue;
+		const info = PROVIDER_TYPES.find((t) => t.type === p.type);
+
+		if (!info) continue;
+		ids.add(id);
+
 		const config: ProviderConfig = {
-			id: p.id,
-			type: p.type,
-			label: optionalString(p.label) ?? typeInfo(p.type)!.label,
+			id,
+			type: info.type,
+			label: nonBlank(p.label) ?? info.label,
 			enabled: p.enabled !== false,
 		};
+
 		for (const key of ["baseUrl", "binPath", "defaultModel"] as const) {
-			const value = optionalString(p[key]);
+			const value = nonBlank(p[key]);
+
 			if (value) config[key] = value;
 		}
+
 		if (p.hasKey === true) config.hasKey = true;
 		providers.push(config);
 	}
+
 	const settings: ProviderSettings = { version: 1, providers };
-	const defaultModel = optionalString(data.defaultModel);
+	const defaultModel = nonBlank(data.defaultModel);
+
 	if (defaultModel && parseModelRef(defaultModel)) settings.defaultModel = defaultModel;
+
 	return settings;
 }
 
 function newConfig(input: NewProvider, taken: Iterable<string>): ProviderConfig {
 	const info = typeInfo(input.type);
+
 	if (!info) throw new Error(`Unknown provider type: ${input.type}`);
-	const baseUrl = optionalString(input.baseUrl);
+	const baseUrl = nonBlank(input.baseUrl);
+
 	if (info.needsBaseUrl && !baseUrl) throw new Error(`${info.label} needs a base URL.`);
+
 	const config: ProviderConfig = {
 		id: uniqueProviderId(input.type, taken),
 		type: input.type,
-		label: optionalString(input.label) ?? info.label,
+		label: nonBlank(input.label) ?? info.label,
 		enabled: input.enabled ?? true,
 	};
+
 	if (baseUrl) config.baseUrl = baseUrl;
-	const binPath = optionalString(input.binPath);
+	const binPath = nonBlank(input.binPath);
+
 	if (binPath) config.binPath = binPath;
-	const defaultModel = optionalString(input.defaultModel);
+	const defaultModel = nonBlank(input.defaultModel);
+
 	if (defaultModel) config.defaultModel = defaultModel;
+
 	return config;
 }
 
@@ -120,6 +148,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 	function serial<T>(fn: () => Promise<T>): Promise<T> {
 		const next = queue.then(fn, fn);
 		queue = next.catch(() => {});
+
 		return next;
 	}
 
@@ -133,19 +162,30 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 	/** The settings on disk; seeds and saves them when the file doesn't exist yet. */
 	async function read(): Promise<ProviderSettings> {
 		let text: string;
+
 		try {
 			text = readFileSync(file, "utf-8");
 		} catch {
 			const settings = emptySettings();
 			const found = await detect().catch((): Detected => ({}));
+
 			for (const { binary, type } of SEED) {
-				if (found[binary]) settings.providers.push(newConfig({ type }, settings.providers.map((p) => p.id)));
+				if (found[binary])
+					settings.providers.push(
+						newConfig(
+							{ type },
+							settings.providers.map((p) => p.id),
+						),
+					);
 			}
+
 			write(settings);
+
 			return settings;
 		}
+
 		try {
-			return normalizeSettings(JSON.parse(text));
+			return normalizeSettings(parseJson(text));
 		} catch {
 			return emptySettings();
 		}
@@ -156,13 +196,16 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 			const settings = await read();
 			const result = await fn(settings);
 			write(settings);
+
 			return result;
 		});
 	}
 
 	function find(settings: ProviderSettings, id: string) {
 		const config = settings.providers.find((p) => p.id === id);
+
 		if (!config) throw new Error(`No provider with id "${id}"`);
+
 		return config;
 	}
 
@@ -177,8 +220,13 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 
 		add(input: NewProvider): Promise<ProviderConfig> {
 			return mutate((settings) => {
-				const config = newConfig(input, settings.providers.map((p) => p.id));
+				const config = newConfig(
+					input,
+					settings.providers.map((p) => p.id),
+				);
+
 				settings.providers.push(config);
+
 				return config;
 			});
 		},
@@ -186,15 +234,22 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 		update(id: string, patch: ProviderPatch): Promise<ProviderConfig> {
 			return mutate((settings) => {
 				const config = find(settings, id);
-				if (patch.label !== undefined) config.label = optionalString(patch.label) ?? typeInfo(config.type)!.label;
+
+				if (patch.label !== undefined) config.label = nonBlank(patch.label) ?? typeInfo(config.type)!.label;
+
 				if (patch.enabled !== undefined) config.enabled = patch.enabled;
+
 				for (const key of ["baseUrl", "binPath", "defaultModel"] as const) {
 					if (!(key in patch)) continue;
-					const value = optionalString(patch[key]);
+					const value = nonBlank(patch[key]);
+
 					if (value) config[key] = value;
 					else delete config[key];
 				}
-				if (typeInfo(config.type)?.needsBaseUrl && !config.baseUrl) throw new Error(`${config.label} needs a base URL.`);
+
+				if (typeInfo(config.type)?.needsBaseUrl && !config.baseUrl)
+					throw new Error(`${config.label} needs a base URL.`);
+
 				return config;
 			});
 		},
@@ -205,7 +260,9 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 				find(settings, id);
 				await options.secrets.delete(apiKeyAccount(id));
 				settings.providers = settings.providers.filter((p) => p.id !== id);
-				if (settings.defaultModel && parseModelRef(settings.defaultModel)?.providerId === id) delete settings.defaultModel;
+
+				if (settings.defaultModel && parseModelRef(settings.defaultModel)?.providerId === id)
+					delete settings.defaultModel;
 			});
 		},
 
@@ -214,6 +271,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 				const config = find(settings, id);
 				await options.secrets.set(apiKeyAccount(id), key.trim());
 				config.hasKey = true;
+
 				return config;
 			});
 		},
@@ -223,6 +281,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 				const config = find(settings, id);
 				await options.secrets.delete(apiKeyAccount(id));
 				delete config.hasKey;
+
 				return config;
 			});
 		},

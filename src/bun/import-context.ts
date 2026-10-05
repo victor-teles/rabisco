@@ -12,7 +12,9 @@ export type FoundContextFile = {
 
 /** Where repositories usually keep these files, in search order. `""` is the folder itself. */
 export const CONTEXT_SEARCH_DIRS = ["", "docs", "doc", "design", ".github", ".rabisco"];
+
 const NAMES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
+
 /** Bigger files aren't context, and would blow up every prompt */
 export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 
@@ -32,15 +34,19 @@ function entries(dir: string) {
  */
 export function findContextFiles(dir: string): FoundContextFile[] {
 	if (!dir || !existsSync(dir)) throw new Error(`Folder not found: ${dir || "(empty path)"}`);
+
 	if (!isDirectory(dir)) throw new Error(`Not a folder: ${dir}. Choose the repository folder to import from.`);
 	const found: FoundContextFile[] = [];
+
 	for (const name of NAMES) {
 		search: for (const sub of CONTEXT_SEARCH_DIRS) {
 			for (const entry of entries(join(dir, sub)).sort()) {
 				if (entry.toLowerCase() !== name.toLowerCase()) continue;
 				const full = join(dir, sub, entry);
+
 				try {
 					const stat = statSync(full);
+
 					if (!stat.isFile() || stat.size > MAX_CONTEXT_FILE_BYTES) continue;
 					found.push({ path: name, content: readFileSync(full, "utf-8"), source: sub ? `${sub}/${entry}` : entry });
 					break search;
@@ -48,5 +54,6 @@ export function findContextFiles(dir: string): FoundContextFile[] {
 			}
 		}
 	}
+
 	return found;
 }

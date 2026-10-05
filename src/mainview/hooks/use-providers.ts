@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { api } from "@/lib/rpc";
-import { parseModelRef, toModelRef, type ModelRef, type ProviderSettings, type ProviderStatus } from "../../shared/ai/settings";
+import {
+	parseModelRef,
+	toModelRef,
+	type ModelRef,
+	type ProviderSettings,
+	type ProviderStatus,
+} from "../../shared/ai/settings";
 
 export type ModelOption = {
 	/** `ModelRef`: `<providerId>:<modelId>` */
@@ -34,6 +40,7 @@ let state: ProvidersState = {
 	settingsOpen: false,
 	focusProvider: null,
 };
+
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<ProvidersState>) {
@@ -57,10 +64,12 @@ function modelsOf(statuses: ProviderStatus[]): ModelOption[] {
 /** The stored default when it is still available, else the first provider's default model, else any model. */
 function pickModel(settings: ProviderSettings, models: ModelOption[], current: ModelRef | null): ModelRef | null {
 	const available = (ref: ModelRef | null | undefined) => (ref && models.some((m) => m.id === ref) ? ref : null);
+
 	const firstDefault = settings.providers
 		.filter((p) => p.enabled && p.defaultModel)
 		.map((p) => toModelRef(p.id, p.defaultModel!))
 		.find((ref) => available(ref));
+
 	return available(current) ?? available(settings.defaultModel) ?? firstDefault ?? models[0]?.id ?? null;
 }
 
@@ -81,6 +90,7 @@ export function loadProviders(refresh = false) {
 			set({ loading: false });
 		},
 	);
+
 	return inflight;
 }
 
@@ -89,6 +99,7 @@ export function upsertStatus(status: ProviderStatus) {
 	const statuses = state.statuses.some((s) => s.id === status.id)
 		? state.statuses.map((s) => (s.id === status.id ? status : s))
 		: [...state.statuses, status];
+
 	// Settings (labels, keys, defaults) changed too; reload them without re-running every health check
 	void api.listProviders({}).then(({ settings }) => apply(settings, statuses));
 	apply(state.settings, statuses);
@@ -118,11 +129,13 @@ export function closeSettings() {
 /** Label for a `ModelRef`, e.g. "Sonnet 5.5"; falls back to the raw model id. */
 export function modelLabel(ref: ModelRef | null) {
 	if (!ref) return "No model";
+
 	return state.models.find((m) => m.id === ref)?.label ?? parseModelRef(ref)?.model ?? ref;
 }
 
 const subscribe = (listener: () => void) => {
 	listeners.add(listener);
+
 	return () => void listeners.delete(listener);
 };
 

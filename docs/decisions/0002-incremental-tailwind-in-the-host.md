@@ -17,18 +17,18 @@ The options were:
 
 Median times. The medium fixture uses 238 class candidates.
 
-| Step | Webview host | Main process |
-| --- | --- | --- |
-| `compile()`: create a compiler from the input CSS | 1.5 ms | 27 ms |
-| `build()` cold, about 240 candidates | 1.7–2.6 ms | 5.8–6.6 ms |
-| `build()` with 5 new classes | 3.0 ms (p95 14 ms) | 2.3 ms |
-| `build()` with no new classes | ~0 ms | 0.007 ms |
-| Extract candidates from a screen's source | 0.02 ms | 0.065 ms |
+| Step                                              | Webview host       | Main process |
+| ------------------------------------------------- | ------------------ | ------------ |
+| `compile()`: create a compiler from the input CSS | 1.5 ms             | 27 ms        |
+| `build()` cold, about 240 candidates              | 1.7–2.6 ms         | 5.8–6.6 ms   |
+| `build()` with 5 new classes                      | 3.0 ms (p95 14 ms) | 2.3 ms       |
+| `build()` with no new classes                     | ~0 ms              | 0.007 ms     |
+| Extract candidates from a screen's source         | 0.02 ms            | 0.065 ms     |
 
-| Per frame, until the first element is styled | Median | p95 |
-| --- | --- | --- |
-| Precompiled CSS injected as `<style>` | **8 ms** | 11 ms |
-| `@tailwindcss/browser` runtime in the frame | 19 ms | 70 ms |
+| Per frame, until the first element is styled | Median   | p95   |
+| -------------------------------------------- | -------- | ----- |
+| Precompiled CSS injected as `<style>`        | **8 ms** | 11 ms |
+| `@tailwindcss/browser` runtime in the frame  | 19 ms    | 70 ms |
 
 ## Decision
 

@@ -70,24 +70,35 @@ const NAMED_COLORS = new Set(
 
 // Whitelists. None of them allows `;{}<>\`, quotes in colors, nested parentheses or `/*`.
 const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 /** Color functions with numbers, units, `none`, commas and `/` alpha only */
 const COLOR_FUNCTION = /^(?:rgba?|hsla?|hwb|oklch|oklab|lab|lch)\([0-9a-z.%+\-,/\s]*\)$/i;
+
 /** A reference to another theme variable, e.g. `var(--primary)` */
 const VAR_REF = /^var\(--[a-z0-9-]+\)$/i;
+
 const LENGTH = /^(?:0|\d*\.?\d+(?:px|rem|em|%))$/i;
+
 const FONT_FAMILY = String.raw`(?:"[a-z0-9 -]+"|'[a-z0-9 -]+'|[a-z][a-z0-9 -]*)`;
+
 const FONT_STACK = new RegExp(String.raw`^${FONT_FAMILY}(?:\s*,\s*${FONT_FAMILY})*$`, "i");
+
+const isOneOf = <T extends string>(names: readonly T[], value: string): value is T =>
+	names.some((name) => name === value);
 
 const isColor = (value: string) =>
 	HEX.test(value) || COLOR_FUNCTION.test(value) || VAR_REF.test(value) || NAMED_COLORS.has(value.toLowerCase());
 
 /** `null` when `value` is valid for token `name`, else the reason it isn't. */
 export function validateToken(name: string, value: string): string | null {
-	if (!(TOKEN_NAMES as readonly string[]).includes(name)) return "Unknown token name, e.g. primary, muted-foreground or radius";
+	if (!isOneOf(TOKEN_NAMES, name)) return "Unknown token name, e.g. primary, muted-foreground or radius";
+
 	if (name === "radius") return LENGTH.test(value) ? null : "Not a length, e.g. 0.5rem or 8px";
-	if ((FONT_TOKENS as readonly string[]).includes(name)) {
+
+	if (isOneOf(FONT_TOKENS, name)) {
 		return FONT_STACK.test(value) ? null : 'Not a font stack, e.g. "Inter", system-ui, sans-serif';
 	}
+
 	return isColor(value) ? null : "Not a color, e.g. #2563eb, oklch(0.55 0.2 264) or rgb(37 99 235)";
 }
 
@@ -97,6 +108,7 @@ function stripComments(markdown: string) {
 }
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+
 const ENTRY = /^\s*[-*+]\s+`?(?:--)?([a-z0-9][\w-]*)`?\s*:\s*(.*?)\s*$/i;
 
 /**
@@ -115,42 +127,57 @@ export function parseDesignTokens(markdown: string): ParsedDesignTokens {
 
 	lines.forEach((text, index) => {
 		const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(text);
+
 		if (fence) {
 			if (fenceMatch && fenceMatch[1]!.startsWith(fence)) fence = null;
+
 			return;
 		}
+
 		if (fenceMatch) {
 			fence = fenceMatch[1]!;
+
 			return;
 		}
 
 		const heading = HEADING.exec(text);
+
 		if (heading) {
 			const level = heading[1]!.length;
 			const title = heading[2]!.trim();
+
 			if (sectionLevel && level > sectionLevel) {
 				path = path.filter((h) => h.level < level);
 				path.push({ level, dark: /dark/i.test(title) });
+
 				return;
 			}
+
 			sectionLevel = /^(?:design\s+)?tokens$/i.test(title) ? level : 0;
 			path = [];
+
 			return;
 		}
+
 		if (!sectionLevel) return;
 
 		const entry = ENTRY.exec(text);
+
 		if (!entry) return;
 		const name = entry[1]!.toLowerCase();
 		const value = cleanValue(entry[2]!);
 		const reason = validateToken(name, value);
+
 		if (reason) {
 			result.invalid.push({ name, value, line: index + 1, reason });
+
 			return;
 		}
+
 		const mode = path.some((h) => h.dark) ? result.dark : result.light;
 		mode[name] = value;
 	});
+
 	return result;
 }
 
@@ -158,12 +185,15 @@ export function parseDesignTokens(markdown: string): ParsedDesignTokens {
 function cleanValue(raw: string) {
 	let value = raw.trim();
 	const ticks = /^`+([^`]*)`+$/.exec(value);
+
 	if (ticks) value = ticks[1]!.trim();
+
 	return value.replace(/\s*;$/, "");
 }
 
 function block(selector: string, entries: [string, string][]) {
 	if (!entries.length) return "";
+
 	return `${selector} {\n${entries.map(([name, value]) => `\t--${name}: ${value};\n`).join("")}}\n`;
 }
 
@@ -176,10 +206,15 @@ function block(selector: string, entries: [string, string][]) {
 export function tokensToCss(tokens: DesignTokens): string {
 	const valid = (values: Record<string, string>) =>
 		Object.entries(values).filter(([name, value]) => validateToken(name, value) === null);
-	const isColorToken = ([name]: [string, string]) => (COLOR_TOKENS as readonly string[]).includes(name);
+
+	const isColorToken = ([name]: [string, string]) => isOneOf(COLOR_TOKENS, name);
 	const light = valid(tokens.light);
+
 	return (
-		block(":root", light.filter((e) => !isColorToken(e))) +
+		block(
+			":root",
+			light.filter((e) => !isColorToken(e)),
+		) +
 		block(":root:not(.dark)", light.filter(isColorToken)) +
 		block(".dark", valid(tokens.dark))
 	);

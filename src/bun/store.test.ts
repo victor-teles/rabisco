@@ -17,9 +17,16 @@ import { tempDir } from "./test-utils";
 
 describe("project files", () => {
 	test("only screens, components and context files are writable", () => {
-		for (const ok of ["screens/welcome.tsx", "screens/welcome.alt-1.tsx", "components/stat-card.tsx", "PRODUCT.md", "DESIGN.md"]) {
+		for (const ok of [
+			"screens/welcome.tsx",
+			"screens/welcome.alt-1.tsx",
+			"components/stat-card.tsx",
+			"PRODUCT.md",
+			"DESIGN.md",
+		]) {
 			expect(() => assertProjectFilePath(ok)).not.toThrow();
 		}
+
 		for (const bad of [
 			"../evil.tsx",
 			"/etc/passwd",
@@ -95,9 +102,27 @@ describe("project files", () => {
 	});
 
 	test("old rabisco.json without comments loads; malformed comments are dropped", () => {
-		const old = { version: 1, name: "Old", device: "mobile", createdAt: "a", updatedAt: "b", frames: [], selection: [], alternates: [] };
+		const old = {
+			version: 1,
+			name: "Old",
+			device: "mobile",
+			createdAt: "a",
+			updatedAt: "b",
+			frames: [],
+			selection: [],
+			alternates: [],
+		};
+
 		expect(normalizeCanvas(old, "x").comments).toEqual([]);
-		const withComments = { ...old, comments: [{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }, { id: "2", text: "no position" }] };
+
+		const withComments = {
+			...old,
+			comments: [
+				{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" },
+				{ id: "2", text: "no position" },
+			],
+		};
+
 		expect(normalizeCanvas(withComments, "x").comments).toEqual([{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }]);
 	});
 
@@ -110,7 +135,9 @@ describe("project files", () => {
 		writeFileSync(join(dir, "rabisco.json"), JSON.stringify({ ...first.canvas, comments }));
 		expect(loadProject(dir).canvas.comments).toEqual(comments);
 		writeProjectFiles(dir, [{ path: "screens/home.tsx", content: null }]);
-		expect(loadProject(dir).canvas.comments).toEqual([{ id: "c", x: frame.x + 10, y: frame.y + 20, text: "Bigger title", createdAt: "t" }]);
+		expect(loadProject(dir).canvas.comments).toEqual([
+			{ id: "c", x: frame.x + 10, y: frame.y + 20, text: "Bigger title", createdAt: "t" },
+		]);
 	});
 
 	test("chat parsing skips bad lines", () => {
@@ -140,6 +167,7 @@ describe("project store", () => {
 			moveToTrash: (path) => {
 				trashed.push(path);
 				renameSync(path, `${path}.trashed`);
+
 				return true;
 			},
 			showItemInFolder: () => {},
@@ -147,6 +175,7 @@ describe("project store", () => {
 			onFilesChanged: (path, changes) => events.push({ path, changes }),
 			watchOptions: { poll, pollMs: 40, debounceMs: 20 },
 		});
+
 		return { store, root, events, trashed };
 	}
 
@@ -173,7 +202,11 @@ describe("project store", () => {
 			files: { "screens/home.tsx": "home", "components/card.tsx": "card", "DESIGN.md": DESIGN_TEMPLATE },
 		});
 		// The cover carries DESIGN.md for its theme, not PRODUCT.md
-		expect(Object.keys(recents[0]!.cover!.files).sort()).toEqual(["DESIGN.md", "components/card.tsx", "screens/home.tsx"]);
+		expect(Object.keys(recents[0]!.cover!.files).sort()).toEqual([
+			"DESIGN.md",
+			"components/card.tsx",
+			"screens/home.tsx",
+		]);
 
 		renameSync(a.path, `${a.path}.moved`);
 		expect(store.listRecents()[1]).toMatchObject({ name: "alpha", missing: true });

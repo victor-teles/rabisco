@@ -37,12 +37,15 @@ const stop = (event: React.PointerEvent) => event.stopPropagation();
 export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLayerProps) {
 	const { comments, draft, openId, showResolved } = controller;
 	const draftAt = draft ? pinPosition(draft, frames) : null;
+
 	return (
 		<>
 			{comments.map((comment, index) => {
 				if (comment.resolved && !showResolved && comment.id !== openId) return null;
 				const at = pinPosition(comment, frames);
+
 				if (!at) return null;
+
 				return (
 					<CommentPin
 						key={comment.id}
@@ -60,7 +63,7 @@ export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLay
 				<PinAnchor key={draft.id} at={draftAt} zoom={zoom}>
 					<Popover open onOpenChange={(open) => !open && controller.cancelDraft(draft.id)}>
 						<PopoverAnchor asChild>
-							<PinShape active label="New comment" pinId={draft.id} />
+							<PinMarker active label="New comment" pinId={draft.id} />
 						</PopoverAnchor>
 						<ThreadContent pinId={draft.id}>
 							<Composer
@@ -89,7 +92,7 @@ function PinAnchor({ at, zoom, children }: { at: Point; zoom: number; children: 
 }
 
 /** Figma's pin: a round badge with a square bottom-left corner pointing at the spot. */
-function PinShape({
+function PinMarker({
 	label,
 	pinId,
 	number,
@@ -149,6 +152,7 @@ function ThreadContent({
 			onEscapeKeyDown={onEscapeKeyDown}
 			onInteractOutside={(event) => {
 				const target = event.target instanceof Element ? event.target : null;
+
 				if (target?.closest(`[data-comment-pin="${CSS.escape(pinId)}"]`)) event.preventDefault();
 			}}
 		>
@@ -184,6 +188,7 @@ function CommentPin({
 
 	const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
+
 		if (event.button !== 0) return;
 		event.currentTarget.setPointerCapture(event.pointerId);
 		drag.current = { id: crypto.randomUUID(), startX: event.clientX, startY: event.clientY, origin: at, moved: false };
@@ -191,14 +196,18 @@ function CommentPin({
 
 	const onPointerMove = (event: React.PointerEvent) => {
 		const current = drag.current;
+
 		if (!current) return;
 		const dx = event.clientX - current.startX;
 		const dy = event.clientY - current.startY;
+
 		if (!current.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+
 		if (!current.moved) {
 			current.moved = true;
 			setDragging(true);
 		}
+
 		controller.move(comment.id, { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom }, current.id);
 	};
 
@@ -207,6 +216,7 @@ function CommentPin({
 			justDragged.current = true;
 			controller.endStep();
 		}
+
 		drag.current = null;
 		setDragging(false);
 	};
@@ -214,8 +224,10 @@ function CommentPin({
 	const onClick = () => {
 		if (justDragged.current) {
 			justDragged.current = false;
+
 			return;
 		}
+
 		if (open) controller.close(comment.id);
 		else controller.open(comment.id);
 	};
@@ -227,11 +239,12 @@ function CommentPin({
 	};
 
 	const replies = comment.replies ?? [];
+
 	return (
 		<PinAnchor at={at} zoom={zoom}>
 			<Popover open={open && !dragging} onOpenChange={onOpenChange}>
 				<PopoverAnchor asChild>
-					<PinShape
+					<PinMarker
 						label={`Comment ${number}`}
 						pinId={comment.id}
 						number={number}
@@ -252,17 +265,25 @@ function CommentPin({
 						// Esc while editing leaves the editor (its blur finishes the edit), not the thread
 						if (!editing) return;
 						event.preventDefault();
+
 						if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 					}}
 				>
 					<div className="flex items-center gap-1">
 						<span className="text-xs text-subtle-foreground">
 							<span className="font-medium text-muted-foreground tabular-nums">#{number}</span>
-							{[timeAgo(comment.createdAt), comment.resolved ? "Resolved" : ""].filter(Boolean).map((part) => ` · ${part}`)}
+							{` · ${timeAgo(comment.createdAt)}`}
+							{comment.resolved ? " · Resolved" : null}
 						</span>
 						<div className="ml-auto flex items-center">
 							{onAskAI && !comment.resolved ? (
-								<Button variant="ghost" size="icon-xs" aria-label="Ask AI" title="Ask AI" onClick={() => onAskAI(comment)}>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									aria-label="Ask AI"
+									title="Ask AI"
+									onClick={() => onAskAI(comment)}
+								>
 									<Sparkles />
 								</Button>
 							) : null}
@@ -272,15 +293,33 @@ function CommentPin({
 								</Button>
 							) : null}
 							{comment.resolved ? (
-								<Button variant="ghost" size="icon-xs" aria-label="Reopen" title="Reopen" onClick={() => controller.reopen(comment.id)}>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									aria-label="Reopen"
+									title="Reopen"
+									onClick={() => controller.reopen(comment.id)}
+								>
 									<RotateCcw />
 								</Button>
 							) : (
-								<Button variant="ghost" size="icon-xs" aria-label="Resolve" title="Resolve" onClick={() => controller.resolve(comment.id)}>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									aria-label="Resolve"
+									title="Resolve"
+									onClick={() => controller.resolve(comment.id)}
+								>
 									<CircleCheck />
 								</Button>
 							)}
-							<Button variant="ghost" size="icon-xs" aria-label="Delete" title="Delete" onClick={() => controller.remove(comment.id)}>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								aria-label="Delete"
+								title="Delete"
+								onClick={() => controller.remove(comment.id)}
+							>
 								<Trash2 />
 							</Button>
 						</div>
@@ -329,14 +368,24 @@ function CommentPin({
 }
 
 /** Edits the comment in place: every keystroke is part of one undo step, Enter or blur finishes. */
-function EditText({ comment, controller, onDone }: { comment: CanvasComment; controller: CommentsController; onDone: () => void }) {
+function EditText({
+	comment,
+	controller,
+	onDone,
+}: {
+	comment: CanvasComment;
+	controller: CommentsController;
+	onDone: () => void;
+}) {
 	const original = useRef(comment.text);
+
 	const finish = () => {
 		// A comment can't be blank: put the text back rather than delete it
 		if (!comment.text.trim()) controller.update(comment.id, original.current);
 		controller.endStep();
 		onDone();
 	};
+
 	return (
 		<Textarea
 			autoFocus
@@ -371,11 +420,14 @@ function Composer({
 	keepAfterSubmit?: boolean;
 }) {
 	const [text, setText] = useState("");
+
 	const submit = () => {
 		if (!text.trim()) return;
 		onSubmit(text);
+
 		if (keepAfterSubmit) setText("");
 	};
+
 	return (
 		<div className="flex flex-col gap-1.5">
 			<Textarea
@@ -406,11 +458,16 @@ function Composer({
 
 function timeAgo(iso: string) {
 	const time = new Date(iso).getTime();
+
 	if (!Number.isFinite(time)) return "";
 	const seconds = Math.round((Date.now() - time) / 1000);
 	const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
 	if (seconds < 60) return "just now";
+
 	if (seconds < 3600) return format.format(-Math.round(seconds / 60), "minute");
+
 	if (seconds < 86400) return format.format(-Math.round(seconds / 3600), "hour");
+
 	return format.format(-Math.round(seconds / 86400), "day");
 }

@@ -4,7 +4,7 @@
  * user's own Claude Code login.
  */
 
-import type { GenerationEvent, Provider, ProviderModel } from "../../../shared/ai/contract";
+import type { GenerationEvent, Provider, ProviderModel, Usage } from "../../../shared/ai/contract";
 import type { ProviderConfig } from "../../../shared/ai/settings";
 import {
 	bunSpawn,
@@ -24,6 +24,9 @@ import {
 	type LineMapper,
 	type SpawnFn,
 } from "../cli";
+import { isString } from "../../../shared/guards";
+import type { JsonObject, Json } from "../../../shared/json";
+import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
 import { userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 
@@ -31,6 +34,7 @@ export type CliProviderOptions = { config: ProviderConfig; spawn?: SpawnFn; stag
 
 /** The only tools the agent gets: it reads and writes files, nothing else. */
 export const CLAUDE_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"];
+
 export const CLAUDE_DENIED_TOOLS = ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"];
 
 export const CLAUDE_MODELS: ProviderModel[] = [
@@ -41,24 +45,10 @@ export const CLAUDE_MODELS: ProviderModel[] = [
 	{ id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
 ];
 
-type ContentBlock = { type: string; text?: string; name?: string; input?: Record<string, unknown> };
-type ClaudeUsage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
-type ClaudeLine = {
-	type?: string;
-	subtype?: string;
-	message?: { content?: ContentBlock[] | string };
-	parent_tool_use_id?: string | null;
-	is_error?: boolean;
-	result?: string;
-	errors?: string[];
-	usage?: ClaudeUsage;
-	total_cost_usd?: number;
-};
+function toolEvent(dir: string, name: string | undefined, input: JsonObject): GenerationEvent {
+	const path = stagingRelative(dir, optionalString(input.file_path ?? input.path ?? input.notebook_path));
 
-function toolEvent(dir: string, block: ContentBlock): GenerationEvent {
-	const input = block.input ?? {};
-	const path = stagingRelative(dir, (input.file_path ?? input.path ?? input.notebook_path) as string | undefined);
-	switch (block.name) {
+	switch (name) {
 		case "Write":
 			return toolStatus("write", path);
 		case "Edit":
@@ -68,55 +58,82 @@ function toolEvent(dir: string, block: ContentBlock): GenerationEvent {
 			return toolStatus("read", path);
 		case "Glob":
 		case "Grep":
-			return toolStatus("search", (input.pattern as string | undefined) ?? path);
+			return toolStatus("search", optionalString(input.pattern) ?? path);
 		case "LS":
 			return toolStatus("list", path);
 		case "Bash":
 			return toolStatus("run");
 		default:
-			return toolStatus("other", undefined, block.name);
+			return toolStatus("other", undefined, name);
 	}
+}
+
+/** Token counts and cost of a successful `result` line. */
+function resultUsage(line: JsonObject): Usage {
+	const usage: Usage = {};
+	const tokens = optionalObject(line.usage);
+	const cost = optionalNumber(line.total_cost_usd);
+
+	if (tokens) {
+		const count = (key: string) => optionalNumber(tokens[key]) ?? 0;
+		usage.inputTokens = count("input_tokens") + count("cache_read_input_tokens") + count("cache_creation_input_tokens");
+		usage.outputTokens = count("output_tokens");
+	}
+
+	if (cost !== undefined) usage.costUsd = cost;
+
+	return usage;
 }
 
 /**
  * Maps Claude Code `stream-json` lines (and Agent SDK messages, which share the
- * shape) to events. Stateful: create one per run.
+ * format) to events. Stateful: create one per run.
  */
 export function createClaudeMapper(dir: string, type: "claude-code" | "claude-agent-sdk" = "claude-code"): LineMapper {
 	const text = new MessageText();
+
 	return (raw) => {
-		const line = raw as ClaudeLine;
-		if (line.type === "assistant" && line.message && !line.parent_tool_use_id) {
-			const content = typeof line.message.content === "string" ? [{ type: "text", text: line.message.content }] : (line.message.content ?? []);
+		const line = objectOr(raw);
+		const message = optionalObject(line.message);
+
+		if (line.type === "assistant" && message && !line.parent_tool_use_id) {
+			const content: readonly Json[] = isString(message.content)
+				? [{ type: "text", text: message.content }]
+				: arrayOr(message.content);
+
 			const events: GenerationEvent[] = [];
-			for (const block of content) {
-				if (block.type === "text" && block.text) {
+
+			for (const entry of content) {
+				const block = objectOr(entry);
+				const blockText = optionalString(block.text);
+
+				if (block.type === "text" && blockText) {
 					text.break();
-					events.push(...text.delta(block.text));
+					events.push(...text.delta(blockText));
 				} else if (block.type === "tool_use") {
 					text.break();
-					events.push(toolEvent(dir, block));
+					events.push(toolEvent(dir, optionalString(block.name), objectOr(block.input)));
 				}
 			}
+
 			return events;
 		}
+
 		if (line.type === "result") {
-			if (line.is_error || line.subtype !== "success") {
-				const detail = line.result || line.errors?.join("\n") || `Claude stopped early (${line.subtype ?? "error"}).`;
+			const subtype = optionalString(line.subtype);
+
+			if (line.is_error === true || subtype !== "success") {
+				const detail =
+					optionalString(line.result) ||
+					arrayOr(line.errors).filter(isString).join("\n") ||
+					`Claude stopped early (${subtype ?? "error"}).`;
+
 				return [failureEvent(classifyFailure(type, detail))];
 			}
-			const usage = line.usage ?? {};
-			const input = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
-			return [
-				{
-					type: "done",
-					usage: {
-						...(line.usage ? { inputTokens: input, outputTokens: usage.output_tokens ?? 0 } : {}),
-						...(typeof line.total_cost_usd === "number" ? { costUsd: line.total_cost_usd } : {}),
-					},
-				},
-			];
+
+			return [{ type: "done", usage: resultUsage(line) }];
 		}
+
 		return [];
 	};
 }
@@ -155,14 +172,17 @@ export function createClaudeCodeProvider(options: CliProviderOptions): Provider 
 		async health() {
 			const bin = binary();
 			const version = await versionHealth("claude-code", spawn, bin);
+
 			if (!version.ok || !bin) return version;
+
 			try {
 				const auth = await runCommand(spawn, [bin, "auth", "status"], { env: cliEnv(bin), timeoutMs: 10_000 });
-				const status = JSON.parse(auth.stdout) as { loggedIn?: boolean };
-				if (status.loggedIn === false) return failureHealth(notAuthenticated("claude-code"));
+
+				if (objectOr(parseJson(auth.stdout)).loggedIn === false) return failureHealth(notAuthenticated("claude-code"));
 			} catch {
 				// Older versions have no `auth status`; a generation will report a missing login
 			}
+
 			return { ok: true, version: version.version };
 		},
 
@@ -172,10 +192,13 @@ export function createClaudeCodeProvider(options: CliProviderOptions): Provider 
 
 		async *generate(request, signal) {
 			const bin = binary();
+
 			if (!bin) {
 				yield failureEvent(notInstalled("claude-code"));
+
 				return;
 			}
+
 			const model = request.model || options.config.defaultModel || "";
 			yield* runInStaging(
 				request,

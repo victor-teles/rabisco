@@ -3,8 +3,24 @@ import { detachComments, normalizeComments, pinAt, pinPosition } from "./comment
 import { reconcileFrames, emptyCanvas } from "./project";
 import type { CanvasComment, Frame } from "./types";
 
-const frame = (file: string, x: number, y = 0): Frame => ({ file, name: file, device: "mobile", x, y, width: 390, height: 844 });
-const comment = (id: string, rest: Partial<CanvasComment> = {}): CanvasComment => ({ id, x: 10, y: 20, text: "Hi", createdAt: "t", ...rest });
+const frame = (file: string, x: number, y = 0): Frame => ({
+	file,
+	name: file,
+	device: "mobile",
+	x,
+	y,
+	width: 390,
+	height: 844,
+});
+
+const comment = (id: string, rest: Partial<CanvasComment> = {}): CanvasComment => ({
+	id,
+	x: 10,
+	y: 20,
+	text: "Hi",
+	createdAt: "t",
+	...rest,
+});
 
 describe("normalizeComments", () => {
 	test("old projects have none", () => {
@@ -21,8 +37,17 @@ describe("normalizeComments", () => {
 			{ x: 1, y: 2, text: "no id" },
 			{ id: "d", x: 1, y: 2 },
 			null,
-			{ id: "e", x: 0, y: 0, text: "", file: "", resolved: "yes", replies: [{ id: "r", text: "re", createdAt: "t" }, { id: 3 }] },
+			{
+				id: "e",
+				x: 0,
+				y: 0,
+				text: "",
+				file: "",
+				resolved: "yes",
+				replies: [{ id: "r", text: "re", createdAt: "t" }, { id: 3 }],
+			},
 		];
+
 		expect(normalizeComments(raw)).toEqual([
 			{ id: "a", file: "screens/a.tsx", x: 1, y: 2, text: "ok", createdAt: "t", resolved: true },
 			{ id: "e", x: 0, y: 0, text: "", createdAt: "", replies: [{ id: "r", text: "re", createdAt: "t" }] },
@@ -66,7 +91,12 @@ describe("detachComments", () => {
 	});
 
 	test("reconcileFrames detaches pins of frames whose file is gone", () => {
-		const canvas = { ...emptyCanvas("x", "mobile"), frames: [frame("screens/a.tsx", 100)], comments: [comment("1", { file: "screens/a.tsx" })] };
+		const canvas = {
+			...emptyCanvas("x", "mobile"),
+			frames: [frame("screens/a.tsx", 100)],
+			comments: [comment("1", { file: "screens/a.tsx" })],
+		};
+
 		const next = reconcileFrames(canvas, {});
 		expect(next.frames).toEqual([]);
 		expect(next.comments).toEqual([{ id: "1", x: 110, y: 20, text: "Hi", createdAt: "t" }]);

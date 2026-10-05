@@ -219,7 +219,14 @@ export const FILE_RULES = {
 		context: /^(?:PRODUCT|DESIGN)\.md$/,
 	},
 	/** Allowed import specifiers; local imports must point to existing or co-written files */
-	imports: [/^react$/, /^lucide-react$/, /^@\/components\/ui\/[a-z0-9-]+$/, /^@\/lib\/utils$/, /^\.\.?\/components\/[a-z0-9-]+$/, /^\.\/[a-z0-9-]+$/],
+	imports: [
+		/^react$/,
+		/^lucide-react$/,
+		/^@\/components\/ui\/[a-z0-9-]+$/,
+		/^@\/lib\/utils$/,
+		/^\.\.?\/components\/[a-z0-9-]+$/,
+		/^\.\/[a-z0-9-]+$/,
+	],
 	/** Screens default-export one React component; components use named exports */
 	exports: { screen: "default", component: "named" },
 	/** Upper bound for a single file, in characters */

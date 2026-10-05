@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, CircleAlert, GitBranch, GitCommitHorizontal, LoaderCircle, RefreshCw } from "lucide-react";
+import {
+	ArrowDown,
+	ArrowUp,
+	ChevronRight,
+	CircleAlert,
+	GitBranch,
+	GitCommitHorizontal,
+	LoaderCircle,
+	RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -10,6 +19,7 @@ import type { GitStatus } from "../../../../shared/git";
 import { errorMessage, timeAgo } from "./share-utils";
 
 type Busy = "load" | "init" | "remote" | "sync" | null;
+
 type Failure = { error: string; detail?: string };
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -37,30 +47,46 @@ export function GitSection({
 	const [editingRemote, setEditingRemote] = useState(false);
 	const [remoteUrl, setRemoteUrl] = useState("");
 
+	const fetchStatus = useCallback(
+		(): Promise<GitStatus> =>
+			api
+				.gitStatus({ path: projectPath })
+				.catch((error) => ({ state: "unavailable", error: errorMessage(error) }) as const),
+		[projectPath],
+	);
+
 	const load = useCallback(async () => {
 		setBusy("load");
-		try {
-			setStatus(await api.gitStatus({ path: projectPath }));
-		} catch (error) {
-			setStatus({ state: "unavailable", error: errorMessage(error) });
-		} finally {
-			setBusy(null);
-		}
-	}, [projectPath]);
+		setStatus(await fetchStatus());
+		setBusy(null);
+	}, [fetchStatus]);
 
+	// `busy` starts as "load"
 	useEffect(() => {
-		void load();
-	}, [load]);
+		let cancelled = false;
+		void fetchStatus().then((next) => {
+			if (cancelled) return;
+			setStatus(next);
+			setBusy(null);
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [fetchStatus]);
 
 	const act = async (kind: Exclude<Busy, null>, action: () => Promise<GitStatus>, failureTitle: string) => {
 		setBusy(kind);
 		setFailure(null);
+
 		try {
 			setStatus(await action());
+
 			return true;
 		} catch (error) {
 			setFailure({ error: errorMessage(error) });
 			toast.error(failureTitle, { description: errorMessage(error) });
+
 			return false;
 		} finally {
 			setBusy(null);
@@ -73,7 +99,12 @@ export function GitSection({
 		);
 
 	const saveRemote = async () => {
-		const done = await act("remote", () => api.gitSetRemote({ path: projectPath, url: remoteUrl }), "Couldn't set the remote");
+		const done = await act(
+			"remote",
+			() => api.gitSetRemote({ path: projectPath, url: remoteUrl }),
+			"Couldn't set the remote",
+		);
+
 		if (done) {
 			setEditingRemote(false);
 			setRemoteUrl("");
@@ -83,10 +114,13 @@ export function GitSection({
 	const sync = async () => {
 		setBusy("sync");
 		setFailure(null);
+
 		try {
 			await onBeforeSync();
 			const result = await api.gitSync({ path: projectPath });
+
 			if (result.ok && result.pulled > 0) await onPulled();
+
 			if (result.ok) toast.success(result.remote ? "Synced" : "Committed", { description: result.summary });
 			else {
 				setFailure(result);
@@ -95,6 +129,7 @@ export function GitSection({
 		} catch (error) {
 			setFailure({ error: errorMessage(error) });
 		}
+
 		await load();
 	};
 
@@ -109,6 +144,7 @@ export function GitSection({
 
 	if (status.state === "unavailable") {
 		const desktopOnly = status.error === DESKTOP_ONLY;
+
 		return (
 			<div className="flex flex-col gap-3">
 				<p className="flex gap-2 text-[13px] text-muted-foreground">
@@ -117,7 +153,11 @@ export function GitSection({
 				</p>
 				{desktopOnly ? null : (
 					<div className="flex gap-2">
-						<Button size="sm" variant="outline" onClick={() => api.openExternal({ url: "https://git-scm.com/downloads" })}>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => api.openExternal({ url: "https://git-scm.com/downloads" })}
+						>
 							Get git
 						</Button>
 						<Button size="sm" variant="ghost" onClick={load} disabled={busy !== null}>
@@ -133,8 +173,8 @@ export function GitSection({
 		return (
 			<div className="flex flex-col gap-3">
 				<p className="text-[13px] text-muted-foreground">
-					Keep every version of this project in git, and back it up to GitHub or any git host. The screens are plain TSX files, so
-					developers can review and diff them.
+					Keep every version of this project in git, and back it up to GitHub or any git host. The screens are plain TSX
+					files, so developers can review and diff them.
 				</p>
 				<Button size="sm" className="self-start" onClick={init} disabled={busy !== null}>
 					{busy === "init" ? <LoaderCircle className="motion-safe:animate-spin" /> : <GitBranch />}
@@ -157,7 +197,14 @@ export function GitSection({
 				<span className="min-w-0 flex-1 truncate text-muted-foreground" title={remote?.url}>
 					{remote ? remote.url : "No remote"}
 				</span>
-				<Button variant="ghost" size="icon-xs" aria-label="Refresh" title="Refresh" onClick={load} disabled={busy !== null}>
+				<Button
+					variant="ghost"
+					size="icon-xs"
+					aria-label="Refresh"
+					title="Refresh"
+					onClick={load}
+					disabled={busy !== null}
+				>
 					<RefreshCw className={cn(busy === "load" && "motion-safe:animate-spin")} />
 				</Button>
 			</div>
@@ -192,7 +239,8 @@ export function GitSection({
 
 			{unfinished ? (
 				<p className="flex gap-2 text-xs text-warning">
-					<CircleAlert className="size-3.5 shrink-0" />A {unfinished} is in progress in this repository. Finish or abort it in a terminal first.
+					<CircleAlert className="size-3.5 shrink-0" />A {unfinished} is in progress in this repository. Finish or abort
+					it in a terminal first.
 				</p>
 			) : null}
 
@@ -267,7 +315,9 @@ function FailureNote({ failure }: { failure: Failure }) {
 						Git output
 					</CollapsibleTrigger>
 					<CollapsibleContent>
-						<pre className="mt-1.5 max-h-40 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap select-text">{failure.detail}</pre>
+						<pre className="mt-1.5 max-h-40 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap select-text">
+							{failure.detail}
+						</pre>
 					</CollapsibleContent>
 				</Collapsible>
 			) : null}

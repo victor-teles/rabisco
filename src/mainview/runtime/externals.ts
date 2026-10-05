@@ -27,7 +27,7 @@ import * as Toggle from "@/components/ui/toggle";
 import * as ToggleGroup from "@/components/ui/toggle-group";
 import * as Tooltip from "@/components/ui/tooltip";
 
-export const externals: Record<string, unknown> = {
+export const externals = {
 	react: React,
 	"react/jsx-runtime": JsxRuntime,
 	"react-dom": ReactDOM,
@@ -56,3 +56,9 @@ export const externals: Record<string, unknown> = {
 	"@/components/ui/toggle-group": ToggleGroup,
 	"@/components/ui/tooltip": Tooltip,
 };
+
+export type ExternalSpecifier = keyof typeof externals;
+
+/** Whether screens can import `specifier` from the runtime. */
+export const isExternalSpecifier = (specifier: string): specifier is ExternalSpecifier =>
+	Object.hasOwn(externals, specifier);

@@ -96,6 +96,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 
 	const openFolder = async () => {
 		const path = await api.pickProjectFolder({});
+
 		if (path) onOpenProject(path);
 	};
 
@@ -106,6 +107,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 
 	const moveToTrash = async (project: ProjectSummary) => {
 		setTrashTarget(null);
+
 		try {
 			await api.deleteProject({ path: project.path });
 			forget(project.path);
@@ -147,8 +149,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								What should we sketch today?
 							</h1>
 							<p className="mt-3 max-w-md text-[15px]/6 text-muted-foreground text-pretty">
-								Describe an app or a website. Rabisco drafts editable screens you can refine
-								on the canvas.
+								Describe an app or a website. Rabisco drafts editable screens you can refine on the canvas.
 							</p>
 
 							<DesignComposer
@@ -276,9 +277,7 @@ function Sidebar({ onNew, onOpenFolder }: { onNew: () => void; onOpenFolder: () 
 					>
 						<item.icon className="size-4" strokeWidth={1.8} />
 						{item.label}
-						{item.soon ? (
-							<span className="ml-auto text-[11px] text-subtle-foreground">Soon</span>
-						) : null}
+						{item.soon ? <span className="ml-auto text-[11px] text-subtle-foreground">Soon</span> : null}
 					</button>
 				))}
 			</nav>
@@ -389,8 +388,12 @@ function ProjectCard({
 function timeAgo(iso: string) {
 	const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
 	const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
 	if (seconds < 60) return "just now";
+
 	if (seconds < 3600) return format.format(-Math.round(seconds / 60), "minute");
+
 	if (seconds < 86400) return format.format(-Math.round(seconds / 3600), "hour");
+
 	return format.format(-Math.round(seconds / 86400), "day");
 }

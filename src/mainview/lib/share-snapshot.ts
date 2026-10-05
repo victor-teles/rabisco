@@ -11,20 +11,31 @@ import type { Frame, ProjectFiles } from "../../shared/types";
  * (cached), the shared Tailwind stylesheet with every class they use, and the
  * DESIGN.md token overrides. `start` is where the viewer opens, if it is a screen.
  */
-export async function buildShareSnapshot(input: { name: string; frames: Frame[]; files: ProjectFiles; start?: string }): Promise<ShareSnapshot> {
+export async function buildShareSnapshot(input: {
+	name: string;
+	frames: Frame[];
+	files: ProjectFiles;
+	start?: string;
+}): Promise<ShareSnapshot> {
 	const { files } = input;
 	const screens = shareScreens(input.frames, files);
+
 	if (screens.length === 0) throw new Error("There are no screens to share yet");
 	await screenStyles.whenReady();
 	const modules: Record<string, ShareModule> = {};
+
 	for (const screen of screens) {
 		for (const [path, module] of collectGraph(screen.file, files, compileCache).modules) {
 			if (modules[path]) continue;
 			screenStyles.add(module.candidates);
-			modules[path] = module.error ? { source: module.source, error: module.error } : { source: module.source, code: module.code! };
+			modules[path] = module.error
+				? { source: module.source, error: module.error }
+				: { source: module.source, code: module.code! };
 		}
 	}
+
 	const start = screens.some((screen) => screen.file === input.start) ? input.start! : screens[0]!.file;
+
 	return {
 		version: 1,
 		name: input.name,

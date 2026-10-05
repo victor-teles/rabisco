@@ -18,19 +18,24 @@ const TOKEN_CLASS: Record<TokenKind, string> = {
 
 /** Matches `text-xs/5` and `py-3` below; the caret math depends on them */
 const LINE_HEIGHT = 20;
+
 const PADDING_TOP = 12;
+
 const GUTTER = 44;
+
 const TAB_SIZE = 2;
 
 /** File path and copy button, above the structure and the code. */
 export function CodeHeader({ path, source }: { path: string; source: string | undefined }) {
 	const [copied, setCopied] = useState(false);
+
 	const copy = async () => {
 		if (source === undefined) return;
 		await navigator.clipboard.writeText(source);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1200);
 	};
+
 	return (
 		<div className="flex h-10 shrink-0 items-center gap-2 border-b pr-2 pl-4">
 			<span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={path}>
@@ -51,7 +56,9 @@ export function CodeHeader({ path, source }: { path: string; source: string | un
 /** Offsets where each line starts */
 function lineStarts(source: string) {
 	const starts = [0];
+
 	for (let i = source.indexOf("\n"); i !== -1; i = source.indexOf("\n", i + 1)) starts.push(i + 1);
+
 	return starts;
 }
 
@@ -59,18 +66,24 @@ function lineStarts(source: string) {
 function lineOf(starts: number[], offset: number) {
 	let low = 0;
 	let high = starts.length - 1;
+
 	while (low < high) {
 		const mid = (low + high + 1) >> 1;
+
 		if (starts[mid]! <= offset) low = mid;
 		else high = mid - 1;
 	}
+
 	return low;
 }
 
 /** Columns from the line start to `offset`, with tabs expanded */
 function columnOf(source: string, lineStart: number, offset: number) {
 	let column = 0;
-	for (let i = lineStart; i < offset; i++) column = source[i] === "\t" ? (Math.floor(column / TAB_SIZE) + 1) * TAB_SIZE : column + 1;
+
+	for (let i = lineStart; i < offset; i++)
+		column = source[i] === "\t" ? (Math.floor(column / TAB_SIZE) + 1) * TAB_SIZE : column + 1;
+
 	return column;
 }
 
@@ -98,7 +111,18 @@ type CodeEditorProps = {
  * the highlighted text, with the same font metrics, so typing, selection and
  * IME stay native. The project history owns undo, like the context panel.
  */
-export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndStep, onUndo, onRedo, onCaretClick, readOnly = false }: CodeEditorProps) {
+export function CodeEditor({
+	source,
+	label,
+	highlight,
+	revealKey,
+	onEdit,
+	onEndStep,
+	onUndo,
+	onRedo,
+	onCaretClick,
+	readOnly = false,
+}: CodeEditorProps) {
 	const lines = useMemo(() => tokenizeLines(source), [source]);
 	const starts = useMemo(() => lineStarts(source), [source]);
 	const scroller = useRef<HTMLDivElement>(null);
@@ -115,15 +139,21 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 	/** Scrolls the container so `offset` is visible; `center` puts it a third down the view */
 	const reveal = (offset: number, center = false) => {
 		const box = scroller.current;
+
 		if (!box) return;
 		const line = lineOf(starts, offset);
 		const y = PADDING_TOP + line * LINE_HEIGHT;
-		if (center && (y < box.scrollTop || y + LINE_HEIGHT > box.scrollTop + box.clientHeight)) box.scrollTop = y - box.clientHeight / 3;
+
+		if (center && (y < box.scrollTop || y + LINE_HEIGHT > box.scrollTop + box.clientHeight))
+			box.scrollTop = y - box.clientHeight / 3;
 		else if (y < box.scrollTop) box.scrollTop = y - PADDING_TOP;
-		else if (y + LINE_HEIGHT > box.scrollTop + box.clientHeight) box.scrollTop = y + LINE_HEIGHT + PADDING_TOP - box.clientHeight;
+		else if (y + LINE_HEIGHT > box.scrollTop + box.clientHeight)
+			box.scrollTop = y + LINE_HEIGHT + PADDING_TOP - box.clientHeight;
+
 		if (center) return;
 		const charWidth = (measure.current?.getBoundingClientRect().width ?? 72) / 10;
 		const x = GUTTER + columnOf(source, starts[line]!, offset) * charWidth;
+
 		if (x < box.scrollLeft + GUTTER) box.scrollLeft = Math.max(0, x - GUTTER - 4 * charWidth);
 		else if (x + charWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = x + 8 * charWidth - box.clientWidth;
 	};
@@ -131,6 +161,7 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 	// Undo, redo and external edits replace the value: keep the caret where it was
 	useLayoutEffect(() => {
 		const element = area.current;
+
 		if (!element || document.activeElement !== element || typed.current === source) return;
 		const start = Math.min(caret.current.start, source.length);
 		element.setSelectionRange(start, Math.min(Math.max(caret.current.end, start), source.length));
@@ -143,8 +174,10 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 
 	const remember = () => {
 		const element = area.current;
+
 		if (element) caret.current = { start: element.selectionStart, end: element.selectionEnd };
 	};
+
 	const followCaret = () => {
 		remember();
 		requestAnimationFrame(() => area.current && reveal(area.current.selectionEnd));
@@ -153,6 +186,7 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 	/** Inserts text at the caret as a native edit (so the input event fires); falls back to a manual splice */
 	const insert = (element: HTMLTextAreaElement, text: string) => {
 		if (readOnly) return;
+
 		if (document.execCommand?.("insertText", false, text)) return;
 		const { selectionStart: from, selectionEnd: to, value } = element;
 		const next = value.slice(0, from) + text + value.slice(to);
@@ -165,10 +199,12 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 	const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		const element = event.currentTarget;
 		const mod = event.metaKey || event.ctrlKey;
+
 		if (mod && !event.altKey && (event.code === "KeyZ" || event.code === "KeyY")) {
 			event.preventDefault();
 			remember();
 			onEndStep();
+
 			if (event.code === "KeyY" || event.shiftKey) onRedo();
 			else onUndo();
 			focusId.current += 1;
@@ -190,7 +226,10 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 	return (
 		<div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
 			<div className="flex min-h-full min-w-max py-3 font-mono text-xs/5">
-				<div aria-hidden className="sticky left-0 z-10 w-11 shrink-0 bg-background pr-3 text-right text-subtle-foreground/70 tabular-nums select-none">
+				<div
+					aria-hidden
+					className="sticky left-0 z-10 w-11 shrink-0 bg-background pr-3 text-right text-subtle-foreground/70 tabular-nums select-none"
+				>
 					{lines.map((_, index) => (
 						<div key={index} className={cn(index >= first && index <= last && "text-muted-foreground")}>
 							{index + 1}
@@ -242,6 +281,7 @@ export function CodeEditor({ source, label, highlight, revealKey, onEdit, onEndS
 						onMouseUp={(event) => {
 							const { selectionStart, selectionEnd } = event.currentTarget;
 							remember();
+
 							if (selectionStart === selectionEnd) onCaretClick?.(selectionStart);
 						}}
 						// The container scrolls, never the textarea itself

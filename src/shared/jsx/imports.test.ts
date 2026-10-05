@@ -14,12 +14,26 @@ import {
 import "./side-effect";
 const lazy = import("./x");
 `;
+
 		const imports = readImports(source);
-		expect(imports.map((d) => d.module)).toEqual(["react", "lucide-react", "lucide-react", "@/components/ui/card", "./side-effect"]);
-		expect(imports[0]).toMatchObject({ defaultName: "React", named: [{ imported: "useState", local: "useS", type: false }], semicolon: true });
+		expect(imports.map((d) => d.module)).toEqual([
+			"react",
+			"lucide-react",
+			"lucide-react",
+			"@/components/ui/card",
+			"./side-effect",
+		]);
+		expect(imports[0]).toMatchObject({
+			defaultName: "React",
+			named: [{ imported: "useState", local: "useS", type: false }],
+			semicolon: true,
+		});
 		expect(imports[1]).toMatchObject({ namespace: "Icons", quote: "'" });
 		expect(imports[2]).toMatchObject({ typeOnly: true, named: [{ local: "LucideIcon" }] });
-		expect(imports[3]).toMatchObject({ semicolon: false, named: [{ local: "Card" }, { local: "CardProps", type: true }] });
+		expect(imports[3]).toMatchObject({
+			semicolon: false,
+			named: [{ local: "Card" }, { local: "CardProps", type: true }],
+		});
 	});
 });
 
@@ -33,18 +47,28 @@ describe("addImport", () => {
 
 	test("adds a line after the last import", () => {
 		const out = addImport(DASHBOARD, "../components/stat-card", ["StatCard"]);
-		expect(out).toContain(`import { TabBar } from "../components/tab-bar";\nimport { StatCard } from "../components/stat-card";\n`);
+		expect(out).toContain(
+			`import { TabBar } from "../components/tab-bar";\nimport { StatCard } from "../components/stat-card";\n`,
+		);
 	});
 
 	test("keeps multi-line braces multi-line, and quote and semicolon style", () => {
 		const source = `import {\n\tCard,\n} from '@/components/ui/card'\n\nexport const x = 1\n`;
-		expect(addImport(source, "@/components/ui/card", ["CardTitle"])).toBe(`import {\n\tCard,\n\tCardTitle,\n} from '@/components/ui/card'\n\nexport const x = 1\n`);
-		expect(addImport(source, "react", ["useState"])).toStartWith(`import {\n\tCard,\n} from '@/components/ui/card'\nimport { useState } from 'react'\n`);
+		expect(addImport(source, "@/components/ui/card", ["CardTitle"])).toBe(
+			`import {\n\tCard,\n\tCardTitle,\n} from '@/components/ui/card'\n\nexport const x = 1\n`,
+		);
+		expect(addImport(source, "react", ["useState"])).toStartWith(
+			`import {\n\tCard,\n} from '@/components/ui/card'\nimport { useState } from 'react'\n`,
+		);
 	});
 
 	test("adds to a default import, or at the top of a file without imports", () => {
-		expect(addImport(`import React from "react";\n`, "react", ["useState"])).toBe(`import React, { useState } from "react";\n`);
-		expect(addImport(`export function A() {\n\treturn <div />;\n}\n`, "react", ["useState"])).toBe(`import { useState } from "react";\n\nexport function A() {\n\treturn <div />;\n}\n`);
+		expect(addImport(`import React from "react";\n`, "react", ["useState"])).toBe(
+			`import React, { useState } from "react";\n`,
+		);
+		expect(addImport(`export function A() {\n\treturn <div />;\n}\n`, "react", ["useState"])).toBe(
+			`import { useState } from "react";\n\nexport function A() {\n\treturn <div />;\n}\n`,
+		);
 		expect(addImport("", "react", ["useState"])).toBe(`import { useState } from "react";\n`);
 	});
 
@@ -63,6 +87,7 @@ export function A() {
 	return <Card className={cn("a")}><Bell /></Card>;
 }
 `;
+
 		const out = removeUnusedImports(source, ["Star", "Card", "Bell", "cn"]);
 		expect(out).toContain(`import { Bell } from "lucide-react";`);
 		expect(out).toContain("import { Card }");

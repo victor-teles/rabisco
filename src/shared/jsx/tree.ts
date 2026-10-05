@@ -65,27 +65,39 @@ export type JsxTree = { ok: boolean; error: string | null; roots: JsxElement[] }
 export type ParsedFile = JsxTree & { source: string; tokens: Token[] };
 
 const cache = new Map<string, ParsedFile>();
+
 const CACHE_SIZE = 128;
 
 /** Parses a TSX file, memoized by content. Treat the result as read-only. */
 export function parseFile(source: string): ParsedFile {
 	const hit = cache.get(source);
+
 	if (hit) return hit;
 	let parsed: ParsedFile;
+
 	try {
-		const tokens = parse(source, true, true, false).tokens as unknown as Token[];
+		const tokens: Token[] = parse(source, true, true, false).tokens;
 		parsed = { ok: true, error: null, source, tokens, roots: buildTree(source, tokens) };
 	} catch (error) {
-		parsed = { ok: false, error: String((error as Error)?.message ?? error), source, tokens: [], roots: [] };
+		parsed = {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error),
+			source,
+			tokens: [],
+			roots: [],
+		};
 	}
+
 	if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value!);
 	cache.set(source, parsed);
+
 	return parsed;
 }
 
 /** Every top-level JSX root of a file (all functions), with nested elements, texts and expressions. */
 export function parseJsx(source: string): JsxTree {
 	const { ok, error, roots } = parseFile(source);
+
 	return { ok, error, roots };
 }
 
@@ -95,30 +107,36 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 	/** Index of the `}` matching the `{` (or `${`) at `i` */
 	const matchBrace = (i: number) => {
 		let depth = 0;
+
 		for (let j = i; j < tokens.length; j++) {
 			const type = tokens[j]!.type;
+
 			if (type === tt.braceL || type === tt.dollarBraceL) depth++;
 			else if (type === tt.braceR && --depth === 0) return j;
 		}
+
 		return tokens.length - 1;
 	};
 
 	/** JSX elements that start in tokens [from, to) */
 	const scan = (from: number, to: number, parent: JsxElement | null, container: JsxExpression | null) => {
 		const found: JsxElement[] = [];
-		for (let j = from; j < to; ) {
+
+		for (let j = from; j < to;) {
 			if (is(j, tt.jsxTagStart) && !is(j + 1, tt.slash)) {
 				const [element, next] = parseElement(j, parent, container);
 				found.push(element);
 				j = next;
 			} else j++;
 		}
+
 		return found;
 	};
 
 	/** `{…}` at `i` as an expression; returns it with the index after its `}` */
 	const expression = (i: number, parent: JsxElement): [JsxExpression, number] => {
 		const k = matchBrace(i);
+
 		const value: JsxExpression = {
 			kind: "expression",
 			text: source.slice(tokens[i]!.end, tokens[k]!.start),
@@ -127,7 +145,9 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 			empty: k === i + 1,
 			elements: [],
 		};
+
 		value.elements = scan(i + 1, k, parent, value);
+
 		return [value, k + 1];
 	};
 
@@ -135,11 +155,17 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 	const dottedName = (j: number): [string, number] => {
 		const first = j;
 		j++;
+
 		while ((is(j, tt.dot) || is(j, tt.colon)) && is(j + 1, tt.jsxName)) j += 2;
+
 		return [source.slice(tokens[first]!.start, tokens[j - 1]!.end), j];
 	};
 
-	const parseElement = (i: number, parent: JsxElement | null, container: JsxExpression | null): [JsxElement, number] => {
+	const parseElement = (
+		i: number,
+		parent: JsxElement | null,
+		container: JsxExpression | null,
+	): [JsxElement, number] => {
 		const element: JsxElement = {
 			kind: "element",
 			name: null,
@@ -156,12 +182,15 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 			depth: parent ? parent.depth + 1 : 0,
 			container,
 		};
+
 		let j = i + 1;
+
 		if (is(j, tt.jsxName)) {
 			[element.name, j] = dottedName(j);
 			element.intrinsic = /^[a-z]/.test(element.name);
 			element.nameEnd = tokens[j - 1]!.end;
 		}
+
 		// Attributes, up to `>` or `/>`
 		while (j < tokens.length && !is(j, tt.jsxTagEnd) && !(is(j, tt.slash) && is(j + 1, tt.jsxTagEnd))) {
 			if (is(j, tt.braceL)) {
@@ -174,32 +203,53 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 				let name: string;
 				[name, j] = dottedName(j);
 				let value: JsxString | JsxExpression | null = null;
+
 				if (is(j, tt.eq)) {
 					j++;
+
 					if (is(j, tt.string)) {
 						const raw = source.slice(tokens[j]!.start, tokens[j]!.end);
-						value = { kind: "string", value: decodeEntities(raw.slice(1, -1)), raw, start: tokens[j]!.start, end: tokens[j]!.end };
+						value = {
+							kind: "string",
+							value: decodeEntities(raw.slice(1, -1)),
+							raw,
+							start: tokens[j]!.start,
+							end: tokens[j]!.end,
+						};
 						j++;
 					} else if (is(j, tt.braceL)) {
 						[value, j] = expression(j, element);
 					} else if (is(j, tt.jsxTagStart)) {
 						const [child, next] = parseElement(j, element, null);
-						value = { kind: "expression", text: source.slice(child.start, child.end), start: child.start, end: child.end, empty: false, elements: [child] };
+						value = {
+							kind: "expression",
+							text: source.slice(child.start, child.end),
+							start: child.start,
+							end: child.end,
+							empty: false,
+							elements: [child],
+						};
 						child.container = value;
 						j = next;
 					}
 				}
+
 				element.attributes.push({ kind: "attribute", name, start, end: value ? value.end : tokens[j - 1]!.end, value });
 			} else j++;
 		}
+
 		element.selfClosing = is(j, tt.slash);
+
 		if (element.selfClosing) j++;
 		element.openingEnd = element.end = tokens[j]?.end ?? source.length;
 		j++;
+
 		if (element.selfClosing) return [element, j];
+
 		// Children, up to the closing tag
 		while (j < tokens.length) {
 			const token = tokens[j]!;
+
 			if (token.type === tt.jsxText) {
 				const raw = source.slice(token.start, token.end);
 				element.children.push({ kind: "text", raw, value: jsxTextValue(raw), start: token.start, end: token.end });
@@ -210,8 +260,10 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 				element.children.push(value);
 			} else if (token.type === tt.jsxTagStart && is(j + 1, tt.slash)) {
 				element.closingStart = token.start;
+
 				while (j < tokens.length && !is(j, tt.jsxTagEnd)) j++;
 				element.end = tokens[j]?.end ?? source.length;
+
 				return [element, j + 1];
 			} else if (token.type === tt.jsxTagStart) {
 				let child: JsxElement;
@@ -220,6 +272,7 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 			} else if (token.type === tt.eof) break;
 			else j++;
 		}
+
 		return [element, j];
 	};
 
@@ -229,21 +282,29 @@ function buildTree(source: string, tokens: Token[]): JsxElement[] {
 /** JSX elements written inside an attribute value or child expression of `element`, or child elements, in source order. */
 export function childElements(element: JsxElement): JsxElement[] {
 	const found: JsxElement[] = [];
-	for (const attribute of element.attributes) if (attribute.kind === "attribute" && attribute.value?.kind === "expression") found.push(...attribute.value.elements);
+
+	for (const attribute of element.attributes)
+		if (attribute.kind === "attribute" && attribute.value?.kind === "expression")
+			found.push(...attribute.value.elements);
+
 	for (const child of element.children) {
 		if (child.kind === "element") found.push(child);
 		else if (child.kind === "expression") found.push(...child.elements);
 	}
+
 	return found;
 }
 
 /** Depth-first, source order, including elements inside expressions. Return `false` from `visit` to skip an element's descendants. */
 export function walk(roots: JsxTree | JsxElement[] | JsxElement, visit: (element: JsxElement) => void | boolean) {
 	const list = Array.isArray(roots) ? roots : "kind" in roots ? [roots] : roots.roots;
+
 	const step = (element: JsxElement) => {
 		if (visit(element) === false) return;
+
 		for (const child of childElements(element)) step(child);
 	};
+
 	for (const root of list) step(root);
 }
 
@@ -251,6 +312,7 @@ export function walk(roots: JsxTree | JsxElement[] | JsxElement, visit: (element
 export function flatten(roots: JsxTree | JsxElement[] | JsxElement): JsxElement[] {
 	const all: JsxElement[] = [];
 	walk(roots, (element) => void all.push(element));
+
 	return all;
 }
 
@@ -261,6 +323,7 @@ export function elementAt(tree: JsxTree | JsxElement[], offset: number): JsxElem
 		if (offset < element.start || offset >= element.end) return false;
 		found = element;
 	});
+
 	return found;
 }
 
@@ -269,8 +332,10 @@ export function findElement(tree: JsxTree | JsxElement[], start: number): JsxEle
 	let found: JsxElement | null = null;
 	walk(tree, (element) => {
 		if (found || start < element.start || start >= element.end) return false;
+
 		if (element.start === start) found = element;
 	});
+
 	return found;
 }
 

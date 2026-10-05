@@ -28,6 +28,8 @@ import type { ContextFileName, ProjectFiles } from "../../../shared/types";
 
 export const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 
+const isContextFileName = (value: string): value is ContextFileName => CONTEXT_FILES.some((name) => name === value);
+
 type ImportedFile = { path: ContextFileName; content: string; source: string };
 
 export type ContextPanelProps = {
@@ -70,6 +72,7 @@ export function ContextPanel(props: ContextPanelProps) {
 	const applyImport = (found: ImportedFile[]) => {
 		setPendingImport(null);
 		onReplace(Object.fromEntries(found.map((f) => [f.path, f.content])));
+
 		if (!found.some((f) => f.path === file)) onFileChange(found[0]!.path);
 		toast(`Imported ${found.map((f) => `${f.path} from ${f.source}`).join(" and ")}`);
 	};
@@ -77,23 +80,34 @@ export function ContextPanel(props: ContextPanelProps) {
 	const importFromRepository = async () => {
 		if (!isDesktop) {
 			toast("Import needs the desktop app");
+
 			return;
 		}
+
 		const from = await api.pickProjectFolder({});
+
 		if (!from) return;
 		let found: ImportedFile[];
+
 		try {
 			found = (await api.importContext({ from })).files;
 		} catch (reason) {
 			toast.error("Couldn't import", { description: reason instanceof Error ? reason.message : String(reason) });
+
 			return;
 		}
+
 		if (!found.length) {
-			toast("No PRODUCT.md or DESIGN.md in that folder", { description: "Rabisco looks in the folder itself and in docs/." });
+			toast("No PRODUCT.md or DESIGN.md in that folder", {
+				description: "Rabisco looks in the folder itself and in docs/.",
+			});
+
 			return;
 		}
+
 		// Only ask when real work would be replaced; templates and identical files are fine to overwrite
 		const overwrites = found.filter((f) => contextBody(files[f.path]) !== undefined && files[f.path] !== f.content);
+
 		if (overwrites.length) setPendingImport(found);
 		else applyImport(found);
 	};
@@ -108,7 +122,9 @@ export function ContextPanel(props: ContextPanelProps) {
 					type="single"
 					size="sm"
 					value={file}
-					onValueChange={(next) => next && onFileChange(next as ContextFileName)}
+					onValueChange={(next) => {
+						if (isContextFileName(next)) onFileChange(next);
+					}}
 					aria-label="Context file"
 					className="h-7"
 				>
@@ -132,8 +148,15 @@ export function ContextPanel(props: ContextPanelProps) {
 							markdown={source}
 							onJumpToLine={(line) => {
 								const element = textarea.current;
+
 								if (!element) return;
-								const start = source.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
+
+								const start =
+									source
+										.split("\n")
+										.slice(0, line - 1)
+										.join("\n").length + (line > 1 ? 1 : 0);
+
 								const end = source.indexOf("\n", start);
 								element.focus();
 								element.setSelectionRange(start, end === -1 ? source.length : end);
@@ -153,9 +176,11 @@ export function ContextPanel(props: ContextPanelProps) {
 						onKeyDown={(event) => {
 							// The project history owns undo, so it matches the rest of the editor
 							const mod = event.metaKey || event.ctrlKey;
+
 							if (mod && (event.code === "KeyZ" || event.code === "KeyY")) {
 								event.preventDefault();
 								onEndStep();
+
 								if (event.code === "KeyY" || event.shiftKey) onRedo();
 								else onUndo();
 								focusId.current += 1;
@@ -211,6 +236,7 @@ function ContextActions(props: ContextPanelProps & { missing: boolean; onImport:
 	const ai = aiAction(props);
 	// Resetting to the template would throw work away; only offer it while the file says nothing yet
 	const canUseTemplate = contextBody(files[file]) === undefined && files[file] !== CONTEXT_TEMPLATES[file];
+
 	return (
 		<DropdownMenu modal={false}>
 			<Tooltip>
@@ -250,13 +276,12 @@ function ContextActions(props: ContextPanelProps & { missing: boolean; onImport:
 function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
 	const { file, onReplace, onImport } = props;
 	const ai = aiAction(props);
+
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<div>
 				<p className="text-[13px] font-medium">No {file} yet</p>
-				<p className="mt-1 text-[13px]/5 text-muted-foreground">
-					{DESCRIPTION[file]} Every generation follows it.
-				</p>
+				<p className="mt-1 text-[13px]/5 text-muted-foreground">{DESCRIPTION[file]} Every generation follows it.</p>
 			</div>
 			<div className="flex flex-col items-start gap-2">
 				<Button size="sm" onClick={() => onReplace({ [file]: CONTEXT_TEMPLATES[file] })}>
@@ -278,15 +303,32 @@ function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
 }
 
 /** Whether the file shaped the last generation, or why it won't shape the next one. */
-function UsageLine({ file, source, lastUsed }: { file: ContextFileName; source: string; lastUsed: ContextFileName[] | null }) {
+function UsageLine({
+	file,
+	source,
+	lastUsed,
+}: {
+	file: ContextFileName;
+	source: string;
+	lastUsed: ContextFileName[] | null;
+}) {
 	const template = contextBody(source) === undefined;
 	const used = !template && lastUsed?.includes(file);
-	const label = template ? "Template — not used until you fill it in" : used ? "Used in the last generation" : "Not used yet";
+
+	const label = template
+		? "Template — not used until you fill it in"
+		: used
+			? "Used in the last generation"
+			: "Not used yet";
+
 	return (
 		<div className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-1 text-xs text-subtle-foreground">
 			<span
 				aria-hidden
-				className={cn("size-1.5 shrink-0 rounded-full", used ? "bg-emerald-500" : template ? "border border-subtle-foreground/60" : "bg-subtle-foreground/50")}
+				className={cn(
+					"size-1.5 shrink-0 rounded-full",
+					used ? "bg-emerald-500" : template ? "border border-subtle-foreground/60" : "bg-subtle-foreground/50",
+				)}
 			/>
 			{label}
 		</div>
@@ -297,10 +339,15 @@ function UsageLine({ file, source, lastUsed }: { file: ContextFileName; source: 
 function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLine: (line: number) => void }) {
 	const tokens = useMemo(() => parseDesignTokens(markdown), [markdown]);
 	const colorNames = new Set<string>(COLOR_TOKENS);
-	const entries = TOKEN_NAMES.filter((name) => name in tokens.light).map((name) => [name, tokens.light[name]!] as const);
+
+	const entries = TOKEN_NAMES.filter((name) => name in tokens.light).map(
+		(name) => [name, tokens.light[name]!] as const,
+	);
+
 	const colors = entries.filter(([name]) => colorNames.has(name));
 	const others = entries.filter(([name]) => !colorNames.has(name));
 	const darkCount = Object.keys(tokens.dark).length;
+
 	if (!entries.length && !darkCount && !tokens.invalid.length) return null;
 
 	return (
@@ -344,7 +391,8 @@ function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLi
 								className="w-full rounded text-left line-clamp-2 text-[11px]/4 text-pretty text-destructive hover:underline"
 								title={`${token.name}: ${token.value} — ${token.reason}`}
 							>
-								<span className="tabular-nums">Line {token.line}</span> · <span className="font-mono">{token.name}</span> ignored: {token.reason}
+								<span className="tabular-nums">Line {token.line}</span> ·{" "}
+								<span className="font-mono">{token.name}</span> ignored: {token.reason}
 							</button>
 						</li>
 					))}

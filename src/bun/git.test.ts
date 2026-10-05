@@ -16,13 +16,16 @@ const ENV = {
 	GIT_CONFIG_GLOBAL: "/dev/null",
 	GIT_CONFIG_NOSYSTEM: "1",
 };
+
 const saved: Record<string, string | undefined> = {};
+
 beforeAll(() => {
 	for (const [key, value] of Object.entries(ENV)) {
 		saved[key] = process.env[key];
 		process.env[key] = value;
 	}
 });
+
 afterAll(() => {
 	for (const [key, value] of Object.entries(saved)) {
 		if (value === undefined) delete process.env[key];
@@ -33,7 +36,9 @@ afterAll(() => {
 /** Runs git outside Rabisco, like a collaborator would. */
 function sh(cwd: string, ...args: string[]) {
 	const result = Bun.spawnSync(["git", ...args], { cwd, env: { ...process.env, ...ENV } });
+
 	if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr.toString()}`);
+
 	return result.stdout.toString().trim();
 }
 
@@ -43,6 +48,7 @@ function makeProject(parent = tempDir()) {
 	writeFileSync(join(dir, "rabisco.json"), "{}\n");
 	writeFileSync(join(dir, "screens/welcome.tsx"), "export default function Welcome() {\n\treturn <h1>Hello</h1>;\n}\n");
 	writeFileSync(join(dir, "DESIGN.md"), "# Design\n");
+
 	return dir;
 }
 
@@ -50,7 +56,9 @@ const git = createGit({ timeoutMs: 10_000, networkTimeoutMs: 10_000 });
 
 describe("parsePorcelain", () => {
 	test("reads statuses, untracked files and renames", () => {
-		const output = " M screens/a.tsx\0?? screens/b.tsx\0D  DESIGN.md\0R  screens/new.tsx\0screens/old.tsx\0A  components/x.tsx\0";
+		const output =
+			" M screens/a.tsx\0?? screens/b.tsx\0D  DESIGN.md\0R  screens/new.tsx\0screens/old.tsx\0A  components/x.tsx\0";
+
 		expect(parsePorcelain(output)).toEqual([
 			{ status: "M", path: "screens/a.tsx" },
 			{ status: "?", path: "screens/b.tsx" },
@@ -65,6 +73,7 @@ describe("without git", () => {
 	test("status says git is missing, and how to get it", async () => {
 		const status = await createGit({ bin: null }).status(tempDir());
 		expect(status.state).toBe("unavailable");
+
 		if (status.state === "unavailable") expect(status.error).toContain("Install it");
 		expect(await createGit({ bin: null }).sync(tempDir())).toMatchObject({ ok: false });
 	});
@@ -75,7 +84,15 @@ describe.skipIf(!hasGit)("git sync", () => {
 		const dir = makeProject();
 		expect((await git.status(dir)).state).toBe("none");
 		const status = await git.init(dir, "My app");
-		expect(status).toMatchObject({ state: "repo", branch: "main", hasCommits: true, changes: 0, remote: null, prefix: "" });
+		expect(status).toMatchObject({
+			state: "repo",
+			branch: "main",
+			hasCommits: true,
+			changes: 0,
+			remote: null,
+			prefix: "",
+		});
+
 		if (status.state === "repo") expect(status.lastCommit?.subject).toBe("Rabisco: start My app");
 		expect(readFileSync(join(dir, ".gitignore"), "utf8")).toContain(".DS_Store");
 		await expect(git.init(dir, "again")).rejects.toThrow("already in a git repository");
@@ -86,9 +103,10 @@ describe.skipIf(!hasGit)("git sync", () => {
 		await git.init(dir, "app");
 		writeFileSync(join(dir, "screens/welcome.tsx"), "export default function Welcome() {\n\treturn <h1>Hi</h1>;\n}\n");
 		writeFileSync(join(dir, "screens/settings.tsx"), "export default () => null;\n");
-		expect((await git.status(dir)) as { changes: number }).toMatchObject({ changes: 2 });
+		expect(await git.status(dir)).toMatchObject({ changes: 2 });
 		const result = await git.sync(dir);
 		expect(result).toMatchObject({ ok: true, remote: null, pulled: 0, pushed: 0 });
+
 		if (result.ok) expect(result.committed?.subject).toBe("Rabisco: add settings screen, update welcome screen");
 		expect(sh(dir, "log", "-1", "--format=%b")).toContain("- add screens/settings.tsx");
 		expect(await git.sync(dir)).toMatchObject({ ok: true, committed: null });
@@ -139,7 +157,10 @@ describe.skipIf(!hasGit)("git sync", () => {
 
 		const other = join(tempDir(), "clone");
 		sh(tempDir(), "clone", "-q", bare, other);
-		writeFileSync(join(other, "screens/welcome.tsx"), "export default function Welcome() {\n\treturn <h1>Theirs</h1>;\n}\n");
+		writeFileSync(
+			join(other, "screens/welcome.tsx"),
+			"export default function Welcome() {\n\treturn <h1>Theirs</h1>;\n}\n",
+		);
 		sh(other, "commit", "-qam", "Theirs");
 		sh(other, "push", "-q");
 
@@ -147,11 +168,13 @@ describe.skipIf(!hasGit)("git sync", () => {
 		writeFileSync(join(dir, "screens/welcome.tsx"), mine);
 		const result = await git.sync(dir);
 		expect(result.ok).toBe(false);
+
 		if (!result.ok) {
 			expect(result.error).toContain("edit the same lines");
 			expect(result.error).toContain("committed locally");
 			expect(result.detail).toBeTruthy();
 		}
+
 		expect(await git.status(dir)).toMatchObject({ unfinished: null, changes: 0, ahead: 1, behind: 1 });
 		expect(readFileSync(join(dir, "screens/welcome.tsx"), "utf8")).toBe(mine);
 	});
@@ -162,6 +185,7 @@ describe.skipIf(!hasGit)("git sync", () => {
 		await git.setRemote(dir, join(tempDir(), "missing.git"));
 		const result = await git.sync(dir);
 		expect(result.ok).toBe(false);
+
 		if (!result.ok) expect(result.error).toContain("origin");
 	});
 

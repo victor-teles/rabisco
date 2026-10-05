@@ -16,11 +16,13 @@ const finish = (...answers: string[]) => answers.reduce(answerQuestion, startInt
 describe("interview", () => {
 	test("asks the questions in order and ends after the last one", () => {
 		let state = startInterview();
+
 		for (const question of INTERVIEW_QUESTIONS) {
 			expect(isInterviewDone(state)).toBe(false);
 			expect(currentQuestion(state)).toBe(question);
 			state = answerQuestion(state, "  yes  ");
 		}
+
 		expect(isInterviewDone(state)).toBe(true);
 		expect(currentQuestion(state)).toBeNull();
 		expect(state.answers).toEqual(["yes", "yes", "yes", "yes"]);

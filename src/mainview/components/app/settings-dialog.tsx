@@ -18,7 +18,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { closeSettings, loadProviders, removeStatus, upsertStatus, useProviders } from "@/hooks/use-providers";
 import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { PROVIDER_TYPES, type ProviderConfig, type ProviderStatus, type ProviderTypeInfo } from "../../../shared/ai/settings";
+import {
+	PROVIDER_TYPES,
+	type ProviderConfig,
+	type ProviderStatus,
+	type ProviderTypeInfo,
+} from "../../../shared/ai/settings";
 
 const KIND_LABEL = { api: "API", cli: "CLI", sdk: "SDK" } as const;
 
@@ -27,12 +32,16 @@ const typeInfo = (type: string) => PROVIDER_TYPES.find((t) => t.type === type);
 /** Add a provider, test it, store its key in the keychain and pick its default model. */
 export function SettingsDialog() {
 	const { settingsOpen, focusProvider, settings, statuses, loading } = useProviders();
-	const [expanded, setExpanded] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState(settingsOpen ? focusProvider : null);
 	const [refreshing, setRefreshing] = useState(false);
+	// Opening (or asking for another provider while open) expands the provider asked for
+	const [request, setRequest] = useState({ open: settingsOpen, focus: focusProvider });
 
-	useEffect(() => {
+	if (request.open !== settingsOpen || request.focus !== focusProvider) {
+		setRequest({ open: settingsOpen, focus: focusProvider });
+
 		if (settingsOpen) setExpanded(focusProvider);
-	}, [settingsOpen, focusProvider]);
+	}
 
 	const added = new Set(settings.providers.map((p) => p.type));
 	const addable = PROVIDER_TYPES.filter((t) => t.type === "openai-compatible" || !added.has(t.type));
@@ -97,7 +106,9 @@ export function SettingsDialog() {
 						<DropdownMenuContent align="start" side="top" className="w-72">
 							{(["api", "cli", "sdk"] as const).map((kind, index) => {
 								const items = addable.filter((t) => t.kind === kind);
+
 								if (!items.length) return null;
+
 								return (
 									<div key={kind}>
 										{index > 0 ? <DropdownMenuSeparator /> : null}
@@ -105,7 +116,11 @@ export function SettingsDialog() {
 											{kind === "api" ? "API key or endpoint" : kind === "cli" ? "Command-line agent" : "Agent SDK"}
 										</DropdownMenuLabel>
 										{items.map((info) => (
-											<DropdownMenuItem key={info.type} onSelect={() => add(info)} className="flex-col items-start gap-0">
+											<DropdownMenuItem
+												key={info.type}
+												onSelect={() => add(info)}
+												className="flex-col items-start gap-0"
+											>
 												<span className="text-[13px]">{info.label}</span>
 												<span className="text-xs text-muted-foreground">{info.description}</span>
 											</DropdownMenuItem>
@@ -127,20 +142,28 @@ export function SettingsDialog() {
 }
 
 function HealthDot({ status, testing }: { status?: ProviderStatus; testing: boolean }) {
-	if (testing || !status?.health) return <LoaderCircle className="size-3.5 text-muted-foreground motion-safe:animate-spin" />;
+	if (testing || !status?.health)
+		return <LoaderCircle className="size-3.5 text-muted-foreground motion-safe:animate-spin" />;
+
 	return (
 		<span
 			aria-hidden="true"
-			className={cn("size-2 rounded-full", !status.enabled ? "bg-border-strong" : status.health.ok ? "bg-success" : "bg-destructive")}
+			className={cn(
+				"size-2 rounded-full",
+				!status.enabled ? "bg-border-strong" : status.health.ok ? "bg-success" : "bg-destructive",
+			)}
 		/>
 	);
 }
 
 function statusText(status: ProviderStatus | undefined, testing: boolean) {
 	if (testing || !status?.health) return "Checking…";
+
 	if (!status.enabled) return "Disabled";
+
 	if (!status.health.ok) return status.health.message;
 	const count = `${status.models.length} ${status.models.length === 1 ? "model" : "models"}`;
+
 	return status.health.version ? `Ready · ${status.health.version} · ${count}` : `Ready · ${count}`;
 }
 
@@ -170,6 +193,7 @@ function ProviderCard({
 
 	const run = async (action: () => Promise<ProviderStatus>, failure: string) => {
 		setTesting(true);
+
 		try {
 			upsertStatus(await action());
 		} catch (error) {
@@ -184,7 +208,11 @@ function ProviderCard({
 			() =>
 				api.updateProvider({
 					id: config.id,
-					patch: { label: label.trim() || config.label, baseUrl: baseUrl.trim() || undefined, binPath: binPath.trim() || undefined },
+					patch: {
+						label: label.trim() || config.label,
+						baseUrl: baseUrl.trim() || undefined,
+						binPath: binPath.trim() || undefined,
+					},
 					apiKey: key.trim() ? key.trim() : undefined,
 				}),
 			"Couldn't save the provider",
@@ -219,7 +247,12 @@ function ProviderCard({
 								</Badge>
 							) : null}
 						</div>
-						<p className={cn("truncate text-xs", health && !health.ok && config.enabled ? "text-destructive" : "text-muted-foreground")}>
+						<p
+							className={cn(
+								"truncate text-xs",
+								health && !health.ok && config.enabled ? "text-destructive" : "text-muted-foreground",
+							)}
+						>
 							{statusText(status, testing)}
 						</p>
 					</div>
@@ -241,7 +274,10 @@ function ProviderCard({
 					</Field>
 
 					{info?.needsKey || config.type === "openai-compatible" ? (
-						<Field label="API key" hint={config.hasKey ? "Stored in your keychain. Type a new key to replace it." : undefined}>
+						<Field
+							label="API key"
+							hint={config.hasKey ? "Stored in your keychain. Type a new key to replace it." : undefined}
+						>
 							<div className="flex gap-2">
 								<Input
 									ref={keyRef}
@@ -258,7 +294,12 @@ function ProviderCard({
 									<Button
 										variant="ghost"
 										size="sm"
-										onClick={() => run(() => api.updateProvider({ id: config.id, patch: {}, apiKey: null }), "Couldn't remove the key")}
+										onClick={() =>
+											run(
+												() => api.updateProvider({ id: config.id, patch: {}, apiKey: null }),
+												"Couldn't remove the key",
+											)
+										}
 									>
 										<KeyRound />
 										Forget
@@ -297,7 +338,10 @@ function ProviderCard({
 							<select
 								value={config.defaultModel ?? ""}
 								onChange={(e) =>
-									run(() => api.updateProvider({ id: config.id, patch: { defaultModel: e.target.value || undefined } }), "Couldn't save the default model")
+									run(
+										() => api.updateProvider({ id: config.id, patch: { defaultModel: e.target.value || undefined } }),
+										"Couldn't save the default model",
+									)
 								}
 								className="h-8 rounded-md border border-input bg-transparent px-2 text-sm dark:bg-input/30"
 							>
@@ -327,7 +371,10 @@ function ProviderCard({
 							variant="ghost"
 							size="sm"
 							onClick={() =>
-								run(() => api.updateProvider({ id: config.id, patch: { enabled: !config.enabled } }), "Couldn't update the provider")
+								run(
+									() => api.updateProvider({ id: config.id, patch: { enabled: !config.enabled } }),
+									"Couldn't update the provider",
+								)
 							}
 						>
 							{config.enabled ? "Disable" : "Enable"}

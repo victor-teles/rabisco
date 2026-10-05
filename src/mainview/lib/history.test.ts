@@ -15,7 +15,16 @@ import {
 	type Snapshot,
 } from "./history";
 
-const frame = (file: string, x = 0): Frame => ({ file, name: file, device: "mobile", x, y: 0, width: 390, height: 844 });
+const frame = (file: string, x = 0): Frame => ({
+	file,
+	name: file,
+	device: "mobile",
+	x,
+	y: 0,
+	width: 390,
+	height: 844,
+});
+
 const snap = (files: Record<string, string>, frames: Frame[] = []): Snapshot => ({ files, frames });
 
 describe("history", () => {
@@ -54,6 +63,7 @@ describe("history", () => {
 	test("same coalesce key amends one step until sealed", () => {
 		const start = snap({}, [frame("screens/a.tsx", 0)]);
 		let h = createHistory(start);
+
 		for (let x = 1; x <= 5; x++) h = commit(h, snap({}, [frame("screens/a.tsx", x)]), { coalesce: "drag:1" });
 		expect(h.past.length).toBe(1);
 		expect(h.present.frames[0]!.x).toBe(5);
@@ -76,6 +86,7 @@ describe("history", () => {
 
 	test("history is capped", () => {
 		let h = createHistory(snap({ n: "0" }));
+
 		for (let i = 1; i <= 10; i++) h = commit(h, snap({ n: String(i) }), { limit: 4 });
 		expect(h.past.length).toBe(4);
 		expect(h.past[0]!.files.n).toBe("6");
@@ -84,7 +95,12 @@ describe("history", () => {
 
 describe("file diffs", () => {
 	test("applyFileChanges writes and deletes", () => {
-		expect(applyFileChanges({ a: "1", b: "2" }, [{ path: "a", content: null }, { path: "c", content: "3" }])).toEqual({ b: "2", c: "3" });
+		expect(
+			applyFileChanges({ a: "1", b: "2" }, [
+				{ path: "a", content: null },
+				{ path: "c", content: "3" },
+			]),
+		).toEqual({ b: "2", c: "3" });
 	});
 
 	test("diffFiles round-trips", () => {
@@ -137,7 +153,10 @@ describe("rebase (external edits)", () => {
 
 	test("reconcile runs on every snapshot", () => {
 		let h = createHistory(snap({ "screens/a.tsx": "a" }, [frame("screens/a.tsx")]));
-		h = commit(h, snap({ "screens/a.tsx": "a", "screens/b.tsx": "b" }, [frame("screens/a.tsx"), frame("screens/b.tsx", 500)]));
+		h = commit(
+			h,
+			snap({ "screens/a.tsx": "a", "screens/b.tsx": "b" }, [frame("screens/a.tsx"), frame("screens/b.tsx", 500)]),
+		);
 		h = rebase(h, [{ path: "screens/a.tsx", content: null }], (s) => ({
 			...s,
 			frames: s.frames.filter((f) => f.file in s.files),
@@ -153,7 +172,14 @@ describe("rebase (external edits)", () => {
 });
 
 describe("comments in the history", () => {
-	const pin = (id: string, rest: Partial<CanvasComment> = {}): CanvasComment => ({ id, x: 5, y: 5, text: id, createdAt: "t", ...rest });
+	const pin = (id: string, rest: Partial<CanvasComment> = {}): CanvasComment => ({
+		id,
+		x: 5,
+		y: 5,
+		text: id,
+		createdAt: "t",
+		...rest,
+	});
 
 	test("recipes that leave comments out keep the present ones", () => {
 		const present = { ...snap({}, [frame("screens/a.tsx")]), comments: [pin("1")] };
@@ -179,9 +205,13 @@ describe("comments in the history", () => {
 	test("adding, editing and resolving are steps; a typing burst is one", () => {
 		let h = createHistory({ ...snap({}), comments: [] });
 		h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1")] }));
+
 		for (const text of ["H", "He", "Hey"]) {
-			h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1", { text })] }), { coalesce: "comment-text:1" });
+			h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1", { text })] }), {
+				coalesce: "comment-text:1",
+			});
 		}
+
 		h = seal(h);
 		h = commit(h, nextSnapshot(h.present, { ...h.present, comments: [pin("1", { text: "Hey", resolved: true })] }));
 		expect(h.past.length).toBe(3);

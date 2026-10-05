@@ -14,11 +14,14 @@ export function isRelative(specifier: string) {
 /** Joins `specifier` onto the directory of `from` and normalises `.` / `..` segments. */
 export function joinPath(from: string, specifier: string) {
 	const parts = from.split("/").slice(0, -1);
+
 	for (const part of specifier.split("/")) {
 		if (part === "" || part === ".") continue;
+
 		if (part === "..") parts.pop();
 		else parts.push(part);
 	}
+
 	return parts.join("/");
 }
 
@@ -28,15 +31,21 @@ export function joinPath(from: string, specifier: string) {
  */
 export function resolveRelative(from: string, specifier: string, exists: (path: string) => boolean): string | null {
 	const base = joinPath(from, specifier);
+
 	if (exists(base)) return base;
+
 	for (const ext of EXTENSIONS) if (exists(base + ext)) return base + ext;
+
 	for (const ext of EXTENSIONS) if (exists(`${base}/index${ext}`)) return `${base}/index${ext}`;
+
 	return null;
 }
 
 /** `require("…")` calls in Sucrase's CommonJS output, in order of appearance. */
 export function extractRequires(code: string): string[] {
 	const found = new Set<string>();
+
 	for (const match of code.matchAll(/\brequire\(\s*(['"])([^'"\n]+)\1\s*\)/g)) found.add(match[2]!);
+
 	return [...found];
 }

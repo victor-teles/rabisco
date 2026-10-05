@@ -19,14 +19,18 @@ const PATTERN =
 export function tokenize(source: string): Token[] {
 	const tokens: Token[] = [];
 	let last = 0;
+
 	const push = (kind: TokenKind, text: string) => {
 		const prev = tokens.at(-1);
+
 		if (prev && prev.kind === kind) prev.text += text;
 		else tokens.push({ kind, text });
 	};
+
 	for (const match of source.matchAll(PATTERN)) {
 		if (match.index > last) push("plain", source.slice(last, match.index));
 		const [text, comment, string, tag, number, attr, word] = match;
+
 		if (comment) push("comment", text);
 		else if (string) push("string", text);
 		else if (tag) push("tag", text);
@@ -36,19 +40,24 @@ export function tokenize(source: string): Token[] {
 		else push("punct", text);
 		last = match.index + text.length;
 	}
+
 	if (last < source.length) push("plain", source.slice(last));
+
 	return tokens;
 }
 
 /** Splits tokens into lines, cutting multi-line tokens (block comments, template strings). */
 export function tokenizeLines(source: string): Token[][] {
 	const lines: Token[][] = [[]];
+
 	for (const token of tokenize(source)) {
 		const parts = token.text.split("\n");
 		parts.forEach((part, i) => {
 			if (i > 0) lines.push([]);
+
 			if (part) lines.at(-1)!.push({ kind: token.kind, text: part });
 		});
 	}
+
 	return lines;
 }

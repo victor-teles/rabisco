@@ -39,7 +39,11 @@ describe("imports", () => {
 	});
 
 	test("local dependencies are transitive, in import order, cycles and missing files skipped", () => {
-		expect(localDependencies(files, "screens/home.tsx")).toEqual(["components/stat-card.tsx", "components/trend.tsx", "components/types.ts"]);
+		expect(localDependencies(files, "screens/home.tsx")).toEqual([
+			"components/stat-card.tsx",
+			"components/trend.tsx",
+			"components/types.ts",
+		]);
 		expect(localDependencies(files, "components/trend.tsx")).toEqual(["components/stat-card.tsx"]);
 		expect(localDependencies(files, "components/unused.tsx")).toEqual([]);
 	});

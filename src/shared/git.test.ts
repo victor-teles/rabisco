@@ -27,7 +27,12 @@ describe("commitMessage", () => {
 	});
 
 	test("canvas, chat and other files", () => {
-		expect(subject([{ status: "M", path: "rabisco.json" }, { status: "M", path: "chat.jsonl" }])).toBe("Rabisco: update the canvas");
+		expect(
+			subject([
+				{ status: "M", path: "rabisco.json" },
+				{ status: "M", path: "chat.jsonl" },
+			]),
+		).toBe("Rabisco: update the canvas");
 		expect(subject([{ status: "M", path: "chat.jsonl" }])).toBe("Rabisco: update the chat");
 		expect(subject([{ status: "?", path: ".gitignore" }])).toBe("Rabisco: update 1 other file");
 	});
@@ -37,6 +42,7 @@ describe("commitMessage", () => {
 			{ status: "M", path: "screens/b.tsx" },
 			{ status: "?", path: "DESIGN.md" },
 		]);
+
 		expect(message).toBe("Rabisco: update b screen, update DESIGN.md\n\n- add DESIGN.md\n- update screens/b.tsx\n");
 	});
 });

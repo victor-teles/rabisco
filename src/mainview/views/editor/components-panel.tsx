@@ -43,8 +43,10 @@ export type ComponentsPanelProps = {
 
 /** Thumbnails render the preview at this size, scaled down by half */
 const THUMB = { width: 400, height: 260, scale: 0.5 };
+
 /** The detail preview: rendered this wide, scaled to the panel */
 const DETAIL_WIDTH = 640;
+
 const DETAIL_SCALE = 0.6375;
 
 type Entry = { path: string; component: ComponentExport; usedBy: string[] };
@@ -52,6 +54,7 @@ type Entry = { path: string; component: ComponentExport; usedBy: string[] };
 const matches = (query: string, ...texts: string[]) => {
 	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
 	const haystack = texts.join(" ").toLowerCase();
+
 	return words.every((word) => haystack.includes(word));
 };
 
@@ -61,16 +64,20 @@ const matches = (query: string, ...texts: string[]) => {
  * re-renders a preview; editing a component or the tokens does.
  */
 function useDesignSystemFiles(files: ProjectFiles, include: (path: string) => boolean) {
-	const ref = useRef<ProjectFiles>({});
 	const next: ProjectFiles = {};
+
 	for (const path of Object.keys(files)) if (include(path)) next[path] = files[path]!;
-	const previous = ref.current;
+	const [previous, setPrevious] = useState(next);
 	const keys = Object.keys(next);
-	if (keys.length !== Object.keys(previous).length || keys.some((key) => previous[key] !== next[key])) ref.current = next;
-	return ref.current;
+
+	if (keys.length === Object.keys(previous).length && keys.every((key) => previous[key] === next[key])) return previous;
+	setPrevious(next);
+
+	return next;
 }
 
 const isSystemFile = (path: string) => isComponentFile(path) || path === "DESIGN.md";
+
 const isDesignFile = (path: string) => path === "DESIGN.md";
 
 function startDrag(event: React.DragEvent, item: DragItem, label: string) {
@@ -82,7 +89,8 @@ function startDrag(event: React.DragEvent, item: DragItem, label: string) {
 	// The drag layer is transparent: show a chip with the name instead
 	const chip = document.createElement("div");
 	chip.textContent = label;
-	chip.className = "fixed -top-96 left-0 rounded-md border bg-popover px-2 py-1 text-[13px] font-medium text-popover-foreground shadow-sm";
+	chip.className =
+		"fixed -top-96 left-0 rounded-md border bg-popover px-2 py-1 text-[13px] font-medium text-popover-foreground shadow-sm";
 	document.body.append(chip);
 	event.dataTransfer.setDragImage(chip, 12, 12);
 	requestAnimationFrame(() => chip.remove());
@@ -138,15 +146,18 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 	// `/` or ⌘F focuses the search while the tab is open
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
-			const target = event.target as HTMLElement | null;
+			const target = event.target instanceof HTMLElement ? event.target : null;
 			const typing = !!target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
 			const find = (event.metaKey || event.ctrlKey) && !event.altKey && event.code === "KeyF";
+
 			if (event.defaultPrevented || (!find && (typing || event.key !== "/" || event.metaKey || event.ctrlKey))) return;
 			event.preventDefault();
 			search.current?.focus();
 			search.current?.select();
 		};
+
 		window.addEventListener("keydown", onKeyDown);
+
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
 
@@ -154,7 +165,11 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 		() => components.flatMap(({ path, exports, usedBy }) => exports.map((component) => ({ path, component, usedBy }))),
 		[components],
 	);
-	const shown = entries.filter((entry) => matches(query, entry.component.name, humanize(entry.component.name), entry.path));
+
+	const shown = entries.filter((entry) =>
+		matches(query, entry.component.name, humanize(entry.component.name), entry.path),
+	);
+
 	const library = useMemo(() => searchLibrary(query), [query]);
 	const shownSuggestions = suggestions.filter((group) => matches(query, group.suggestedName));
 	const detail = selectedComponent ? components.find((c) => c.path === selectedComponent) : undefined;
@@ -170,6 +185,7 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 					onKeyDown={(event) => {
 						if (event.key !== "Escape") return;
 						event.stopPropagation();
+
 						if (query) setQuery("");
 						else event.currentTarget.blur();
 					}}
@@ -188,7 +204,13 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{detail ? (
-					<ComponentDetail key={detail.path} component={detail} systemFiles={systemFiles} {...props} onBack={() => onSelectComponent(null)} />
+					<ComponentDetail
+						key={detail.path}
+						component={detail}
+						systemFiles={systemFiles}
+						{...props}
+						onBack={() => onSelectComponent(null)}
+					/>
 				) : (
 					<div className="flex flex-col gap-6 p-4">
 						{shownSuggestions.length ? <Suggestions groups={shownSuggestions} {...props} /> : null}
@@ -253,11 +275,14 @@ function useNearViewport<T extends Element>() {
 	const [near, setNear] = useState(false);
 	useEffect(() => {
 		const element = ref.current;
+
 		if (!element) return;
 		const observer = new IntersectionObserver(([entry]) => setNear(entry!.isIntersecting), { rootMargin: "200px 0px" });
 		observer.observe(element);
+
 		return () => observer.disconnect();
 	}, []);
+
 	return [ref, near] as const;
 }
 
@@ -280,6 +305,7 @@ const Preview = memo(function Preview({
 	onContentHeight?: (height: number) => void;
 }) {
 	const [ref, near] = useNearViewport<HTMLDivElement>();
+
 	return (
 		<div
 			ref={ref}
@@ -298,26 +324,39 @@ const Preview = memo(function Preview({
 /** The project files plus a virtual preview module of `component`. Stable while neither changes. */
 function useComponentPreview(path: string, component: ComponentExport, systemFiles: ProjectFiles, variants = false) {
 	const entry = previewPath(variants ? `${component.name}Variants` : component.name);
+
 	const module = useMemo(
 		() =>
 			(variants && variantGridModule({ componentPath: path, component })) ||
-			previewModule({ componentPath: path, exportName: component.name, props: sampleProps(component), layout: previewLayout(component.name) }),
+			previewModule({
+				componentPath: path,
+				exportName: component.name,
+				props: sampleProps(component),
+				layout: previewLayout(component.name),
+			}),
 		[path, component, variants],
 	);
+
 	const files = useMemo(() => ({ ...systemFiles, [entry]: module }), [systemFiles, entry, module]);
+
 	return { entry, files };
 }
 
 function usageLabel(usedBy: string[]) {
 	const screens = usedBy.filter(isScreenFile).length;
 	const others = usedBy.length - screens;
-	const parts = [screens ? `${screens} ${screens === 1 ? "screen" : "screens"}` : "", others ? `${others} ${others === 1 ? "component" : "components"}` : ""];
+
+	const parts = [
+		screens ? `${screens} ${screens === 1 ? "screen" : "screens"}` : "",
+		others ? `${others} ${others === 1 ? "component" : "components"}` : "",
+	];
+
 	const text = parts.filter(Boolean).join(", ");
+
 	return text ? `Used by ${text}` : "Not used yet";
 }
 
-const cardClass =
-	"group/card flex flex-col gap-1.5 rounded-lg p-1 text-left";
+const cardClass = "group/card flex flex-col gap-1.5 rounded-lg p-1 text-left";
 
 function ComponentCard({
 	entry,
@@ -332,6 +371,7 @@ function ComponentCard({
 }) {
 	const { path, component, usedBy } = entry;
 	const preview = useComponentPreview(path, component, systemFiles);
+
 	return (
 		<DragCard
 			item={{ kind: "component", path, name: component.name }}
@@ -364,6 +404,7 @@ function ComponentCard({
 function LibraryCard({ item, designFiles }: { item: LibraryItem; designFiles: ProjectFiles }) {
 	const entry = previewPath(`library ${item.id}`);
 	const files = useMemo(() => ({ ...designFiles, [entry]: libraryPreviewModule(item) }), [designFiles, entry, item]);
+
 	return (
 		<DragCard
 			item={{ kind: "library", id: item.id }}
@@ -393,6 +434,7 @@ function ComponentDetail({
 	onShowScreens,
 }: ComponentsPanelProps & { component: ProjectComponent; systemFiles: ProjectFiles; onBack: () => void }) {
 	const name = component.exports[0]?.name ?? screenNameFromPath(component.path);
+
 	return (
 		<div className="flex flex-col gap-5 p-4">
 			<div className="flex flex-col gap-1">
@@ -408,7 +450,9 @@ function ComponentDetail({
 			{component.exports.length === 0 ? (
 				<p className="text-[13px] text-subtle-foreground">This file exports no components Rabisco can preview.</p>
 			) : (
-				component.exports.map((exp) => <ExportPreview key={exp.name} path={component.path} component={exp} systemFiles={systemFiles} />)
+				component.exports.map((exp) => (
+					<ExportPreview key={exp.name} path={component.path} component={exp} systemFiles={systemFiles} />
+				))
 			)}
 
 			<section className="flex flex-col gap-2">
@@ -420,7 +464,10 @@ function ComponentDetail({
 						{component.usedBy.map((file) => {
 							const frame = frames.find((f) => f.file === file);
 							const Icon = !isScreenFile(file) ? Component : frame?.device === "desktop" ? Monitor : Smartphone;
-							const label = frame?.name ?? (isComponentFile(file) ? file.replace(/^components\//, "") : screenNameFromPath(file));
+
+							const label =
+								frame?.name ?? (isComponentFile(file) ? file.replace(/^components\//, "") : screenNameFromPath(file));
+
 							return (
 								<button
 									key={file}
@@ -441,30 +488,56 @@ function ComponentDetail({
 			<div className="flex gap-2.5 rounded-lg border p-3 text-[13px] text-muted-foreground">
 				<Sparkles className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" />
 				<p>
-					<span className="font-medium text-foreground">Edit with AI.</span> Describe a change in the chat and Rabisco edits{" "}
-					{name}. Every screen that uses it updates.
+					<span className="font-medium text-foreground">Edit with AI.</span> Describe a change in the chat and Rabisco
+					edits {name}. Every screen that uses it updates.
 				</p>
 			</div>
 		</div>
 	);
 }
 
-function ExportPreview({ path, component, systemFiles }: { path: string; component: ComponentExport; systemFiles: ProjectFiles }) {
+function ExportPreview({
+	path,
+	component,
+	systemFiles,
+}: {
+	path: string;
+	component: ComponentExport;
+	systemFiles: ProjectFiles;
+}) {
 	const preview = useComponentPreview(path, component, systemFiles, true);
 	const [contentHeight, setContentHeight] = useState(240);
 	const height = Math.min(1200, Math.max(240, contentHeight));
+
 	return (
 		<section className="flex flex-col gap-2">
 			<h3 className="text-[13px] font-medium">{component.name}</h3>
-			<DragCard item={{ kind: "component", path, name: component.name }} label={component.name} layer={{ title: `Drag ${component.name} onto a screen to add it` }}>
-				<Preview entry={preview.entry} files={preview.files} width={DETAIL_WIDTH} height={height} scale={DETAIL_SCALE} onContentHeight={setContentHeight} />
+			<DragCard
+				item={{ kind: "component", path, name: component.name }}
+				label={component.name}
+				layer={{ title: `Drag ${component.name} onto a screen to add it` }}
+			>
+				<Preview
+					entry={preview.entry}
+					files={preview.files}
+					width={DETAIL_WIDTH}
+					height={height}
+					scale={DETAIL_SCALE}
+					onContentHeight={setContentHeight}
+				/>
 			</DragCard>
 		</section>
 	);
 }
 
 /** Repeated structure Rabisco found. The user decides: make it a component, or dismiss it. */
-function Suggestions({ groups, busy, onMakeComponent, onDismissSuggestion, onShowScreens }: ComponentsPanelProps & { groups: DuplicateGroup[] }) {
+function Suggestions({
+	groups,
+	busy,
+	onMakeComponent,
+	onDismissSuggestion,
+	onShowScreens,
+}: ComponentsPanelProps & { groups: DuplicateGroup[] }) {
 	return (
 		<PanelSection title="Suggestions">
 			<div className="-mx-2 flex flex-col gap-0.5">
@@ -487,6 +560,7 @@ function occurrenceLabel(group: DuplicateGroup) {
 	const paths = new Set(group.occurrences.map((o) => o.path));
 	const allScreens = [...paths].every(isScreenFile);
 	const noun = allScreens ? (paths.size === 1 ? "screen" : "screens") : paths.size === 1 ? "file" : "files";
+
 	return `${group.occurrences.length} times in ${paths.size} ${noun}`;
 }
 
@@ -511,6 +585,7 @@ function SuggestionRow({
 		if (!name.trim()) return;
 		const reason = onMake(name.trim());
 		setError(reason);
+
 		if (!reason) setNaming(false);
 	};
 
@@ -550,7 +625,9 @@ function SuggestionRow({
 						{error}
 					</p>
 				) : (
-					<p className="text-xs text-subtle-foreground">Moves it to components/ and replaces all {group.occurrences.length} copies.</p>
+					<p className="text-xs text-subtle-foreground">
+						Moves it to components/ and replaces all {group.occurrences.length} copies.
+					</p>
 				)}
 			</div>
 		);
@@ -572,7 +649,13 @@ function SuggestionRow({
 			</Button>
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<Button variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label={`Dismiss ${group.suggestedName}`} onClick={onDismiss}>
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						className="text-muted-foreground"
+						aria-label={`Dismiss ${group.suggestedName}`}
+						onClick={onDismiss}
+					>
 						<X />
 					</Button>
 				</TooltipTrigger>

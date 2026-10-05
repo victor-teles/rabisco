@@ -14,7 +14,15 @@ import {
 	variationGroups,
 } from "./variations";
 
-const frame = (file: string, x: number, y = 0): Frame => ({ file, name: file, device: "mobile", x, y, width: 390, height: 844 });
+const frame = (file: string, x: number, y = 0): Frame => ({
+	file,
+	name: file,
+	device: "mobile",
+	x,
+	y,
+	width: 390,
+	height: 844,
+});
 
 describe("alternate names", () => {
 	test("base and number", () => {
@@ -28,7 +36,14 @@ describe("alternate names", () => {
 
 	test("next free number is one above the highest", () => {
 		expect(nextAltNumber("screens/a.tsx", ["screens/a.tsx"])).toBe(1);
-		expect(nextAltNumber("screens/a.tsx", ["screens/a.tsx", "screens/a.alt-1.tsx", "screens/a.alt-4.tsx", "screens/b.alt-9.tsx"])).toBe(5);
+		expect(
+			nextAltNumber("screens/a.tsx", [
+				"screens/a.tsx",
+				"screens/a.alt-1.tsx",
+				"screens/a.alt-4.tsx",
+				"screens/b.alt-9.tsx",
+			]),
+		).toBe(5);
 	});
 });
 
@@ -37,7 +52,11 @@ describe("groups", () => {
 
 	test("only screens with alternates form groups, picked first", () => {
 		expect(variationGroups(paths)).toEqual([
-			{ base: "screens/a.tsx", picked: "screens/a.tsx", files: ["screens/a.tsx", "screens/a.alt-1.tsx", "screens/a.alt-2.tsx"] },
+			{
+				base: "screens/a.tsx",
+				picked: "screens/a.tsx",
+				files: ["screens/a.tsx", "screens/a.alt-1.tsx", "screens/a.alt-2.tsx"],
+			},
 			{ base: "screens/c.tsx", picked: null, files: ["screens/c.alt-1.tsx"] },
 		]);
 		expect(groupOf("screens/a.alt-1.tsx", paths)?.base).toBe("screens/a.tsx");
@@ -59,7 +78,10 @@ describe("pick", () => {
 			{ path: "screens/a.tsx", content: "B" },
 			{ path: "screens/a.alt-1.tsx", content: "A" },
 		]);
-		expect(selectionAfterPick(["screens/a.alt-1.tsx", "screens/x.tsx"], "screens/a.alt-1.tsx")).toEqual(["screens/a.tsx", "screens/x.tsx"]);
+		expect(selectionAfterPick(["screens/a.alt-1.tsx", "screens/x.tsx"], "screens/a.alt-1.tsx")).toEqual([
+			"screens/a.tsx",
+			"screens/x.tsx",
+		]);
 	});
 
 	test("takes the base name when the base is gone", () => {
@@ -87,7 +109,13 @@ describe("placeNewFrames", () => {
 
 	test("new screens keep their layout and move right of the canvas", () => {
 		const canvas = [frame("screens/a.tsx", 0)];
-		const placed = placeNewFrames(canvas, [frame("screens/b.tsx", 0), frame("screens/b.alt-1.tsx", 0, 964), frame("screens/c.tsx", 510)]);
+
+		const placed = placeNewFrames(canvas, [
+			frame("screens/b.tsx", 0),
+			frame("screens/b.alt-1.tsx", 0, 964),
+			frame("screens/c.tsx", 510),
+		]);
+
 		const x = 390 + FRAME_GAP * 2;
 		expect(placed.map(({ file, x, y }) => ({ file, x, y }))).toEqual([
 			{ file: "screens/b.tsx", x, y: 0 },
@@ -99,7 +127,11 @@ describe("placeNewFrames", () => {
 
 describe("reconcileFrames", () => {
 	test("an alternate added on disk goes below its screen", () => {
-		const canvas = { ...emptyCanvas("x", "mobile"), frames: [frame("screens/a.tsx", 100, 20), frame("screens/b.tsx", 700)] };
+		const canvas = {
+			...emptyCanvas("x", "mobile"),
+			frames: [frame("screens/a.tsx", 100, 20), frame("screens/b.tsx", 700)],
+		};
+
 		const files = { "screens/a.tsx": "", "screens/b.tsx": "", "screens/a.alt-1.tsx": "", "screens/c.tsx": "" };
 		const added = reconcileFrames(canvas, files).frames.slice(2);
 		expect(added.map(({ file, x, y }) => ({ file, x, y }))).toEqual([

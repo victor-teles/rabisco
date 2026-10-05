@@ -22,6 +22,7 @@ What is it, in one or two sentences?
 
 ### Do / Don't
 `;
+
 		expect(contextBody(template)).toBeUndefined();
 	});
 
@@ -36,7 +37,10 @@ A habit tracker for busy parents. <!-- inline -->
 ## Voice
 Warm, short sentences.
 <!-- never closed`;
-		expect(contextBody(file)).toBe("# Product\n\nA habit tracker for busy parents.\n\n## Voice\nWarm, short sentences.");
+
+		expect(contextBody(file)).toBe(
+			"# Product\n\nA habit tracker for busy parents.\n\n## Voice\nWarm, short sentences.",
+		);
 	});
 
 	test("any non-heading line counts as content", () => {

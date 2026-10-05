@@ -35,8 +35,7 @@ const escapeHtml = (text: string) =>
 	text.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
 /** JSON that is also safe inside an HTML `<script>` (should the file ever be inlined). */
-const scriptJson = (value: unknown) =>
-	JSON.stringify(value).replace(/</g, "\\u003c");
+const scriptJson = (value: ShareSnapshot) => JSON.stringify(value).replace(/</g, "\\u003c");
 
 const VIEWER_CSS = `
 *,*::before,*::after{box-sizing:border-box}
@@ -70,10 +69,12 @@ main{position:relative;flex:1;min-width:0;display:flex;align-items:center;justif
 `;
 
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`;
+
 const ICON_RESTART = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
 
 function indexHtml(snapshot: ShareSnapshot) {
 	const name = escapeHtml(snapshot.name || "Untitled design");
+
 	return `<!doctype html>
 <html lang="en">
 	<head>
@@ -246,6 +247,7 @@ const RUNTIME_SCRIPT = /<script\s+src=["']\.\/frame\.js["']\s*><\/script>/;
 export function inlineRuntime(runtime: ScreenRuntime): string {
 	if (!RUNTIME_SCRIPT.test(runtime.html)) throw new Error("The screen runtime's frame.html doesn't load frame.js");
 	const js = runtime.js.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
+
 	return runtime.html.replace(RUNTIME_SCRIPT, () => `<script>${js}</script>`);
 }
 

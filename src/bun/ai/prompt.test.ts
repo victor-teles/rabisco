@@ -29,13 +29,21 @@ describe("UI_MODULES", () => {
 		for (const [name, exports] of Object.entries(UI_MODULES)) {
 			const source = readFileSync(join(root, `components/ui/${name}.tsx`), "utf8");
 			const block = /^export \{([^}]*)\}/m.exec(source)?.[1] ?? "";
-			const actual = block.split(",").map((s) => s.trim()).filter(Boolean);
+
+			const actual = block
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean);
+
 			expect([...exports].sort()).toEqual(actual.sort());
 		}
 	});
 
 	test("every ui file is either in the runtime or deliberately left out", () => {
-		const files = readdirSync(join(root, "components/ui")).filter((f) => f.endsWith(".tsx")).map((f) => f.replace(/\.tsx$/, ""));
+		const files = readdirSync(join(root, "components/ui"))
+			.filter((f) => f.endsWith(".tsx"))
+			.map((f) => f.replace(/\.tsx$/, ""));
+
 		expect(files.filter((f) => !(f in UI_MODULES))).toEqual(["sonner"]);
 	});
 });
@@ -102,7 +110,9 @@ describe("userPrompt", () => {
 		const prompt = userPrompt(request({ context: { product: "Habits app", design: "Warm colors" }, files }), "text");
 		expect(prompt).toContain("<product>\nHabits app\n</product>");
 		expect(prompt).toContain("<design>\nWarm colors\n</design>");
-		expect(prompt).toContain('<project-file path="components/tab-bar.tsx">\nexport function TabBar() {}\n</project-file>');
+		expect(prompt).toContain(
+			'<project-file path="components/tab-bar.tsx">\nexport function TabBar() {}\n</project-file>',
+		);
 		expect(prompt).toContain("Existing screens (pick other paths): screens/home.tsx");
 		expect(prompt.endsWith("<request>\nA habit tracker\n</request>")).toBe(true);
 	});
@@ -114,22 +124,38 @@ describe("userPrompt", () => {
 	});
 
 	test("edit lists the targets", () => {
-		const prompt = userPrompt(request({ task: "edit", files, targets: ["screens/home.tsx"], prompt: "Make it dark" }), "text");
+		const prompt = userPrompt(
+			request({ task: "edit", files, targets: ["screens/home.tsx"], prompt: "Make it dark" }),
+			"text",
+		);
+
 		expect(prompt).toContain("Task: edit");
 		expect(prompt).toContain("- screens/home.tsx");
 	});
 
 	test("repair lists the problems", () => {
 		const prompt = userPrompt(
-			request({ task: "repair", files, targets: ["screens/home.tsx"], problems: [{ path: "screens/home.tsx", line: 3, message: "Unexpected token" }] }),
+			request({
+				task: "repair",
+				files,
+				targets: ["screens/home.tsx"],
+				problems: [{ path: "screens/home.tsx", line: 3, message: "Unexpected token" }],
+			}),
 			"text",
 		);
+
 		expect(prompt).toContain("Task: repair");
 		expect(prompt).toContain("- screens/home.tsx:3: Unexpected token");
 	});
 
 	test("context is sent without its HTML comments; an untouched template is left out", () => {
-		const prompt = userPrompt(request({ context: { product: "# Product\n<!-- What is it? -->\nHabits", design: "# Design\n<!-- tokens -->\n" } }), "text");
+		const prompt = userPrompt(
+			request({
+				context: { product: "# Product\n<!-- What is it? -->\nHabits", design: "# Design\n<!-- tokens -->\n" },
+			}),
+			"text",
+		);
+
 		expect(prompt).toContain("<product>\n# Product\n\nHabits\n</product>");
 		expect(prompt).not.toContain("<design>");
 		expect(prompt).not.toContain("What is it?");
@@ -137,8 +163,15 @@ describe("userPrompt", () => {
 
 	test("context task: DESIGN.md infers from the screens; output by mode", () => {
 		const target = { path: "DESIGN.md", content: "# Design\n<!-- template -->\n" };
-		const text = userPrompt(request({ task: "context", targets: ["DESIGN.md"], files: [target, ...files], prompt: "" }), "text");
-		expect(text).toContain("Task: context. Write DESIGN.md: infer the design language from the project's existing screens");
+
+		const text = userPrompt(
+			request({ task: "context", targets: ["DESIGN.md"], files: [target, ...files], prompt: "" }),
+			"text",
+		);
+
+		expect(text).toContain(
+			"Task: context. Write DESIGN.md: infer the design language from the project's existing screens",
+		);
 		expect(text).toContain('<rabisco-file path="DESIGN.md" kind="context">');
 		expect(text).toContain("keep what it says that still holds");
 		const agent = userPrompt(request({ task: "context", targets: ["DESIGN.md"], files }), "agent");
@@ -147,14 +180,22 @@ describe("userPrompt", () => {
 	});
 
 	test("context task: PRODUCT.md comes from the interview answers", () => {
-		const prompt = userPrompt(request({ task: "context", targets: ["PRODUCT.md"], prompt: "Who is it for?\nParents" }), "text");
+		const prompt = userPrompt(
+			request({ task: "context", targets: ["PRODUCT.md"], prompt: "Who is it for?\nParents" }),
+			"text",
+		);
+
 		expect(prompt).toContain("Write PRODUCT.md from the answers");
 		expect(prompt).toContain('<rabisco-file path="PRODUCT.md" kind="context">');
 		expect(prompt.endsWith("<request>\nWho is it for?\nParents\n</request>")).toBe(true);
 	});
 
 	test("mentions attachments", () => {
-		const prompt = userPrompt(request({ attachments: [{ name: "sketch.png", mediaType: "image/png", data: "AA==" }] }), "text");
+		const prompt = userPrompt(
+			request({ attachments: [{ name: "sketch.png", mediaType: "image/png", data: "AA==" }] }),
+			"text",
+		);
+
 		expect(prompt).toContain("sketch.png");
 	});
 
@@ -166,9 +207,17 @@ describe("userPrompt", () => {
 	});
 
 	test("references are called out as read-only", () => {
-		const files = [{ path: "screens/a.tsx", content: "a" }, { path: "screens/a.alt-1.tsx", content: "b" }];
+		const files = [
+			{ path: "screens/a.tsx", content: "a" },
+			{ path: "screens/a.alt-1.tsx", content: "b" },
+		];
+
 		for (const mode of ["text", "agent"] as const) {
-			const prompt = userPrompt(request({ task: "edit", targets: ["screens/a.tsx"], references: ["screens/a.alt-1.tsx"], files }), mode);
+			const prompt = userPrompt(
+				request({ task: "edit", targets: ["screens/a.tsx"], references: ["screens/a.alt-1.tsx"], files }),
+				mode,
+			);
+
 			expect(prompt).toMatch(/Reference only \(read them, don't change or write them\):\n- screens\/a\.alt-1\.tsx/);
 		}
 	});
@@ -181,16 +230,27 @@ describe("userPrompt", () => {
 
 	describe("project components", () => {
 		const statCard = `export function StatCard({ label, tone = "default" }: { label: string; tone?: "default" | "success" }) { return <div>{label}</div>; }\n`;
+
 		const components = [
-			{ path: "components/stat-card.tsx", signature: ['StatCard({ label: string; tone?: "default" | "success" = "default" })'], usedBy: ["screens/home.tsx"] },
+			{
+				path: "components/stat-card.tsx",
+				signature: ['StatCard({ label: string; tone?: "default" | "success" = "default" })'],
+				usedBy: ["screens/home.tsx"],
+			},
 			{ path: "components/tab-bar.tsx", signature: ["TabBar({ active?: number = 0 })"] },
 		];
 
 		test("lists every component with its signature and users, in both modes", () => {
 			for (const mode of ["text", "agent"] as const) {
-				const prompt = userPrompt(request({ components, files: [{ path: "components/tab-bar.tsx", content: "export function TabBar() {}" }] }), mode);
+				const prompt = userPrompt(
+					request({ components, files: [{ path: "components/tab-bar.tsx", content: "export function TabBar() {}" }] }),
+					mode,
+				);
+
 				expect(prompt).toContain("# Project components\nReuse these for any matching UI");
-				expect(prompt).toContain('- components/stat-card.tsx (used by screens/home.tsx)\n  StatCard({ label: string; tone?: "default" | "success" = "default" })');
+				expect(prompt).toContain(
+					'- components/stat-card.tsx (used by screens/home.tsx)\n  StatCard({ label: string; tone?: "default" | "success" = "default" })',
+				);
 				expect(prompt).toContain("- components/tab-bar.tsx\n  TabBar({ active?: number = 0 })");
 				expect(prompt).toContain("import them anyway, their signature is all you need");
 				expect(prompt.indexOf("# Project components")).toBeLessThan(prompt.indexOf("Task: create"));
@@ -198,15 +258,30 @@ describe("userPrompt", () => {
 		});
 
 		test("without a catalog, it is built from the component files in the request", () => {
-			const prompt = userPrompt(request({ files: [{ path: "components/stat-card.tsx", content: statCard }, { path: "screens/home.tsx", content: 'import { StatCard } from "../components/stat-card";' }] }), "text");
-			expect(prompt).toContain('- components/stat-card.tsx (used by screens/home.tsx)\n  StatCard({ label: string; tone?: "default" | "success" = "default" })');
+			const prompt = userPrompt(
+				request({
+					files: [
+						{ path: "components/stat-card.tsx", content: statCard },
+						{ path: "screens/home.tsx", content: 'import { StatCard } from "../components/stat-card";' },
+					],
+				}),
+				"text",
+			);
+
+			expect(prompt).toContain(
+				'- components/stat-card.tsx (used by screens/home.tsx)\n  StatCard({ label: string; tone?: "default" | "success" = "default" })',
+			);
 			expect(prompt).not.toContain("import them anyway");
 		});
 
 		test("left out when there are none, and for context tasks", () => {
 			expect(userPrompt(request(), "text")).not.toContain("# Project components");
-			expect(userPrompt(request({ task: "context", targets: ["DESIGN.md"], components }), "text")).not.toContain("# Project components");
-			expect(userPrompt(request({ task: "repair", targets: ["screens/a.tsx"], components }), "agent")).toContain("# Project components");
+			expect(userPrompt(request({ task: "context", targets: ["DESIGN.md"], components }), "text")).not.toContain(
+				"# Project components",
+			);
+			expect(userPrompt(request({ task: "repair", targets: ["screens/a.tsx"], components }), "agent")).toContain(
+				"# Project components",
+			);
 		});
 
 		test("a component file without exported components says so", () => {
@@ -219,7 +294,14 @@ describe("userPrompt", () => {
 		const path = "screens/welcome.tsx";
 		const source = `export default function Welcome() {\n\treturn (\n\t\t<main>\n\t\t\t<Button size="lg">\n\t\t\t\tGet started\n\t\t\t</Button>\n\t\t</main>\n\t);\n}\n`;
 		const focus = elementFocus(source, path, source.indexOf("<Button"))!;
-		const edit = request({ task: "edit", targets: [path], files: [{ path, content: source }], focus, prompt: "Make it outline" });
+
+		const edit = request({
+			task: "edit",
+			targets: [path],
+			files: [{ path, content: source }],
+			focus,
+			prompt: "Make it outline",
+		});
 
 		test("an edit says to change that element only, keep the rest, and quotes its lines", () => {
 			const prompt = userPrompt(edit, "text");
@@ -244,7 +326,9 @@ describe("userPrompt", () => {
 			const prompt = userPrompt({ ...edit, task: "repair", problems: [{ path, message: "Unexpected token" }] }, "text");
 			expect(prompt).toContain("The request was about one element of screens/welcome.tsx: <Button> “Get started”.");
 			expect(prompt).not.toContain("# Focus");
-			expect(userPrompt({ ...edit, task: "repair", targets: ["components/row.tsx"] }, "text")).not.toContain("one element of");
+			expect(userPrompt({ ...edit, task: "repair", targets: ["components/row.tsx"] }, "text")).not.toContain(
+				"one element of",
+			);
 		});
 
 		test("ignored when its file isn't a target", () => {

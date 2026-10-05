@@ -24,49 +24,73 @@ export type ProjectComponent = {
 };
 
 const IMPORT = /^\s*import\s+(type\s+)?([^'";]*?)\s+from\s+(['"])([^'"\n]+)\3/gm;
+
 const SIDE_EFFECT = /^\s*import\s+(['"])([^'"\n]+)\1/gm;
 
 /** Names a clause imports: `A, { B, C as D, type E }` → default, B, C. Type-only names are left out. */
 function importedNames(clause: string): string[] {
 	const names: string[] = [];
 	const braces = /\{([^}]*)\}/.exec(clause);
-	const head = clause.replace(/\{[^}]*\}/, "").replace(/,/g, " ").trim();
+
+	const head = clause
+		.replace(/\{[^}]*\}/, "")
+		.replace(/,/g, " ")
+		.trim();
+
 	if (/^\*\s+as\s+/.test(head)) names.push("*");
 	else if (head) names.push("default");
+
 	for (const part of braces?.[1]?.split(",") ?? []) {
-		const name = part.trim().split(/\s+as\s+/)[0]!.trim();
+		const name = part
+			.trim()
+			.split(/\s+as\s+/)[0]!
+			.trim();
+
 		if (name && !name.startsWith("type ")) names.push(name);
 	}
+
 	return names;
 }
 
 /** The project file a relative `specifier` from `from` points to, if it exists. */
 function resolveIn(files: Record<string, string>, from: string, specifier: string): string | null {
 	const base = joinPath(from, specifier);
-	for (const candidate of [base, `${base}.tsx`, `${base}.ts`, `${base}/index.tsx`]) if (candidate in files) return candidate;
+
+	for (const candidate of [base, `${base}.tsx`, `${base}.ts`, `${base}/index.tsx`])
+		if (candidate in files) return candidate;
+
 	return null;
 }
 
 /** Every component file → the files that import it (sorted by path), with the names they import. */
-export function componentUsages(files: Record<string, string>): Record<string, ComponentUsage[]> {
-	const usages: Record<string, ComponentUsage[]> = {};
-	for (const path of Object.keys(files).sort()) if (isComponentFile(path)) usages[path] = [];
+export function componentUsages(files: Record<string, string>): Map<string, ComponentUsage[]> {
+	const usages = new Map<string, ComponentUsage[]>();
+
+	for (const path of Object.keys(files).sort()) if (isComponentFile(path)) usages.set(path, []);
+
 	for (const path of Object.keys(files).sort()) {
 		if (!/\.(tsx|ts|jsx|js)$/.test(path)) continue;
 		const source = files[path]!;
 		const found = new Map<string, Set<string>>();
+
 		const add = (specifier: string, names: string[]) => {
 			if (!isRelative(specifier)) return;
 			const target = resolveIn(files, path, specifier);
-			if (!target || target === path || !(target in usages)) return;
+
+			if (!target || target === path || !usages.has(target)) return;
 			const set = found.get(target) ?? new Set<string>();
+
 			for (const name of names) set.add(name);
 			found.set(target, set);
 		};
+
 		for (const match of source.matchAll(IMPORT)) if (!match[1]) add(match[4]!, importedNames(match[2]!));
+
 		for (const match of source.matchAll(SIDE_EFFECT)) add(match[2]!, []);
-		for (const [target, names] of found) usages[target]!.push({ path, names: [...names] });
+
+		for (const [target, names] of found) usages.get(target)?.push({ path, names: [...names] });
 	}
+
 	return usages;
 }
 
@@ -79,23 +103,26 @@ export function componentUsages(files: Record<string, string>): Record<string, C
 export function screensUsing(files: Record<string, string>, components: string[]): Map<string, string[]> {
 	const usages = componentUsages(files);
 	const reached = new Map<string, Set<string>>();
+
 	for (const component of components) {
-		if (!(component in usages)) continue;
+		if (!usages.has(component)) continue;
 		const seen = new Set([component]);
 		const queue = [component];
+
 		while (queue.length) {
-			for (const { path } of usages[queue.shift()!] ?? []) {
+			for (const { path } of usages.get(queue.shift()!) ?? []) {
 				if (isScreenFile(path)) {
 					const set = reached.get(path) ?? new Set<string>();
 					set.add(component);
 					reached.set(path, set);
-				} else if (path in usages && !seen.has(path)) {
+				} else if (usages.has(path) && !seen.has(path)) {
 					seen.add(path);
 					queue.push(path);
 				}
 			}
 		}
 	}
+
 	return new Map([...reached].sort(([a], [b]) => a.localeCompare(b)).map(([screen, set]) => [screen, [...set].sort()]));
 }
 
@@ -105,29 +132,34 @@ const apiCache = new Map<string, ComponentApi>();
 export function cachedComponentApi(path: string, source: string): ComponentApi {
 	const key = `${path}\0${source}`;
 	let api = apiCache.get(key);
+
 	if (!api) {
 		if (apiCache.size > 500) apiCache.clear();
 		api = componentApi(path, source);
 		apiCache.set(key, api);
 	}
+
 	return api;
 }
 
 /** The project's component files with their API and users, sorted by path (the kebab name). */
 export function projectComponents(files: Record<string, string>): ProjectComponent[] {
 	const usages = componentUsages(files);
-	return Object.keys(usages).map((path) => ({
+
+	return [...usages].map(([path, users]) => ({
 		path,
 		exports: cachedComponentApi(path, files[path]!).exports,
-		usedBy: usages[path]!.map((usage) => usage.path),
+		usedBy: users.map((usage) => usage.path),
 	}));
 }
 
 /** The component catalog a generation request carries: every component file with its signatures and users. */
 export function componentSignatures(files: Record<string, string>): ComponentSignature[] {
-	return projectComponents(files).map(({ path, exports, usedBy }) => ({
-		path,
-		signature: exports.map(propsSignature),
-		...(usedBy.length ? { usedBy } : {}),
-	}));
+	return projectComponents(files).map(({ path, exports, usedBy }) => {
+		const component: ComponentSignature = { path, signature: exports.map(propsSignature) };
+
+		if (usedBy.length) component.usedBy = usedBy;
+
+		return component;
+	});
 }

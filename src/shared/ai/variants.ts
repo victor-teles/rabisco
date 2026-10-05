@@ -1,4 +1,13 @@
-import { FRAME_GAP, FRAME_SIZE, frameName, framesForNewScreens, isComponentFile, isScreenFile, nextFrameX, screenNameFromPath } from "../project";
+import {
+	FRAME_GAP,
+	FRAME_SIZE,
+	frameName,
+	framesForNewScreens,
+	isComponentFile,
+	isScreenFile,
+	nextFrameX,
+	screenNameFromPath,
+} from "../project";
 import type { Device, FileChange, Frame, ProjectFiles } from "../types";
 import { altPath, baseOf, MAX_VARIATIONS, nextAltNumber } from "../variations";
 import type { GenerationEvent, ScreenMeta } from "./contract";
@@ -15,12 +24,14 @@ import type { GenerationEvent, ScreenMeta } from "./contract";
 /** 1 to `MAX_VARIATIONS`; anything else falls back to `fallback`. */
 export function clampVariations(count: number | undefined, fallback = 1) {
 	const n = Number.isFinite(count) ? Math.floor(count!) : fallback;
+
 	return Math.min(MAX_VARIATIONS, Math.max(1, n));
 }
 
 /** `screens/welcome.tsx` (or any of its alternates) for variant `k` ≥ 1 → `screens/welcome.alt-<next + k - 1>.tsx` */
 export function variantScreenPath(path: string, k: number, taken: Iterable<string>) {
 	const base = baseOf(path);
+
 	return altPath(base, nextAltNumber(base, taken) + k - 1);
 }
 
@@ -29,7 +40,9 @@ export function variantComponentPath(path: string, k: number, taken: Iterable<st
 	const used = new Set(taken);
 	const stem = `${path.replace(/\.tsx$/, "")}-v${k + 1}`;
 	let candidate = `${stem}.tsx`;
+
 	for (let n = 2; used.has(candidate); n++) candidate = `${stem}-${n}.tsx`;
+
 	return candidate;
 }
 
@@ -44,9 +57,11 @@ const SPECIFIER = /(["'])(\.\.\/components\/|\.\/)([a-z0-9-]+)\1/g;
  */
 export function rewriteImports(path: string, content: string, renames: ReadonlyMap<string, string>) {
 	if (!renames.size) return content;
+
 	return content.replace(SPECIFIER, (match, quote: string, prefix: string, name: string) => {
 		if (prefix === "./" && !isComponentFile(path)) return match;
 		const to = renames.get(`components/${name}.tsx`);
+
 		return to ? `${quote}${prefix}${componentName(to)}${quote}` : match;
 	});
 }
@@ -54,18 +69,22 @@ export function rewriteImports(path: string, content: string, renames: ReadonlyM
 /** Component paths `content` imports (resolved from `path`). */
 function importedComponents(path: string, content: string) {
 	const found = new Set<string>();
+
 	for (const [, , prefix, name] of content.matchAll(SPECIFIER)) {
 		if (prefix === "./" && !isComponentFile(path)) continue;
 		found.add(`components/${name}.tsx`);
 	}
+
 	return found;
 }
 
 /** Renames paths by `map` and rewrites component imports to follow. */
 export function renameChanges(changes: FileChange[], map: ReadonlyMap<string, string>): FileChange[] {
 	const components = new Map([...map].filter(([from]) => isComponentFile(from)));
+
 	return changes.map(({ path, content }) => {
 		const to = map.get(path) ?? path;
+
 		return { path: to, content: content === null ? null : rewriteImports(to, content, components) };
 	});
 }
@@ -96,6 +115,9 @@ export type VariantRenamer = {
 	transform(event: GenerationEvent): GenerationEvent[];
 };
 
+/** Where a provider path goes; `added` when it is a component that got a new name. */
+type RenamedFile = { path: string; added: boolean };
+
 /**
  * Renames one variant's event stream as it arrives, so validation and repairs
  * see the final names. A component write renames it for the whole variant, and
@@ -111,29 +133,36 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 	/** Ended files of this variant: provider content and what was sent */
 	const ended = new Map<string, { raw: string; sent: string }>();
 
-	function rename(path: string): { path: string; added: boolean } {
+	function rename(path: string): RenamedFile {
 		if (assigned.has(path)) return { path, added: false };
 		const known = renames.get(path);
+
 		if (known) return { path: known, added: false };
 		let to: string;
+
 		if (isScreenFile(path)) to = variantScreenPath(path, variant, taken);
 		else if (isComponentFile(path)) to = variantComponentPath(path, variant, taken);
 		else return { path, added: false };
 		renames.set(path, to);
 		assigned.add(to);
+
 		if (isComponentFile(path)) components.set(path, to);
+
 		return { path: to, added: isComponentFile(path) };
 	}
 
 	/** Files that ended before a component was renamed, sent again with the new import */
 	function resend(): GenerationEvent[] {
 		const out: GenerationEvent[] = [];
+
 		for (const [path, file] of ended) {
 			const content = rewriteImports(path, file.raw, components);
+
 			if (content === file.sent) continue;
 			file.sent = content;
 			out.push({ type: "file.end", path, content });
 		}
+
 		return out;
 	}
 
@@ -143,12 +172,16 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 		assigned,
 		transform(event) {
 			if (!("path" in event)) return [event];
+
 			if (readOnly.has(event.path)) return [];
+
 			if (variant === 0) return [event];
+
 			// Extra variations add files; they never delete the project's
 			if (event.type === "file.delete") return [];
 			const { path, added } = rename(event.path);
 			const extra = added ? resend() : [];
+
 			switch (event.type) {
 				case "file.start":
 					return [{ ...event, path }, ...extra];
@@ -157,6 +190,7 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 				case "file.end": {
 					const content = rewriteImports(path, event.content, components);
 					ended.set(path, { raw: event.content, sent: content });
+
 					return [...extra, { ...event, path, content }];
 				}
 			}
@@ -201,39 +235,58 @@ export type Combined = {
  * their imports point back, and that only import renamed components that
  * collapse too: these go back to their original names.
  */
-function collapsible(changes: FileChange[], renames: ReadonlyMap<string, string>, reference: (path: string) => string | undefined) {
+function collapsible(
+	changes: FileChange[],
+	renames: ReadonlyMap<string, string>,
+	reference: (path: string) => string | undefined,
+) {
 	const back = new Map<string, string>();
+
 	for (const [from, to] of renames) if (isComponentFile(from)) back.set(to, from);
-	const written = new Map(changes.filter((c) => c.content !== null).map((c) => [c.path, c.content!]));
+	const written = new Map(changes.flatMap((c) => (c.content === null ? [] : [[c.path, c.content] as const])));
 	const collapse = new Map<string, string>();
+
 	for (const [renamed, original] of back) {
 		const content = written.get(renamed);
-		if (content !== undefined && rewriteImports(original, content, back) === reference(original)) collapse.set(renamed, original);
+
+		if (content !== undefined && rewriteImports(original, content, back) === reference(original))
+			collapse.set(renamed, original);
 	}
-	for (let changed = true; changed; ) {
+
+	for (let changed = true; changed;) {
 		changed = false;
+
 		for (const renamed of collapse.keys()) {
 			const imports = importedComponents(renamed, written.get(renamed)!);
+
 			if ([...imports].some((path) => back.has(path) && !collapse.has(path))) {
 				collapse.delete(renamed);
 				changed = true;
 			}
 		}
 	}
+
 	return collapse;
 }
 
 /** Drops collapsible components and points imports back at the original names. */
-export function collapseComponents(changes: FileChange[], renames: ReadonlyMap<string, string>, reference: (path: string) => string | undefined) {
+export function collapseComponents(
+	changes: FileChange[],
+	renames: ReadonlyMap<string, string>,
+	reference: (path: string) => string | undefined,
+) {
 	const collapse = collapsible(changes, renames, reference);
+
 	if (!collapse.size) return changes;
+
 	return renameChanges(
 		changes.filter((c) => !collapse.has(c.path)),
 		collapse,
 	);
 }
 
-const writtenScreens = (changes: FileChange[]) => changes.filter((c) => c.content !== null && isScreenFile(c.path)).map((c) => c.path);
+const writtenScreens = (changes: FileChange[]) =>
+	changes.flatMap((c) => (c.content !== null && isScreenFile(c.path) ? [c.path] : []));
 
 /**
  * Maps an extra variant's screens onto the primary's: a screen whose base is a
@@ -248,27 +301,49 @@ export function remapScreens(changes: FileChange[], primaryScreens: string[], k:
 	const map = new Map<string, string>();
 	const dropped: string[] = [];
 	const keep = new Set<string>();
+
 	for (const path of screens) {
 		const base = baseOf(path);
+
 		if (!primaryScreens.includes(base) || claimed.has(base)) continue;
 		claimed.add(base);
 		keep.add(path);
 	}
+
 	screens.forEach((path, index) => {
 		if (keep.has(path)) return;
 		const preferred = primaryScreens[index];
-		const target = preferred && !claimed.has(preferred) ? preferred : primaryScreens.find((screen) => !claimed.has(screen));
+
+		const target =
+			preferred && !claimed.has(preferred) ? preferred : primaryScreens.find((screen) => !claimed.has(screen));
+
 		if (!target) return dropped.push(path);
 		claimed.add(target);
 		map.set(path, variantScreenPath(target, k, all));
 	});
 	const kept = changes.filter((c) => !dropped.includes(c.path));
+
 	return { changes: renameChanges(kept, map), map, dropped };
 }
 
-function frameOf(path: string, meta: ScreenMeta | undefined, device: Device, x: number, y: number, name?: string): Frame {
+function frameOf(
+	path: string,
+	meta: ScreenMeta | undefined,
+	device: Device,
+	x: number,
+	y: number,
+	name?: string,
+): Frame {
 	const frameDevice = meta?.device ?? device;
-	return { file: path, name: frameName(meta?.name?.trim() || name || screenNameFromPath(baseOf(path)), path), device: frameDevice, x, y, ...FRAME_SIZE[frameDevice] };
+
+	return {
+		file: path,
+		name: frameName(meta?.name?.trim() || name || screenNameFromPath(baseOf(path)), path),
+		device: frameDevice,
+		x,
+		y,
+		...FRAME_SIZE[frameDevice],
+	};
 }
 
 /** Combines the successful runs of one variations request into one set of changes and frames. */
@@ -286,23 +361,29 @@ export function combineVariations({ mode, outputs, projectFiles, device }: Combi
 			const own = collapseComponents(output.changes, output.renames, reference);
 			changes.push(...own);
 			let x = 0;
+
 			for (const path of writtenScreens(own).filter((p) => !(p in projectFiles))) {
 				const frame = frameOf(path, output.screens[path], device, x, row * (height + FRAME_GAP));
 				frames.push(frame);
 				x += frame.width + FRAME_GAP;
 			}
 		});
+
 		return { changes, frames, primary: null, dropped };
 	}
 
 	const [first, ...others] = sorted;
+
 	if (!first) return { changes, frames, primary: null, dropped };
 	// Variant 0 failed: the lowest one that succeeded takes the base names
 	const promote = first.variant === 0 ? new Map<string, string>() : invert(first.renames);
 	const primary = { changes: renameChanges(first.changes, promote), screens: renameKeys(first.screens, promote) };
 	changes.push(...primary.changes);
 	const primaryWritten = new Map(primary.changes.map((c) => [c.path, c.content]));
-	const reference = (path: string) => (primaryWritten.has(path) ? (primaryWritten.get(path) ?? undefined) : projectFiles[path]);
+
+	const reference = (path: string) =>
+		primaryWritten.has(path) ? (primaryWritten.get(path) ?? undefined) : projectFiles[path];
+
 	const primaryScreens = writtenScreens(primary.changes);
 	const created = primary.changes.filter((c) => c.content !== null && !(c.path in projectFiles)).map((c) => c.path);
 	const primaryFrames = framesForNewScreens(created, primary.screens, device);
@@ -313,29 +394,47 @@ export function combineVariations({ mode, outputs, projectFiles, device }: Combi
 		const remapped = remapScreens(collapsed, primaryScreens, output.variant, taken);
 		dropped.push(...remapped.dropped);
 		changes.push(...remapped.changes);
-		return { screens: renameKeys(output.screens, remapped.map), paths: writtenScreens(remapped.changes).filter((p) => !(p in projectFiles)) };
+
+		return {
+			screens: renameKeys(output.screens, remapped.map),
+			paths: writtenScreens(remapped.changes).filter((p) => !(p in projectFiles)),
+		};
 	});
 
-	const sizes = [...primaryFrames, ...rows.flatMap((row) => row.paths.map((path) => FRAME_SIZE[row.screens[path]?.device ?? device]))];
+	const sizes = [
+		...primaryFrames,
+		...rows.flatMap((row) => row.paths.map((path) => FRAME_SIZE[row.screens[path]?.device ?? device])),
+	];
+
 	const tallest = sizes.length ? Math.max(...sizes.map((s) => s.height)) : FRAME_SIZE[device].height;
 	let loose = nextFrameX(primaryFrames);
 	rows.forEach((row, index) => {
 		const y = (index + 1) * (tallest + FRAME_GAP);
+
 		for (const path of row.paths) {
 			const anchor = primaryFrames.find((frame) => frame.file === baseOf(path));
 			const frame = frameOf(path, row.screens[path], device, anchor?.x ?? loose, y, anchor?.name);
+
 			if (!anchor) loose += frame.width + FRAME_GAP;
 			frames.push(frame);
 		}
 	});
+
 	return { changes, frames, primary: first.variant, dropped };
 }
 
 /** The note appended to the primary reply. */
 export function variationsNote(made: number, failed: number, dropped: number) {
 	const parts: string[] = [];
+
 	if (made > 1) parts.push(`Made ${made} variations.`);
+
 	if (failed) parts.push(`${failed} ${failed === 1 ? "variation" : "variations"} failed.`);
-	if (dropped) parts.push(`Left out ${dropped} extra ${dropped === 1 ? "screen" : "screens"} that matched none of the first variation's.`);
+
+	if (dropped)
+		parts.push(
+			`Left out ${dropped} extra ${dropped === 1 ? "screen" : "screens"} that matched none of the first variation's.`,
+		);
+
 	return parts.join(" ");
 }

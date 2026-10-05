@@ -11,14 +11,17 @@ export function toggleInSelection(selection: string[], file: string) {
  * the selection when the marquee started; otherwise they replace it.
  */
 export function marqueeSelection(frames: Frame[], marquee: Rect, base: string[], additive: boolean) {
-	const hits = frames.filter((frame) => intersects(frame, marquee)).map((frame) => frame.file);
+	const hits = frames.flatMap((frame) => (intersects(frame, marquee) ? [frame.file] : []));
+
 	if (!additive) return hits;
+
 	return [...base, ...hits.filter((file) => !base.includes(file))];
 }
 
 /** Keeps canvas order, drops files that have no frame. */
 export function selectedFrames(frames: Frame[], selection: string[]) {
 	const set = new Set(selection);
+
 	return frames.filter((frame) => set.has(frame.file));
 }
 

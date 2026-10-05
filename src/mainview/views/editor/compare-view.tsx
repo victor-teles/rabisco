@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { Check, Maximize, Minus, Plus, X } from "lucide-react";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,19 @@ import { altNumber, type VariationGroup } from "../../../shared/variations";
 import { isTyping } from "./shortcuts";
 
 const MIN_ZOOM = 0.1;
+
 const MAX_ZOOM = 4;
+
 const ZOOM_STEP = 1.2;
+
 /** Screen pixels around and between the columns */
 const PADDING = 48;
+
 const GAP = 40;
+
 /** A runaway screen (height that follows the viewport) stops growing here, in frame heights */
 const MAX_HEIGHT_RATIO = 8;
+
 /** Used when a file of the group has no frame, e.g. one still being generated */
 const FALLBACK_SIZE = { width: 390, height: 844 };
 
@@ -30,10 +36,12 @@ type Column = { file: string; label: string; picked: boolean; width: number; hei
 function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const sibling = group.files.map((file) => byFile.get(file)).find(Boolean);
+
 	return group.files.map((file) => {
 		const frame = byFile.get(file) ?? sibling;
 		const size = frame ?? FALLBACK_SIZE;
 		const picked = file === group.picked;
+
 		return {
 			file,
 			label: picked ? "Picked" : `Alt ${altNumber(file) ?? ""}`.trim(),
@@ -81,11 +89,13 @@ export function CompareView({
 	const gaps = PADDING * 2 + GAP * Math.max(0, columns.length - 1);
 	useLayoutEffect(() => {
 		const el = scrollRef.current;
+
 		if (!el) return;
 		const measure = () => setFitZoom(clampZoom(Math.min(1, (el.clientWidth - gaps) / Math.max(1, totalWidth))));
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(el);
+
 		return () => observer.disconnect();
 	}, [totalWidth, gaps]);
 
@@ -95,48 +105,46 @@ export function CompareView({
 		const el = scrollRef.current;
 		const ratio = zoom / previousZoom.current;
 		previousZoom.current = zoom;
+
 		if (!el || ratio === 1) return;
 		el.scrollTop *= ratio;
 		el.scrollLeft *= ratio;
 	}, [zoom]);
 
-	const zoomBy = useCallback((factor: number) => setZoomSetting(clampZoom(zoom * factor)), [zoom]);
+	const zoomBy = (factor: number) => setZoomSetting(clampZoom(zoom * factor));
 
-	const pick = useCallback(
-		(file: string) => {
-			onPick(file);
-			// The picked design now lives in the screen's own file, the first column
-			setHighlight(0);
-		},
-		[onPick],
-	);
+	const pick = (file: string) => {
+		onPick(file);
+		// The picked design now lives in the screen's own file, the first column
+		setHighlight(0);
+	};
 
-	const moveHighlight = useCallback(
-		(delta: number) => {
-			const next = Math.min(columns.length - 1, Math.max(0, current + delta));
-			setHighlight(next);
-			const column = columnRefs.current.get(columns[next]!.file);
-			const el = scrollRef.current;
-			if (!column || !el) return;
-			const left = column.offsetLeft - PADDING;
-			const right = column.offsetLeft + column.offsetWidth + PADDING - el.clientWidth;
-			if (el.scrollLeft > left) el.scrollLeft = left;
-			else if (el.scrollLeft < right) el.scrollLeft = right;
-		},
-		[columns, current],
-	);
+	const moveHighlight = (delta: number) => {
+		const next = Math.min(columns.length - 1, Math.max(0, current + delta));
+		setHighlight(next);
+		const column = columnRefs.current.get(columns[next]!.file);
+		const el = scrollRef.current;
+
+		if (!column || !el) return;
+		const left = column.offsetLeft - PADDING;
+		const right = column.offsetLeft + column.offsetWidth + PADDING - el.clientWidth;
+
+		if (el.scrollLeft > left) el.scrollLeft = left;
+		else if (el.scrollLeft < right) el.scrollLeft = right;
+	};
 
 	// Compare mode owns the keyboard while open: the editor's canvas shortcuts would act on
 	// frames the user can't see. Undo and redo still reach it, so a pick can be undone.
-	const keys = useRef<(event: KeyboardEvent) => void>(() => {});
-	keys.current = (event) => {
+	const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
 		if (isTyping(event.target)) return;
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
 		const onButton = event.target instanceof HTMLElement && event.target.closest("button, a") !== null;
+
 		const handled = () => {
 			event.preventDefault();
 			event.stopPropagation();
 		};
+
 		if (event.key === "Escape") {
 			handled();
 			onClose();
@@ -157,33 +165,41 @@ export function CompareView({
 		} else if (!mod && event.key === "Enter" && !onButton) {
 			handled();
 			const column = columns[current];
+
 			if (column && !column.picked) pick(column.file);
 		} else {
 			// Default actions (scrolling, button activation) still happen
 			event.stopPropagation();
 		}
-	};
+	});
+
 	useEffect(() => {
-		const listener = (event: KeyboardEvent) => keys.current(event);
+		const listener = (event: KeyboardEvent) => onKeyDown(event);
 		window.addEventListener("keydown", listener, { capture: true });
+
 		return () => window.removeEventListener("keydown", listener, { capture: true });
 	}, []);
 
 	// The canvas listens to the wheel natively (pointer input goes through React, stopped on
 	// the root below): keep ours to ourselves, and let ⌘/ctrl + wheel (or pinch) zoom the comparison instead of the page.
-	const zoomRef = useRef(zoom);
-	zoomRef.current = zoom;
+	const wheelZoom = useEffectEvent((deltaY: number) => setZoomSetting(clampZoom(zoom * Math.exp(-deltaY * 0.01))));
+
 	useEffect(() => {
 		const el = rootRef.current;
+
 		if (!el) return;
+
 		const onWheel = (event: WheelEvent) => {
 			event.stopPropagation();
+
 			if (event.ctrlKey || event.metaKey) {
 				event.preventDefault();
-				setZoomSetting(clampZoom(zoomRef.current * Math.exp(-event.deltaY * 0.01)));
+				wheelZoom(event.deltaY);
 			}
 		};
+
 		el.addEventListener("wheel", onWheel, { passive: false });
+
 		return () => el.removeEventListener("wheel", onWheel);
 	}, []);
 
@@ -191,9 +207,9 @@ export function CompareView({
 		scrollRef.current?.focus({ preventScroll: true });
 	}, []);
 
-	const setContentHeight = useCallback((file: string, height: number) => {
+	const setContentHeight = (file: string, height: number) => {
 		setContentHeights((heights) => (heights[file] === height ? heights : { ...heights, [file]: height }));
-	}, []);
+	};
 
 	return (
 		<div
@@ -270,7 +286,9 @@ export function CompareView({
 							column.height * MAX_HEIGHT_RATIO,
 							Math.max(column.height, contentHeights[column.file] ?? 0),
 						);
+
 						const active = index === current;
+
 						return (
 							<div
 								key={column.file}

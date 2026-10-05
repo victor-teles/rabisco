@@ -59,15 +59,90 @@ export type ProviderTypeInfo = {
 };
 
 export const PROVIDER_TYPES: readonly ProviderTypeInfo[] = [
-	{ type: "anthropic", kind: "api", label: "Anthropic", description: "Claude models with your API key", needsKey: true, needsBaseUrl: false, defaultBaseUrl: "https://api.anthropic.com", helpUrl: "https://console.anthropic.com/settings/keys" },
-	{ type: "openai", kind: "api", label: "OpenAI", description: "GPT models with your API key", needsKey: true, needsBaseUrl: false, defaultBaseUrl: "https://api.openai.com/v1", helpUrl: "https://platform.openai.com/api-keys" },
-	{ type: "openrouter", kind: "api", label: "OpenRouter", description: "Hundreds of models through one key", needsKey: true, needsBaseUrl: false, defaultBaseUrl: "https://openrouter.ai/api/v1", helpUrl: "https://openrouter.ai/keys" },
-	{ type: "ollama", kind: "api", label: "Ollama", description: "Local models, no key needed", needsKey: false, needsBaseUrl: false, defaultBaseUrl: "http://localhost:11434/v1", helpUrl: "https://ollama.com/download" },
-	{ type: "openai-compatible", kind: "api", label: "OpenAI-compatible", description: "Any endpoint that speaks the OpenAI chat API", needsKey: false, needsBaseUrl: true },
-	{ type: "claude-code", kind: "cli", label: "Claude Code", description: "Uses your Claude Code login", needsKey: false, needsBaseUrl: false, helpUrl: "https://docs.claude.com/en/docs/claude-code/setup" },
-	{ type: "codex", kind: "cli", label: "Codex CLI", description: "Uses your Codex login", needsKey: false, needsBaseUrl: false, helpUrl: "https://github.com/openai/codex" },
-	{ type: "gemini-cli", kind: "cli", label: "Gemini CLI", description: "Uses your Gemini CLI login", needsKey: false, needsBaseUrl: false, helpUrl: "https://github.com/google-gemini/gemini-cli" },
-	{ type: "claude-agent-sdk", kind: "sdk", label: "Claude Agent SDK", description: "An agent that reads and writes project files with tools", needsKey: true, needsBaseUrl: false, helpUrl: "https://console.anthropic.com/settings/keys" },
+	{
+		type: "anthropic",
+		kind: "api",
+		label: "Anthropic",
+		description: "Claude models with your API key",
+		needsKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://api.anthropic.com",
+		helpUrl: "https://console.anthropic.com/settings/keys",
+	},
+	{
+		type: "openai",
+		kind: "api",
+		label: "OpenAI",
+		description: "GPT models with your API key",
+		needsKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://api.openai.com/v1",
+		helpUrl: "https://platform.openai.com/api-keys",
+	},
+	{
+		type: "openrouter",
+		kind: "api",
+		label: "OpenRouter",
+		description: "Hundreds of models through one key",
+		needsKey: true,
+		needsBaseUrl: false,
+		defaultBaseUrl: "https://openrouter.ai/api/v1",
+		helpUrl: "https://openrouter.ai/keys",
+	},
+	{
+		type: "ollama",
+		kind: "api",
+		label: "Ollama",
+		description: "Local models, no key needed",
+		needsKey: false,
+		needsBaseUrl: false,
+		defaultBaseUrl: "http://localhost:11434/v1",
+		helpUrl: "https://ollama.com/download",
+	},
+	{
+		type: "openai-compatible",
+		kind: "api",
+		label: "OpenAI-compatible",
+		description: "Any endpoint that speaks the OpenAI chat API",
+		needsKey: false,
+		needsBaseUrl: true,
+	},
+	{
+		type: "claude-code",
+		kind: "cli",
+		label: "Claude Code",
+		description: "Uses your Claude Code login",
+		needsKey: false,
+		needsBaseUrl: false,
+		helpUrl: "https://docs.claude.com/en/docs/claude-code/setup",
+	},
+	{
+		type: "codex",
+		kind: "cli",
+		label: "Codex CLI",
+		description: "Uses your Codex login",
+		needsKey: false,
+		needsBaseUrl: false,
+		helpUrl: "https://github.com/openai/codex",
+	},
+	{
+		type: "gemini-cli",
+		kind: "cli",
+		label: "Gemini CLI",
+		description: "Uses your Gemini CLI login",
+		needsKey: false,
+		needsBaseUrl: false,
+		helpUrl: "https://github.com/google-gemini/gemini-cli",
+	},
+	{
+		type: "claude-agent-sdk",
+		kind: "sdk",
+		label: "Claude Agent SDK",
+		description: "An agent that reads and writes project files with tools",
+		needsKey: true,
+		needsBaseUrl: false,
+		helpUrl: "https://console.anthropic.com/settings/keys",
+	},
 ];
 
 /** Status of one configured provider, as shown in Settings and the model picker. */
@@ -90,7 +165,9 @@ export type ModelRef = string;
 
 export function parseModelRef(ref: ModelRef): { providerId: string; model: string } | null {
 	const at = ref.indexOf(":");
+
 	if (at <= 0 || at === ref.length - 1) return null;
+
 	return { providerId: ref.slice(0, at), model: ref.slice(at + 1) };
 }
 

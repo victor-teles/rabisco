@@ -15,7 +15,9 @@ type Route =
 
 function projectNameFromPrompt(prompt: string) {
 	const words = prompt.trim().split(/\s+/).slice(0, 5).join(" ");
+
 	if (!words) return "Untitled design";
+
 	return words[0]!.toUpperCase() + words.slice(1);
 }
 
@@ -28,7 +30,13 @@ export default function App() {
 	const startDesign: StartDesign = async ({ prompt, device, files, variations }) => {
 		try {
 			const project = await api.createProject({ name: projectNameFromPrompt(prompt), device });
-			setRoute({ view: "editor", projectPath: project.path, initialPrompt: prompt || undefined, initialFiles: files, initialVariations: variations });
+			setRoute({
+				view: "editor",
+				projectPath: project.path,
+				initialPrompt: prompt || undefined,
+				initialFiles: files,
+				initialVariations: variations,
+			});
 		} catch (error) {
 			toast.error("Couldn't create the project", { description: String(error) });
 		}

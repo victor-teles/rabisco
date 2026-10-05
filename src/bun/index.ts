@@ -19,11 +19,13 @@ async function getMainViewUrl(): Promise<string> {
 		try {
 			await fetch(DEV_SERVER_URL, { method: "HEAD" });
 			console.log(`HMR enabled: using Vite dev server at ${DEV_SERVER_URL}`);
+
 			return DEV_SERVER_URL;
 		} catch {
 			console.log("Vite dev server not running. Run 'hutch run dev:hmr' for HMR.");
 		}
 	}
+
 	return "views://mainview/index.html";
 }
 
@@ -68,12 +70,16 @@ const ai = createAiService({
 const ok = { ok: true } as const;
 
 /** Where the screen runtime is: the app bundle, then the source tree (development) */
-const runtimeDirs = () => [join(PATHS.VIEWS_FOLDER, "mainview/runtime"), join(process.cwd(), "src/mainview/public/runtime")];
+const runtimeDirs = () => [
+	join(PATHS.VIEWS_FOLDER, "mainview/runtime"),
+	join(process.cwd(), "src/mainview/public/runtime"),
+];
 
 // Share links serve the same screen runtime the canvas loads (decision 0008)
 const shares = createShareService({
 	readRuntime: () => readScreenRuntime(runtimeDirs()),
 });
+
 const git = createGit();
 
 /** Only web links leave the app */
@@ -100,15 +106,15 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),
 			importContext: ({ from }) => ({ files: findContextFiles(from) }),
-				generate: (params) => ai.generate(params),
-				stopGeneration: ({ generationId }) => (ai.stopGeneration(generationId), ok),
-				listProviders: ({ refresh }) => ai.listProviders(refresh),
-				addProvider: (params) => ai.addProvider(params),
-				updateProvider: ({ id, patch, apiKey }) => ai.updateProvider(id, patch, apiKey),
-				removeProvider: async ({ id }) => (await ai.removeProvider(id), ok),
-				testProvider: ({ id }) => ai.testProvider(id),
-				setDefaultModel: async ({ model }) => (await ai.setDefaultModel(model), ok),
-				openExternal: ({ url }) => (openExternal(url), ok),
+			generate: (params) => ai.generate(params),
+			stopGeneration: ({ generationId }) => (ai.stopGeneration(generationId), ok),
+			listProviders: ({ refresh }) => ai.listProviders(refresh),
+			addProvider: (params) => ai.addProvider(params),
+			updateProvider: ({ id, patch, apiKey }) => ai.updateProvider(id, patch, apiKey),
+			removeProvider: async ({ id }) => (await ai.removeProvider(id), ok),
+			testProvider: ({ id }) => ai.testProvider(id),
+			setDefaultModel: async ({ model }) => (await ai.setDefaultModel(model), ok),
+			openExternal: ({ url }) => (openExternal(url), ok),
 			pickExportFolder: async () =>
 				(
 					await Utils.openFileDialog({
@@ -121,7 +127,9 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			writeExport: ({ dir, name, files, reveal }) => {
 				const target = name ? freeExportDir(dir, name) : dir;
 				writeExportFiles(target, files);
+
 				if (reveal) Utils.showItemInFolder(target);
+
 				return { dir: target };
 			},
 			sharePublish: ({ path, snapshot }) => shares.publish(path, snapshot),
@@ -130,7 +138,9 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			exportViewer: ({ dir, name, snapshot, reveal }) => {
 				const target = freeExportDir(dir, name);
 				writeExportFiles(target, viewerFiles(assertSnapshot(snapshot), readScreenRuntime(runtimeDirs())));
+
 				if (reveal) Utils.showItemInFolder(target);
+
 				return { dir: target };
 			},
 			gitStatus: ({ path }) => git.status(path),

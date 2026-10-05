@@ -22,6 +22,8 @@ import {
 	versionHealth,
 	type LineMapper,
 } from "../cli";
+import type { JsonObject } from "../../../shared/json";
+import { objectOr, optionalNumber, optionalObject, optionalString } from "../../json";
 import { userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 import type { CliProviderOptions } from "./claude-code";
@@ -31,22 +33,12 @@ export const GEMINI_MODELS: ProviderModel[] = [
 	{ id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
 ];
 
-type GeminiLine = {
-	type?: string;
-	role?: string;
-	content?: string;
-	delta?: boolean;
-	tool_name?: string;
-	parameters?: Record<string, unknown>;
-	status?: string;
-	severity?: string;
-	message?: string;
-	error?: { type?: string; message?: string };
-	stats?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
-};
+function toolEvent(dir: string, name: string | undefined, params: JsonObject): GenerationEvent {
+	const path = stagingRelative(
+		dir,
+		optionalString(params.file_path ?? params.absolute_path ?? params.path ?? params.dir_path),
+	);
 
-function toolEvent(dir: string, name: string | undefined, params: Record<string, unknown>): GenerationEvent {
-	const path = stagingRelative(dir, (params.file_path ?? params.absolute_path ?? params.path ?? params.dir_path) as string | undefined);
 	switch (name) {
 		case "write_file":
 			return toolStatus("write", path);
@@ -59,11 +51,11 @@ function toolEvent(dir: string, name: string | undefined, params: Record<string,
 		case "glob":
 		case "search_file_content":
 		case "grep":
-			return toolStatus("search", (params.pattern as string | undefined) ?? path);
+			return toolStatus("search", optionalString(params.pattern) ?? path);
 		case "list_directory":
 			return toolStatus("list", path);
 		case "run_shell_command":
-			return toolStatus("run", params.command as string | undefined);
+			return toolStatus("run", optionalString(params.command));
 		default:
 			return toolStatus("other", undefined, name);
 	}
@@ -72,25 +64,54 @@ function toolEvent(dir: string, name: string | undefined, params: Record<string,
 /** Maps Gemini CLI `stream-json` lines to events. Stateful: create one per run. */
 export function createGeminiMapper(dir: string): LineMapper {
 	const text = new MessageText();
+
 	return (raw) => {
-		const line = raw as GeminiLine;
+		const line = objectOr(raw);
+		const errorMessage = optionalString(objectOr(line.error).message);
+
 		switch (line.type) {
-			case "message":
-				if (line.role !== "assistant" || !line.content) return [];
+			case "message": {
+				const content = optionalString(line.content);
+
+				if (line.role !== "assistant" || !content) return [];
+
 				if (!line.delta) text.break();
-				return text.delta(line.content);
+
+				return text.delta(content);
+			}
+
 			case "tool_use":
 				text.break();
-				return [toolEvent(dir, line.tool_name, line.parameters ?? {})];
+
+				return [toolEvent(dir, optionalString(line.tool_name), objectOr(line.parameters))];
 			case "tool_result":
-				return line.status === "error" ? [{ type: "status", label: "A tool call failed", detail: line.error?.message }] : [];
+				return line.status === "error" ? [{ type: "status", label: "A tool call failed", detail: errorMessage }] : [];
 			case "error":
-				return [{ type: "status", label: line.severity === "warning" ? "Warning" : "Error", detail: line.message }];
+				return [
+					{
+						type: "status",
+						label: line.severity === "warning" ? "Warning" : "Error",
+						detail: optionalString(line.message),
+					},
+				];
 			case "result": {
-				if (line.status && line.status !== "success") return [failureEvent(classifyFailure("gemini-cli", line.error?.message ?? "Gemini CLI failed."))];
-				const stats = line.stats;
-				return [{ type: "done", ...(stats ? { usage: { inputTokens: stats.input_tokens ?? 0, outputTokens: stats.output_tokens ?? 0 } } : {}) }];
+				if (line.status && line.status !== "success")
+					return [failureEvent(classifyFailure("gemini-cli", errorMessage ?? "Gemini CLI failed."))];
+				const stats = optionalObject(line.stats);
+
+				if (!stats) return [{ type: "done" }];
+
+				return [
+					{
+						type: "done",
+						usage: {
+							inputTokens: optionalNumber(stats.input_tokens) ?? 0,
+							outputTokens: optionalNumber(stats.output_tokens) ?? 0,
+						},
+					},
+				];
 			}
+
 			default:
 				return [];
 		}
@@ -99,7 +120,15 @@ export function createGeminiMapper(dir: string): LineMapper {
 
 /** The `gemini` arguments for one generation. */
 export function geminiArgs(model: string, prompt: string) {
-	return ["--output-format", "stream-json", "--approval-mode", "auto_edit", ...(model ? ["--model", model] : []), "--prompt", prompt];
+	return [
+		"--output-format",
+		"stream-json",
+		"--approval-mode",
+		"auto_edit",
+		...(model ? ["--model", model] : []),
+		"--prompt",
+		prompt,
+	];
 }
 
 export function createGeminiCliProvider(options: CliProviderOptions): Provider {
@@ -114,6 +143,7 @@ export function createGeminiCliProvider(options: CliProviderOptions): Provider {
 
 		async health() {
 			const result = await versionHealth("gemini-cli", spawn, binary());
+
 			return result.ok ? { ok: true, version: result.version } : result;
 		},
 
@@ -123,10 +153,13 @@ export function createGeminiCliProvider(options: CliProviderOptions): Provider {
 
 		async *generate(request, signal) {
 			const bin = binary();
+
 			if (!bin) {
 				yield failureEvent(notInstalled("gemini-cli"));
+
 				return;
 			}
+
 			const model = request.model || options.config.defaultModel || "";
 			yield* runInStaging(
 				request,

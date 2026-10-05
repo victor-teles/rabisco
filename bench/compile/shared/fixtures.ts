@@ -180,30 +180,43 @@ export default function Home() {
 
 /** ~5× MEDIUM: a dense desktop dashboard. Component names are made unique per copy. */
 export const LARGE = (() => {
-  const body = MEDIUM.split("\n").filter((line) => !line.startsWith("import ")).join("\n");
-  const imports = MEDIUM.split("\n").filter((line) => line.startsWith("import ")).join("\n");
-  const copies = Array.from({ length: 5 }, (_, i) =>
-    body
-      .replaceAll("export default function Home", "function Section" + i)
-      .replace(/\b(HABITS|COLOR|StatCard|HabitRow|Habit|Filter)\b/g, "$1_" + i),
-  );
-  return imports + "\n" + copies.join("\n") + "\nexport default function Dashboard() {\n  return (<div className=\"grid grid-cols-5 gap-6 p-8\">" +
-    copies.map((_, i) => "<Section" + i + " />").join("") + "</div>);\n}\n";
+	const body = MEDIUM.split("\n")
+		.filter((line) => !line.startsWith("import "))
+		.join("\n");
+
+	const imports = MEDIUM.split("\n")
+		.filter((line) => line.startsWith("import "))
+		.join("\n");
+
+	const copies = Array.from({ length: 5 }, (_, i) =>
+		body
+			.replaceAll("export default function Home", "function Section" + i)
+			.replace(/\b(HABITS|COLOR|StatCard|HabitRow|Habit|Filter)\b/g, "$1_" + i),
+	);
+
+	return (
+		imports +
+		"\n" +
+		copies.join("\n") +
+		'\nexport default function Dashboard() {\n  return (<div className="grid grid-cols-5 gap-6 p-8">' +
+		copies.map((_, i) => "<Section" + i + " />").join("") +
+		"</div>);\n}\n"
+	);
 })();
 
 /** Local project components, to measure bundling a screen with its own components. */
-export const LOCAL_COMPONENTS: Record<string, string> = {
-  "/project/components/stat-card.tsx": `import { Card } from "@/components/ui/card";
+export const LOCAL_COMPONENTS = {
+	"/project/components/stat-card.tsx": `import { Card } from "@/components/ui/card";
 export function StatCard({ label, value }: { label: string; value: string }) {
   return <Card className="gap-1 rounded-2xl p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-2xl font-semibold">{value}</p></Card>;
 }
 `,
-  "/project/components/habit-row.tsx": `import { Check } from "lucide-react";
+	"/project/components/habit-row.tsx": `import { Check } from "lucide-react";
 export function HabitRow({ name, done }: { name: string; done: boolean }) {
   return <li className="flex items-center gap-3 rounded-2xl px-3 py-3"><span className="flex-1">{name}</span>{done ? <Check className="size-4" /> : null}</li>;
 }
 `,
-  "/project/components/bottom-nav.tsx": `export function BottomNav({ items }: { items: string[] }) {
+	"/project/components/bottom-nav.tsx": `export function BottomNav({ items }: { items: string[] }) {
   return <nav className="absolute inset-x-0 bottom-0 flex h-20 items-center justify-around border-t">{items.map((i) => <button key={i}>{i}</button>)}</nav>;
 }
 `,
@@ -225,4 +238,5 @@ export default function Home() {
 `;
 
 export const FIXTURES = { small: SMALL, medium: MEDIUM, large: LARGE } as const;
+
 export type FixtureName = keyof typeof FIXTURES;

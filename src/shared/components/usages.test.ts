@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { generateMockScreens } from "../mock-generator";
 import { cachedComponentApi, componentSignatures, componentUsages, projectComponents, screensUsing } from "./usages";
 
-const files: Record<string, string> = {
+const files = {
 	"components/stat-card.tsx": `export function StatCard({ label }: { label: string }) { return <div>{label}</div>; }\n`,
 	"components/tab-bar.tsx": `import { cn } from "@/lib/utils";\nexport function TabBar({ active = 0 }: { active?: number }) { return <nav className={cn("flex")} />; }\n`,
 	"components/stat-grid.tsx": `import { StatCard } from "./stat-card";\nexport function StatGrid() { return <StatCard label="a" />; }\n`,
@@ -26,7 +26,7 @@ export default function Stats() { return <Grid.StatGrid />; }
 
 describe("componentUsages", () => {
 	test("maps every component file to the files that import it", () => {
-		expect(componentUsages(files)).toEqual({
+		expect(Object.fromEntries(componentUsages(files))).toEqual({
 			"components/stat-card.tsx": [
 				{ path: "components/stat-grid.tsx", names: ["StatCard"] },
 				{ path: "screens/home.tsx", names: ["StatCard"] },
@@ -45,37 +45,54 @@ describe("componentUsages", () => {
 			"components/a.tsx": "export function A() { return null; }",
 			"screens/s.tsx": `import "./x";\nimport A, { A as B } from "../components/a";\n`,
 		});
-		expect(usages["components/a.tsx"]).toEqual([{ path: "screens/s.tsx", names: ["default", "A"] }]);
+
+		expect(usages.get("components/a.tsx")).toEqual([{ path: "screens/s.tsx", names: ["default", "A"] }]);
 	});
 });
 
 describe("projectComponents", () => {
 	test("components with their API and users, sorted by path", () => {
 		const list = projectComponents(files);
-		expect(list.map((c) => c.path)).toEqual(["components/stat-card.tsx", "components/stat-grid.tsx", "components/tab-bar.tsx", "components/unused.tsx"]);
+		expect(list.map((c) => c.path)).toEqual([
+			"components/stat-card.tsx",
+			"components/stat-grid.tsx",
+			"components/tab-bar.tsx",
+			"components/unused.tsx",
+		]);
 		expect(list[0]!.exports.map((e) => e.name)).toEqual(["StatCard"]);
 		expect(list[0]!.usedBy).toEqual(["components/stat-grid.tsx", "screens/home.tsx"]);
 		expect(list[3]!.usedBy).toEqual([]);
 	});
 
 	test("memoized by content", () => {
-		const source = files["components/stat-card.tsx"]!;
-		expect(cachedComponentApi("components/stat-card.tsx", source)).toBe(cachedComponentApi("components/stat-card.tsx", source));
+		const source = files["components/stat-card.tsx"];
+		expect(cachedComponentApi("components/stat-card.tsx", source)).toBe(
+			cachedComponentApi("components/stat-card.tsx", source),
+		);
 	});
 
 	test("catalog signatures for a generated project", () => {
-		const generated = Object.fromEntries(generateMockScreens({ prompt: "A habit tracker", device: "mobile" }).changes.map((c) => [c.path, c.content!]));
+		const generated = Object.fromEntries(
+			generateMockScreens({ prompt: "A habit tracker", device: "mobile" }).changes.map((c) => [c.path, c.content!]),
+		);
+
 		const catalog = componentSignatures(generated);
 		const tabBar = catalog.find((c) => c.path === "components/tab-bar.tsx")!;
 		expect(tabBar.signature).toEqual(["TabBar({ active?: number = 0 })"]);
 		expect(tabBar.usedBy!.length).toBeGreaterThan(0);
-		expect(componentSignatures({ "components/lonely.tsx": "export function Lonely() { return null; }" })).toEqual([{ path: "components/lonely.tsx", signature: ["Lonely()"] }]);
+		expect(componentSignatures({ "components/lonely.tsx": "export function Lonely() { return null; }" })).toEqual([
+			{ path: "components/lonely.tsx", signature: ["Lonely()"] },
+		]);
 	});
 
 	test("is fast enough to run on every change", () => {
 		const big: Record<string, string> = {};
-		for (let i = 0; i < 40; i++) big[`components/c-${i}.tsx`] = `${files["components/stat-grid.tsx"]}\nexport function C${i}({ a = ${i} }: { a?: number }) { return <div>{a}</div>; }\n`;
-		for (let i = 0; i < 40; i++) big[`screens/s-${i}.tsx`] = files["screens/home.tsx"]!.repeat(5);
+
+		for (let i = 0; i < 40; i++)
+			big[`components/c-${i}.tsx`] =
+				`${files["components/stat-grid.tsx"]}\nexport function C${i}({ a = ${i} }: { a?: number }) { return <div>{a}</div>; }\n`;
+
+		for (let i = 0; i < 40; i++) big[`screens/s-${i}.tsx`] = files["screens/home.tsx"].repeat(5);
 		const start = performance.now();
 		projectComponents(big);
 		projectComponents(big);
@@ -100,11 +117,13 @@ describe("screensUsing", () => {
 	});
 	test("ignores type-only imports, unknown paths and import cycles", () => {
 		expect(screensUsing(files, ["components/unused.tsx", "components/missing.tsx", "screens/home.tsx"]).size).toBe(0);
+
 		const cyclic = {
 			"components/a.tsx": `import { B } from "./b";\nexport function A() { return <B />; }\n`,
 			"components/b.tsx": `import { A } from "./a";\nexport function B() { return <A />; }\n`,
 			"screens/s.tsx": `import { B } from "../components/b";\nexport default function S() { return <B />; }\n`,
 		};
+
 		expect(screensUsing(cyclic, ["components/a.tsx"])).toEqual(new Map([["screens/s.tsx", ["components/a.tsx"]]]));
 	});
 });

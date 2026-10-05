@@ -2,9 +2,16 @@ import { describe, expect, test } from "bun:test";
 import type { GenerationRequest } from "../../../shared/ai/contract";
 import type { ProviderConfig, ProviderType } from "../../../shared/ai/settings";
 import { createOpenAICompatibleProvider } from "./openai-compatible";
+import type { Json } from "../../../shared/json";
 import { chunked, collect, fakeFetch, sse, streamOf } from "./test-sse";
 
-const configFor = (type: ProviderType, extra: Partial<ProviderConfig> = {}): ProviderConfig => ({ id: type, type, label: type, enabled: true, ...extra });
+const configFor = (type: ProviderType, extra: Partial<ProviderConfig> = {}): ProviderConfig => ({
+	id: type,
+	type,
+	label: type,
+	enabled: true,
+	...extra,
+});
 
 const request: GenerationRequest = {
 	id: "g1",
@@ -14,23 +21,36 @@ const request: GenerationRequest = {
 	device: "desktop",
 	context: {},
 	files: [],
-	history: [{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }],
+	history: [
+		{ role: "user", content: "hi" },
+		{ role: "assistant", content: "hello" },
+	],
 };
 
-const reply = 'Done.\n<rabisco-file path="components/nav.tsx">\nexport function Nav() {\n\treturn null;\n}\n</rabisco-file>';
+const reply =
+	'Done.\n<rabisco-file path="components/nav.tsx">\nexport function Nav() {\n\treturn null;\n}\n</rabisco-file>';
 
 const chunks = (text: string, usage = true) => [
-	...chunked(text, 6).map((piece, i) => ({ choices: [{ index: 0, delta: i === 0 ? { role: "assistant", content: piece } : { content: piece }, finish_reason: null }] })),
+	...chunked(text, 6).map((piece, i) => ({
+		choices: [
+			{ index: 0, delta: i === 0 ? { role: "assistant", content: piece } : { content: piece }, finish_reason: null },
+		],
+	})),
 	{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
 	...(usage ? [{ choices: [], usage: { prompt_tokens: 50, completion_tokens: 30, cost: 0.002 } }] : []),
 	"[DONE]",
 ];
 
-const sseResponse = (events: unknown[], signal?: AbortSignal | null) => new Response(streamOf(chunked(sse(events), 11), signal), { headers: { "content-type": "text/event-stream" } });
+const sseResponse = (events: Json[], signal?: AbortSignal | null) =>
+	new Response(streamOf(chunked(sse(events), 11), signal), { headers: { "content-type": "text/event-stream" } });
 
 const make = (config: ProviderConfig, handler: Parameters<typeof fakeFetch>[0], key: string | null = "sk-test") => {
 	const fake = fakeFetch(handler);
-	return { provider: createOpenAICompatibleProvider({ config, getApiKey: async () => key, fetch: fake.fetch }), requests: fake.requests };
+
+	return {
+		provider: createOpenAICompatibleProvider({ config, getApiKey: async () => key, fetch: fake.fetch }),
+		requests: fake.requests,
+	};
 };
 
 describe("openai-compatible provider", () => {
@@ -46,8 +66,16 @@ describe("openai-compatible provider", () => {
 		expect(body.messages[0].content).toContain("<rabisco-file");
 
 		expect(events[0]).toEqual({ type: "message.delta", text: "Done.\n" });
-		expect(events.find((e) => e.type === "file.start")).toEqual({ type: "file.start", path: "components/nav.tsx", kind: "component" });
-		expect(events.find((e) => e.type === "file.end")).toEqual({ type: "file.end", path: "components/nav.tsx", content: "export function Nav() {\n\treturn null;\n}\n" });
+		expect(events.find((e) => e.type === "file.start")).toEqual({
+			type: "file.start",
+			path: "components/nav.tsx",
+			kind: "component",
+		});
+		expect(events.find((e) => e.type === "file.end")).toEqual({
+			type: "file.end",
+			path: "components/nav.tsx",
+			content: "export function Nav() {\n\treturn null;\n}\n",
+		});
 		expect(events.at(-1)).toEqual({ type: "done", usage: { inputTokens: 50, outputTokens: 30, costUsd: 0.002 } });
 	});
 
@@ -68,10 +96,18 @@ describe("openai-compatible provider", () => {
 		const openai = make(configFor("openai"), () => new Response(), null);
 		const events = await collect(openai.provider.generate(request, new AbortController().signal));
 		expect(events).toEqual([{ type: "error", code: "not_authenticated", message: "No OpenAI key", retryable: false }]);
-		expect(await openai.provider.health()).toMatchObject({ ok: false, code: "not_authenticated", fix: expect.stringContaining("key") });
+		expect(await openai.provider.health()).toMatchObject({
+			ok: false,
+			code: "not_authenticated",
+			fix: expect.stringContaining("key"),
+		});
 
 		const ollama = make(configFor("ollama"), ({ init }) => sseResponse(chunks(reply), init.signal), null);
-		const out = await collect(ollama.provider.generate({ ...request, model: "qwen3-coder:30b" }, new AbortController().signal));
+
+		const out = await collect(
+			ollama.provider.generate({ ...request, model: "qwen3-coder:30b" }, new AbortController().signal),
+		);
+
 		expect(out.at(-1)?.type).toBe("done");
 		expect(ollama.requests[0]!.url).toBe("http://localhost:11434/v1/chat/completions");
 		expect(ollama.requests[0]!.init.headers).not.toHaveProperty("authorization");
@@ -79,11 +115,16 @@ describe("openai-compatible provider", () => {
 	});
 
 	test("retries without stream_options when the server rejects it", async () => {
-		const { provider, requests } = make(configFor("openai-compatible", { baseUrl: "http://localhost:1234/v1" }), ({ body, init }) =>
-			body.stream_options
-				? new Response(JSON.stringify({ error: { message: "Unrecognized request argument: stream_options" } }), { status: 400 })
-				: sseResponse(chunks(reply, false), init.signal),
+		const { provider, requests } = make(
+			configFor("openai-compatible", { baseUrl: "http://localhost:1234/v1" }),
+			({ body, init }) =>
+				body.stream_options
+					? new Response(JSON.stringify({ error: { message: "Unrecognized request argument: stream_options" } }), {
+							status: 400,
+						})
+					: sseResponse(chunks(reply, false), init.signal),
 		);
+
 		const events = await collect(provider.generate(request, new AbortController().signal));
 		expect(requests).toHaveLength(2);
 		expect(requests[1]!.body.stream_options).toBeUndefined();
@@ -91,27 +132,60 @@ describe("openai-compatible provider", () => {
 	});
 
 	test("other 400s are errors", async () => {
-		const { provider } = make(configFor("openai"), () => new Response(JSON.stringify({ error: { message: "This model's maximum context length is 128000 tokens" } }), { status: 400 }));
+		const { provider } = make(
+			configFor("openai"),
+			() =>
+				new Response(JSON.stringify({ error: { message: "This model's maximum context length is 128000 tokens" } }), {
+					status: 400,
+				}),
+		);
+
 		const events = await collect(provider.generate(request, new AbortController().signal));
-		expect(events).toEqual([{ type: "error", code: "context_too_large", message: "This model's maximum context length is 128000 tokens", retryable: false }]);
+		expect(events).toEqual([
+			{
+				type: "error",
+				code: "context_too_large",
+				message: "This model's maximum context length is 128000 tokens",
+				retryable: false,
+			},
+		]);
 	});
 
 	test("an error chunk mid-stream ends with error", async () => {
 		const events = [...chunks(reply).slice(0, 3), { error: { message: "Rate limit exceeded", code: 429 } }];
 		const { provider } = make(configFor("openrouter"), ({ init }) => sseResponse(events, init.signal));
 		const out = await collect(provider.generate(request, new AbortController().signal));
-		expect(out.at(-1)).toEqual({ type: "error", code: "rate_limited", message: "Rate limit exceeded", retryable: true });
+		expect(out.at(-1)).toEqual({
+			type: "error",
+			code: "rate_limited",
+			message: "Rate limit exceeded",
+			retryable: true,
+		});
 	});
 
 	test("finish_reason length mid-file is invalid_output", async () => {
-		const events = [...chunks(reply.slice(0, 60)).slice(0, -3), { choices: [{ index: 0, delta: {}, finish_reason: "length" }] }, "[DONE]"];
+		const events = [
+			...chunks(reply.slice(0, 60)).slice(0, -3),
+			{ choices: [{ index: 0, delta: {}, finish_reason: "length" }] },
+			"[DONE]",
+		];
+
 		const { provider } = make(configFor("openai"), ({ init }) => sseResponse(events, init.signal));
 		const out = await collect(provider.generate(request, new AbortController().signal));
-		expect(out.at(-1)).toMatchObject({ type: "error", code: "invalid_output", message: expect.stringContaining("output limit") });
+		expect(out.at(-1)).toMatchObject({
+			type: "error",
+			code: "invalid_output",
+			message: expect.stringContaining("output limit"),
+		});
 	});
 
 	test("reasoning deltas become one status", async () => {
-		const events = [{ choices: [{ delta: { reasoning: "hm" } }] }, { choices: [{ delta: { reasoning: "more" } }] }, ...chunks(reply)];
+		const events = [
+			{ choices: [{ delta: { reasoning: "hm" } }] },
+			{ choices: [{ delta: { reasoning: "more" } }] },
+			...chunks(reply),
+		];
+
 		const { provider } = make(configFor("openrouter"), ({ init }) => sseResponse(events, init.signal));
 		const out = await collect(provider.generate(request, new AbortController().signal));
 		expect(out.filter((e) => e.type === "status")).toEqual([{ type: "status", label: "Thinking" }]);
@@ -119,12 +193,20 @@ describe("openai-compatible provider", () => {
 
 	test("abort ends with aborted", async () => {
 		const controller = new AbortController();
-		const { provider } = make(configFor("openai"), ({ init }) => new Response(streamOf(chunked(sse(chunks(reply)), 11), init.signal, 5)));
+
+		const { provider } = make(
+			configFor("openai"),
+			({ init }) => new Response(streamOf(chunked(sse(chunks(reply)), 11), init.signal, 5)),
+		);
+
 		const out = [];
+
 		for await (const event of provider.generate(request, controller.signal)) {
 			out.push(event);
+
 			if (event.type === "message.delta") controller.abort();
 		}
+
 		expect(out.at(-1)).toEqual({ type: "error", code: "aborted", message: "Generation stopped", retryable: false });
 	});
 
@@ -132,6 +214,7 @@ describe("openai-compatible provider", () => {
 		const { provider } = make(configFor("ollama"), () => {
 			throw new TypeError("Unable to connect. Is the computer able to access the url?");
 		});
+
 		expect(await provider.health()).toEqual({
 			ok: false,
 			code: "network",
@@ -145,7 +228,11 @@ describe("openai-compatible provider", () => {
 
 	test("openai-compatible without a base URL", async () => {
 		const { provider, requests } = make(configFor("openai-compatible"), () => new Response());
-		expect(await provider.health()).toMatchObject({ ok: false, code: "unknown", fix: expect.stringContaining("base URL") });
+		expect(await provider.health()).toMatchObject({
+			ok: false,
+			code: "unknown",
+			fix: expect.stringContaining("base URL"),
+		});
 		const events = await collect(provider.generate(request, new AbortController().signal));
 		expect(events.at(-1)).toMatchObject({ type: "error", code: "unknown" });
 		expect(requests).toHaveLength(0);
@@ -161,6 +248,7 @@ describe("openai-compatible provider", () => {
 		const { provider, requests } = make(configFor("openrouter"), () =>
 			Response.json({ data: [{ id: "z/model", name: "Zed" }, { id: "a/model" }] }),
 		);
+
 		expect(await provider.listModels()).toEqual([
 			{ id: "a/model", label: "a/model" },
 			{ id: "z/model", label: "Zed" },
@@ -168,7 +256,15 @@ describe("openai-compatible provider", () => {
 		expect(requests[0]!.url).toBe("https://openrouter.ai/api/v1/models");
 		expect(await provider.health()).toEqual({ ok: true });
 
-		const bad = make(configFor("openai"), () => new Response(JSON.stringify({ error: { message: "Incorrect API key" } }), { status: 401 }));
-		expect(await bad.provider.health()).toMatchObject({ ok: false, code: "not_authenticated", message: "Incorrect API key" });
+		const bad = make(
+			configFor("openai"),
+			() => new Response(JSON.stringify({ error: { message: "Incorrect API key" } }), { status: 401 }),
+		);
+
+		expect(await bad.provider.health()).toMatchObject({
+			ok: false,
+			code: "not_authenticated",
+			message: "Incorrect API key",
+		});
 	});
 });

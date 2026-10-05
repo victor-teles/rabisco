@@ -5,7 +5,9 @@ import { findElement, flatten, parseJsx } from "./tree";
 
 const at = (source: string, needle: string) => {
 	const index = source.indexOf(needle);
+
 	if (index < 0) throw new Error(`missing ${needle}`);
+
 	return index;
 };
 
@@ -24,7 +26,9 @@ describe("insertChild", () => {
 
 	test("opens a self-closing parent", () => {
 		const source = `export function A() {\n\treturn (\n\t\t<div className="a" />\n\t);\n}\n`;
-		expect(insertChild(source, at(source, "<div"), "<span />")).toBe(`export function A() {\n\treturn (\n\t\t<div className="a">\n\t\t\t<span />\n\t\t</div>\n\t);\n}\n`);
+		expect(insertChild(source, at(source, "<div"), "<span />")).toBe(
+			`export function A() {\n\treturn (\n\t\t<div className="a">\n\t\t\t<span />\n\t\t</div>\n\t);\n}\n`,
+		);
 	});
 
 	test("breaks an inline closing tag onto its own line, fragments too", () => {
@@ -37,7 +41,9 @@ describe("insertChild", () => {
 
 	test("uses the file's space indentation", () => {
 		const source = `const a = (\n  <ul>\n    <li />\n  </ul>\n);\n`;
-		expect(insertChild(source, at(source, "<ul"), "<li>Two</li>")).toBe(`const a = (\n  <ul>\n    <li />\n    <li>Two</li>\n  </ul>\n);\n`);
+		expect(insertChild(source, at(source, "<ul"), "<li>Two</li>")).toBe(
+			`const a = (\n  <ul>\n    <li />\n    <li>Two</li>\n  </ul>\n);\n`,
+		);
 	});
 
 	test("null when there is no element there", () => {
@@ -51,12 +57,16 @@ describe("setAttribute", () => {
 	const start = at(source, "<Button");
 
 	test("replaces in place", () => {
-		expect(setAttribute(source, start, "variant", "outline")).toBe(`const a = <Button variant="outline" disabled onClick={go}>Save</Button>;`);
+		expect(setAttribute(source, start, "variant", "outline")).toBe(
+			`const a = <Button variant="outline" disabled onClick={go}>Save</Button>;`,
+		);
 		expect(setAttribute(source, start, "disabled", 3)).toContain(`disabled={3} onClick`);
 	});
 
 	test("appends after the other attributes", () => {
-		expect(setAttribute(source, start, "size", "sm")).toBe(`const a = <Button variant="ghost" disabled onClick={go} size="sm">Save</Button>;`);
+		expect(setAttribute(source, start, "size", "sm")).toBe(
+			`const a = <Button variant="ghost" disabled onClick={go} size="sm">Save</Button>;`,
+		);
 		expect(setAttribute(`const b = <Separator />;`, 10, "vertical", true)).toBe(`const b = <Separator vertical />;`);
 	});
 
@@ -67,7 +77,9 @@ describe("setAttribute", () => {
 	});
 
 	test("false and null remove it", () => {
-		expect(setAttribute(source, start, "disabled", false)).toBe(`const a = <Button variant="ghost" onClick={go}>Save</Button>;`);
+		expect(setAttribute(source, start, "disabled", false)).toBe(
+			`const a = <Button variant="ghost" onClick={go}>Save</Button>;`,
+		);
 		expect(setAttribute(source, start, "variant", null)).toBe(`const a = <Button disabled onClick={go}>Save</Button>;`);
 		expect(setAttribute(source, start, "missing", null)).toBe(source);
 	});
@@ -76,7 +88,9 @@ describe("setAttribute", () => {
 		const multi = `const a = (\n\t<Button\n\t\tvariant="ghost"\n\t\tsize="sm"\n\t>\n\t\tSave\n\t</Button>\n);\n`;
 		const added = setAttribute(multi, at(multi, "<Button"), "disabled", true)!;
 		expect(added).toContain(`\t\tsize="sm"\n\t\tdisabled\n\t>`);
-		expect(setAttribute(multi, at(multi, "<Button"), "size", null)).toBe(`const a = (\n\t<Button\n\t\tvariant="ghost"\n\t>\n\t\tSave\n\t</Button>\n);\n`);
+		expect(setAttribute(multi, at(multi, "<Button"), "size", null)).toBe(
+			`const a = (\n\t<Button\n\t\tvariant="ghost"\n\t>\n\t\tSave\n\t</Button>\n);\n`,
+		);
 	});
 
 	test("null for fragments, bad names and missing elements", () => {
@@ -117,6 +131,7 @@ describe("removeElement", () => {
 		expect(removeElement(`function A() { return(<div />); }`, 22)).toBe(`function A() { return null; }`);
 		const call = `const y = wrap(<div />);`;
 		expect(removeElement(call, at(call, "<div"))).toBe(`const y = wrap(null);`);
+
 		for (const source of [screen, arrow, call]) expect(compiles(removeElement(source, at(source, "<"))!)).toBe(true);
 	});
 
@@ -132,13 +147,23 @@ describe("injectLocations", () => {
 	test("tags every element but fragments with its original start", () => {
 		const out = injectLocations(DASHBOARD);
 		const original = flatten(parseJsx(DASHBOARD)).filter((e) => e.name !== null);
-		const tagged = flatten(parseJsx(out)).filter((e) => e.attributes.some((a) => a.kind === "attribute" && a.name === LOC_ATTRIBUTE));
+
+		const tagged = flatten(parseJsx(out)).filter((e) =>
+			e.attributes.some((a) => a.kind === "attribute" && a.name === LOC_ATTRIBUTE),
+		);
+
 		expect(tagged.length).toBe(original.length);
+
 		for (const element of tagged) {
-			const attribute = element.attributes.find((a) => a.kind === "attribute" && a.name === LOC_ATTRIBUTE)!;
-			const loc = Number((attribute as { value: { value: string } }).value.value);
+			const attribute = element.attributes.find((a) => a.kind === "attribute" && a.name === LOC_ATTRIBUTE);
+
+			const loc = Number(
+				attribute?.kind === "attribute" && attribute.value?.kind === "string" ? attribute.value.value : Number.NaN,
+			);
+
 			expect(findElement(parseJsx(DASHBOARD), loc)?.name).toBe(element.name);
 		}
+
 		expect(out).toContain(`<li ${LOC_ATTRIBUTE}="${at(DASHBOARD, "<li")}" key={order.id}`);
 		expect(out).toContain(`<Card ${LOC_ATTRIBUTE}="${at(DASHBOARD, "<Card")}" className="gap-1 py-4">`);
 		expect(compiles(out)).toBe(true);
@@ -166,7 +191,9 @@ describe("injectLocations", () => {
 
 	test("with a path, each value carries the file too", () => {
 		const out = injectLocations(`const a = <div><Card><span /></Card></div>;`, "screens/home.tsx");
-		expect(out).toBe(`const a = <div data-rabisco-loc="screens/home.tsx:10"><Card data-rabisco-loc="screens/home.tsx:15"><span data-rabisco-loc="screens/home.tsx:21" /></Card></div>;`);
+		expect(out).toBe(
+			`const a = <div data-rabisco-loc="screens/home.tsx:10"><Card data-rabisco-loc="screens/home.tsx:15"><span data-rabisco-loc="screens/home.tsx:21" /></Card></div>;`,
+		);
 		expect(injectLocations(out, "screens/home.tsx")).toBe(out);
 		const lines = injectLocations(DASHBOARD, "screens/dashboard.tsx").split("\n");
 		expect(lines.length).toBe(DASHBOARD.split("\n").length);

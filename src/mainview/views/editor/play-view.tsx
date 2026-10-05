@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ChevronDown, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
@@ -30,7 +30,17 @@ type History = { stack: string[]; index: number };
  * back, forward, restart and a screen picker. Esc closes, from the bar or
  * from inside the screen.
  */
-export function PlayView({ start, frames, files, onClose }: { start: string; frames: Frame[]; files: ProjectFiles; onClose: () => void }) {
+export function PlayView({
+	start,
+	frames,
+	files,
+	onClose,
+}: {
+	start: string;
+	frames: Frame[];
+	files: ProjectFiles;
+	onClose: () => void;
+}) {
 	const rootRef = useRef<HTMLDivElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	const [history, setHistory] = useState<History>({ stack: [start], index: 0 });
@@ -48,50 +58,63 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 	// Scale down to fit the window, never up
 	useLayoutEffect(() => {
 		const el = stageRef.current;
+
 		if (!el) return;
 		const measure = () => setStage({ width: el.clientWidth, height: el.clientHeight });
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(el);
+
 		return () => observer.disconnect();
 	}, []);
+
 	const scale = stage.width
 		? Math.max(0.1, Math.min(1, (stage.width - PADDING * 2) / size.width, (stage.height - PADDING * 2) / size.height))
 		: 1;
 
 	const go = useCallback((file: string) => {
-		setHistory((h) => (h.stack[h.index] === file ? h : { stack: [...h.stack.slice(0, h.index + 1), file], index: h.index + 1 }));
+		setHistory((h) =>
+			h.stack[h.index] === file ? h : { stack: [...h.stack.slice(0, h.index + 1), file], index: h.index + 1 },
+		);
 	}, []);
+
 	const back = useCallback(() => {
 		setHistory((h) => (h.index > 0 ? { ...h, index: h.index - 1 } : h));
 	}, []);
+
 	const forward = useCallback(() => {
 		setHistory((h) => (h.index < h.stack.length - 1 ? { ...h, index: h.index + 1 } : h));
 	}, []);
+
 	const restart = useCallback(() => setHistory({ stack: [start], index: 0 }), [start]);
 
 	// A link in the screen: as written in its `data-link-to`
 	const navigate = useCallback(
 		(to: string) => {
 			const target = resolveLink(to, files);
+
 			if (target.kind === "screen") go(target.file);
 			else if (target.kind === "back") {
 				if (canBack) back();
 				else toast("This is the first screen", { description: "There's nothing to go back to yet." });
-			} else toast("This link goes nowhere yet", { description: `No screen at ${target.to}. Pick a target in the inspector.` });
+			} else
+				toast("This link goes nowhere yet", {
+					description: `No screen at ${target.to}. Pick a target in the inspector.`,
+				});
 		},
 		[files, go, back, canBack],
 	);
 
 	// Play mode owns the keyboard while open: the editor's shortcuts would act on a canvas the user can't see
-	const keys = useRef<(event: KeyboardEvent) => void>(() => {});
-	keys.current = (event) => {
+	const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
 		if (isTyping(event.target)) return;
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
+
 		const handled = () => {
 			event.preventDefault();
 			event.stopPropagation();
 		};
+
 		if (event.key === "Escape") {
 			handled();
 			onClose();
@@ -108,19 +131,23 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 			// Default actions (button activation) still happen
 			event.stopPropagation();
 		}
-	};
+	});
+
 	useEffect(() => {
-		const listener = (event: KeyboardEvent) => keys.current(event);
+		const listener = (event: KeyboardEvent) => onKeyDown(event);
 		window.addEventListener("keydown", listener, { capture: true });
+
 		return () => window.removeEventListener("keydown", listener, { capture: true });
 	}, []);
 
 	// The canvas listens to the wheel natively: keep ours to ourselves
 	useEffect(() => {
 		const el = rootRef.current;
+
 		if (!el) return;
 		const onWheel = (event: WheelEvent) => event.stopPropagation();
 		el.addEventListener("wheel", onWheel);
+
 		return () => el.removeEventListener("wheel", onWheel);
 	}, []);
 
@@ -140,7 +167,12 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 					<BarButton label="Forward" keys={PLAY_FORWARD_KEYS} disabled={!canForward} onClick={forward}>
 						<ArrowRight />
 					</BarButton>
-					<BarButton label="Restart" keys="R" disabled={history.stack.length === 1 && current === start} onClick={restart}>
+					<BarButton
+						label="Restart"
+						keys="R"
+						disabled={history.stack.length === 1 && current === start}
+						onClick={restart}
+					>
 						<RotateCcw />
 					</BarButton>
 				</div>
@@ -148,7 +180,12 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 				<div className="min-w-0 flex-1">
 					<DropdownMenu modal={false}>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="sm" className="max-w-full gap-1 px-2 text-[13px] font-medium" aria-label="Go to screen">
+							<Button
+								variant="ghost"
+								size="sm"
+								className="max-w-full gap-1 px-2 text-[13px] font-medium"
+								aria-label="Go to screen"
+							>
 								<span className="truncate">{name}</span>
 								<ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
 							</Button>
@@ -158,7 +195,9 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 								{screens.map((screen) => (
 									<DropdownMenuRadioItem key={screen.file} value={screen.file} className="text-[13px]">
 										<span className="truncate">{screen.name || screenNameFromPath(screen.file)}</span>
-										{screen.file === start ? <span className="ml-auto pl-3 text-xs text-subtle-foreground">start</span> : null}
+										{screen.file === start ? (
+											<span className="ml-auto pl-3 text-xs text-subtle-foreground">start</span>
+										) : null}
 									</DropdownMenuRadioItem>
 								))}
 							</DropdownMenuRadioGroup>
@@ -178,7 +217,11 @@ export function PlayView({ start, frames, files, onClose }: { start: string; fra
 				{exists ? (
 					<div
 						className="overflow-hidden bg-white shadow-[0_0_0_1px_color-mix(in_oklab,var(--foreground)_10%,transparent),0_10px_40px_-12px_rgb(0_0_0/0.25)]"
-						style={{ width: size.width * scale, height: size.height * scale, borderRadius: (device === "mobile" ? 28 : 6) * scale }}
+						style={{
+							width: size.width * scale,
+							height: size.height * scale,
+							borderRadius: (device === "mobile" ? 28 : 6) * scale,
+						}}
 					>
 						<div className="origin-top-left" style={{ transform: `scale(${scale})` }}>
 							<ScreenFrame

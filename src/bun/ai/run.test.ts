@@ -1,10 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import type { GenerationEvent, GenerationRequest, Provider } from "../../shared/ai/contract";
 import { elementFocus } from "../../shared/ai/focus";
-import { DEFAULT_REQUEST_CHARS, GenerationError, buildGenerationRequest, type BuildRequestParams, contextFilesOf, contextTargetOf, runGeneration } from "./run";
+import {
+	DEFAULT_REQUEST_CHARS,
+	GenerationError,
+	buildGenerationRequest,
+	type BuildRequestParams,
+	contextFilesOf,
+	contextTargetOf,
+	runGeneration,
+} from "./run";
 
 const GOOD_SCREEN = `import { Row } from "../components/row";\nexport default function A() { return <Row /> }\n`;
+
 const GOOD_ROW = `export function Row() { return <div /> }\n`;
+
 const BAD = `export default function A() { return <div> }\n`;
 
 type Script = GenerationEvent[] | ((signal: AbortSignal) => AsyncIterable<GenerationEvent>);
@@ -12,6 +22,7 @@ type Script = GenerationEvent[] | ((signal: AbortSignal) => AsyncIterable<Genera
 /** A provider that plays one scripted stream per call and records the requests. */
 function fakeProvider(scripts: Script[]) {
 	const requests: GenerationRequest[] = [];
+
 	const provider: Provider = {
 		id: "fake",
 		kind: "api",
@@ -22,11 +33,14 @@ function fakeProvider(scripts: Script[]) {
 		async *generate(request, signal) {
 			const script = scripts[requests.length];
 			requests.push(request);
+
 			if (!script) throw new Error("unexpected call");
-			if (typeof script === "function") yield* script(signal);
-			else yield* script;
+
+			if (Array.isArray(script)) yield* script;
+			else yield* script(signal);
 		},
 	};
+
 	return { provider, requests };
 }
 
@@ -36,11 +50,32 @@ const file = (path: string, content: string): GenerationEvent[] => [
 	{ type: "file.end", path, content },
 ];
 
-const request: GenerationRequest = { id: "g1", task: "create", model: "m", prompt: "a screen", device: "mobile", context: {}, files: [] };
+const request: GenerationRequest = {
+	id: "g1",
+	task: "create",
+	model: "m",
+	prompt: "a screen",
+	device: "mobile",
+	context: {},
+	files: [],
+};
 
-async function run(provider: Provider, projectFiles: Record<string, string> = {}, signal = new AbortController().signal, req = request) {
+async function run(
+	provider: Provider,
+	projectFiles: Record<string, string> = {},
+	signal = new AbortController().signal,
+	req = request,
+) {
 	const events: [string, number][] = [];
-	const result = await runGeneration({ provider, request: req, projectFiles, signal, onEvent: (e, attempt) => events.push([e.type, attempt]) });
+
+	const result = await runGeneration({
+		provider,
+		request: req,
+		projectFiles,
+		signal,
+		onEvent: (e, attempt) => events.push([e.type, attempt]),
+	});
+
 	return { result, events };
 }
 
@@ -58,6 +93,7 @@ describe("runGeneration", () => {
 				{ type: "done", usage: { inputTokens: 10, outputTokens: 5 } },
 			],
 		]);
+
 		const { result, events } = await run(provider, { "screens/old.tsx": "x" });
 		expect(requests).toHaveLength(1);
 		expect(result).toEqual({
@@ -78,9 +114,19 @@ describe("runGeneration", () => {
 
 	test("invalid then repaired", async () => {
 		const { provider, requests } = fakeProvider([
-			[{ type: "message.delta", text: "Done." }, ...file("screens/a.tsx", BAD), ...file("components/row.tsx", GOOD_ROW), { type: "done", usage: { outputTokens: 5 } }],
-			[{ type: "message.delta", text: "Fixed." }, ...file("screens/a.tsx", GOOD_SCREEN), { type: "done", usage: { outputTokens: 3 } }],
+			[
+				{ type: "message.delta", text: "Done." },
+				...file("screens/a.tsx", BAD),
+				...file("components/row.tsx", GOOD_ROW),
+				{ type: "done", usage: { outputTokens: 5 } },
+			],
+			[
+				{ type: "message.delta", text: "Fixed." },
+				...file("screens/a.tsx", GOOD_SCREEN),
+				{ type: "done", usage: { outputTokens: 3 } },
+			],
 		]);
+
 		const { result, events } = await run(provider, { "components/card.tsx": "export function Card() {}" });
 		expect(result.attempts).toBe(2);
 		expect(result.problems).toEqual([]);
@@ -94,24 +140,39 @@ describe("runGeneration", () => {
 		expect(repair.task).toBe("repair");
 		expect(repair.id).toBe("g1-repair-1");
 		expect(repair.targets).toEqual(["screens/a.tsx"]);
-		expect(repair.problems).toEqual([{ path: "screens/a.tsx", message: expect.stringContaining("Syntax error"), line: expect.any(Number) }]);
-		expect(repair.files.map((f) => f.path).sort()).toEqual(["components/card.tsx", "components/row.tsx", "screens/a.tsx"]);
+		expect(repair.problems).toEqual([
+			{ path: "screens/a.tsx", message: expect.stringContaining("Syntax error"), line: expect.any(Number) },
+		]);
+		expect(repair.files.map((f) => f.path).sort()).toEqual([
+			"components/card.tsx",
+			"components/row.tsx",
+			"screens/a.tsx",
+		]);
 		expect(repair.files.find((f) => f.path === "screens/a.tsx")!.content).toBe(BAD);
 		expect(events.some(([type, attempt]) => type === "file.end" && attempt === 2)).toBe(true);
 	});
 
 	test("still invalid after the repairs: problems reported and the file left out, with its dependents", async () => {
 		const badRow = `export default function Row() { return <div /> }\n`;
-		const stillBad = [...file("components/row.tsx", badRow), { type: "done" } as GenerationEvent];
+		const stillBad: GenerationEvent[] = [...file("components/row.tsx", badRow), { type: "done" }];
+
 		const { provider, requests } = fakeProvider([
-			[...file("screens/a.tsx", GOOD_SCREEN), ...file("components/row.tsx", badRow), ...file("screens/b.tsx", `export default function B() { return <p /> }`), { type: "done" }],
+			[
+				...file("screens/a.tsx", GOOD_SCREEN),
+				...file("components/row.tsx", badRow),
+				...file("screens/b.tsx", `export default function B() { return <p /> }`),
+				{ type: "done" },
+			],
 			stillBad,
 			stillBad,
 		]);
+
 		const { result } = await run(provider);
 		expect(requests).toHaveLength(3);
 		expect(result.attempts).toBe(3);
-		expect(result.changes).toEqual([{ path: "screens/b.tsx", content: `export default function B() { return <p /> }` }]);
+		expect(result.changes).toEqual([
+			{ path: "screens/b.tsx", content: `export default function B() { return <p /> }` },
+		]);
 		expect([...new Set(result.problems.map((p) => p.path))]).toEqual(["components/row.tsx", "screens/a.tsx"]);
 	});
 
@@ -120,6 +181,7 @@ describe("runGeneration", () => {
 			[...file("screens/a.tsx", BAD), { type: "done" }],
 			[...file("screens/a.tsx", `export default function A() { return <p /> }`), { type: "done" }],
 		]);
+
 		const withContext = { ...request, context: { product: "Habits", design: "## Tokens\n\n- primary: #f00" } };
 		await run(provider, {}, undefined, withContext);
 		expect(requests[1]!.task).toBe("repair");
@@ -129,11 +191,28 @@ describe("runGeneration", () => {
 	test("a new component that duplicates an existing one is repaired into an import", async () => {
 		const project = { "components/row.tsx": GOOD_ROW };
 		const copy = `export function Row() { return <div className="p-2" /> }\n`;
+
 		const { provider, requests } = fakeProvider([
-			[...file("components/list-row.tsx", copy), ...file("screens/a.tsx", `import { Row } from "../components/list-row";\nexport default function A() { return <Row /> }\n`), { type: "done" }],
-			[{ type: "file.delete", path: "components/list-row.tsx" }, ...file("screens/a.tsx", GOOD_SCREEN), { type: "done" }],
+			[
+				...file("components/list-row.tsx", copy),
+				...file(
+					"screens/a.tsx",
+					`import { Row } from "../components/list-row";\nexport default function A() { return <Row /> }\n`,
+				),
+				{ type: "done" },
+			],
+			[
+				{ type: "file.delete", path: "components/list-row.tsx" },
+				...file("screens/a.tsx", GOOD_SCREEN),
+				{ type: "done" },
+			],
 		]);
-		const { result } = await run(provider, project, undefined, { ...request, components: [{ path: "components/row.tsx", signature: ["Row()"] }] });
+
+		const { result } = await run(provider, project, undefined, {
+			...request,
+			components: [{ path: "components/row.tsx", signature: ["Row()"] }],
+		});
+
 		expect(requests[1]!.task).toBe("repair");
 		expect(requests[1]!.targets).toEqual(["components/list-row.tsx"]);
 		expect(requests[1]!.problems![0]!.message).toContain("Row is already exported by components/row.tsx");
@@ -152,6 +231,7 @@ describe("runGeneration", () => {
 				{ type: "done" },
 			],
 		]);
+
 		const contextRequest: GenerationRequest = { ...request, task: "context", targets: ["DESIGN.md"] };
 		const { result } = await run(provider, { "screens/old.tsx": "x" }, undefined, contextRequest);
 		expect(requests).toHaveLength(1);
@@ -164,17 +244,33 @@ describe("runGeneration", () => {
 			[{ type: "file.end", path: "PRODUCT.md", content: "\n" }, { type: "done" }],
 			[{ type: "file.end", path: "PRODUCT.md", content: "# Product\n\nHabits\n" }, { type: "done" }],
 		]);
+
 		const { result } = await run(provider, {}, undefined, { ...request, task: "context", targets: ["PRODUCT.md"] });
-		expect(requests[1]).toMatchObject({ task: "repair", targets: ["PRODUCT.md"], problems: [{ path: "PRODUCT.md", message: expect.stringContaining("empty") }] });
+		expect(requests[1]).toMatchObject({
+			task: "repair",
+			targets: ["PRODUCT.md"],
+			problems: [{ path: "PRODUCT.md", message: expect.stringContaining("empty") }],
+		});
 		expect(result.changes).toEqual([{ path: "PRODUCT.md", content: "# Product\n\nHabits\n" }]);
 		expect(result.problems).toEqual([]);
 	});
 
 	test("a provider error on the first attempt throws GenerationError", async () => {
-		const { provider } = fakeProvider([[{ type: "status", label: "x" }, { type: "error", code: "not_authenticated", message: "Bad key", retryable: false }]]);
+		const { provider } = fakeProvider([
+			[
+				{ type: "status", label: "x" },
+				{ type: "error", code: "not_authenticated", message: "Bad key", retryable: false },
+			],
+		]);
+
 		const error = await run(provider).catch((e) => e);
 		expect(error).toBeInstanceOf(GenerationError);
-		expect(error).toMatchObject({ code: "not_authenticated", message: "Bad key", retryable: false, fix: expect.any(String) });
+		expect(error).toMatchObject({
+			code: "not_authenticated",
+			message: "Bad key",
+			retryable: false,
+			fix: expect.any(String),
+		});
 	});
 
 	test("a thrown exception becomes an unknown GenerationError", async () => {
@@ -184,9 +280,15 @@ describe("runGeneration", () => {
 
 	test("a provider error during repair keeps the valid files", async () => {
 		const { provider } = fakeProvider([
-			[...file("screens/a.tsx", BAD), ...file("screens/b.tsx", GOOD_SCREEN), ...file("components/row.tsx", GOOD_ROW), { type: "done" }],
+			[
+				...file("screens/a.tsx", BAD),
+				...file("screens/b.tsx", GOOD_SCREEN),
+				...file("components/row.tsx", GOOD_ROW),
+				{ type: "done" },
+			],
 			[{ type: "error", code: "rate_limited", message: "Slow down", retryable: true }],
 		]);
+
 		const { result } = await run(provider);
 		expect(result.attempts).toBe(2);
 		expect(result.changes.map((c) => c.path)).toEqual(["screens/b.tsx", "components/row.tsx"]);
@@ -195,19 +297,23 @@ describe("runGeneration", () => {
 
 	test("abort throws an aborted GenerationError", async () => {
 		const controller = new AbortController();
+
 		const { provider } = fakeProvider([
 			async function* (signal) {
 				yield { type: "status", label: "Working" };
 				controller.abort();
 				await Promise.resolve();
+
 				if (signal.aborted) yield { type: "error", code: "aborted", message: "stopped", retryable: true };
 			},
 		]);
+
 		await expect(run(provider, {}, controller.signal)).rejects.toMatchObject({ code: "aborted" });
 	});
 
 	test("abort during a repair throws too", async () => {
 		const controller = new AbortController();
+
 		const { provider } = fakeProvider([
 			[...file("screens/a.tsx", BAD), { type: "done" }],
 			async function* () {
@@ -215,6 +321,7 @@ describe("runGeneration", () => {
 				yield { type: "error", code: "aborted", message: "stopped", retryable: true };
 			},
 		]);
+
 		await expect(run(provider, {}, controller.signal)).rejects.toMatchObject({ code: "aborted" });
 	});
 });
@@ -232,10 +339,25 @@ describe("buildGenerationRequest", () => {
 	};
 
 	test("context, targets, components and style screens", () => {
-		const req = buildGenerationRequest({ id: "r", task: "edit", prompt: "p", device: "mobile", model: "m", projectFiles: files, targets: ["screens/home.tsx"] });
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: files,
+			targets: ["screens/home.tsx"],
+		});
+
 		expect(req.context).toEqual({ product: "A habit app" });
 		expect(req.targets).toEqual(["screens/home.tsx"]);
-		expect(req.files.map((f) => f.path)).toEqual(["screens/home.tsx", "components/card.tsx", "components/tab-bar.tsx", "screens/settings.tsx", "screens/profile.tsx"]);
+		expect(req.files.map((f) => f.path)).toEqual([
+			"screens/home.tsx",
+			"components/card.tsx",
+			"components/tab-bar.tsx",
+			"screens/settings.tsx",
+			"screens/profile.tsx",
+		]);
 		expect(req.attachments).toBeUndefined();
 	});
 
@@ -251,38 +373,103 @@ describe("buildGenerationRequest", () => {
 			references: ["screens/home.alt-1.tsx", "screens/home.tsx", "screens/gone.tsx", "PRODUCT.md"],
 			maxChars: 1,
 		});
+
 		expect(req.references).toEqual(["screens/home.alt-1.tsx"]);
 		expect(req.files.map((f) => f.path)).toEqual(["screens/home.tsx", "screens/home.alt-1.tsx"]);
-		expect(buildGenerationRequest({ id: "r", task: "create", prompt: "p", device: "mobile", model: "m", projectFiles: files }).references).toBeUndefined();
+		expect(
+			buildGenerationRequest({
+				id: "r",
+				task: "create",
+				prompt: "p",
+				device: "mobile",
+				model: "m",
+				projectFiles: files,
+			}).references,
+		).toBeUndefined();
 	});
 
 	test("drops style screens first, then components, never targets", () => {
 		const big = { ...files, "screens/home.tsx": "x".repeat(DEFAULT_REQUEST_CHARS) };
-		const req = buildGenerationRequest({ id: "r", task: "edit", prompt: "p", device: "mobile", model: "m", projectFiles: big, targets: ["screens/home.tsx"] });
+
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: big,
+			targets: ["screens/home.tsx"],
+		});
+
 		expect(req.files.map((f) => f.path)).toEqual(["screens/home.tsx"]);
-		const small = buildGenerationRequest({ id: "r", task: "create", prompt: "p", device: "mobile", model: "m", projectFiles: files, maxChars: 20 });
-		expect(small.files.map((f) => f.path)).toEqual(["components/card.tsx", "components/tab-bar.tsx", "screens/settings.tsx"]);
+
+		const small = buildGenerationRequest({
+			id: "r",
+			task: "create",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: files,
+			maxChars: 20,
+		});
+
+		expect(small.files.map((f) => f.path)).toEqual([
+			"components/card.tsx",
+			"components/tab-bar.tsx",
+			"screens/settings.tsx",
+		]);
 		expect(small.targets).toBeUndefined();
 	});
 
 	test("context files count only when they say something; the prompt-side body is stripped, the request keeps the file", () => {
 		const template = "# Design\n\n<!-- Describe the tokens -->\n\n## Tokens\n";
 		const product = "# Product\n<!-- What is it? -->\nA habit app\n";
-		const req = buildGenerationRequest({ id: "r", task: "create", prompt: "p", device: "mobile", model: "m", projectFiles: { "PRODUCT.md": product, "DESIGN.md": template } });
+
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "create",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: { "PRODUCT.md": product, "DESIGN.md": template },
+		});
+
 		expect(req.context).toEqual({ product });
 		expect(contextFilesOf(req)).toEqual(["PRODUCT.md"]);
-		expect(contextFilesOf({ ...req, context: { product, design: "- primary: #fff" } })).toEqual(["PRODUCT.md", "DESIGN.md"]);
+		expect(contextFilesOf({ ...req, context: { product, design: "- primary: #fff" } })).toEqual([
+			"PRODUCT.md",
+			"DESIGN.md",
+		]);
 		expect(contextFilesOf({ ...req, context: {} })).toEqual([]);
 	});
 
 	test("context files are never edit targets", () => {
-		const req = buildGenerationRequest({ id: "r", task: "edit", prompt: "p", device: "mobile", model: "m", projectFiles: files, targets: ["PRODUCT.md", "screens/home.tsx"] });
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: files,
+			targets: ["PRODUCT.md", "screens/home.tsx"],
+		});
+
 		expect(req.targets).toEqual(["screens/home.tsx"]);
 	});
 
 	test("context task for DESIGN.md: target in files, every screen that fits, the other file as context", () => {
 		const projectFiles = { ...files, "DESIGN.md": "# Design\n<!-- template -->\n", "screens/extra.tsx": "e" };
-		const req = buildGenerationRequest({ id: "r", task: "context", prompt: "", device: "mobile", model: "m", projectFiles, targets: ["DESIGN.md"] });
+
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "context",
+			prompt: "",
+			device: "mobile",
+			model: "m",
+			projectFiles,
+			targets: ["DESIGN.md"],
+		});
+
 		expect(req.task).toBe("context");
 		expect(req.targets).toEqual(["DESIGN.md"]);
 		expect(contextTargetOf(req)).toBe("DESIGN.md");
@@ -300,7 +487,17 @@ describe("buildGenerationRequest", () => {
 
 	test("context task for a missing PRODUCT.md: the target without a file, default style screens", () => {
 		const { "PRODUCT.md": _, ...projectFiles } = files;
-		const req = buildGenerationRequest({ id: "r", task: "context", prompt: "Q? A", device: "mobile", model: "m", projectFiles, targets: ["PRODUCT.md"] });
+
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "context",
+			prompt: "Q? A",
+			device: "mobile",
+			model: "m",
+			projectFiles,
+			targets: ["PRODUCT.md"],
+		});
+
 		expect(req.targets).toEqual(["PRODUCT.md"]);
 		expect(contextTargetOf(req)).toBe("PRODUCT.md");
 		expect(req.files.filter((f) => f.path.startsWith("screens/"))).toHaveLength(2);
@@ -313,11 +510,22 @@ describe("buildGenerationRequest", () => {
 			"components/tab-bar.tsx": `export function TabBar({ active = 0 }: { active?: number }) { return <nav />; }\n`,
 			"screens/home.tsx": `import { StatCard } from "../components/stat-card";\nexport default function Home() { return <StatCard label="x" />; }\n`,
 		};
-		const params: BuildRequestParams = { id: "r", task: "edit", prompt: "p", device: "mobile", model: "m", projectFiles, targets: ["screens/home.tsx"] };
+
+		const params: BuildRequestParams = {
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles,
+			targets: ["screens/home.tsx"],
+		};
+
 		const catalog = [
 			{ path: "components/stat-card.tsx", signature: ["StatCard({ label: string })"], usedBy: ["screens/home.tsx"] },
 			{ path: "components/tab-bar.tsx", signature: ["TabBar({ active?: number = 0 })"] },
 		];
+
 		expect(buildGenerationRequest(params).components).toEqual(catalog);
 		const tight = buildGenerationRequest({ ...params, maxChars: 1 });
 		expect(tight.files.map((f) => f.path)).toEqual(["screens/home.tsx"]);
@@ -337,30 +545,47 @@ describe("point and prompt", () => {
 	const source = `export default function A() {\n\treturn (\n\t\t<main>\n\t\t\t<h1>Hello</h1>\n\t\t\t<p>Body</p>\n\t\t</main>\n\t);\n}\n`;
 	const focus = elementFocus(source, path, source.indexOf("<h1>"))!;
 	const project = { [path]: source };
+
 	const build = (overrides: Partial<BuildRequestParams> = {}) =>
-		buildGenerationRequest({ id: "r", task: "edit", prompt: "p", device: "mobile", model: "m", projectFiles: project, targets: [path], focus, ...overrides });
+		buildGenerationRequest({
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: project,
+			targets: [path],
+			focus,
+			...overrides,
+		});
 
 	test("buildGenerationRequest keeps the focus of an edit of its file, re-checked against the file", () => {
 		expect(build().focus).toEqual(focus);
 		const moved = `// header\n${source}`;
 		expect(build({ projectFiles: { [path]: moved } }).focus?.startLine).toBe(5);
 		expect(build({ projectFiles: { [path]: source.replace("Hello", "Hi") } }).focus).toBeUndefined();
-		expect(build({ targets: ["screens/b.tsx"], projectFiles: { ...project, "screens/b.tsx": "x" } }).focus).toBeUndefined();
+		expect(
+			build({ targets: ["screens/b.tsx"], projectFiles: { ...project, "screens/b.tsx": "x" } }).focus,
+		).toBeUndefined();
 		expect(build({ task: "create", targets: [] }).focus).toBeUndefined();
 	});
 
 	test("a change outside the element is kept, with a note; a repair keeps the focus", async () => {
 		const outside = source.replace("<h1>Hello</h1>", "<h1>Hi</h1").replace("Body", "Text");
 		const fixed = source.replace("<h1>Hello</h1>", "<h1>Hi</h1>").replace("Body", "Text");
+
 		const { provider, requests } = fakeProvider([
 			[...file(path, outside), { type: "done" }],
 			[...file(path, fixed), { type: "done" }],
 		]);
+
 		const { result } = await run(provider, project, undefined, build());
 		expect(requests[1]!.task).toBe("repair");
 		expect(requests[1]!.focus).toEqual(focus);
 		expect(result.changes).toEqual([{ path, content: fixed }]);
-		expect(result.notes).toEqual([`Note: this also changed ${path} outside <h1> “Hello” (line 5). Undo reverts the whole edit.`]);
+		expect(result.notes).toEqual([
+			`Note: this also changed ${path} outside <h1> “Hello” (line 5). Undo reverts the whole edit.`,
+		]);
 	});
 
 	test("no note when only the element changed", async () => {

@@ -21,16 +21,20 @@ The rest of Rabisco must not care which kind is running.
 
 ```ts
 interface Provider {
-  id; kind: "cli" | "sdk" | "api"; label; capabilities;
-  health(): Promise<ProviderHealth>;   // installed? authenticated? reachable?
-  listModels(): Promise<ProviderModel[]>;
-  generate(request, signal): AsyncIterable<GenerationEvent>;
+	id;
+	kind: "cli" | "sdk" | "api";
+	label;
+	capabilities;
+	health(): Promise<ProviderHealth>; // installed? authenticated? reachable?
+	listModels(): Promise<ProviderModel[]>;
+	generate(request, signal): AsyncIterable<GenerationEvent>;
 }
 ```
 
 ### Request
 
 A `GenerationRequest` contains:
+
 - the task (`create`, `edit` or `repair`), the prompt, the model and the target device;
 - **context**: the contents of `PRODUCT.md` and `DESIGN.md`, always included when present ([principle 5](../PRINCIPLES.md#5-context-is-a-file));
 - **files** the provider may read: edit targets, project components it should reuse, and screens that show the style;
@@ -40,15 +44,15 @@ A `GenerationRequest` contains:
 
 ### Events
 
-| Event | Meaning |
-| --- | --- |
-| `status` | Progress for the user (thinking summary, tool call, step) |
-| `message.delta` | Assistant text for the chat, streamed |
-| `file.start` | A write begins: logical path, kind (`screen` or `component`), screen name and device |
-| `file.delta` | Streamed content, so the frame can render while the file is still being written |
-| `file.end` | The complete file. **The only content Rabisco trusts.** |
-| `file.delete` | Remove a file |
-| `done` / `error` | Exactly one of these ends every stream. Errors carry a code and a `retryable` flag. |
+| Event            | Meaning                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------ |
+| `status`         | Progress for the user (thinking summary, tool call, step)                            |
+| `message.delta`  | Assistant text for the chat, streamed                                                |
+| `file.start`     | A write begins: logical path, kind (`screen` or `component`), screen name and device |
+| `file.delta`     | Streamed content, so the frame can render while the file is still being written      |
+| `file.end`       | The complete file. **The only content Rabisco trusts.**                              |
+| `file.delete`    | Remove a file                                                                        |
+| `done` / `error` | Exactly one of these ends every stream. Errors carry a code and a `retryable` flag.  |
 
 ### How each kind maps to events
 

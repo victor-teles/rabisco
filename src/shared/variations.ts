@@ -17,12 +17,14 @@ export const isAlternate = (path: string) => ALT.test(path);
 /** `screens/welcome.alt-2.tsx` → `screens/welcome.tsx`; other paths are their own base. */
 export function baseOf(path: string) {
 	const match = ALT.exec(path);
+
 	return match ? `${match[1]}.tsx` : path;
 }
 
 /** `screens/welcome.alt-2.tsx` → 2; `null` for anything that isn't an alternate. */
 export function altNumber(path: string) {
 	const match = ALT.exec(path);
+
 	return match ? Number(match[2]) : null;
 }
 
@@ -32,7 +34,9 @@ export const altPath = (base: string, n: number) => base.replace(/\.tsx$/, `.alt
 /** The next free alternate number of `base`: one above the highest in `taken`. */
 export function nextAltNumber(base: string, taken: Iterable<string>) {
 	let max = 0;
+
 	for (const path of taken) if (baseOf(path) === base && path !== base) max = Math.max(max, altNumber(path)!);
+
 	return max + 1;
 }
 
@@ -49,16 +53,19 @@ export type VariationGroup = {
 export function variationGroups(paths: Iterable<string>): VariationGroup[] {
 	const all = new Set(paths);
 	const alts = new Map<string, string[]>();
+
 	for (const path of all) {
 		if (!isAlternate(path)) continue;
 		const base = baseOf(path);
 		alts.set(base, [...(alts.get(base) ?? []), path]);
 	}
+
 	return [...alts]
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([base, files]) => {
 			const sorted = files.sort((a, b) => altNumber(a)! - altNumber(b)!);
 			const picked = all.has(base) ? base : null;
+
 			return { base, picked, files: picked ? [picked, ...sorted] : sorted };
 		});
 }
@@ -66,6 +73,7 @@ export function variationGroups(paths: Iterable<string>): VariationGroup[] {
 /** The group `path` belongs to, or `null` for a screen without alternates. */
 export function groupOf(path: string, paths: Iterable<string>): VariationGroup | null {
 	const base = baseOf(path);
+
 	return variationGroups(paths).find((group) => group.base === base) ?? null;
 }
 
@@ -80,8 +88,15 @@ export const alternatesOf = (paths: Iterable<string>): AlternateGroup[] =>
  */
 export function pickVariation(files: ProjectFiles, path: string): FileChange[] {
 	const base = baseOf(path);
+
 	if (base === path || !(path in files)) return [];
-	if (!(base in files)) return [{ path: base, content: files[path]! }, { path, content: null }];
+
+	if (!(base in files))
+		return [
+			{ path: base, content: files[path]! },
+			{ path, content: null },
+		];
+
 	return [
 		{ path: base, content: files[path]! },
 		{ path, content: files[base]! },
@@ -94,6 +109,7 @@ export function pickVariation(files: ProjectFiles, path: string): FileChange[] {
  */
 export function selectionAfterPick(selection: string[], path: string) {
 	const base = baseOf(path);
+
 	return [...new Set(selection.map((file) => (file === path ? base : file)))];
 }
 
@@ -108,6 +124,7 @@ export function placeNewFrames(canvas: Frame[], created: Frame[]): Frame[] {
 	const placed: Frame[] = [];
 	const loose: Frame[] = [];
 	const bottoms = new Map<string, { x: number; bottom: number }>();
+
 	for (const frame of canvas) {
 		if (!isScreenFile(frame.file)) continue;
 		const base = baseOf(frame.file);
@@ -118,20 +135,25 @@ export function placeNewFrames(canvas: Frame[], created: Frame[]): Frame[] {
 			bottom: Math.max(current?.bottom ?? -Infinity, bottom),
 		});
 	}
+
 	for (const frame of created) {
 		const anchor = bottoms.get(baseOf(frame.file));
+
 		if (!anchor) {
 			loose.push(frame);
 			continue;
 		}
+
 		const next = { ...frame, x: anchor.x, y: anchor.bottom + FRAME_GAP };
 		bottoms.set(baseOf(frame.file), { x: anchor.x, bottom: next.y + next.height });
 		placed.push(next);
 	}
+
 	if (loose.length) {
 		const offset = nextFrameX([...canvas, ...placed]);
 		const left = Math.min(...loose.map((frame) => frame.x));
 		placed.push(...loose.map((frame) => ({ ...frame, x: frame.x - left + offset })));
 	}
+
 	return placed;
 }

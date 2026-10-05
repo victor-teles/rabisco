@@ -6,10 +6,12 @@ import { tempDir } from "./test-utils";
 
 function repo(files: Record<string, string>) {
 	const dir = tempDir();
+
 	for (const [path, content] of Object.entries(files)) {
 		mkdirSync(join(dir, path, ".."), { recursive: true });
 		writeFileSync(join(dir, path), content);
 	}
+
 	return dir;
 }
 
@@ -21,6 +23,7 @@ describe("findContextFiles", () => {
 			"docs/Design.md": "docs design",
 			".github/DESIGN.md": "github design",
 		});
+
 		expect(findContextFiles(dir)).toEqual([
 			{ path: "PRODUCT.md", content: "root product", source: "product.md" },
 			{ path: "DESIGN.md", content: "docs design", source: "docs/Design.md" },

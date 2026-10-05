@@ -6,9 +6,11 @@ import type { ExportFile } from "../shared/types";
 export function assertExportPath(dir: string, path: string) {
 	const target = resolve(dir, path);
 	const inside = relative(resolve(dir), target);
+
 	if (!path || isAbsolute(path) || inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
 		throw new Error(`Export paths stay inside the export folder (got "${path}")`);
 	}
+
 	return target;
 }
 
@@ -29,6 +31,8 @@ export function writeExportFiles(dir: string, files: ExportFile[]) {
 /** `<parent>/<name>`, with `-2`, `-3`… when taken, so an export never overwrites an earlier one. */
 export function freeExportDir(parent: string, name: string) {
 	let dir = join(parent, name);
+
 	for (let n = 2; existsSync(dir); n++) dir = join(parent, `${name}-${n}`);
+
 	return dir;
 }

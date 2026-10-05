@@ -25,6 +25,7 @@ const uiModuleList = () =>
 
 const frameOf = (request: GenerationRequest) => {
 	const { width, height } = FRAME_SIZE[request.device];
+
 	return `${request.device}, ${width}×${height} px`;
 };
 
@@ -110,13 +111,15 @@ const PRODUCT_MD_FORMAT = `# PRODUCT.md format
 Sections, in this order: Product (what it is and the problem it solves, in a few sentences), Audience (who uses it, their situation and what they need), Voice (how the product speaks: tone, words to use and avoid, with an example line), Constraints (platforms, accessibility, legal, content or brand limits). Use "## " headings. Plain, specific sentences in the user's own terms; don't invent facts they didn't give.`;
 
 /** The context file a request writes or repairs, if any. */
-const contextFileOf = (request: GenerationRequest) => request.targets?.find((path) => FILE_RULES.paths.context.test(path));
+const contextFileOf = (request: GenerationRequest) =>
+	request.targets?.find((path) => FILE_RULES.paths.context.test(path));
 
 /** System prompt: role, design rules, file rules, available modules, frame size, and the output protocol for the mode. */
 export function systemPrompt(request: GenerationRequest, mode: PromptMode): string {
 	const output = mode === "text" ? TEXT_PROTOCOL_RULES.replace("DEVICE", request.device) : AGENT_RULES;
 	const target = contextFileOf(request);
 	const format = target === "DESIGN.md" ? [DESIGN_MD_FORMAT] : target === "PRODUCT.md" ? [PRODUCT_MD_FORMAT] : [];
+
 	return [ROLE, DESIGN_RULES, FILE_RULES_TEXT(request), TASKS, ...format, output].join("\n\n");
 }
 
@@ -126,20 +129,25 @@ const section = (tag: string, body: string) => `<${tag}>\n${body.trim()}\n</${ta
 
 function taskText(request: GenerationRequest, mode: PromptMode): string {
 	const targets = request.targets?.length ? request.targets.map((path) => `- ${path}`).join("\n") : "";
+
 	switch (request.task) {
 		case "create": {
 			const existing = request.files.map((file) => file.path).filter((path) => path.startsWith("screens/"));
 			const taken = existing.length ? ` Existing screens (pick other paths): ${existing.join(", ")}.` : "";
+
 			return `Task: create. Design new ${frameOf(request)} screens for the request below.${taken}`;
 		}
+
 		case "edit":
 			return `Task: edit. Change these files as the request below asks${mode === "text" ? " and write each one again in full" : ""}:\n${targets || "- (the files above)"}`;
 		case "repair": {
 			const problems = (request.problems ?? [])
 				.map((problem) => `- ${problem.path}${problem.line ? `:${problem.line}` : ""}: ${problem.message}`)
 				.join("\n");
+
 			return `Task: repair. These files failed validation. Fix every problem${mode === "text" ? " and write each fixed file again in full" : ""}:\n${problems || targets}`;
 		}
+
 		case "context":
 			return contextTaskText(request, mode);
 	}
@@ -148,16 +156,20 @@ function taskText(request: GenerationRequest, mode: PromptMode): string {
 function contextTaskText(request: GenerationRequest, mode: PromptMode): string {
 	const target = contextFileOf(request) ?? "DESIGN.md";
 	const exists = request.files.some((file) => file.path === target);
+
 	const output =
 		mode === "text"
 			? `Write it as <rabisco-file path="${target}" kind="context">…</rabisco-file>, complete, and no other file.`
 			: `Write ${target} in the current directory, and no other file.`;
+
 	const current = exists
 		? ` The current ${target} is above: keep what it says that still holds, and replace its HTML comments (template guidance) with real content.`
 		: "";
+
 	if (target === "DESIGN.md") {
 		return `Task: context. Write DESIGN.md: infer the design language from the project's existing screens and components above (colors, radius, type, spacing, recurring components) and describe it so new screens match. Use the colors the screens actually use for the tokens.${current} ${output}`;
 	}
+
 	return `Task: context. Write PRODUCT.md from the answers in the request below: what the product is, who it's for, its voice and its constraints.${current} ${output}`;
 }
 
@@ -176,20 +188,27 @@ export function varyPrompt(direction: string) {
 /** The project's components with their signatures; listed in every task but `context`. */
 function componentsText(request: GenerationRequest, mode: PromptMode): string | null {
 	if (request.task === "context") return null;
+
 	const catalog =
 		request.components ??
 		componentSignatures(Object.fromEntries(request.files.map((file) => [file.path, file.content])));
+
 	if (!catalog.length) return null;
 	const included = new Set(request.files.map((file) => file.path));
+
 	const entries = catalog.map(({ path, signature, usedBy }) => {
 		const users = usedBy?.length ? ` (used by ${usedBy.join(", ")})` : "";
 		const lines = signature.length ? signature.map((line) => `  ${line}`) : ["  (no exported components found)"];
+
 		return [`- ${path}${users}`, ...lines].join("\n");
 	});
+
 	const missing = catalog.some(({ path }) => !included.has(path));
+
 	const note = missing
 		? `\nSome components aren't ${mode === "text" ? "in the project files above" : "in the current directory"}; import them anyway, their signature is all you need.`
 		: "";
+
 	return `# Project components
 Reuse these for any matching UI: import them (\`import { Name } from "../components/<kebab-name>"\`) instead of writing that markup again. If one almost fits, extend it with an optional prop or variant rather than creating a similar component.${note}
 
@@ -206,7 +225,10 @@ export function numberedSnippet(focus: ElementFocus, content?: string): string {
 	const shown = lines.slice(0, FOCUS_LINES);
 	const width = String(focus.startLine + shown.length - 1).length;
 	const numbered = shown.map((line, i) => `${String(focus.startLine + i).padStart(width)} | ${line}`.trimEnd());
-	if (lines.length > shown.length) numbered.push(`… ${lines.length - shown.length} more lines, to line ${focus.endLine}`);
+
+	if (lines.length > shown.length)
+		numbered.push(`… ${lines.length - shown.length} more lines, to line ${focus.endLine}`);
+
 	return numbered.join("\n");
 }
 
@@ -216,13 +238,19 @@ export function numberedSnippet(focus: ElementFocus, content?: string): string {
  */
 function focusText(request: GenerationRequest, mode: PromptMode): string | null {
 	const focus = request.focus;
+
 	if (!focus || !request.targets?.includes(focus.file)) return null;
-	const lines = focus.startLine === focus.endLine ? `line ${focus.startLine}` : `lines ${focus.startLine}–${focus.endLine}`;
+
+	const lines =
+		focus.startLine === focus.endLine ? `line ${focus.startLine}` : `lines ${focus.startLine}–${focus.endLine}`;
+
 	if (request.task === "repair") {
 		return `The request was about one element of ${focus.file}: ${focus.label}. Fix the problems without changing anything else in that file.`;
 	}
+
 	if (request.task !== "edit") return null;
 	const content = request.files.find((file) => file.path === focus.file)?.content;
+
 	return `# Focus
 The user selected one element in ${focus.file}: ${focus.label}, ${lines}. Apply the request to that element only.
 - Change that element and what it contains. You may also add what it needs: imports, or a small helper component (in the same file, or in components/ when it is reusable).
@@ -242,19 +270,27 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 	const parts: string[] = [];
 	const product = contextBody(request.context.product);
 	const design = contextBody(request.context.design);
+
 	if (product) parts.push(section("product", product));
+
 	if (design) parts.push(section("design", design));
 
 	if (request.files.length) {
 		if (mode === "text") {
-			const files = request.files.map((file) => `<project-file path="${file.path}">\n${file.content.replace(/\n$/, "")}\n</project-file>`);
+			const files = request.files.map(
+				(file) => `<project-file path="${file.path}">\n${file.content.replace(/\n$/, "")}\n</project-file>`,
+			);
+
 			parts.push(`Project files:\n\n${files.join("\n\n")}`);
 		} else {
-			parts.push(`Project files already in the current directory:\n${request.files.map((file) => `- ${file.path}`).join("\n")}`);
+			parts.push(
+				`Project files already in the current directory:\n${request.files.map((file) => `- ${file.path}`).join("\n")}`,
+			);
 		}
 	}
 
 	const components = componentsText(request, mode);
+
 	if (components) parts.push(components);
 
 	if (request.attachments?.length) {
@@ -263,11 +299,17 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 
 	parts.push(taskText(request, mode));
 	const focus = focusText(request, mode);
+
 	if (focus) parts.push(focus);
+
 	if (request.references?.length) {
-		parts.push(`Reference only (read them, don't change or write them):\n${request.references.map((path) => `- ${path}`).join("\n")}`);
+		parts.push(
+			`Reference only (read them, don't change or write them):\n${request.references.map((path) => `- ${path}`).join("\n")}`,
+		);
 	}
+
 	if (request.variation && request.variation.count > 1) parts.push(variationText(request.variation));
 	parts.push(section("request", request.prompt || "(no extra instructions)"));
+
 	return parts.join("\n\n");
 }

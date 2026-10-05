@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as Lucide from "lucide-react";
-import React, { createElement, type ReactNode } from "react";
+import React, { createElement, type FunctionComponent, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transform } from "sucrase";
 import { generateMockScreens } from "./mock-generator";
@@ -25,28 +25,56 @@ const ALLOWED = new Set([
 const importsOf = (source: string) => [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]!);
 
 /** Stand-ins for the shadcn modules: every named export renders its children. */
-const ui = new Proxy({}, { get: (_, name) => (name === "__esModule" ? true : ({ children }: { children?: ReactNode }) => createElement("div", { "data-ui": String(name) }, children)) });
+const ui = new Proxy(
+	{},
+	{
+		get: (_, name) =>
+			name === "__esModule"
+				? true
+				: ({ children }: { children?: ReactNode }) => createElement("div", { "data-ui": String(name) }, children),
+	},
+);
+
+/** What a compiled screen or component module exports, as far as the test reads it. */
+type ModuleExports = { default?: FunctionComponent };
+
+type CommonJsModule = { exports: ModuleExports };
 
 /** Renders a screen with a tiny module registry, the way a frame will. */
 function render(entry: string, files: ProjectFiles) {
-	const cache = new Map<string, Record<string, unknown>>();
-	const load = (path: string): Record<string, unknown> => {
-		if (cache.has(path)) return cache.get(path)!;
+	const cache = new Map<string, ModuleExports>();
+
+	const load = (path: string): ModuleExports => {
+		const cached = cache.get(path);
+
+		if (cached) return cached;
 		const { code } = transform(files[path]!, { transforms: ["typescript", "jsx", "imports"], production: true });
-		const module = { exports: {} as Record<string, unknown> };
+		const module: CommonJsModule = { exports: {} };
 		cache.set(path, module.exports);
+
 		const require = (spec: string) => {
 			if (spec === "react") return React;
+
 			if (spec === "lucide-react") return Lucide;
+
 			if (spec === "@/lib/utils") return { cn: (...c: unknown[]) => c.filter(Boolean).join(" ") };
+
 			if (spec.startsWith("@/components/ui/")) return ui;
+
 			if (spec.startsWith("../components/")) return load(`${spec.slice(3)}.tsx`);
 			throw new Error(`Unexpected import ${spec}`);
 		};
+
 		new Function("module", "exports", "require", "React", code)(module, module.exports, require, React);
+
 		return module.exports;
 	};
-	return renderToStaticMarkup(createElement(load(entry).default as () => null));
+
+	const screen = load(entry).default;
+
+	if (!screen) throw new Error(`${entry} has no default export`);
+
+	return renderToStaticMarkup(createElement(screen));
 }
 
 describe("mock generator", () => {
@@ -69,10 +97,12 @@ describe("mock generator", () => {
 
 			for (const { path, content } of result.changes) {
 				expect(() => compileTsx(content!)).not.toThrow();
+
 				for (const spec of importsOf(content!)) {
 					if (spec.startsWith("../components/")) expect(files[`${spec.slice(3)}.tsx`]).toBeString();
 					else expect(ALLOWED.has(spec)).toBe(true);
 				}
+
 				if (isScreenFile(path)) {
 					expect(content).toMatch(/export default function [A-Z]\w*\(\)/);
 					expect(content).toMatch(/className="[^"]*\b(min-)?h-full\b/);
@@ -81,6 +111,7 @@ describe("mock generator", () => {
 					expect(content).toMatch(/export function [A-Z]\w*\(/);
 				}
 			}
+
 			expect(render(screens[0]!.path, files)).toContain("&lt;parents&gt;");
 		});
 	}
@@ -91,6 +122,7 @@ describe("mock generator", () => {
 			device: "mobile",
 			existingFiles: ["screens/welcome.tsx", "components/stat-card.tsx"],
 		});
+
 		const paths = result.changes.map((c) => c.path);
 		expect(paths).toContain("screens/welcome-2.tsx");
 		expect(paths).not.toContain("screens/welcome.tsx");
@@ -102,6 +134,7 @@ describe("mock generator", () => {
 	test("accent comes from the prompt", () => {
 		const accentOf = (prompt: string) =>
 			generateMockScreens({ prompt, device: "mobile" }).changes[0]!.content!.match(/bg-(\w+)-600/)![1];
+
 		expect(accentOf("same prompt")).toBe(accentOf("same prompt"));
 		const accents = new Set(["a", "b", "c", "d", "e", "f", "g", "h"].map(accentOf));
 		expect(accents.size).toBeGreaterThan(1);

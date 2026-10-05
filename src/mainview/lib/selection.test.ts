@@ -3,7 +3,16 @@ import type { Frame } from "../../shared/types";
 import { marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "./selection";
 import { tokenizeLines } from "./highlight";
 
-const frame = (file: string, x: number): Frame => ({ file, name: file, device: "mobile", x, y: 0, width: 100, height: 100 });
+const frame = (file: string, x: number): Frame => ({
+	file,
+	name: file,
+	device: "mobile",
+	x,
+	y: 0,
+	width: 100,
+	height: 100,
+});
+
 const frames = [frame("a", 0), frame("b", 200), frame("c", 400)];
 
 describe("selection", () => {
@@ -31,7 +40,9 @@ describe("selection", () => {
 
 describe("highlight", () => {
 	test("keeps every character and splits lines", () => {
-		const source = 'import { Button } from "@/components/ui/button";\n/* a\nb */\nexport default function A() {\n\treturn <Button size="sm">{`x\ny`}</Button>;\n}';
+		const source =
+			'import { Button } from "@/components/ui/button";\n/* a\nb */\nexport default function A() {\n\treturn <Button size="sm">{`x\ny`}</Button>;\n}';
+
 		const lines = tokenizeLines(source);
 		expect(lines.map((line) => line.map((t) => t.text).join("")).join("\n")).toBe(source);
 		expect(lines[0]![0]).toEqual({ kind: "keyword", text: "import" });

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { GenerationEvent, GenerationRequest } from "../../../shared/ai/contract";
+import type { GenerationEvent, GenerationRequest, ProviderErrorCode } from "../../../shared/ai/contract";
 import type { ProviderConfig } from "../../../shared/ai/settings";
 import { ANTHROPIC_FALLBACK_MODELS, createAnthropicProvider } from "./anthropic";
+import type { Json } from "../../../shared/json";
 import { chunked, collect, fakeFetch, sse, streamOf } from "./test-sse";
 
 const config: ProviderConfig = { id: "anthropic", type: "anthropic", label: "Anthropic", enabled: true };
@@ -22,7 +23,8 @@ const request: GenerationRequest = {
 	],
 };
 
-const reply = 'Here it is.\n<rabisco-file path="screens/welcome.tsx" kind="screen" name="Welcome" device="mobile">\nexport default function Welcome() {\n\treturn <div className="h-full" />;\n}\n</rabisco-file>';
+const reply =
+	'Here it is.\n<rabisco-file path="screens/welcome.tsx" kind="screen" name="Welcome" device="mobile">\nexport default function Welcome() {\n\treturn <div className="h-full" />;\n}\n</rabisco-file>';
 
 const textEvents = (text: string) => [
 	{ type: "message_start", message: { usage: { input_tokens: 100, cache_read_input_tokens: 20, output_tokens: 1 } } },
@@ -30,18 +32,26 @@ const textEvents = (text: string) => [
 	{ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "" } },
 	{ type: "content_block_stop", index: 0 },
 	{ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } },
-	...chunked(text, 5).map((piece) => ({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: piece } })),
+	...chunked(text, 5).map((piece) => ({
+		type: "content_block_delta",
+		index: 1,
+		delta: { type: "text_delta", text: piece },
+	})),
 	{ type: "content_block_stop", index: 1 },
 	{ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 42 } },
 	{ type: "message_stop" },
 ];
 
-const sseResponse = (events: unknown[], signal?: AbortSignal | null) =>
+const sseResponse = (events: Json[], signal?: AbortSignal | null) =>
 	new Response(streamOf(chunked(sse(events, true), 13), signal), { headers: { "content-type": "text/event-stream" } });
 
 const provider = (handler: Parameters<typeof fakeFetch>[0], key: string | null = "sk-test") => {
 	const fake = fakeFetch(handler);
-	return { provider: createAnthropicProvider({ config, getApiKey: async () => key, fetch: fake.fetch }), requests: fake.requests };
+
+	return {
+		provider: createAnthropicProvider({ config, getApiKey: async () => key, fetch: fake.fetch }),
+		requests: fake.requests,
+	};
 };
 
 describe("anthropic provider", () => {
@@ -62,7 +72,11 @@ describe("anthropic provider", () => {
 
 		expect(events[0]).toEqual({ type: "status", label: "Thinking" });
 		expect(events.filter((e) => e.type === "file.end")).toEqual([
-			{ type: "file.end", path: "screens/welcome.tsx", content: 'export default function Welcome() {\n\treturn <div className="h-full" />;\n}\n' },
+			{
+				type: "file.end",
+				path: "screens/welcome.tsx",
+				content: 'export default function Welcome() {\n\treturn <div className="h-full" />;\n}\n',
+			},
 		]);
 		expect(events.find((e) => e.type === "file.start")).toEqual({
 			type: "file.start",
@@ -76,21 +90,31 @@ describe("anthropic provider", () => {
 	test("no key is not_authenticated", async () => {
 		const { provider: p, requests } = provider(() => new Response("{}"), null);
 		const events = await collect(p.generate(request, new AbortController().signal));
-		expect(events).toEqual([{ type: "error", code: "not_authenticated", message: "No Anthropic API key", retryable: false }]);
+		expect(events).toEqual([
+			{ type: "error", code: "not_authenticated", message: "No Anthropic API key", retryable: false },
+		]);
 		expect(requests).toHaveLength(0);
-		expect(await p.health()).toMatchObject({ ok: false, code: "not_authenticated", fix: expect.stringContaining("API key") });
+		expect(await p.health()).toMatchObject({
+			ok: false,
+			code: "not_authenticated",
+			fix: expect.stringContaining("API key"),
+		});
 	});
 
 	test("HTTP errors map to codes", async () => {
-		const cases: [number, string, string, boolean][] = [
+		const cases: [number, string, ProviderErrorCode, boolean][] = [
 			[401, "invalid x-api-key", "not_authenticated", false],
 			[429, "rate limited", "rate_limited", true],
 			[400, "prompt is too long: 250000 tokens > 200000 maximum", "context_too_large", false],
 		];
+
 		for (const [status, message, code, retryable] of cases) {
-			const { provider: p } = provider(() => new Response(JSON.stringify({ type: "error", error: { type: "x", message } }), { status }));
+			const { provider: p } = provider(
+				() => new Response(JSON.stringify({ type: "error", error: { type: "x", message } }), { status }),
+			);
+
 			const events = await collect(p.generate(request, new AbortController().signal));
-			expect(events).toEqual([{ type: "error", code: code as never, message, retryable }]);
+			expect(events).toEqual([{ type: "error", code, message, retryable }]);
 		}
 	});
 
@@ -98,12 +122,17 @@ describe("anthropic provider", () => {
 		const { provider: p } = provider(() => {
 			throw new TypeError("Unable to connect");
 		});
+
 		const events = await collect(p.generate(request, new AbortController().signal));
 		expect(events).toEqual([{ type: "error", code: "network", message: "Unable to connect", retryable: true }]);
 	});
 
 	test("an error event mid-stream ends with error", async () => {
-		const events = [...textEvents(reply).slice(0, 6), { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }];
+		const events = [
+			...textEvents(reply).slice(0, 6),
+			{ type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+		];
+
 		const { provider: p } = provider(({ init }) => sseResponse(events, init.signal));
 		const out = await collect(p.generate(request, new AbortController().signal));
 		expect(out.at(-1)).toEqual({ type: "error", code: "rate_limited", message: "Overloaded", retryable: true });
@@ -111,7 +140,10 @@ describe("anthropic provider", () => {
 	});
 
 	test("max_tokens mid-file ends with invalid_output and a truncation status", async () => {
-		const events = textEvents(reply.slice(0, 120)).map((e) => (e.type === "message_delta" ? { ...e, delta: { stop_reason: "max_tokens" } } : e));
+		const events = textEvents(reply.slice(0, 120)).map((e) =>
+			e.type === "message_delta" ? { ...e, delta: { stop_reason: "max_tokens" } } : e,
+		);
+
 		const { provider: p } = provider(({ init }) => sseResponse(events, init.signal));
 		const out = await collect(p.generate(request, new AbortController().signal));
 		expect(out.some((e) => e.type === "file.end")).toBe(false);
@@ -121,12 +153,19 @@ describe("anthropic provider", () => {
 
 	test("abort stops the stream promptly with aborted", async () => {
 		const controller = new AbortController();
-		const { provider: p } = provider(({ init }) => new Response(streamOf(chunked(sse(textEvents(reply), true), 13), init.signal, 5)));
+
+		const { provider: p } = provider(
+			({ init }) => new Response(streamOf(chunked(sse(textEvents(reply), true), 13), init.signal, 5)),
+		);
+
 		const out: GenerationEvent[] = [];
+
 		for await (const event of p.generate(request, controller.signal)) {
 			out.push(event);
+
 			if (event.type === "file.start") controller.abort();
 		}
+
 		expect(out.at(-1)).toEqual({ type: "error", code: "aborted", message: "Generation stopped", retryable: false });
 		expect(out.some((e) => e.type === "file.end")).toBe(false);
 	});
@@ -135,6 +174,7 @@ describe("anthropic provider", () => {
 		const { provider: p, requests } = provider(() =>
 			Response.json({ data: [{ id: "claude-opus-5-5", display_name: "Claude Opus 5.5" }], has_more: false }),
 		);
+
 		expect(await p.listModels()).toEqual([{ id: "claude-opus-5-5", label: "Claude Opus 5.5" }]);
 		expect(requests[0]!.url).toStartWith("https://api.anthropic.com/v1/models");
 		expect(await p.health()).toEqual({ ok: true });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ANALYTICS, DASHBOARD } from "./test-fixtures";
-import { elementAt, elementCount, findElement, flatten, parseJsx, walk, type JsxElement } from "./tree";
+import { elementAt, elementCount, findElement, flatten, parseJsx, walk } from "./tree";
 
 const at = (source: string, needle: string, from = 0) => source.indexOf(needle, from);
 
@@ -40,7 +40,13 @@ describe("parseJsx", () => {
 	test("attributes: strings, expressions, booleans and spreads", () => {
 		const source = `const a = <input className="a &amp; b" disabled value={x ? "y" : "z"} {...rest} data-x='q' />;`;
 		const [input] = parseJsx(source).roots;
-		expect(input!.attributes.map((a) => (a.kind === "spread" ? `...${a.text}` : a.name))).toEqual(["className", "disabled", "value", "......rest", "data-x"]);
+		expect(input!.attributes.map((a) => (a.kind === "spread" ? `...${a.text}` : a.name))).toEqual([
+			"className",
+			"disabled",
+			"value",
+			"......rest",
+			"data-x",
+		]);
 		const [className, disabled, value] = input!.attributes;
 		expect(className).toMatchObject({ value: { kind: "string", value: "a & b", raw: '"a &amp; b"' } });
 		expect(disabled).toMatchObject({ value: null });
@@ -72,9 +78,12 @@ describe("parseJsx", () => {
 		{/* note */}
 	</>
 );`;
+
 		const [fragment] = parseJsx(source).roots;
 		expect(fragment!.name).toBeNull();
-		const header = fragment!.children.find((c) => c.kind === "element") as JsxElement;
+		const header = fragment!.children.find((c) => c.kind === "element");
+
+		if (header?.kind !== "element") throw new Error("no element child");
 		expect(header.name).toBe("Card.Header");
 		const [text, expression] = header.children;
 		expect(text).toMatchObject({ kind: "text", value: "Hello & world " });
@@ -107,6 +116,7 @@ describe("lookup", () => {
 		const visited: string[] = [];
 		walk(tree, (e) => {
 			visited.push(e.name!);
+
 			if (e.name === "Card") return false;
 		});
 		expect(visited).toEqual(["main", "Card", "Card"]);

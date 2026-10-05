@@ -43,7 +43,9 @@ describe("parseDesignTokens", () => {
 	});
 
 	test("ignores comments, code fences and other sections", () => {
-		const md = "# Tokens\n<!-- - primary: red -->\n```\n# Not a heading\n- ring: blue\n```\n- ring: green\n<!-- unclosed\n- border: red";
+		const md =
+			"# Tokens\n<!-- - primary: red -->\n```\n# Not a heading\n- ring: blue\n```\n- ring: green\n<!-- unclosed\n- border: red";
+
 		expect(parseDesignTokens(md)).toEqual({ light: { ring: "green" }, dark: {}, invalid: [] });
 	});
 
@@ -58,7 +60,9 @@ describe("parseDesignTokens", () => {
 	});
 
 	test("reports unknown names and invalid values with their line", () => {
-		const md = "## Tokens\n- primary: red; background: url(x)\n- brand: #fff\n- radius: big\n- font-mono: Fira{Code}\n- muted: #abc";
+		const md =
+			"## Tokens\n- primary: red; background: url(x)\n- brand: #fff\n- radius: big\n- font-mono: Fira{Code}\n- muted: #abc";
+
 		const tokens = parseDesignTokens(md);
 		expect(tokens.light).toEqual({ muted: "#abc" });
 		expect(tokens.invalid.map(({ name, line }) => [name, line])).toEqual([
@@ -125,10 +129,18 @@ describe("validateToken", () => {
 
 	test("lengths and font stacks", () => {
 		for (const ok of ["0", "8px", "0.5rem", ".75rem", "1em", "50%"]) expect(validateToken("radius", ok)).toBeNull();
+
 		for (const bad of ["8", "-1px", "calc(1rem)", "1rem;", "8 px"]) expect(validateToken("radius", bad)).not.toBeNull();
-		for (const ok of ['"Inter", system-ui, sans-serif', "'Geist Mono', monospace", "Georgia", "IBM Plex Sans,sans-serif"]) {
+
+		for (const ok of [
+			'"Inter", system-ui, sans-serif',
+			"'Geist Mono', monospace",
+			"Georgia",
+			"IBM Plex Sans,sans-serif",
+		]) {
 			expect(validateToken("font-sans", ok)).toBeNull();
 		}
+
 		for (const bad of ['"Inter";', "Inter, url(x)", '"x" } *{', "a,,b", '"unclosed', "@font-face", "a/*b*/"]) {
 			expect(validateToken("font-sans", bad)).not.toBeNull();
 		}
@@ -165,6 +177,8 @@ describe("tokensToCss", () => {
 	});
 
 	test("drops invalid values that were not parsed", () => {
-		expect(tokensToCss({ light: { primary: "red;}*{x:y", brand: "#fff" }, dark: { ring: "#000" } })).toBe(".dark {\n\t--ring: #000;\n}\n");
+		expect(tokensToCss({ light: { primary: "red;}*{x:y", brand: "#fff" }, dark: { ring: "#000" } })).toBe(
+			".dark {\n\t--ring: #000;\n}\n",
+		);
 	});
 });

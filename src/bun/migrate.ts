@@ -1,20 +1,66 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync } from "fs";
 import { join } from "path";
+import { isFiniteNumber } from "../shared/guards";
+import { isJsonArray, isJsonObject, type Json } from "../shared/json";
 import { FRAME_GAP, FRAME_SIZE, emptyCanvas, uniqueScreenPath } from "../shared/project";
 import type { CanvasDoc, ChatMessage, Device, FileChange, Frame } from "../shared/types";
 import { appendChat, freeProjectDir, isChatMessage, writeCanvas, writeProjectFiles } from "./project-folder";
+import { arrayOr, objectOr, optionalString, parseJson } from "./json";
 import type { RecentEntry } from "./recents";
 
-/** Shape of the pre-Phase-1 `userData/projects/<id>.json` files. */
-export type LegacyProject = {
-	id: string;
-	name: string;
-	device: Device;
-	createdAt: string;
-	updatedAt: string;
-	screens: { id: string; name: string; device: Device; x: number; y: number; width: number; height: number; html: string }[];
-	messages: unknown[];
+/** A screen of a pre-Phase-1 project, with the fields that were missing or invalid left out. */
+export type LegacyScreen = {
+	name?: string;
+	device?: Device;
+	x?: number;
+	y?: number;
+	width?: number;
+	height?: number;
+	html: string;
 };
+
+/** A pre-Phase-1 `userData/projects/<id>.json` file, decoded. */
+export type LegacyProject = {
+	name?: string;
+	device?: Device;
+	createdAt?: string;
+	updatedAt?: string;
+	screens: LegacyScreen[];
+	messages: ChatMessage[];
+};
+
+const parseDevice = (value: Json | undefined): Device | undefined =>
+	value === "desktop" || value === "mobile" ? value : undefined;
+
+const finiteNumber = (value: Json | undefined) => (isFiniteNumber(value) ? value : undefined);
+
+function parseLegacyScreen(value: Json): LegacyScreen {
+	const screen = objectOr(value);
+
+	return {
+		name: optionalString(screen.name),
+		device: parseDevice(screen.device),
+		x: finiteNumber(screen.x),
+		y: finiteNumber(screen.y),
+		width: finiteNumber(screen.width),
+		height: finiteNumber(screen.height),
+		html: String(screen.html ?? ""),
+	};
+}
+
+/** Decodes a legacy project file. Throws when it isn't one. */
+function parseLegacyProject(value: Json): LegacyProject {
+	if (!isJsonObject(value) || !isJsonArray(value.screens)) throw new Error("not a legacy project");
+
+	return {
+		name: optionalString(value.name),
+		device: parseDevice(value.device),
+		createdAt: optionalString(value.createdAt),
+		updatedAt: optionalString(value.updatedAt),
+		screens: value.screens.map(parseLegacyScreen),
+		messages: arrayOr(value.messages).filter(isChatMessage),
+	};
+}
 
 /** `order history` → `OrderHistory`; always a valid identifier. */
 export function componentName(name: string) {
@@ -27,6 +73,7 @@ export function componentName(name: string) {
 		.filter(Boolean)
 		.map((w) => w[0]!.toUpperCase() + w.slice(1))
 		.join("");
+
 	return /^[A-Za-z]/.test(pascal) ? pascal : `Screen${pascal}`;
 }
 
@@ -34,6 +81,7 @@ export function componentName(name: string) {
 export function splitHtmlDocument(html: string) {
 	const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]!.trim()).join("\n");
 	const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+
 	const markup = body
 		? body[1]!
 		: html
@@ -41,12 +89,14 @@ export function splitHtmlDocument(html: string) {
 				.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
 				.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
 				.replace(/<\/?(html|body)[^>]*>/gi, "");
+
 	return { css, markup: markup.trim() };
 }
 
 /** A TSX screen that renders a legacy HTML screen as it looked before. */
 export function legacyHtmlToTsx(html: string, name: string) {
 	const { css, markup } = splitHtmlDocument(html);
+
 	return `/** Migrated from an HTML screen. Rewrite it as components when you next edit it. */
 const CSS = ${JSON.stringify(css)};
 
@@ -65,39 +115,42 @@ export default function ${componentName(name)}() {
 
 /** Files, canvas and chat of the folder that replaces a legacy project. */
 export function convertLegacyProject(legacy: LegacyProject) {
-	const device: Device = legacy.device === "desktop" ? "desktop" : "mobile";
+	const device = legacy.device ?? "mobile";
 	const changes: FileChange[] = [];
 	const frames: Frame[] = [];
 	const taken: string[] = [];
-	for (const screen of Array.isArray(legacy.screens) ? legacy.screens : []) {
-		const name = typeof screen.name === "string" && screen.name.trim() ? screen.name : "Screen";
+
+	for (const screen of legacy.screens) {
+		const name = screen.name?.trim() ? screen.name : "Screen";
 		const file = uniqueScreenPath(name, taken);
 		taken.push(file);
-		changes.push({ path: file, content: legacyHtmlToTsx(String(screen.html ?? ""), name) });
-		const screenDevice: Device = screen.device === "desktop" ? "desktop" : screen.device === "mobile" ? "mobile" : device;
+		changes.push({ path: file, content: legacyHtmlToTsx(screen.html, name) });
+
+		const screenDevice = screen.device ?? device;
+
 		const size = FRAME_SIZE[screenDevice];
 		frames.push({
 			file,
 			name,
 			device: screenDevice,
-			x: num(screen.x, frames.length * (size.width + FRAME_GAP)),
-			y: num(screen.y, 0),
-			width: num(screen.width, size.width),
-			height: num(screen.height, size.height),
+			x: screen.x ?? frames.length * (size.width + FRAME_GAP),
+			y: screen.y ?? 0,
+			width: screen.width ?? size.width,
+			height: screen.height ?? size.height,
 		});
 	}
+
 	const base = emptyCanvas(legacy.name || "Untitled", device);
+
 	const canvas: CanvasDoc = {
 		...base,
 		createdAt: legacy.createdAt || base.createdAt,
 		updatedAt: legacy.updatedAt || base.updatedAt,
 		frames,
 	};
-	const messages: ChatMessage[] = (Array.isArray(legacy.messages) ? legacy.messages : []).filter(isChatMessage);
-	return { canvas, changes, messages };
-}
 
-const num = (value: unknown, fallback: number) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
+	return { canvas, changes, messages: legacy.messages };
+}
 
 /**
  * Moves every `<legacyDir>/*.json` into a project folder under `projectsDir`
@@ -106,17 +159,20 @@ const num = (value: unknown, fallback: number) => (typeof value === "number" && 
  */
 export function migrateLegacyProjects(legacyDir: string, projectsDir: string): RecentEntry[] {
 	let names: string[];
+
 	try {
 		names = readdirSync(legacyDir).filter((n) => n.endsWith(".json"));
 	} catch {
 		return [];
 	}
+
 	const migrated: RecentEntry[] = [];
+
 	for (const fileName of names) {
 		const source = join(legacyDir, fileName);
+
 		try {
-			const legacy = JSON.parse(readFileSync(source, "utf-8")) as LegacyProject;
-			if (!legacy || typeof legacy !== "object" || !Array.isArray(legacy.screens)) throw new Error("not a legacy project");
+			const legacy = parseLegacyProject(parseJson(readFileSync(source, "utf-8")));
 			const { canvas, changes, messages } = convertLegacyProject(legacy);
 			mkdirSync(projectsDir, { recursive: true });
 			const dir = freeProjectDir(projectsDir, canvas.name);
@@ -130,5 +186,6 @@ export function migrateLegacyProjects(legacyDir: string, projectsDir: string): R
 			console.error(`Could not migrate ${source}: ${error instanceof Error ? error.message : error}`);
 		}
 	}
+
 	return migrated;
 }

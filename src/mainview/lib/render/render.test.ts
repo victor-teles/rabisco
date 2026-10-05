@@ -19,11 +19,13 @@ export default function HomeScreen() {
 	return <div className="flex p-4"><Card /><Button><Home /></Button></div>;
 }
 `;
+
 const CARD = `import { Pill } from "./pill";
 export function Card({ label = "x" }: { label?: string }) {
 	return <div className="rounded-xl bg-card"><Pill />{label}</div>;
 }
 `;
+
 const PILL = `export function Pill() { return <span className="rounded-full px-2" />; }\n`;
 
 const FILES = {
@@ -47,7 +49,12 @@ describe("resolve", () => {
 	test("extracts requires from compiled code", () => {
 		const { code } = compileSource("screens/home.tsx", SCREEN);
 		expect(extractRequires(code!)).toEqual(
-			expect.arrayContaining(["react/jsx-runtime", "@/components/ui/button", "../components/stat-card", "lucide-react"]),
+			expect.arrayContaining([
+				"react/jsx-runtime",
+				"@/components/ui/button",
+				"../components/stat-card",
+				"lucide-react",
+			]),
 		);
 	});
 });
@@ -76,13 +83,20 @@ describe("compile", () => {
 		// Component usages carry one too, as a prop the runtime reads from React's tree
 		expect(compiled.code).toContain(`'data-rabisco-loc': "screens/home.tsx:${SCREEN.indexOf("<Card")}"`);
 		expect(compiled.code!.match(/data-rabisco-loc/g)!.length).toBe(4);
-		expect(compileSource("components/pill.tsx", PILL).code).toContain(`'data-rabisco-loc': "components/pill.tsx:${PILL.indexOf("<span")}"`);
+		expect(compileSource("components/pill.tsx", PILL).code).toContain(
+			`'data-rabisco-loc': "components/pill.tsx:${PILL.indexOf("<span")}"`,
+		);
 	});
 	test("error lines still point at the original source", () => {
 		const source = `export default function A() {\n\tconst x = null as any;\n\treturn <div className="p-4">{x.boom}</div>;\n}\n`;
 		const compiled = compileSource("screens/a.tsx", source);
 		expect(compiled.code!.split("\n")[2]).toContain("x.boom");
-		const bad = compileSource("screens/bad.tsx", "export default function A() {\n\treturn <div className=\"a\">\n\t\t<span>;\n}\n");
+
+		const bad = compileSource(
+			"screens/bad.tsx",
+			'export default function A() {\n\treturn <div className="a">\n\t\t<span>;\n}\n',
+		);
+
 		expect(bad.error!.line).toBeGreaterThanOrEqual(3);
 		expect(bad.source).not.toContain("data-rabisco-loc");
 	});
@@ -105,15 +119,24 @@ describe("graph", () => {
 		expect(graph.missing).toEqual([]);
 	});
 	test("reports missing imports", () => {
-		const graph = collectGraph("screens/a.tsx", { "screens/a.tsx": `import { X } from "../components/nope";\nexport default X;\n` }, new CompileCache());
+		const graph = collectGraph(
+			"screens/a.tsx",
+			{ "screens/a.tsx": `import { X } from "../components/nope";\nexport default X;\n` },
+			new CompileCache(),
+		);
+
 		expect(graph.missing).toEqual([{ from: "screens/a.tsx", specifier: "../components/nope" }]);
 	});
 	test("still follows imports of files that do not compile", () => {
 		const graph = collectGraph(
 			"screens/a.tsx",
-			{ "screens/a.tsx": `import { Pill } from "../components/pill";\nexport default () => <div>;\n`, "components/pill.tsx": PILL },
+			{
+				"screens/a.tsx": `import { Pill } from "../components/pill";\nexport default () => <div>;\n`,
+				"components/pill.tsx": PILL,
+			},
 			new CompileCache(),
 		);
+
 		expect(graph.modules.has("components/pill.tsx")).toBe(true);
 	});
 	test("invalidates dependents transitively", () => {
@@ -122,6 +145,7 @@ describe("graph", () => {
 			["components/stat-card.tsx", ["components/pill.tsx"]],
 			["screens/other.tsx", []],
 		]);
+
 		expect(withDependents(["components/pill.tsx"], edges)).toEqual(
 			new Set(["components/pill.tsx", "components/stat-card.tsx", "screens/home.tsx"]),
 		);
@@ -142,20 +166,25 @@ describe("candidates", () => {
 });
 
 describe("registry", () => {
-	const jsx = { jsx: (type: unknown, props: unknown) => ({ type, props }), jsxs: () => null, Fragment: "f" };
+	// No test renders: modules only need the runtime's exports to exist
+	const jsx = { jsx: () => null, jsxs: () => null, Fragment: "f" };
+
 	const externals = {
 		react: {},
 		"react/jsx-runtime": jsx,
 		"lucide-react": { Home: "Home" },
 		"@/components/ui/button": { Button: "Button" },
 	};
+
 	const payloads = () => {
 		const cache = new CompileCache();
 		const out: Record<string, ModulePayload> = {};
+
 		for (const [path, source] of Object.entries(FILES)) {
 			const m = cache.get(path, source);
 			out[path] = m.error ? { source, error: m.error } : { source, code: m.code! };
 		}
+
 		return out;
 	};
 
@@ -163,7 +192,7 @@ describe("registry", () => {
 		const registry = new ModuleRegistry(externals);
 		registry.apply(payloads(), true);
 		const screen = registry.load("screens/home.tsx");
-		expect(typeof screen.default).toBe("function");
+		expect(screen.default).toBeInstanceOf(Function);
 		expect(registry.isLoaded("components/pill.tsx")).toBe(true);
 	});
 	test("invalidates a changed module and its dependents only", () => {
@@ -182,11 +211,13 @@ describe("registry", () => {
 		const bad = compileSource("screens/a.tsx", `import x from "left-pad";\nexport default () => x;\n`);
 		registry.apply({ "screens/a.tsx": { source: bad.source, code: bad.code! } }, true);
 		let error: RenderError | undefined;
+
 		try {
 			registry.load("screens/a.tsx");
 		} catch (e) {
-			error = e as RenderError;
+			if (e instanceof RenderError) error = e;
 		}
+
 		expect(error).toBeInstanceOf(RenderError);
 		expect(error!.kind).toBe("missing-module");
 		expect(error!.message).toContain('"left-pad"');
@@ -194,7 +225,10 @@ describe("registry", () => {
 	});
 	test("throws compile errors with their location", () => {
 		const registry = new ModuleRegistry(externals);
-		registry.apply({ "screens/a.tsx": { source: "x", error: { message: "Unexpected token", line: 3, column: 2 } } }, true);
+		registry.apply(
+			{ "screens/a.tsx": { source: "x", error: { message: "Unexpected token", line: 3, column: 2 } } },
+			true,
+		);
 		expect(() => registry.load("screens/a.tsx")).toThrow("Unexpected token");
 	});
 	test("stack traces carry the project file and line", () => {
@@ -202,13 +236,16 @@ describe("registry", () => {
 		const source = `export default function A() {\n\tconst x = null as any;\n\treturn x.boom;\n}\n`;
 		const compiled = compileSource("screens/a.tsx", source);
 		registry.apply({ "screens/a.tsx": { source, code: compiled.code! } }, true);
-		const A = registry.load("screens/a.tsx").default as () => unknown;
+		const A = registry.load("screens/a.tsx").default;
+		expect(A).toBeInstanceOf(Function);
 		let stack = "";
+
 		try {
-			A();
+			if (A instanceof Function) A();
 		} catch (e) {
-			stack = (e as Error).stack ?? "";
+			if (e instanceof Error) stack = e.stack ?? "";
 		}
+
 		const location = locationFromStack(stack);
 		expect(location?.file).toBe("screens/a.tsx");
 		expect(location?.line).toBe(3);
@@ -218,10 +255,12 @@ describe("registry", () => {
 
 describe("tailwind", () => {
 	const root = join(import.meta.dir, "../../../..");
+
 	const stylesheets = {
 		tailwindcss: readFileSync(join(root, "node_modules/tailwindcss/index.css"), "utf8"),
 		"tw-animate-css": readFileSync(join(root, "node_modules/tw-animate-css/dist/tw-animate.css"), "utf8"),
 	};
+
 	test("builds only when the candidate union grows", async () => {
 		const builder = new TailwindBuilder(() => createCompiler(stylesheets), ["p-4"]);
 		await builder.whenReady();

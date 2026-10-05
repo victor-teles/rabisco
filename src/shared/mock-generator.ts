@@ -16,17 +16,36 @@ export const GENERATION_STEPS = [
 
 /** Tailwind color families used as the accent; the full class names appear in the generated source. */
 const ACCENTS = ["blue", "violet", "emerald", "orange", "rose"] as const;
+
 type Accent = (typeof ACCENTS)[number];
 
 function hash(text: string) {
 	let h = 0;
+
 	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+
 	return Math.abs(h);
 }
 
 const STOP_WORDS = new Set([
-	"the", "and", "for", "with", "app", "that", "this", "design", "create", "make",
-	"build", "page", "screen", "screens", "mobile", "desktop", "website", "landing",
+	"the",
+	"and",
+	"for",
+	"with",
+	"app",
+	"that",
+	"this",
+	"design",
+	"create",
+	"make",
+	"build",
+	"page",
+	"screen",
+	"screens",
+	"mobile",
+	"desktop",
+	"website",
+	"landing",
 ]);
 
 function titleFromPrompt(prompt: string) {
@@ -34,22 +53,27 @@ function titleFromPrompt(prompt: string) {
 		.replace(/[^\p{L}\p{N}\s-]/gu, "")
 		.split(/\s+/)
 		.filter((w) => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()));
+
 	const picked = words.slice(0, 2).map((w) => w[0]!.toUpperCase() + w.slice(1).toLowerCase());
+
 	return picked.join(" ") || "Untitled";
 }
 
 /** Text that is safe as a JSX child: plain when possible, otherwise a string expression. */
 function jsxText(text: string) {
 	const clean = text.replace(/\s+/g, " ").trim();
+
 	return /[{}<>&]/.test(clean) ? `{${JSON.stringify(clean)}}` : clean;
 }
 
 type Draft = { name: string; source: string };
+
 type Context = { title: string; brief: string; accent: Accent };
 
 /** Shared project components. Their content never depends on the prompt, so an existing file is reused as is. */
-const COMPONENTS: Record<string, string> = {
-	"components/stat-card.tsx": `import type { LucideIcon } from "lucide-react";
+const COMPONENTS = new Map(
+	Object.entries({
+		"components/stat-card.tsx": `import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +100,7 @@ export function StatCard({ label, value, change, icon: Icon, className }: StatCa
 	);
 }
 `,
-	"components/tab-bar.tsx": `import { Compass, Heart, House, User } from "lucide-react";
+		"components/tab-bar.tsx": `import { Compass, Heart, House, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -105,7 +129,7 @@ export function TabBar({ active = 0 }: { active?: number }) {
 	);
 }
 `,
-	"components/sidebar-nav.tsx": `import { ChartColumn, FolderKanban, LayoutDashboard, Settings, Users } from "lucide-react";
+		"components/sidebar-nav.tsx": `import { ChartColumn, FolderKanban, LayoutDashboard, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -136,7 +160,8 @@ export function SidebarNav({ title, active = 0 }: { title: string; active?: numb
 	);
 }
 `,
-};
+	}),
+);
 
 function mobileDrafts({ title, brief, accent }: Context): Draft[] {
 	return [
@@ -437,13 +462,19 @@ function importedComponents(source: string) {
 	return [...source.matchAll(/from "\.\.\/(components\/[a-z0-9-]+)"/g)].map((m) => `${m[1]}.tsx`);
 }
 
-export function generateMockScreens(input: { prompt: string; device: Device; existingFiles?: string[] }): GenerateScreensResult {
+export function generateMockScreens(input: {
+	prompt: string;
+	device: Device;
+	existingFiles?: string[];
+}): GenerateScreensResult {
 	const existing = new Set(input.existingFiles ?? []);
+
 	const context: Context = {
 		title: titleFromPrompt(input.prompt),
 		brief: input.prompt.trim() || "A fresh idea, ready to shape.",
 		accent: ACCENTS[hash(input.prompt) % ACCENTS.length]!,
 	};
+
 	const drafts = input.device === "mobile" ? mobileDrafts(context) : desktopDrafts(context);
 	const size = FRAME_SIZE[input.device];
 
@@ -456,10 +487,14 @@ export function generateMockScreens(input: { prompt: string; device: Device; exi
 		taken.add(file);
 		changes.push({ path: file, content: draft.source });
 		frames.push({ file, name: draft.name, device: input.device, x: index * (size.width + FRAME_GAP), y: 0, ...size });
+
 		for (const path of importedComponents(draft.source)) components.add(path);
 	});
+
 	for (const path of [...components].sort()) {
-		if (!existing.has(path)) changes.push({ path, content: COMPONENTS[path]! });
+		const content = COMPONENTS.get(path);
+
+		if (!existing.has(path) && content !== undefined) changes.push({ path, content });
 	}
 
 	return {

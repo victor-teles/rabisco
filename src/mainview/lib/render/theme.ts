@@ -115,6 +115,8 @@ let lastDesign: { source: string; css: string } | null = null;
  */
 export function designThemeCss(files: ProjectFiles): string {
 	const source = files["DESIGN.md"] ?? "";
+
 	if (lastDesign?.source !== source) lastDesign = { source, css: source ? tokensToCss(parseDesignTokens(source)) : "" };
+
 	return lastDesign.css;
 }

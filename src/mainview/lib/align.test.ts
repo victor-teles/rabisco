@@ -38,7 +38,15 @@ describe("align", () => {
 	test("keeps extra fields and needs two rects", () => {
 		const one = [{ ...r(5, 5), file: "a" }];
 		expect(align(one, "left")).toBe(one);
-		expect(align([{ ...r(5, 5), file: "a" }, { ...r(0, 0), file: "b" }], "left")[0]!.file).toBe("a");
+		expect(
+			align(
+				[
+					{ ...r(5, 5), file: "a" },
+					{ ...r(0, 0), file: "b" },
+				],
+				"left",
+			)[0]!.file,
+		).toBe("a");
 	});
 });
 

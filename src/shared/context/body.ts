@@ -8,11 +8,14 @@ const HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
  */
 export function contextBody(markdown: string | undefined): string | undefined {
 	if (!markdown) return undefined;
+
 	const body = markdown
 		.replace(/<!--[\s\S]*?(?:-->|$)/g, "")
 		.replace(/[ \t]+$/gm, "")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
+
 	const hasContent = body.split("\n").some((line) => line.trim() && !HEADING.test(line));
+
 	return hasContent ? body : undefined;
 }

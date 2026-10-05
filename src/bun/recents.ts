@@ -9,7 +9,9 @@ export type RecentEntry = { path: string; openedAt: string };
 export function readRecents(file: string): RecentEntry[] {
 	try {
 		const list = JSON.parse(readFileSync(file, "utf-8"));
+
 		if (!Array.isArray(list)) return [];
+
 		return list.filter((e): e is RecentEntry => !!e && typeof e.path === "string" && typeof e.openedAt === "string");
 	} catch {
 		return [];
@@ -45,17 +47,22 @@ export function missingSummary(entry: RecentEntry): ProjectSummary {
 /** Card data for one recent folder. Reads without writing, so listing never touches projects. */
 export function summarizeFolder(entry: RecentEntry): ProjectSummary {
 	const missing = missingSummary(entry);
+
 	if (!isDirectory(entry.path)) return missing;
 	const files = readProjectFiles(entry.path);
 	let canvas;
+
 	try {
 		canvas = readCanvas(entry.path);
 	} catch {
 		canvas = null;
 	}
+
 	if (!canvas) {
 		const screenCount = Object.keys(files).filter((f) => f.startsWith("screens/")).length;
+
 		return { ...missing, screenCount, missing: false };
 	}
+
 	return summarizeProject(entry.path, reconcileFrames(canvas, files), files);
 }

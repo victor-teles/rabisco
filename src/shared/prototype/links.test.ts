@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { findElement, parseJsx } from "../jsx";
-import { hasExpressionLink, LINK_ATTRIBUTE, listLinks, normalizeTarget, readLink, resolveLink, retargetLinks, setLink } from "./links";
+import {
+	hasExpressionLink,
+	LINK_ATTRIBUTE,
+	listLinks,
+	normalizeTarget,
+	readLink,
+	resolveLink,
+	retargetLinks,
+	setLink,
+} from "./links";
 
 const HOME = `export default function Home() {
 	return (
@@ -13,9 +22,17 @@ const HOME = `export default function Home() {
 	);
 }
 `;
+
 const SETTINGS = `export default function Settings() {\n\treturn <main><TabBar /></main>;\n}\n`;
+
 const TAB_BAR = `export function TabBar() {\n\treturn <nav><a data-link-to='home'>Home</a></nav>;\n}\n`;
-const FILES = { "screens/home.tsx": HOME, "screens/settings.tsx": SETTINGS, "components/tab-bar.tsx": TAB_BAR, "DESIGN.md": `data-link-to="x"` };
+
+const FILES = {
+	"screens/home.tsx": HOME,
+	"screens/settings.tsx": SETTINGS,
+	"components/tab-bar.tsx": TAB_BAR,
+	"DESIGN.md": `data-link-to="x"`,
+};
 
 const startOf = (source: string, needle: string) => source.indexOf(needle);
 
@@ -76,7 +93,14 @@ describe("writing links", () => {
 
 describe("resolving links", () => {
 	test("forgives the usual ways of naming a screen", () => {
-		for (const to of ["screens/settings.tsx", "./screens/settings.tsx", "/screens/settings.tsx", "settings", "settings.tsx", "screens/settings"]) {
+		for (const to of [
+			"screens/settings.tsx",
+			"./screens/settings.tsx",
+			"/screens/settings.tsx",
+			"settings",
+			"settings.tsx",
+			"screens/settings",
+		]) {
 			expect(normalizeTarget(to)).toBe("screens/settings.tsx");
 		}
 	});

@@ -31,9 +31,9 @@ Ruled out: `requestAnimationFrame` (not used by the transport), the 2 ms batchin
 
 Run with the bundled Cottontail binary. `createReadStream("/dev/null", { fd: 0 })` on stdin:
 
-| stdin | Result |
-| --- | --- |
-| Non-blocking pipe (`O_NONBLOCK`) | `error` with `EAGAIN` immediately, before any data |
+| stdin                                | Result                                              |
+| ------------------------------------ | --------------------------------------------------- |
+| Non-blocking pipe (`O_NONBLOCK`)     | `error` with `EAGAIN` immediately, before any data  |
 | Blocking pipe, 3 writes 300 ms apart | one `data` event, then `end`; later writes are lost |
 
 ### Still to confirm in the app
@@ -45,7 +45,7 @@ Run with the bundled Cottontail binary. `createReadStream("/dev/null", { fd: 0 }
 
 **Treat a webview → main request as costing one 16 ms tick, and design around it. Don't patch the devkit.**
 
-1. **Push, don't request.** Main → webview has no timer. Anything that streams or updates often goes from main to the webview as an RPC *message*: `filesChanged`, `generationStep`, and AI output into frames in Phase 2.
+1. **Push, don't request.** Main → webview has no timer. Anything that streams or updates often goes from main to the webview as an RPC _message_: `filesChanged`, `generationStep`, and AI output into frames in Phase 2.
 2. **Keep requests off interactive paths.** Compiling and Tailwind already run in the webview ([0001](./0001-compile-tsx-in-the-webview.md), [0002](./0002-incremental-tailwind-in-the-host.md)). Saves (`writeFiles`, `saveCanvas`) are fire-and-forget from the UI's point of view: the UI updates first, and the write completes in the background.
 3. **Batch when requests are unavoidable.** Requests sent together, without awaiting each one, share one drain. One `writeFiles` with many changes is better than many single-file writes.
 4. **Report it upstream.** The fix belongs in Cottontail (`createReadStream` should wait for readability on a non-blocking fd) or Electrobun (use a poll that doesn't rely on it, or log the fallback). Once fixed, the floor should drop to around 1 ms with no change in Rabisco.

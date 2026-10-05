@@ -3,12 +3,27 @@ import { toast } from "sonner";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { onFrameStatus } from "@/lib/render/frame-host";
 import { api, onGenerationEvent } from "@/lib/rpc";
-import type { Attachment, ElementFocus, FileKind, GenerationEvent, Problem, ScreenMeta } from "../../shared/ai/contract";
+import type {
+	Attachment,
+	ElementFocus,
+	FileKind,
+	GenerationEvent,
+	Problem,
+	ScreenMeta,
+} from "../../shared/ai/contract";
 import { focusNote, focusOf } from "../../shared/ai/focus";
 import { draftLayout, mixNote, mixPrompt, variantLabel, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
 import { renderCheckOf, renderRepairOf, type RenderCheck } from "@/lib/render-check";
 import { isContextFile, isScreenFile } from "../../shared/project";
-import type { ChatMessage, ContextFileName, Device, FileChange, Frame, GenerationFailure, ProjectFiles } from "../../shared/types";
+import type {
+	ChatMessage,
+	ContextFileName,
+	Device,
+	FileChange,
+	Frame,
+	GenerationFailure,
+	ProjectFiles,
+} from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
 import { openSettings, useProviders } from "./use-providers";
 import type { ChangeOptions, ProjectState } from "./use-project";
@@ -68,16 +83,30 @@ const message = (role: ChatMessage["role"], content: string): ChatMessage => ({
 	createdAt: new Date().toISOString(),
 });
 
-const IMAGE_TYPES = new Set<Attachment["mediaType"]>(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_TYPES: ReadonlySet<string> = new Set<Attachment["mediaType"]>([
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+	"image/gif",
+]);
+
+const isImageType = (type: string): type is Attachment["mediaType"] => IMAGE_TYPES.has(type);
 
 async function toAttachments(files: File[] = []): Promise<Attachment[]> {
-	const images = files.filter((file) => IMAGE_TYPES.has(file.type as Attachment["mediaType"]));
+	const images = files.flatMap((file) => {
+		const mediaType = file.type;
+
+		return isImageType(mediaType) ? [{ file, mediaType }] : [];
+	});
+
 	return Promise.all(
-		images.map(async (file) => {
+		images.map(async ({ file, mediaType }) => {
 			const bytes = new Uint8Array(await file.arrayBuffer());
 			let binary = "";
+
 			for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-			return { name: file.name, mediaType: file.type as Attachment["mediaType"], data: btoa(binary) };
+
+			return { name: file.name, mediaType, data: btoa(binary) };
 		}),
 	);
 }
@@ -88,9 +117,15 @@ function applyEvent(generation: Generation, attempt: number, event: GenerationEv
 			// Parallel variations interleave; skip repeats within one variation
 			const label = variantLabel(event.label, variant);
 			const last = [...generation.steps].reverse().find((step) => (step.variant ?? 0) === (variant || 0));
+
 			if (last?.label === label && last.detail === event.detail) return generation;
-			return { ...generation, steps: [...generation.steps, { label, detail: event.detail, variant: variant || undefined }] };
+
+			return {
+				...generation,
+				steps: [...generation.steps, { label, detail: event.detail, variant: variant || undefined }],
+			};
 		}
+
 		case "message.delta":
 			// Repairs talk about the fix, and parallel variations all talk at once: keep the primary's first attempt
 			return attempt <= 1 && !variant ? { ...generation, reply: generation.reply + event.text } : generation;
@@ -98,17 +133,35 @@ function applyEvent(generation: Generation, attempt: number, event: GenerationEv
 			return {
 				...generation,
 				attempt,
-				writing: { ...generation.writing, [event.path]: { kind: event.kind, screen: event.screen, text: "", done: false } },
+				writing: {
+					...generation.writing,
+					[event.path]: { kind: event.kind, screen: event.screen, text: "", done: false },
+				},
 			};
 		case "file.delta": {
 			const file = generation.writing[event.path];
+
 			if (!file) return generation;
-			return { ...generation, writing: { ...generation.writing, [event.path]: { ...file, text: file.text + event.text } } };
+
+			return {
+				...generation,
+				writing: { ...generation.writing, [event.path]: { ...file, text: file.text + event.text } },
+			};
 		}
+
 		case "file.end": {
-			const file = generation.writing[event.path] ?? { kind: isScreenFile(event.path) ? "screen" : "component", text: "", done: false };
-			return { ...generation, writing: { ...generation.writing, [event.path]: { ...file, text: event.content, done: true } } };
+			const file = generation.writing[event.path] ?? {
+				kind: isScreenFile(event.path) ? "screen" : "component",
+				text: "",
+				done: false,
+			};
+
+			return {
+				...generation,
+				writing: { ...generation.writing, [event.path]: { ...file, text: event.content, done: true } },
+			};
 		}
+
 		default:
 			return generation;
 	}
@@ -151,6 +204,7 @@ export function useGeneration({
 			onGenerationEvent(({ generationId, attempt, variant, event }) => {
 				if (!live.current || live.current.id !== generationId) return;
 				live.current = applyEvent(live.current, attempt, event, variant);
+
 				if (!flush.current) {
 					flush.current = requestAnimationFrame(() => {
 						flush.current = 0;
@@ -164,17 +218,25 @@ export function useGeneration({
 	/** Waits for frames of `screens` to render and collects their errors, by screen. */
 	const collectRenderErrors = useCallback((screens: string[]) => {
 		type Failure = { entry: string; problem: Problem };
+
 		const watched = new Set(screens);
 		const failures = new Map<string, Failure>();
-		if (!watched.size) return Promise.resolve([] as Failure[]);
+
+		if (!watched.size) return Promise.resolve<Failure[]>([]);
+
 		return new Promise<Failure[]>((resolve) => {
 			const unsubscribe = onFrameStatus((status) => {
 				if (!watched.has(status.entry)) return;
+
 				if (status.status === "error") {
 					const file = status.error.file ?? status.entry;
-					failures.set(status.entry, { entry: status.entry, problem: { path: file, message: status.error.message, line: status.error.line } });
+					failures.set(status.entry, {
+						entry: status.entry,
+						problem: { path: file, message: status.error.message, line: status.error.line },
+					});
 				} else if (status.status === "rendered") failures.delete(status.entry);
 			});
+
 			setTimeout(() => {
 				unsubscribe();
 				resolve([...failures.values()]);
@@ -186,11 +248,15 @@ export function useGeneration({
 		/** Resolves to whether the result was applied. */
 		async (prompt: string, options: SendOptions = {}): Promise<boolean> => {
 			const current = stateRef.current;
+
 			if (!current || live.current) return false;
+
 			if (!model) {
 				openSettings();
+
 				return false;
 			}
+
 			const generationId = crypto.randomUUID();
 			const task = options.repair ? "repair" : (options.task ?? (options.targets?.length ? "edit" : "create"));
 			// Variations apply to new screens only; edits change the selected ones
@@ -217,36 +283,46 @@ export function useGeneration({
 					problems: options.repair?.problems,
 					attachments: await toAttachments(options.files),
 				});
+
 				const latest = stateRef.current;
+
 				if (!latest) return false;
 
 				if (!result.ok) {
 					if (result.error.code === "aborted") addMessages([message("assistant", "Stopped. Nothing was changed.")]);
 					else setFailure(result.error);
+
 					return false;
 				}
 
 				// New frames go right of the canvas; new alternates go below their group
 				const placedFiles = new Set(latest.canvas.frames.map((frame) => frame.file));
+
 				const placed = placeNewFrames(
 					latest.canvas.frames,
 					result.frames.filter((frame) => !placedFiles.has(frame.file)),
 				);
+
 				if (result.changes.length) {
 					change(
 						(snapshot) => {
 							const files = applyFileChanges(snapshot.files, result.changes);
+
 							return { files, frames: [...snapshot.frames, ...placed].filter((frame) => frame.file in files) };
 						},
 						placed.length ? { select: placed.map((frame) => frame.file) } : undefined,
 					);
 				}
+
 				const reply = result.reply.trim() || summarize(result.changes);
+
 				const leftOut = result.problems.length
 					? `\n\nI couldn't make ${[...new Set(result.problems.map((p) => p.path))].join(", ")} valid, so I left ${result.problems.length === 1 ? "it" : "them"} out:\n${result.problems.map((p) => `• ${p.path}${p.line ? `:${p.line}` : ""}: ${p.message}`).join("\n")}`
 					: "";
+
 				// `context` records which files shaped this result; the chat and the Context panel show it
 				addMessages([{ ...message("assistant", reply + leftOut), context: result.context ?? [] }]);
+
 				if (placed.length) onPlaced(placed);
 				applied = true;
 
@@ -256,18 +332,21 @@ export function useGeneration({
 			} finally {
 				if (flush.current) cancelAnimationFrame(flush.current);
 				flush.current = 0;
+
 				if (live.current?.id === generationId) live.current = null;
 				setGeneration((g) => (g?.id === generationId ? null : g));
 			}
 
 			// Check 5 of decision 0003: the frames must render. One automatic repair, then the error stays in the frame.
 			const failures = await collectRenderErrors(check.screens);
+
 			if (failures.length && !live.current) {
 				const failed = [...new Set(failures.map((f) => f.problem.path))];
 				addMessages([message("assistant", `${failed.join(", ")} failed to render. Fixing it…`)]);
 				const repair = renderRepairOf(failures, check.via);
 				void run(prompt, { targets: repair.targets, repair: { problems: repair.problems } });
 			}
+
 			return applied;
 		},
 		// `run` calls itself for the repair; the latest closure is fine there
@@ -278,11 +357,14 @@ export function useGeneration({
 	/** Whether a new request can start; points to Settings when no model is set up. */
 	const ready = useCallback(() => {
 		if (!stateRef.current || live.current) return false;
+
 		if (!model) {
 			toast("Choose an AI provider first", { description: "Add an API key, a CLI or a local model." });
 			openSettings();
+
 			return false;
 		}
+
 		return true;
 	}, [stateRef, model]);
 
@@ -292,16 +374,28 @@ export function useGeneration({
 	 * element is gone from the current source, it falls back to an edit of the whole file.
 	 */
 	const send = useCallback(
-		(prompt: string, { focus: node, ...options }: { targets?: string[]; files?: File[]; variations?: number; focus?: StructureNode | null } = {}) => {
+		(
+			prompt: string,
+			{
+				focus: node,
+				...options
+			}: { targets?: string[]; files?: File[]; variations?: number; focus?: StructureNode | null } = {},
+		) => {
 			if (!ready()) return;
 			const current = stateRef.current!;
+
 			if (node && node.file in current.files) {
 				const focus = focusOf(current.files, node);
 				const where = variationName(node.file, current.canvas.frames);
 				addMessages([message("user", focus ? focusNote(focus.label, where, prompt) : prompt)]);
-				void run(prompt, { targets: [node.file], files: options.files, ...(focus ? { focus } : {}) });
+				const send: SendOptions = { targets: [node.file], files: options.files };
+
+				if (focus) send.focus = focus;
+				void run(prompt, send);
+
 				return;
 			}
+
 			addMessages([message("user", prompt)]);
 			void run(prompt, options.targets?.length ? { ...options, variations: undefined } : options);
 		},
@@ -339,7 +433,9 @@ export function useGeneration({
 	const writeContext = useCallback(
 		async (path: ContextFileName, prompt: string, note?: string): Promise<boolean> => {
 			if (!ready()) return false;
+
 			if (note) addMessages([message("user", note)]);
+
 			return run(prompt, { task: "context", targets: [path] });
 		},
 		[ready, addMessages, run],
@@ -347,6 +443,7 @@ export function useGeneration({
 
 	const stop = useCallback(() => {
 		const id = live.current?.id;
+
 		if (id) void api.stopGeneration({ generationId: id });
 	}, []);
 
@@ -358,17 +455,25 @@ export function useGeneration({
 	useEffect(() => () => stop(), [stop]);
 
 	const writing = generation?.writing;
+
 	// Only finished files and new paths change the drafts; deltas just update `writing`
-	const doneKey = writing ? Object.entries(writing).map(([path, f]) => (f.done ? `${path}:${f.text.length}` : path)).join("|") : null;
+	const doneKey = writing
+		? Object.entries(writing)
+				.map(([path, f]) => (f.done ? `${path}:${f.text.length}` : path))
+				.join("|")
+		: null;
 
 	const drafts = useMemo(() => {
 		const current = live.current?.writing;
+
 		if (doneKey === null || !current) return null;
 		const fresh = Object.keys(current).filter((path) => isScreenFile(path) && !(path in files));
 		const meta = Object.fromEntries(fresh.map((path) => [path, current[path]!.screen]));
 		const draftFrames = placeNewFrames(frames, draftLayout(fresh, meta, device));
 		const draftFiles = { ...files };
+
 		for (const [path, file] of Object.entries(current)) if (file.done) draftFiles[path] = file.text;
+
 		return { frames: draftFrames, files: draftFiles };
 	}, [doneKey, files, frames, device]);
 
@@ -391,12 +496,17 @@ function summarize(changes: FileChange[]) {
 	const alternates = written.filter((c) => isAlternate(c.path)).length;
 	const screens = written.filter((c) => isScreenFile(c.path)).length - alternates;
 	const components = written.filter((c) => !isScreenFile(c.path) && !isContextFile(c.path)).length;
-	const context = written.filter((c) => isContextFile(c.path)).map((c) => c.path);
+	const context = written.flatMap((c) => (isContextFile(c.path) ? [c.path] : []));
+
 	if (!screens && !components && !context.length) return "Done. No files changed.";
+
 	const parts = [
 		screens && `${screens} ${screens === 1 ? "screen" : "screens"}`,
 		alternates && `${alternates} ${alternates === 1 ? "variation" : "variations"}`,
-		components && `${components} ${components === 1 ? "component" : "components"}`];
+		components && `${components} ${components === 1 ? "component" : "components"}`,
+	];
+
 	const updated = parts.some(Boolean) ? `Updated ${parts.filter(Boolean).join(" and ")}.` : "";
+
 	return [context.length ? `Wrote ${context.join(" and ")}.` : "", updated].filter(Boolean).join(" ");
 }

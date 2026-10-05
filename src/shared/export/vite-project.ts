@@ -30,18 +30,20 @@ export type ViteProject = {
 };
 
 /** Versions the canvas runtime is built with, so the export renders the same way. */
-const VERSIONS: Record<string, string> = {
-	react: "^19.3.0",
-	"react-dom": "^19.3.0",
-	"class-variance-authority": "^0.7.1",
-	clsx: "^2.1.1",
-	"lucide-react": "^1.52.0",
-	"radix-ui": "^1.6.7",
-	"tailwind-merge": "^3.7.0",
-	"tw-animate-css": "^1.4.0",
-};
+const VERSIONS = new Map(
+	Object.entries({
+		react: "^19.3.0",
+		"react-dom": "^19.3.0",
+		"class-variance-authority": "^0.7.1",
+		clsx: "^2.1.1",
+		"lucide-react": "^1.52.0",
+		"radix-ui": "^1.6.7",
+		"tailwind-merge": "^3.7.0",
+		"tw-animate-css": "^1.4.0",
+	}),
+);
 
-const DEV_VERSIONS: Record<string, string> = {
+const DEV_VERSIONS = {
 	"@tailwindcss/vite": "^4.3.3",
 	"@types/react": "^19.3.0",
 	"@types/react-dom": "^19.3.0",
@@ -70,6 +72,7 @@ export function packageName(name: string) {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "");
+
 	return kebab || "rabisco-design";
 }
 
@@ -77,6 +80,7 @@ export function packageName(name: string) {
 function packageOf(specifier: string) {
 	if (specifier.startsWith(".") || specifier.startsWith("@/")) return null;
 	const parts = specifier.split("/");
+
 	return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
@@ -87,6 +91,7 @@ function screenIdentifier(id: string) {
 		.filter(Boolean)
 		.map((word) => word[0]!.toUpperCase() + word.slice(1))
 		.join("");
+
 	return `${/^[0-9]/.test(pascal) ? "_" : ""}${pascal}Screen`;
 }
 
@@ -94,11 +99,15 @@ const screenId = (file: string) => file.replace(/^screens\//, "").replace(/\.tsx
 
 /** Screen files to export: canvas order first, then screens without a frame, sorted. */
 function exportedScreens(input: ViteProjectInput) {
-	const keep = (file: string) => isScreenFile(file) && Object.hasOwn(input.files, file) && (input.includeAlternates || !isAlternate(file));
+	const keep = (file: string) =>
+		isScreenFile(file) && Object.hasOwn(input.files, file) && (input.includeAlternates || !isAlternate(file));
+
 	const onCanvas = input.frames.map((frame) => frame.file).filter(keep);
+
 	const rest = Object.keys(input.files)
 		.filter((file) => keep(file) && !onCanvas.includes(file))
 		.sort();
+
 	return [...new Set([...onCanvas, ...rest])];
 }
 
@@ -108,39 +117,54 @@ function exportedScreens(input: ViteProjectInput) {
  */
 function uiModules(sources: string[], uiSources: Record<string, string>, missing: Set<string>) {
 	const found = new Set<string>();
+
 	const visit = (source: string) => {
 		for (const specifier of importSpecifiers(source)) {
 			if (!specifier.startsWith(UI_PREFIX)) continue;
 			const name = specifier.slice(UI_PREFIX.length);
+
 			if (found.has(name)) continue;
+
 			if (uiSources[name] === undefined) {
 				missing.add(specifier);
 				continue;
 			}
+
 			found.add(name);
 			visit(uiSources[name]!);
 		}
 	};
+
 	sources.forEach(visit);
+
 	return [...found].sort();
 }
 
 /** `package.json` with the packages the exported files import, plus the build tools. */
 function packageJson(name: string, sources: string[], warnings: string[]) {
 	const dependencies: Record<string, string> = {};
+
 	const add = (pkg: string) => {
-		if (VERSIONS[pkg]) dependencies[pkg] = VERSIONS[pkg]!;
+		const version = VERSIONS.get(pkg);
+
+		if (version) dependencies[pkg] = version;
 		else warnings.push(`"${pkg}" isn't a package the canvas provides, so it was left out of package.json`);
 	};
+
 	// main.tsx, lib/utils.ts and index.css always need these
 	for (const pkg of ["react", "react-dom", "clsx", "tailwind-merge", "tw-animate-css"]) add(pkg);
+
 	for (const source of sources) {
 		for (const specifier of importSpecifiers(source)) {
 			const pkg = packageOf(specifier);
+
 			if (pkg && !dependencies[pkg]) add(pkg);
 		}
 	}
-	const sorted = (record: Record<string, string>) => Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+
+	const sorted = (record: Record<string, string>) =>
+		Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+
 	const json = {
 		name: packageName(name),
 		private: true,
@@ -150,6 +174,7 @@ function packageJson(name: string, sources: string[], warnings: string[]) {
 		dependencies: sorted(dependencies),
 		devDependencies: DEV_VERSIONS,
 	};
+
 	return `${JSON.stringify(json, null, "\t")}\n`;
 }
 
@@ -186,7 +211,8 @@ const TSCONFIG = `${JSON.stringify(
 	"\t",
 )}\n`;
 
-const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const escapeHtml = (text: string) =>
+	text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const indexHtml = (name: string) => `<!doctype html>
 <html lang="en">
@@ -216,7 +242,12 @@ createRoot(document.getElementById("root")!).render(
 
 /** `App.tsx`: the screens in canvas order, and a hash router that follows `data-link-to` like play mode (decision 0007). */
 function appTsx(screens: string[]) {
-	const entries = screens.map((file) => ({ id: screenId(file), name: screenIdentifier(screenId(file)), from: `./${file.replace(/\.tsx$/, "")}` }));
+	const entries = screens.map((file) => ({
+		id: screenId(file),
+		name: screenIdentifier(screenId(file)),
+		from: `./${file.replace(/\.tsx$/, "")}`,
+	}));
+
 	return `import { useEffect, useState } from "react";
 ${entries.map((e) => `import ${e.name} from "${e.from}";`).join("\n")}
 
@@ -280,6 +311,7 @@ export default function App() {
 /** Tailwind, the canvas's screen theme, and the DESIGN.md tokens that override it. */
 function indexCss(files: ProjectFiles) {
 	const tokens = files["DESIGN.md"] ? tokensToCss(parseDesignTokens(files["DESIGN.md"])) : "";
+
 	return [
 		`@import "tailwindcss";\n@import "tw-animate-css";\n`,
 		`/* The screen theme: shadcn tokens with neutral colors */\n${SCREEN_THEME_CSS.trim()}\n`,
@@ -292,6 +324,7 @@ function indexCss(files: ProjectFiles) {
 
 function readme(name: string, screens: string[], components: string[], ui: string[]) {
 	const list = (items: string[]) => items.map((item) => `- \`${item}\``).join("\n");
+
 	return `# ${name}
 
 Exported from Rabisco. The screens and components are the same code the canvas renders.
@@ -331,17 +364,23 @@ const GITIGNORE = "node_modules\ndist\n*.local\n";
 export function viteProject(input: ViteProjectInput): ViteProject {
 	const { files, name } = input;
 	const screens = exportedScreens(input);
+
 	if (!screens.length) throw new Error("There are no screens to export");
 	const warnings: string[] = [];
 
 	// Screens, every component, and any other project file they import
-	const projectFiles = [...screens, ...Object.keys(files).filter(isComponentFile).sort()];
-	for (const file of [...projectFiles]) for (const dep of localDependencies(files, file)) if (!projectFiles.includes(dep)) projectFiles.push(dep);
+	const roots = [...screens, ...Object.keys(files).filter(isComponentFile).sort()];
+	const included = new Set(roots);
+
+	for (const file of roots) for (const dep of localDependencies(files, file)) included.add(dep);
+	const projectFiles = [...included];
 	const projectSources = projectFiles.map((file) => files[file]!);
 
 	const missingUi = new Set<string>();
 	const ui = uiModules(projectSources, input.uiSources, missingUi);
-	for (const specifier of missingUi) warnings.push(`"${specifier}" isn't a component the canvas provides, so it was left out`);
+
+	for (const specifier of missingUi)
+		warnings.push(`"${specifier}" isn't a component the canvas provides, so it was left out`);
 	const uiSources = ui.map((module) => input.uiSources[module]!);
 
 	const out: ExportFile[] = [
@@ -359,6 +398,9 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 		...ui.map((module) => ({ path: `src/components/ui/${module}.tsx`, content: input.uiSources[module]! })),
 		...projectFiles.map((file) => ({ path: `src/${file}`, content: files[file]! })),
 	];
-	for (const context of ["PRODUCT.md", "DESIGN.md"]) if (files[context]?.trim()) out.push({ path: context, content: files[context]! });
+
+	for (const context of ["PRODUCT.md", "DESIGN.md"])
+		if (files[context]?.trim()) out.push({ path: context, content: files[context]! });
+
 	return { files: out, warnings };
 }

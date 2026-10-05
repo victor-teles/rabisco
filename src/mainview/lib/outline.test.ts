@@ -54,9 +54,17 @@ describe("buildOutline", () => {
 	});
 
 	test("resolves component references", () => {
-		expect(main.children[1]!.component).toEqual({ source: "project", path: "components/stat-card.tsx", exportName: "StatCard" });
+		expect(main.children[1]!.component).toEqual({
+			source: "project",
+			path: "components/stat-card.tsx",
+			exportName: "StatCard",
+		});
 		expect(main.children[3]!.component).toEqual({ source: "ui", module: "button", exportName: "Button" });
-		expect(main.children[3]!.children[0]!.component).toEqual({ source: "other", module: "lucide-react", exportName: "Star" });
+		expect(main.children[3]!.children[0]!.component).toEqual({
+			source: "other",
+			module: "lucide-react",
+			exportName: "Star",
+		});
 		expect(main.component).toBeNull();
 	});
 
@@ -73,7 +81,15 @@ describe("visibleRows and findNode", () => {
 	test("collapsed nodes hide their descendants", () => {
 		expect(visibleRows(outline.roots, new Set()).length).toBe(8);
 		expect(labels(visibleRows(outline.roots, new Set(["0"])))).toEqual(["main"]);
-		expect(labels(visibleRows(outline.roots, new Set(["0.3"])))).toEqual(["main", "h1", "StatCard", "li", "Button", "Fragment", "span"]);
+		expect(labels(visibleRows(outline.roots, new Set(["0.3"])))).toEqual([
+			"main",
+			"h1",
+			"StatCard",
+			"li",
+			"Button",
+			"Fragment",
+			"span",
+		]);
 	});
 
 	test("finds a node with its ancestors", () => {

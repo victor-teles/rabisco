@@ -16,7 +16,8 @@ export default {
 		fmt: "bunx oxfmt",
 		"fmt:check": "bunx oxfmt --check",
 		// Compile/Tailwind benchmark in the real runtimes (Cottontail + WKWebView), see bench/compile/README.md
-		"bench:compile": "cd bench/compile && bun prepare.ts && bunx --bun vite build && hutch electrobun prepare && hutch electrobun dev",
+		"bench:compile":
+			"cd bench/compile && bun prepare.ts && bunx --bun vite build && hutch electrobun prepare && hutch electrobun dev",
 		build: "hutch electrobun prepare && hutch run ui:build && hutch electrobun build --env=stable",
 		"build:canary": "hutch electrobun prepare && hutch run ui:build && hutch electrobun build --env=canary",
 	},

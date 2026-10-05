@@ -109,5 +109,6 @@ export function TabBar({ active = 0 }: { active?: number }) {
 /** Compiles like the renderer does; throws on a syntax error. */
 export function compiles(source: string) {
 	transform(source, { transforms: ["typescript", "jsx", "imports"], jsxRuntime: "automatic", production: true });
+
 	return true;
 }

@@ -30,31 +30,39 @@ Done. <b>bold</b> </rabisco-file> stays out.`;
 function run(chunks: string[]) {
 	const parser = createTextProtocolParser();
 	const events: GenerationEvent[] = [];
+
 	for (const chunk of chunks) events.push(...parser.push(chunk));
 	events.push(...parser.end());
+
 	return { events: merge(events), parser };
 }
 
 function merge(events: GenerationEvent[]) {
 	const out: GenerationEvent[] = [];
+
 	for (const event of events) {
 		const last = out[out.length - 1];
+
 		if (event.type === "message.delta" && last?.type === "message.delta") last.text += event.text;
-		else if (event.type === "file.delta" && last?.type === "file.delta" && last.path === event.path) last.text += event.text;
+		else if (event.type === "file.delta" && last?.type === "file.delta" && last.path === event.path)
+			last.text += event.text;
 		else out.push({ ...event });
 	}
+
 	return out;
 }
 
 function randomSplits(text: string, seed: number) {
 	let s = seed;
-	const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+	const rand = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 	const chunks: string[] = [];
-	for (let i = 0; i < text.length; ) {
+
+	for (let i = 0; i < text.length;) {
 		const size = 1 + Math.floor(rand() * 24);
 		chunks.push(text.slice(i, i + size));
 		i += size;
 	}
+
 	return chunks;
 }
 
@@ -64,7 +72,12 @@ describe("text protocol parser", () => {
 	test("parses files, deletes and text", () => {
 		expect(whole.events).toEqual([
 			{ type: "message.delta", text: "Here is your welcome screen < 3 screens.\n\n" },
-			{ type: "file.start", path: "screens/welcome.tsx", kind: "screen", screen: { name: "Welcome & hi", device: "mobile" } },
+			{
+				type: "file.start",
+				path: "screens/welcome.tsx",
+				kind: "screen",
+				screen: { name: "Welcome & hi", device: "mobile" },
+			},
 			{ type: "file.delta", path: "screens/welcome.tsx", text: WELCOME },
 			{ type: "file.end", path: "screens/welcome.tsx", content: WELCOME },
 			{ type: "message.delta", text: "\n" },
@@ -99,10 +112,13 @@ describe("text protocol parser", () => {
 		for (const chunks of [[...SAMPLE], randomSplits(SAMPLE, 7)]) {
 			const parser = createTextProtocolParser();
 			const sent = new Map<string, string>();
+
 			for (const chunk of chunks) {
 				for (const event of parser.push(chunk)) {
 					if (event.type === "file.delta") sent.set(event.path, (sent.get(event.path) ?? "") + event.text);
+
 					if (event.type === "file.end") expect(sent.get(event.path)).toBe(event.content);
+
 					// The fence never leaks into a delta
 					if (event.type === "file.delta") expect(event.text).not.toContain("```");
 				}
@@ -114,14 +130,21 @@ describe("text protocol parser", () => {
 		const parser = createTextProtocolParser();
 		expect(parser.push("Hi <rabis")).toEqual([{ type: "message.delta", text: "Hi " }]);
 		expect(parser.push("co-fi")).toEqual([]);
-		expect(parser.push("le path=\"screens/a.tsx\"")).toEqual([]);
-		expect(parser.push(">x")[0]).toEqual({ type: "file.start", path: "screens/a.tsx", kind: "screen", screen: { name: "A" } });
+		expect(parser.push('le path="screens/a.tsx"')).toEqual([]);
+		expect(parser.push(">x")[0]).toEqual({
+			type: "file.start",
+			path: "screens/a.tsx",
+			kind: "screen",
+			screen: { name: "A" },
+		});
 	});
 
 	test("close tag split mid-name is held back from the delta", () => {
 		const parser = createTextProtocolParser();
 		const events = [...parser.push('<rabisco-file path="screens/a.tsx">\nabc</rabisco-fi')];
-		expect(events.filter((e) => e.type === "file.delta")).toEqual([{ type: "file.delta", path: "screens/a.tsx", text: "abc" }]);
+		expect(events.filter((e) => e.type === "file.delta")).toEqual([
+			{ type: "file.delta", path: "screens/a.tsx", text: "abc" },
+		]);
 		expect(parser.push("le>")).toEqual([
 			{ type: "file.delta", path: "screens/a.tsx", text: "\n" },
 			{ type: "file.end", path: "screens/a.tsx", content: "abc\n" },
@@ -129,7 +152,10 @@ describe("text protocol parser", () => {
 	});
 
 	test("infers kind from the path and the path from the name", () => {
-		const { events } = run(['<rabisco-file path="./components/tab-bar.tsx">x</rabisco-file><rabisco-file kind="screen" name="Order History">y</rabisco-file>']);
+		const { events } = run([
+			'<rabisco-file path="./components/tab-bar.tsx">x</rabisco-file><rabisco-file kind="screen" name="Order History">y</rabisco-file>',
+		]);
+
 		expect(events.filter((e) => e.type === "file.start")).toEqual([
 			{ type: "file.start", path: "components/tab-bar.tsx", kind: "component" },
 			{ type: "file.start", path: "screens/order-history.tsx", kind: "screen", screen: { name: "Order History" } },
@@ -152,11 +178,13 @@ describe("text protocol parser", () => {
 	});
 
 	test("similar tags are plain text", () => {
-		expect(run(["<rabisco-files> <rabisco-fileX>"]).events).toEqual([{ type: "message.delta", text: "<rabisco-files> <rabisco-fileX>" }]);
+		expect(run(["<rabisco-files> <rabisco-fileX>"]).events).toEqual([
+			{ type: "message.delta", text: "<rabisco-files> <rabisco-fileX>" },
+		]);
 	});
 
 	test("a file without a path is swallowed", () => {
-		const { events, parser } = run(["<rabisco-file kind=\"component\">x</rabisco-file>ok"]);
+		const { events, parser } = run(['<rabisco-file kind="component">x</rabisco-file>ok']);
 		expect(events).toEqual([
 			{ type: "status", label: "Ignored a file without a path" },
 			{ type: "message.delta", text: "ok" },
@@ -166,24 +194,38 @@ describe("text protocol parser", () => {
 
 	test("fence without a language and CRLF", () => {
 		const { events } = run(['<rabisco-file path="screens/a.tsx">\r\n```\r\nline\r\n```\r\n</rabisco-file>']);
-		expect(events.find((e) => e.type === "file.end")).toEqual({ type: "file.end", path: "screens/a.tsx", content: "line\n" });
+		expect(events.find((e) => e.type === "file.end")).toEqual({
+			type: "file.end",
+			path: "screens/a.tsx",
+			content: "line\n",
+		});
 	});
 
 	test("parses single-quoted and unquoted attributes", () => {
-		expect(parseAttributes(` path='screens/a.tsx' kind=screen NAME="A &quot;b&quot;"`)).toEqual({ path: "screens/a.tsx", kind: "screen", name: 'A "b"' });
+		expect(parseAttributes(` path='screens/a.tsx' kind=screen NAME="A &quot;b&quot;"`)).toEqual({
+			path: "screens/a.tsx",
+			kind: "screen",
+			name: 'A "b"',
+		});
 	});
 
 	test("context files: kind from the attribute or the .md path", () => {
 		const parser = createTextProtocolParser();
+
 		const events = [
 			...parser.push('<rabisco-file path="DESIGN.md" kind="context">\n# Design\n\n- primary: #fff\n</rabisco-file>'),
 			...parser.push('<rabisco-file path="PRODUCT.md">\n# Product\n</rabisco-file>'),
 			...parser.end(),
 		];
+
 		expect(events.filter((e) => e.type === "file.start")).toEqual([
 			{ type: "file.start", path: "DESIGN.md", kind: "context" },
 			{ type: "file.start", path: "PRODUCT.md", kind: "context" },
 		]);
-		expect(events.find((e) => e.type === "file.end")).toEqual({ type: "file.end", path: "DESIGN.md", content: "# Design\n\n- primary: #fff\n" });
+		expect(events.find((e) => e.type === "file.end")).toEqual({
+			type: "file.end",
+			path: "DESIGN.md",
+			content: "# Design\n\n- primary: #fff\n",
+		});
 	});
 });

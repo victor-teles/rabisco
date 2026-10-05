@@ -21,7 +21,7 @@ The shell of the app, with a mock generator.
 
 ## Phase 1: React screens and project files 🚧
 
-*Principles: Screens are React · Context is a file · UX first*
+_Principles: Screens are React · Context is a file · UX first_
 
 Replace HTML strings with TSX components, and store each project as a folder of readable files.
 
@@ -66,7 +66,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 2: AI providers 🚧
 
-*Principle: Bring your own AI*
+_Principle: Bring your own AI_
 
 **Provider layer** (`src/bun/ai/`)
 
@@ -98,7 +98,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 3: PRODUCT.md and DESIGN.md 🚧
 
-*Principle: Context is a file*
+_Principle: Context is a file_
 
 - ✅ Read both files from the project folder, and include them in every generation prompt, repairs included. An untouched template (headings and `<!-- -->` guidance only) counts as no context (`src/shared/context/body.ts`)
 - ✅ Context panel in the editor (Context tab, ⇧C): view and edit both files with undo, token swatches and invalid token lines for DESIGN.md, and "Followed DESIGN.md · PRODUCT.md" under each reply
@@ -116,7 +116,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 4: Variations 🚧
 
-*Principle: Variations, not verdicts*
+_Principle: Variations, not verdicts_
 
 - ✅ Choose how many variations to generate (1–4) in the composer, on Home and in the chat. The choice is remembered. With screens selected, prompts edit them and the count is ignored
 - ✅ Variations run as N parallel generations of the same task, and Rabisco names the files `*.alt-N.tsx` as they stream in ([0004](./decisions/0004-alternates-are-files.md), `src/shared/ai/variants.ts`). Components a variation writes get a `-vN` name unless they match the primary's
@@ -134,7 +134,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 5: Components and design system 🚧
 
-*Principle: Component based by default* ([0006](./decisions/0006-components-from-source.md))
+_Principle: Component based by default_ ([0006](./decisions/0006-components-from-source.md))
 
 - ✅ Components panel (Components tab, ⌥2): project components plus the shadcn library (`src/shared/components/library.ts`), searchable, with live previews and a variant grid. Previews render lazily in sandboxed frames
 - ✅ Drag a component onto a screen: the frame hit-tests the drop point (`data-rabisco-loc`), and Rabisco inserts the component into the nearest container element, with its import, as one undo step
@@ -152,7 +152,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 6: Direct editing 🚧
 
-*Principle: UX first (direct manipulation over prompts)*
+_Principle: UX first (direct manipulation over prompts)_
 
 - ✅ Select an element inside a screen: click inside the selected screen (or ⌘-click any screen), hover outlines, Esc walks up to the parent. Every element, component usages included, carries `data-rabisco-loc`; the runtime reads it from React's fiber tree, so a `<StatCard>` maps back to its JSX even when it doesn't pass props on (`src/mainview/runtime/inspect.ts`). The selection is the Structure selection in the Code tab
 - ✅ Edit text inline: double-click (or Enter) edits the text inside the frame, with the screen's own fonts; Enter keeps it as one undo step, Esc cancels (`runtime/text-edit.ts`)
@@ -169,7 +169,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 7: Export and handoff 🚧
 
-*Principle: Screens are React (what you see is what you ship)*
+_Principle: Screens are React (what you see is what you ship)_
 
 - ✅ Copy a screen or a component as code: Export → "Copy code" copies the open component or the first selected screen verbatim. "Copy with components" adds the project files it imports, transitively, each headed by its path (`src/shared/export/code.ts`, `src/mainview/views/editor/export/code-export.ts`)
 - ✅ Export a runnable Vite + React + Tailwind project (screens, components, theme): screens and components copied verbatim to `src/screens` and `src/components`, only the shadcn components they use (and their ui imports), the canvas theme with DESIGN.md tokens, `package.json` from the packages the files import, and an `App.tsx` hash router that follows `data-link-to` from the first frame. Alternates are left out (`src/shared/export/vite-project.ts`)
@@ -185,7 +185,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
 
 ## Phase 8: Finish and verify ⬜
 
-*Principle: UX first (no dead ends)*
+_Principle: UX first (no dead ends)_
 
 Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase collects every "Remaining" item above into one pass, and fixes the bugs the code audit found.
 
@@ -225,7 +225,7 @@ Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase c
 
 ## Phase 9: Performance and snappy interactions ⬜
 
-*Principle: UX first (fast feedback)*
+_Principle: UX first (fast feedback)_
 
 Today every wheel, pan and drag event re-renders the whole editor, every screen is a live iframe with its own 1.2 MB runtime, and each keystroke writes to disk and remounts the screen. Fix the hot paths first, so the editing work in the next phases starts from a fast base.
 
@@ -264,7 +264,7 @@ Today every wheel, pan and drag event re-renders the whole editor, every screen 
 
 ## Phase 10: Drop with a placement preview ⬜
 
-*Principle: UX first (direct manipulation over prompts)*
+_Principle: UX first (direct manipulation over prompts)_
 
 Dragging a component only highlights the whole screen, and the drop always appends to the nearest container. You should see exactly where it lands before you let go.
 
@@ -282,7 +282,7 @@ Dragging a component only highlights the whole screen, and the drop always appen
 
 ## Phase 11: Context menus ⬜
 
-*Principle: UX first (keyboard first, mouse friendly)*
+_Principle: UX first (keyboard first, mouse friendly)_
 
 There's no right-click anywhere. Every action exists already, but it's spread across the inspector, shortcuts and the title bar.
 
@@ -301,7 +301,7 @@ There's no right-click anywhere. Every action exists already, but it's spread ac
 
 ## Phase 12: Element editing ⬜
 
-*Principle: Direct manipulation over prompts*
+_Principle: Direct manipulation over prompts_
 
 You can select one element, edit its text and change its classes. Next: move, resize and restructure it on the canvas.
 
@@ -333,7 +333,7 @@ You can select one element, edit its text and change its classes. Next: move, re
 
 ## Phase 13: UX polish ⬜
 
-*Principle: UX first*
+_Principle: UX first_
 
 Findings from the audit of the current editor, by impact.
 

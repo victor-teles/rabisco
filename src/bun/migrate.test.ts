@@ -33,7 +33,9 @@ describe("legacy HTML → TSX", () => {
 		expect(source).toContain("export default function Welcome()");
 		const html = renderScreen(source);
 		expect(html).toContain(".btn{color:#fff}");
-		expect(html).toContain('<div class="relative h-full overflow-hidden"><div class="btn">Get "started" `now` ${x} </script></div><p>Café</p></div>');
+		expect(html).toContain(
+			'<div class="relative h-full overflow-hidden"><div class="btn">Get "started" `now` ${x} </script></div><p>Café</p></div>',
+		);
 	});
 });
 
@@ -43,6 +45,7 @@ describe("migrateLegacyProjects", () => {
 		const legacyDir = join(root, "userData/projects");
 		const projectsDir = join(root, "Documents/Rabisco");
 		mkdirSync(legacyDir, { recursive: true });
+
 		const legacy = {
 			id: "abc",
 			name: "Fitness App",
@@ -53,20 +56,21 @@ describe("migrateLegacyProjects", () => {
 				{ id: "1", name: "Welcome", device: "mobile", x: 0, y: 0, width: 390, height: 844, html: LEGACY_HTML },
 				{ id: "2", name: "Welcome", device: "mobile", x: 510, y: 40, width: 390, height: 844, html: "<p>2</p>" },
 			],
-			messages: [
-				{ id: "m1", role: "user", content: "hi", createdAt: "2026-01-01T00:00:00.000Z" },
-				{ broken: true },
-			],
+			messages: [{ id: "m1", role: "user", content: "hi", createdAt: "2026-01-01T00:00:00.000Z" }, { broken: true }],
 		};
+
 		writeFileSync(join(legacyDir, "abc.json"), JSON.stringify(legacy));
 		writeFileSync(join(legacyDir, "bad.json"), "{not json");
+
 		return { legacyDir, projectsDir };
 	}
 
 	test("migrates each project into a folder, once", () => {
 		const { legacyDir, projectsDir } = setup();
 		const migrated = migrateLegacyProjects(legacyDir, projectsDir);
-		expect(migrated).toEqual([{ path: join(projectsDir, "fitness-app.rabisco"), openedAt: "2026-02-01T00:00:00.000Z" }]);
+		expect(migrated).toEqual([
+			{ path: join(projectsDir, "fitness-app.rabisco"), openedAt: "2026-02-01T00:00:00.000Z" },
+		]);
 
 		const project = loadProject(migrated[0]!.path);
 		expect(project.canvas.name).toBe("Fitness App");

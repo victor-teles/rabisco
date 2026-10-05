@@ -19,7 +19,14 @@ describe("context templates", () => {
 	test("sections", () => {
 		expect(PRODUCT_TEMPLATE.startsWith("# Product\n")).toBe(true);
 		expect(headings(PRODUCT_TEMPLATE)).toEqual(["Audience", "Voice", "Constraints"]);
-		expect(headings(DESIGN_TEMPLATE)).toEqual(["Visual direction", "Tokens", "Typography", "Layout & spacing", "Components", "Do / Don't"]);
+		expect(headings(DESIGN_TEMPLATE)).toEqual([
+			"Visual direction",
+			"Tokens",
+			"Typography",
+			"Layout & spacing",
+			"Components",
+			"Do / Don't",
+		]);
 	});
 
 	test("keyed by file name", () => {

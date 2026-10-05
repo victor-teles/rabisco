@@ -8,23 +8,34 @@
  * `@anthropic-ai/claude-agent-sdk`).
  */
 
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { GenerationEvent, Provider } from "../../../shared/ai/contract";
 import type { ProviderConfig } from "../../../shared/ai/settings";
 import { abortedEvent, classifyFailure, failureEvent, failureHealth, notAuthenticated, whenAborted } from "../cli";
+import { parseJson } from "../../json";
 import { systemPrompt, userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 import { CLAUDE_DENIED_TOOLS, CLAUDE_FILE_TOOLS, CLAUDE_MODELS, createClaudeMapper } from "./claude-code";
 
-export type SdkProviderOptions = { config: ProviderConfig; getApiKey: () => Promise<string | null>; stagingRoot?: string };
+export type SdkProviderOptions = {
+	config: ProviderConfig;
+	getApiKey: () => Promise<string | null>;
+	stagingRoot?: string;
+};
 
 /** The slice of the SDK this provider uses. Injectable for tests. */
 export type AgentSdk = {
-	query(params: { prompt: string; options?: Record<string, unknown> }): AsyncIterable<unknown> & { close?(): void };
+	query(params: { prompt: string; options?: Options }): AsyncIterable<object> & { close?(): void };
 };
 
-const loadSdk = async (): Promise<AgentSdk> => (await import("@anthropic-ai/claude-agent-sdk")) as unknown as AgentSdk;
+const loadSdk = (): Promise<AgentSdk> => import("@anthropic-ai/claude-agent-sdk");
 
-export function createClaudeAgentSdkProvider(options: SdkProviderOptions & { sdk?: () => Promise<AgentSdk> }): Provider {
+const loadFailure = (cause: unknown) =>
+	`The Claude Agent SDK couldn't be loaded: ${cause instanceof Error ? cause.message : String(cause)}`;
+
+export function createClaudeAgentSdkProvider(
+	options: SdkProviderOptions & { sdk?: () => Promise<AgentSdk> },
+): Provider {
 	const load = options.sdk ?? loadSdk;
 
 	return {
@@ -34,12 +45,19 @@ export function createClaudeAgentSdkProvider(options: SdkProviderOptions & { sdk
 		capabilities: { streaming: true, images: false, agentic: true, maxContextTokens: 200_000 },
 
 		async health() {
-			if (!(await options.getApiKey())) return failureHealth(notAuthenticated("claude-agent-sdk", "No Anthropic API key."));
+			if (!(await options.getApiKey()))
+				return failureHealth(notAuthenticated("claude-agent-sdk", "No Anthropic API key."));
+
 			try {
 				await load();
+
 				return { ok: true };
 			} catch (error) {
-				return { ok: false, code: "not_installed", message: `The Claude Agent SDK couldn't be loaded: ${(error as Error).message}` };
+				return {
+					ok: false,
+					code: "not_installed",
+					message: loadFailure(error),
+				};
 			}
 		},
 
@@ -49,36 +67,56 @@ export function createClaudeAgentSdkProvider(options: SdkProviderOptions & { sdk
 
 		async *generate(request, signal) {
 			const apiKey = await options.getApiKey();
+
 			if (!apiKey) {
 				yield failureEvent(notAuthenticated("claude-agent-sdk", "No Anthropic API key."));
+
 				return;
 			}
+
 			let sdk: AgentSdk;
+
 			try {
 				sdk = await load();
 			} catch (error) {
-				yield { type: "error", code: "not_installed", message: `The Claude Agent SDK couldn't be loaded: ${(error as Error).message}`, retryable: false };
+				yield {
+					type: "error",
+					code: "not_installed",
+					message: loadFailure(error),
+					retryable: false,
+				};
+
 				return;
 			}
+
 			const model = request.model || options.config.defaultModel;
-			yield* runInStaging(request, signal, (dir, agentSignal) => runSdkAgent(sdk, dir, agentSignal, {
-				prompt: userPrompt(request, "agent"),
-				options: {
-					cwd: dir,
-					...(model ? { model } : {}),
-					systemPrompt: systemPrompt(request, "agent"),
-					tools: CLAUDE_FILE_TOOLS,
-					allowedTools: CLAUDE_FILE_TOOLS,
-					disallowedTools: CLAUDE_DENIED_TOOLS,
-					permissionMode: "acceptEdits",
-					// Isolation: no user/project settings, CLAUDE.md or MCP servers; the system prompt carries the instructions
-					settingSources: [],
-					mcpServers: {},
-					persistSession: false,
-					env: { ...process.env, ANTHROPIC_API_KEY: apiKey, CLAUDE_AGENT_SDK_CLIENT_APP: "rabisco" },
-					...(options.config.binPath ? { pathToClaudeCodeExecutable: options.config.binPath } : {}),
+			const binPath = options.config.binPath;
+			yield* runInStaging(
+				request,
+				signal,
+				(dir, agentSignal) => {
+					const agentOptions: Options = {
+						cwd: dir,
+						systemPrompt: systemPrompt(request, "agent"),
+						tools: CLAUDE_FILE_TOOLS,
+						allowedTools: CLAUDE_FILE_TOOLS,
+						disallowedTools: CLAUDE_DENIED_TOOLS,
+						permissionMode: "acceptEdits",
+						// Isolation: no user/project settings, CLAUDE.md or MCP servers; the system prompt carries the instructions
+						settingSources: [],
+						mcpServers: {},
+						persistSession: false,
+						env: { ...process.env, ANTHROPIC_API_KEY: apiKey, CLAUDE_AGENT_SDK_CLIENT_APP: "rabisco" },
+					};
+
+					if (model) agentOptions.model = model;
+
+					if (binPath) agentOptions.pathToClaudeCodeExecutable = binPath;
+
+					return runSdkAgent(sdk, dir, agentSignal, { prompt: userPrompt(request, "agent"), options: agentOptions });
 				},
-			}), { root: options.stagingRoot });
+				{ root: options.stagingRoot },
+			);
 		},
 	};
 }
@@ -87,7 +125,7 @@ async function* runSdkAgent(
 	sdk: AgentSdk,
 	dir: string,
 	signal: AbortSignal,
-	params: { prompt: string; options: Record<string, unknown> },
+	params: { prompt: string; options: Options },
 ): AsyncGenerator<GenerationEvent> {
 	const abortController = new AbortController();
 	const onAbort = () => abortController.abort();
@@ -96,28 +134,47 @@ async function* runSdkAgent(
 	const map = createClaudeMapper(dir, "claude-agent-sdk");
 	const aborted = whenAborted(signal);
 	let query: ReturnType<AgentSdk["query"]> | null = null;
+
 	try {
-		query = sdk.query({ prompt: params.prompt, options: { ...params.options, abortController, stderr: (data: string) => stderr.push(data) } });
+		query = sdk.query({
+			prompt: params.prompt,
+			options: { ...params.options, abortController, stderr: (data: string) => stderr.push(data) },
+		});
 		const iterator = query[Symbol.asyncIterator]();
+
 		while (true) {
 			const next = await Promise.race([iterator.next(), aborted]);
+
 			if (next === "aborted") {
 				yield abortedEvent();
+
 				return;
 			}
+
 			if (next.done) break;
-			for (const event of map(next.value)) {
+
+			// SDK messages are the CLI's stream-json lines, decoded: read them back as JSON for the shared mapper
+			for (const event of map(parseJson(JSON.stringify(next.value)))) {
 				yield event;
+
 				if (event.type === "done" || event.type === "error") return;
 			}
 		}
+
 		yield signal.aborted ? abortedEvent() : { type: "done" };
 	} catch (error) {
 		if (signal.aborted) yield abortedEvent();
-		else yield failureEvent(classifyFailure("claude-agent-sdk", [(error as Error)?.message ?? String(error), ...stderr].join("\n")));
+		else
+			yield failureEvent(
+				classifyFailure(
+					"claude-agent-sdk",
+					[error instanceof Error ? error.message : String(error), ...stderr].join("\n"),
+				),
+			);
 	} finally {
 		signal.removeEventListener("abort", onAbort);
 		abortController.abort();
+
 		try {
 			query?.close?.();
 		} catch {}

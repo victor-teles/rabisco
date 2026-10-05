@@ -47,7 +47,11 @@ describe("modules", () => {
 	});
 
 	test("exported names", () => {
-		expect([...exportedNames(`export function A() {}\nexport const B = 1;\nexport { C, D as E };\nexport default function F() {}`)]).toEqual(["A", "B", "F", "C", "E"]);
+		expect([
+			...exportedNames(
+				`export function A() {}\nexport const B = 1;\nexport { C, D as E };\nexport default function F() {}`,
+			),
+		]).toEqual(["A", "B", "F", "C", "E"]);
 	});
 });
 
@@ -59,11 +63,20 @@ export function A({ items }: { items: string[] }) {
 	const [count] = useState(0);
 	return <div onClick={() => setTab("b")}>{items.map((item, i) => <Star key={i} title={item + tab + count + LIMIT} />)}{Math.max(1, 2)}</div>;
 }`;
+
 	const file = parseFile(source);
 	const div = findElement(file, source.indexOf("<div"))!;
 
 	test("free identifiers skip what the subtree declares", () => {
-		expect(freeIdentifiers(file, div).map((f) => `${f.name}${f.tag ? "<>" : ""}`)).toEqual(["setTab", "items", "Star<>", "tab", "count", "LIMIT", "Math"]);
+		expect(freeIdentifiers(file, div).map((f) => `${f.name}${f.tag ? "<>" : ""}`)).toEqual([
+			"setTab",
+			"items",
+			"Star<>",
+			"tab",
+			"count",
+			"LIMIT",
+			"Math",
+		]);
 	});
 
 	test("types from annotations and useState", () => {

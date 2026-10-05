@@ -1,5 +1,11 @@
 import type { Provider, ProviderHealth, ProviderModel } from "../../../shared/ai/contract";
-import { PROVIDER_TYPES, parseModelRef, type ModelRef, type ProviderConfig, type ProviderStatus } from "../../../shared/ai/settings";
+import {
+	PROVIDER_TYPES,
+	parseModelRef,
+	type ModelRef,
+	type ProviderConfig,
+	type ProviderStatus,
+} from "../../../shared/ai/settings";
 import type { SpawnFn } from "../cli";
 import { apiKeyAccount, type SecretStore } from "../keychain";
 import { createAnthropicProvider } from "./anthropic";
@@ -23,6 +29,7 @@ export function createProvider(config: ProviderConfig, deps: ProviderDeps): Prov
 	const getApiKey = () => deps.secrets.get(apiKeyAccount(config.id));
 	const api = { config, getApiKey, fetch: deps.fetch };
 	const cli = { config, spawn: deps.spawn, stagingRoot: deps.stagingRoot };
+
 	switch (config.type) {
 		case "anthropic":
 			return createAnthropicProvider(api);
@@ -45,7 +52,13 @@ export function createProvider(config: ProviderConfig, deps: ProviderDeps): Prov
 }
 
 /** The development-only mock, listed when the registry is created with `includeMock`. */
-export const MOCK_CONFIG: ProviderConfig = { id: "mock", type: "mock", label: "Mock (dev)", enabled: true, defaultModel: "mock" };
+export const MOCK_CONFIG: ProviderConfig = {
+	id: "mock",
+	type: "mock",
+	label: "Mock (dev)",
+	enabled: true,
+	defaultModel: "mock",
+};
 
 export type RegistryOptions = ProviderDeps & {
 	includeMock?: boolean;
@@ -61,9 +74,11 @@ class TimeoutError extends Error {}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
 	const timeout = new Promise<never>((_, reject) => {
 		timer = setTimeout(() => reject(new TimeoutError(`No answer after ${Math.round(ms / 1000)} s`)), ms);
 	});
+
 	return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
@@ -83,8 +98,12 @@ export class ProviderRegistry {
 
 	/** Replaces the configured providers (from the settings store). Instances of unchanged configs are kept. */
 	setConfigs(configs: ProviderConfig[]) {
-		this.#configs = this.#options.includeMock && !configs.some((c) => c.id === MOCK_CONFIG.id) ? [...configs, MOCK_CONFIG] : [...configs];
+		this.#configs =
+			this.#options.includeMock && !configs.some((c) => c.id === MOCK_CONFIG.id)
+				? [...configs, MOCK_CONFIG]
+				: [...configs];
 		const ids = new Set(this.#configs.map((c) => c.id));
+
 		for (const id of this.#cache.keys()) if (!ids.has(id)) this.#cache.delete(id);
 	}
 
@@ -99,12 +118,15 @@ export class ProviderRegistry {
 	/** The provider for `id`, enabled or not; `null` when no such provider is configured. */
 	get(id: string): Provider | null {
 		const config = this.config(id);
+
 		if (!config) return null;
 		const key = JSON.stringify(config);
 		const cached = this.#cache.get(id);
+
 		if (cached?.key === key) return cached.provider;
 		const provider = (this.#options.create ?? createProvider)(config, this.#options);
 		this.#cache.set(id, { key, provider });
+
 		return provider;
 	}
 
@@ -117,26 +139,32 @@ export class ProviderRegistry {
 		const parsed = parseModelRef(ref);
 		const providerId = parsed?.providerId ?? ref;
 		const config = this.config(providerId);
+
 		if (!config?.enabled) return null;
 		const model = parsed?.model ?? config.defaultModel;
+
 		if (!model) return null;
 		const provider = this.get(providerId);
+
 		return provider ? { provider, config, model } : null;
 	}
 
 	/** Health and models of every provider, checked in parallel. Never throws; disabled providers aren't checked. */
 	async statuses(): Promise<ProviderStatus[]> {
 		const timeoutMs = this.#options.statusTimeoutMs ?? 8000;
+
 		return Promise.all(
 			this.#configs.map(async (config): Promise<ProviderStatus> => {
 				let provider: Provider | null = null;
 				let health: ProviderStatus["health"] = null;
 				let models: ProviderModel[] = [];
+
 				try {
 					provider = this.get(config.id);
 				} catch (error) {
 					health = { ok: false, code: "unknown", message: messageOf(error) };
 				}
+
 				if (provider && config.enabled) {
 					const p = provider;
 					[health, models] = await Promise.all([
@@ -144,13 +172,19 @@ export class ProviderRegistry {
 						withTimeout(p.listModels(), timeoutMs).catch((): ProviderModel[] => []),
 					]);
 				}
+
 				return {
 					id: config.id,
 					type: config.type,
 					kind: provider?.kind ?? PROVIDER_TYPES.find((t) => t.type === config.type)?.kind ?? "api",
 					label: config.label,
 					enabled: config.enabled,
-					capabilities: provider?.capabilities ?? { streaming: false, images: false, agentic: false, maxContextTokens: 0 },
+					capabilities: provider?.capabilities ?? {
+						streaming: false,
+						images: false,
+						agentic: false,
+						maxContextTokens: 0,
+					},
 					health,
 					models: Array.isArray(models) ? models : [],
 				};
@@ -159,9 +193,16 @@ export class ProviderRegistry {
 	}
 }
 
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
-function healthFailure(error: unknown): ProviderHealth {
-	if (error instanceof TimeoutError) return { ok: false, code: "network", message: error.message, fix: "Check that the provider is running and reachable." };
-	return { ok: false, code: "unknown", message: messageOf(error) };
+function healthFailure(cause: unknown): ProviderHealth {
+	if (cause instanceof TimeoutError)
+		return {
+			ok: false,
+			code: "network",
+			message: cause.message,
+			fix: "Check that the provider is running and reachable.",
+		};
+
+	return { ok: false, code: "unknown", message: messageOf(cause) };
 }

@@ -13,8 +13,11 @@ import { cachedComponentApi } from "../../shared/components/usages";
 
 /** `@/components/ui/*` modules the frame runtime provides; the list lives with the prompt */
 const UI_NAMES = Object.keys(UI_MODULES);
+
 const UI_SET = new Set(UI_NAMES);
+
 const UI_PREFIX = "@/components/ui/";
+
 /** Inserted by Sucrase's automatic JSX runtime, never written by the provider */
 const JSX_RUNTIME = "react/jsx-runtime";
 
@@ -22,19 +25,38 @@ export type FileKindOf = "screen" | "component" | null;
 
 export function fileKindOf(path: string): FileKindOf {
 	if (path.startsWith("screens/")) return "screen";
+
 	if (path.startsWith("components/")) return "component";
+
 	return null;
 }
 
 /** Problem with the path itself, or `null` when the path is writable. `alternates` are names Rabisco assigned, which pass. */
 export function checkPath(path: string, alternates?: ReadonlySet<string>): string | null {
 	if (FILE_RULES.paths.screen.test(path) || FILE_RULES.paths.component.test(path)) return null;
+
 	if (/^screens\/[a-z0-9-]+\.alt-\d+\.tsx$/.test(path)) {
 		if (alternates?.has(path)) return null;
+
 		return `Alternates are named by Rabisco. Write the screen as ${path.replace(/\.alt-\d+\.tsx$/, ".tsx")} instead.`;
 	}
-	const rule = "Files must be screens/<kebab-name>.tsx or components/<kebab-name>.tsx (lowercase letters, digits and dashes).";
+
+	const rule =
+		"Files must be screens/<kebab-name>.tsx or components/<kebab-name>.tsx (lowercase letters, digits and dashes).";
+
 	return FILE_RULES.paths.context.test(path) ? `${path} is the user's file: follow it, don't write it. ${rule}` : rule;
+}
+
+/** Sucrase syntax errors carry the `{line, column}` they point at. */
+function isSourceLocation(value: unknown): value is { line: number } {
+	return typeof value === "object" && value !== null && "line" in value && typeof value.line === "number";
+}
+
+/** The line a compile error points at, when it says. */
+function errorLine(cause: unknown): number | undefined {
+	if (!(cause instanceof Error) || !("loc" in cause)) return undefined;
+
+	return isSourceLocation(cause.loc) ? cause.loc.line : undefined;
 }
 
 /** Same Sucrase options as the webview (src/mainview/lib/render/compile.ts). */
@@ -46,13 +68,14 @@ function compile(path: string, content: string): { code: string } | { message: s
 			production: true,
 			filePath: path,
 		});
+
 		return { code };
 	} catch (error) {
-		const loc = (error as { loc?: { line: number } }).loc;
-		const message = String((error as Error)?.message ?? error)
+		const message = (error instanceof Error ? error.message : String(error))
 			.replace(/^Error transforming [^:]*: /, "")
 			.replace(/\s*\(\d+:\d+\)$/, "");
-		return { message, line: loc?.line };
+
+		return { message, line: errorLine(error) };
 	}
 }
 
@@ -61,15 +84,18 @@ function importLine(source: string, specifier: string) {
 	const lines = source.split("\n");
 	const quoted = [`"${specifier}"`, `'${specifier}'`];
 	const index = lines.findIndex((line) => quoted.some((q) => line.includes(q)));
+
 	return index === -1 ? undefined : index + 1;
 }
 
 /** Value imports as written in the source (type-only imports are erased, so they don't count). */
 function sourceImports(source: string) {
 	const found = new Set<string>();
+
 	for (const match of source.matchAll(/^\s*(import|export)\s+(type\s+)?(?:[^'";]*?\s+from\s+)?(['"])([^'"\n]+)\3/gm)) {
 		if (!match[2]) found.add(match[4]!);
 	}
+
 	return found;
 }
 
@@ -80,23 +106,34 @@ type ImportContext = {
 
 function checkImport(from: string, specifier: string, ctx: ImportContext): string | null {
 	if (specifier === JSX_RUNTIME) return null;
+
 	if (isRelative(specifier)) {
 		const kind = fileKindOf(from);
 		const resolved = joinPath(from, specifier);
 		const target = resolved.endsWith(".tsx") ? resolved : `${resolved}.tsx`;
+
 		if (!FILE_RULES.paths.component.test(target)) {
 			const hint = kind === "component" ? `"./<name>"` : `"../components/<name>"`;
+
 			return `"${specifier}" is not a project component. Import components with ${hint}.`;
 		}
-		if (!ctx.components.has(target)) return `"${specifier}" imports ${target}, which doesn't exist. Write it too, or use another component.`;
+
+		if (!ctx.components.has(target))
+			return `"${specifier}" imports ${target}, which doesn't exist. Write it too, or use another component.`;
+
 		return null;
 	}
+
 	if (specifier.startsWith(UI_PREFIX)) {
 		const name = specifier.slice(UI_PREFIX.length);
+
 		if (UI_SET.has(name)) return null;
+
 		return `"${specifier}" is not available. UI components: ${UI_NAMES.join(", ")}.`;
 	}
+
 	if (FILE_RULES.imports.some((rule) => rule.test(specifier))) return null;
+
 	return `"${specifier}" can't be imported. Allowed: react, lucide-react, @/components/ui/*, @/lib/utils and project components.`;
 }
 
@@ -105,20 +142,34 @@ const LITERAL_DEFAULT = /\bexports\.\s*default\s*=\s*(?:["'`\d[{]|null\b|true\b|
 
 function checkExports(path: string, kind: "screen" | "component", code: string, source: string): Problem[] {
 	const hasDefault = /\bexports\.\s*default\s*=/.test(code);
-	const named = [...code.matchAll(/\bexports\.\s*([A-Za-z_$][\w$]*)\s*=/g)].map((m) => m[1]).filter((n) => n !== "default");
+
+	const named = [...code.matchAll(/\bexports\.\s*([A-Za-z_$][\w$]*)\s*=/g)].flatMap((m) =>
+		m[1] && m[1] !== "default" ? [m[1]] : [],
+	);
+
 	const reexports = /_createNamedExportFrom\(|_createStarExport\(/.test(code);
+
 	const line = (pattern: RegExp) => {
 		const index = source.split("\n").findIndex((l) => pattern.test(l));
+
 		return index === -1 ? undefined : index + 1;
 	};
+
 	if (kind === "screen") {
-		if (!hasDefault) return [{ path, message: "A screen must default-export its React component: export default function Name() { … }" }];
+		if (!hasDefault)
+			return [
+				{ path, message: "A screen must default-export its React component: export default function Name() { … }" },
+			];
+
 		if (LITERAL_DEFAULT.test(code)) {
 			return [{ path, message: "The default export must be a React component.", line: line(/export\s+default/) }];
 		}
+
 		return [];
 	}
+
 	const problems: Problem[] = [];
+
 	if (hasDefault) {
 		problems.push({
 			path,
@@ -126,9 +177,14 @@ function checkExports(path: string, kind: "screen" | "component", code: string, 
 			line: line(/export\s+default|as\s+default/),
 		});
 	}
+
 	if (!named.length && !reexports) {
-		problems.push({ path, message: "A component file must have at least one named export: export function Name() { … }" });
+		problems.push({
+			path,
+			message: "A component file must have at least one named export: export function Name() { … }",
+		});
 	}
+
 	return problems;
 }
 
@@ -143,26 +199,43 @@ const componentNames = (path: string, source: string | undefined) =>
  */
 function checkDuplicateExports(written: ProjectFile[], project: ProjectFiles, gone: Set<string>): Problem[] {
 	const after = new Map<string, string>();
-	for (const [path, content] of Object.entries(project)) if (FILE_RULES.paths.component.test(path) && !gone.has(path)) after.set(path, content);
+
+	for (const [path, content] of Object.entries(project))
+		if (FILE_RULES.paths.component.test(path) && !gone.has(path)) after.set(path, content);
 	const components = written.filter((file) => FILE_RULES.paths.component.test(file.path));
+
 	for (const file of components) if (after.has(file.path)) after.set(file.path, file.content);
 
 	const problems: Problem[] = [];
+
 	for (const { path, content } of components) {
 		const before = new Set(componentNames(path, project[path]));
+
 		for (const name of componentNames(path, content)) {
 			if (before.has(name)) continue;
-			const other = [...after].find(([otherPath, source]) => otherPath !== path && componentNames(otherPath, source).includes(name))?.[0];
+
+			const other = [...after].find(
+				([otherPath, source]) => otherPath !== path && componentNames(otherPath, source).includes(name),
+			)?.[0];
+
 			if (!other) continue;
-			const index = content.split("\n").findIndex((line) => new RegExp(`\\b(?:function|const|let|class)\\s+${name}\\b`).test(line));
-			problems.push({
+
+			const index = content
+				.split("\n")
+				.findIndex((line) => new RegExp(`\\b(?:function|const|let|class)\\s+${name}\\b`).test(line));
+
+			const problem: Problem = {
 				path,
 				message: `${name} is already exported by ${other}. Import it from "../components/${other.slice("components/".length, -".tsx".length)}" instead of re-creating it; if it needs to change, edit ${other} (add an optional prop or variant) and update the files that use it.`,
-				...(index === -1 ? {} : { line: index + 1 }),
-			});
+			};
+
+			if (index !== -1) problem.line = index + 1;
+			problems.push(problem);
 		}
+
 		after.set(path, content);
 	}
+
 	return problems;
 }
 
@@ -177,14 +250,20 @@ export type ValidateOptions = {
 function validateContextTask(written: ProjectFile[], deleted: string[], target: string): Problem[] {
 	const problems: Problem[] = [];
 	const only = `This task writes only ${target}. Don't write or delete anything else.`;
+
 	for (const path of deleted) problems.push({ path, message: only });
+
 	for (const { path, content } of written) {
 		if (path !== target || !FILE_RULES.paths.context.test(path)) problems.push({ path, message: only });
 		else if (!content.trim()) problems.push({ path, message: `${path} is empty. Write the complete file.` });
 		else if (content.length > FILE_RULES.maxFileLength) {
-			problems.push({ path, message: `${path} is ${content.length} characters; the limit is ${FILE_RULES.maxFileLength}. Make it shorter.` });
+			problems.push({
+				path,
+				message: `${path} is ${content.length} characters; the limit is ${FILE_RULES.maxFileLength}. Make it shorter.`,
+			});
 		}
 	}
+
 	return problems;
 }
 
@@ -192,22 +271,33 @@ function validateContextTask(written: ProjectFile[], deleted: string[], target: 
  * Validates provider writes against the project they apply to. `deleted` are
  * paths the same generation removes. Returns every problem found, in file order.
  */
-export function validateFiles(written: ProjectFile[], project: ProjectFiles, deleted: string[] = [], options: ValidateOptions = {}): Problem[] {
+export function validateFiles(
+	written: ProjectFile[],
+	project: ProjectFiles,
+	deleted: string[] = [],
+	options: ValidateOptions = {},
+): Problem[] {
 	if (options.contextTarget) return validateContextTask(written, deleted, options.contextTarget);
 	const problems: Problem[] = [];
 	const gone = new Set(deleted);
 	const components = new Set<string>();
-	for (const path of Object.keys(project)) if (FILE_RULES.paths.component.test(path) && !gone.has(path)) components.add(path);
+
+	for (const path of Object.keys(project))
+		if (FILE_RULES.paths.component.test(path) && !gone.has(path)) components.add(path);
+
 	for (const file of written) if (FILE_RULES.paths.component.test(file.path)) components.add(file.path);
 
 	for (const path of deleted) {
 		const problem = checkPath(path, options.alternates);
+
 		if (problem) problems.push({ path, message: `Can't delete ${path}. ${problem}` });
 	}
 
 	for (const { path, content } of written) {
 		const pathProblem = checkPath(path, options.alternates);
+
 		if (pathProblem) problems.push({ path, message: pathProblem });
+
 		if (FILE_RULES.paths.context.test(path)) continue; // Markdown: nothing to compile
 
 		if (content.length > FILE_RULES.maxFileLength) {
@@ -219,20 +309,26 @@ export function validateFiles(written: ProjectFile[], project: ProjectFiles, del
 		}
 
 		const compiled = compile(path, content);
+
 		if (!("code" in compiled)) {
 			problems.push({ path, message: `Syntax error: ${compiled.message}`, line: compiled.line });
 			continue;
 		}
 
 		const specifiers = new Set([...sourceImports(content), ...extractRequires(compiled.code)]);
+
 		for (const specifier of specifiers) {
 			const message = checkImport(path, specifier, { components });
+
 			if (message) problems.push({ path, message, line: importLine(content, specifier) });
 		}
 
 		const kind = fileKindOf(path);
+
 		if (kind) problems.push(...checkExports(path, kind, compiled.code, content));
 	}
+
 	problems.push(...checkDuplicateExports(written, project, gone));
+
 	return problems;
 }

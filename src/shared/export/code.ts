@@ -26,17 +26,21 @@ export function localDependencies(files: ProjectFiles, path: string): string[] {
 	const exists = (file: string) => Object.hasOwn(files, file);
 	const seen = new Set([path]);
 	const order: string[] = [];
+
 	const visit = (from: string) => {
 		for (const specifier of importSpecifiers(files[from] ?? "")) {
 			if (!isRelative(specifier)) continue;
 			const resolved = resolveRelative(from, specifier, exists);
+
 			if (!resolved || seen.has(resolved)) continue;
 			seen.add(resolved);
 			order.push(resolved);
 			visit(resolved);
 		}
 	};
+
 	visit(path);
+
 	return order;
 }
 
@@ -46,7 +50,10 @@ export function localDependencies(files: ProjectFiles, path: string): string[] {
  */
 export function codeToCopy(files: ProjectFiles, path: string, withComponents = false): string {
 	const source = files[path];
+
 	if (source === undefined) throw new Error(`${path} doesn't exist`);
+
 	if (!withComponents) return source;
+
 	return [path, ...localDependencies(files, path)].map((file) => `// ${file}\n${files[file]!.trimEnd()}\n`).join("\n");
 }

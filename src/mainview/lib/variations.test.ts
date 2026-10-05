@@ -4,7 +4,15 @@ import type { Frame } from "../../shared/types";
 import { MAX_VARIATIONS } from "../../shared/variations";
 import { clampVariations, draftLayout, mixNote, mixPrompt, variantLabel, variationName, varyNote } from "./variations";
 
-const frame = (file: string, name: string): Frame => ({ file, name, device: "mobile", x: 0, y: 0, width: 390, height: 844 });
+const frame = (file: string, name: string): Frame => ({
+	file,
+	name,
+	device: "mobile",
+	x: 0,
+	y: 0,
+	width: 390,
+	height: 844,
+});
 
 describe("variations (editor)", () => {
 	test("clamps counts", () => {
@@ -30,12 +38,20 @@ describe("variations (editor)", () => {
 		expect(varyNote("Welcome", " bolder ")).toBe("Vary Welcome: bolder");
 		expect(varyNote("Welcome", "")).toBe("Vary Welcome");
 		expect(mixNote("header", "Welcome (alt 1)", "Welcome")).toBe("Mix: header from Welcome (alt 1) into Welcome");
-		expect(mixPrompt("header", "Welcome (alt 1)", "screens/welcome.alt-1.tsx")).toContain("Take the header from Welcome (alt 1)");
+		expect(mixPrompt("header", "Welcome (alt 1)", "screens/welcome.alt-1.tsx")).toContain(
+			"Take the header from Welcome (alt 1)",
+		);
 	});
 
 	test("draft layout: one column per screen, variations below", () => {
 		const { width, height } = FRAME_SIZE.mobile;
-		const frames = draftLayout(["screens/b.alt-1.tsx", "screens/a.tsx", "screens/b.tsx", "screens/a.alt-2.tsx"], {}, "mobile");
+
+		const frames = draftLayout(
+			["screens/b.alt-1.tsx", "screens/a.tsx", "screens/b.tsx", "screens/a.alt-2.tsx"],
+			{},
+			"mobile",
+		);
+
 		const at = (file: string) => frames.find((f) => f.file === file)!;
 		expect(at("screens/b.tsx")).toMatchObject({ x: 0, y: 0 });
 		expect(at("screens/b.alt-1.tsx")).toMatchObject({ x: 0, y: height + FRAME_GAP });

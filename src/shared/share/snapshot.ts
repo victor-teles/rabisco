@@ -4,6 +4,8 @@
  * compiles and Tailwind builds (decisions 0001 and 0002); the main process only
  * checks its shape and serves it.
  */
+import { isFiniteNumber, isNumber, isString } from "../guards";
+import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
 import { isScreenFile, screenNameFromPath } from "../project";
 import type { Device, Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
@@ -46,42 +48,62 @@ export type ShareStatus = {
 	screens: number;
 };
 
-const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const isString = (value: unknown): value is string => typeof value === "string";
+function assertModule(path: string, module: Json | undefined): asserts module is ShareModule {
+	if (!isJsonObject(module) || !isString(module.source)) throw new Error(`Snapshot module ${path} has no source`);
 
-function assertModule(path: string, module: unknown): asserts module is ShareModule {
-	if (!isObject(module) || !isString(module.source)) throw new Error(`Snapshot module ${path} has no source`);
 	if (isString(module.code)) return;
 	const error = module.error;
-	if (!isObject(error) || !isString(error.message) || typeof error.line !== "number") throw new Error(`Snapshot module ${path} has neither code nor an error`);
+
+	if (!isJsonObject(error) || !isString(error.message) || !isNumber(error.line))
+		throw new Error(`Snapshot module ${path} has neither code nor an error`);
+}
+
+function assertScreens(screens: readonly Json[], modules: JsonObject): asserts screens is ShareScreen[] {
+	for (const screen of screens) {
+		if (
+			!isJsonObject(screen) ||
+			!isString(screen.file) ||
+			!isString(screen.name) ||
+			(screen.device !== "mobile" && screen.device !== "desktop") ||
+			!isFiniteNumber(screen.width) ||
+			!isFiniteNumber(screen.height)
+		)
+			throw new Error("Snapshot has an invalid screen");
+
+		if (!Object.hasOwn(modules, screen.file)) throw new Error(`Snapshot has no module for ${screen.file}`);
+	}
+}
+
+function assertShareSnapshot(value: Json | undefined): asserts value is ShareSnapshot {
+	if (!isJsonObject(value) || value.version !== 1) throw new Error("Not a share snapshot");
+	const { name, createdAt, start, screens, modules, css, theme } = value;
+
+	if (!isString(name) || !isString(createdAt) || !isString(start) || !isString(css) || !isString(theme))
+		throw new Error("Snapshot is missing fields");
+
+	if (!isJsonArray(screens) || screens.length === 0) throw new Error("There are no screens to share yet");
+
+	if (!isJsonObject(modules)) throw new Error("Snapshot has no modules");
+	assertScreens(screens, modules);
+
+	for (const [path, module] of Object.entries(modules)) assertModule(path, module);
+
+	if (!screens.some((screen) => screen.file === start))
+		throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);
 }
 
 /** Checks a snapshot that came over RPC. Returns it, or throws with what is wrong. */
-export function assertSnapshot(value: unknown): ShareSnapshot {
-	if (!isObject(value) || value.version !== 1) throw new Error("Not a share snapshot");
-	const { name, createdAt, start, screens, modules, css, theme } = value;
-	if (!isString(name) || !isString(createdAt) || !isString(start) || !isString(css) || !isString(theme)) throw new Error("Snapshot is missing fields");
-	if (!Array.isArray(screens) || screens.length === 0) throw new Error("There are no screens to share yet");
-	if (!isObject(modules)) throw new Error("Snapshot has no modules");
-	for (const screen of screens as unknown[]) {
-		const ok =
-			isObject(screen) &&
-			isString(screen.file) &&
-			isString(screen.name) &&
-			(screen.device === "mobile" || screen.device === "desktop") &&
-			Number.isFinite(screen.width) &&
-			Number.isFinite(screen.height);
-		if (!ok) throw new Error("Snapshot has an invalid screen");
-		if (!Object.hasOwn(modules, screen.file as string)) throw new Error(`Snapshot has no module for ${screen.file}`);
-	}
-	for (const [path, module] of Object.entries(modules)) assertModule(path, module);
-	if (!(screens as ShareScreen[]).some((screen) => screen.file === start)) throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);
-	return value as ShareSnapshot;
+export function assertSnapshot(value: Json | undefined): ShareSnapshot {
+	assertShareSnapshot(value);
+
+	return value;
 }
 
 /** Screens a viewer shows: the canvas's screens in canvas order, without the alternates (picked designs only). */
 export function shareScreens(frames: Frame[], files: ProjectFiles): ShareScreen[] {
-	return frames
-		.filter((frame) => isScreenFile(frame.file) && !isAlternate(frame.file) && files[frame.file] !== undefined)
-		.map(({ file, name, device, width, height }) => ({ file, name: name || screenNameFromPath(file), device, width, height }));
+	return frames.flatMap(({ file, name, device, width, height }) =>
+		isScreenFile(file) && !isAlternate(file) && files[file] !== undefined
+			? [{ file, name: name || screenNameFromPath(file), device, width, height }]
+			: [],
+	);
 }

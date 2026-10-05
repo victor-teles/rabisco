@@ -22,6 +22,7 @@ export function StatCard({ label, value }: { label: string; value: string }) {
 `;
 
 const project = { "components/stat-card.tsx": COMPONENT };
+
 const one = (path: string, content: string, files: Record<string, string> = project, deleted?: string[]) =>
 	validateFiles([{ path, content }], files, deleted);
 
@@ -45,11 +46,21 @@ describe("validateFiles", () => {
 			expect(one("screens/welcome.tsx", SCREEN)).toEqual([]);
 			expect(one("components/stat-card.tsx", COMPONENT, {})).toEqual([]);
 		});
-		for (const path of ["screens/Welcome.tsx", "src/welcome.tsx", "screens/a/b.tsx", "../welcome.tsx", "screens/welcome.ts", "PRODUCT.md", "screens/-a.tsx"]) {
+
+		for (const path of [
+			"screens/Welcome.tsx",
+			"src/welcome.tsx",
+			"screens/a/b.tsx",
+			"../welcome.tsx",
+			"screens/welcome.ts",
+			"PRODUCT.md",
+			"screens/-a.tsx",
+		]) {
 			test(`rejects ${path}`, () => {
 				expect(one(path, SCREEN).some((p) => p.path === path && /screens\/<kebab-name>/.test(p.message))).toBe(true);
 			});
 		}
+
 		test("rejects alternates with a hint", () => {
 			const [problem] = one("screens/welcome.alt-1.tsx", SCREEN);
 			expect(problem!.message).toContain("screens/welcome.tsx");
@@ -77,15 +88,26 @@ describe("validateFiles", () => {
 	describe("imports", () => {
 		const screen = (imports: string) => `${imports}\nexport default function A() { return <div /> }\n`;
 		test("allows react, lucide, utils and existing ui modules", () => {
-			const src = screen(`import { useState } from "react";\nimport { Bell } from "lucide-react";\nimport { cn } from "@/lib/utils";\nimport { Dialog } from "@/components/ui/dialog";\nvoid [useState, Bell, cn, Dialog];`);
+			const src = screen(
+				`import { useState } from "react";\nimport { Bell } from "lucide-react";\nimport { cn } from "@/lib/utils";\nimport { Dialog } from "@/components/ui/dialog";\nvoid [useState, Bell, cn, Dialog];`,
+			);
+
 			expect(one("screens/a.tsx", src)).toEqual([]);
 		});
 		test("rejects unknown packages with the line", () => {
-			const problems = one("screens/a.tsx", screen(`import React from "react";\nimport { motion } from "framer-motion";\nvoid [React, motion];`));
+			const problems = one(
+				"screens/a.tsx",
+				screen(`import React from "react";\nimport { motion } from "framer-motion";\nvoid [React, motion];`),
+			);
+
 			expect(problems).toEqual([{ path: "screens/a.tsx", message: expect.stringContaining("framer-motion"), line: 2 }]);
 		});
 		test("rejects ui modules the runtime doesn't have", () => {
-			const problems = one("screens/a.tsx", screen(`import { Calendar } from "@/components/ui/calendar";\nvoid Calendar;`));
+			const problems = one(
+				"screens/a.tsx",
+				screen(`import { Calendar } from "@/components/ui/calendar";\nvoid Calendar;`),
+			);
+
 			expect(problems).toHaveLength(1);
 			expect(problems[0]!.message).toContain("not available");
 		});
@@ -93,15 +115,23 @@ describe("validateFiles", () => {
 			expect(one("screens/a.tsx", screen(`import { x } from "lodash";`))).toHaveLength(1);
 		});
 		test("ignores type-only imports", () => {
-			expect(one("screens/a.tsx", screen(`import type { Foo } from "some-types";\nlet f: Foo | null = null; void f;`))).toEqual([]);
+			expect(
+				one("screens/a.tsx", screen(`import type { Foo } from "some-types";\nlet f: Foo | null = null; void f;`)),
+			).toEqual([]);
 		});
 		test("screens import components via ../components", () => {
-			expect(one("screens/a.tsx", screen(`import { StatCard } from "../components/stat-card";\nvoid StatCard;`))).toEqual([]);
+			expect(
+				one("screens/a.tsx", screen(`import { StatCard } from "../components/stat-card";\nvoid StatCard;`)),
+			).toEqual([]);
 			expect(one("screens/a.tsx", screen(`import { StatCard } from "./stat-card";\nvoid StatCard;`))).toHaveLength(1);
-			expect(one("screens/a.tsx", screen(`import B from "./b";\nvoid B;`), { ...project, "screens/b.tsx": "" })).toHaveLength(1);
+			expect(
+				one("screens/a.tsx", screen(`import B from "./b";\nvoid B;`), { ...project, "screens/b.tsx": "" }),
+			).toHaveLength(1);
 		});
 		test("components import each other via ./x (or ../components/x)", () => {
-			const src = (spec: string) => `import { StatCard } from "${spec}";\nexport function Row() { return <StatCard label="" value="" /> }\n`;
+			const src = (spec: string) =>
+				`import { StatCard } from "${spec}";\nexport function Row() { return <StatCard label="" value="" /> }\n`;
+
 			expect(one("components/row.tsx", src("./stat-card"))).toEqual([]);
 			expect(one("components/row.tsx", src("../components/stat-card"))).toEqual([]);
 			expect(one("components/row.tsx", src("./missing"))).toHaveLength(1);
@@ -139,7 +169,9 @@ describe("validateFiles", () => {
 			expect(one("components/a.tsx", `export function A() { return <div /> }\nexport { A as default };`)).toEqual([
 				{ path: "components/a.tsx", message: expect.stringContaining("named exports only"), line: 2 },
 			]);
-			expect(one("components/a.tsx", `export type P = {};\nconst A = 1;`)[0]!.message).toContain("at least one named export");
+			expect(one("components/a.tsx", `export type P = {};\nconst A = 1;`)[0]!.message).toContain(
+				"at least one named export",
+			);
 		});
 	});
 
@@ -160,30 +192,50 @@ describe("validateFiles", () => {
 
 		test("rewriting the same file, moving it, or new names are fine", () => {
 			expect(one("components/stat-card.tsx", copy)).toEqual([]);
-			expect(validateFiles([{ path: "components/metric-card.tsx", content: copy }], project, ["components/stat-card.tsx"])).toEqual([]);
+			expect(
+				validateFiles([{ path: "components/metric-card.tsx", content: copy }], project, ["components/stat-card.tsx"]),
+			).toEqual([]);
 			expect(one("components/metric-card.tsx", copy.replace("StatCard", "MetricCard"))).toEqual([]);
+
 			const moved = [
 				{ path: "components/stat-card.tsx", content: `export function Other() { return null; }\n` },
 				{ path: "components/metric-card.tsx", content: copy },
 			];
+
 			expect(validateFiles(moved, project)).toEqual([]);
 		});
 
 		test("an edit that adds an export another file has is flagged; names it had before are not", () => {
 			const files = { ...project, "components/legacy.tsx": copy };
 			expect(one("components/legacy.tsx", `${copy}export function Extra() { return null; }\n`, files)).toEqual([]);
-			const edited = one("components/tab-bar.tsx", `export function TabBar() { return null; }\n${copy}`, { ...project, "components/tab-bar.tsx": "export function TabBar() { return null; }\n" });
+
+			const edited = one("components/tab-bar.tsx", `export function TabBar() { return null; }\n${copy}`, {
+				...project,
+				"components/tab-bar.tsx": "export function TabBar() { return null; }\n",
+			});
+
 			expect(edited.map((p) => [p.path, p.line])).toEqual([["components/tab-bar.tsx", 2]]);
 		});
 
 		test("of two new files with the same component, the later one is flagged", () => {
-			const problems = validateFiles([{ path: "components/a.tsx", content: copy.replace("StatCard", "Tile") }, { path: "components/b.tsx", content: copy.replace("StatCard", "Tile") }], {});
+			const problems = validateFiles(
+				[
+					{ path: "components/a.tsx", content: copy.replace("StatCard", "Tile") },
+					{ path: "components/b.tsx", content: copy.replace("StatCard", "Tile") },
+				],
+				{},
+			);
+
 			expect(problems.map((p) => p.path)).toEqual(["components/b.tsx"]);
 			expect(problems[0]!.message).toContain('Import it from "../components/a"');
 		});
 
 		test("mock generator output against itself is clean", () => {
-			const files = generateMockScreens({ prompt: "A habit tracker", device: "desktop" }).changes.map((c) => ({ path: c.path, content: c.content! }));
+			const files = generateMockScreens({ prompt: "A habit tracker", device: "desktop" }).changes.map((c) => ({
+				path: c.path,
+				content: c.content!,
+			}));
+
 			expect(validateFiles(files, Object.fromEntries(files.map((f) => [f.path, f.content])))).toEqual([]);
 		});
 	});
@@ -195,7 +247,10 @@ describe("validateFiles", () => {
 		});
 		test("rejects an empty or oversized target", () => {
 			expect(validateFiles([{ path: "DESIGN.md", content: " \n" }], {}, [], opts)[0]!.message).toContain("empty");
-			expect(validateFiles([{ path: "DESIGN.md", content: "x".repeat(FILE_RULES.maxFileLength + 1) }], {}, [], opts)[0]!.message).toContain(String(FILE_RULES.maxFileLength));
+			expect(
+				validateFiles([{ path: "DESIGN.md", content: "x".repeat(FILE_RULES.maxFileLength + 1) }], {}, [], opts)[0]!
+					.message,
+			).toContain(String(FILE_RULES.maxFileLength));
 		});
 		test("rejects every other write and every delete", () => {
 			const problems = validateFiles(
@@ -207,6 +262,7 @@ describe("validateFiles", () => {
 				["components/stat-card.tsx"],
 				opts,
 			);
+
 			expect(problems.map((p) => p.path)).toEqual(["components/stat-card.tsx", "PRODUCT.md", "screens/welcome.tsx"]);
 			expect(problems.every((p) => p.message.includes("only DESIGN.md"))).toBe(true);
 		});

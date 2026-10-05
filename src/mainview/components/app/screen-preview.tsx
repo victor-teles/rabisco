@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { FrameHost, runtimeUrl } from "@/lib/render/frame-host";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
@@ -36,19 +36,17 @@ export function ScreenFrame({
 }) {
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const hostRef = useRef<FrameHost | null>(null);
-	const contentHeightRef = useRef(onContentHeight);
-	contentHeightRef.current = onContentHeight;
-	const navigateRef = useRef(onNavigate);
-	navigateRef.current = onNavigate;
-	const escapeRef = useRef(onEscape);
-	escapeRef.current = onEscape;
+	const contentHeightChanged = useEffectEvent((contentHeight: number) => onContentHeight?.(contentHeight));
+	const navigated = useEffectEvent((to: string) => onNavigate?.(to));
+	const escaped = useEffectEvent(() => onEscape?.());
 
 	useEffect(() => {
 		const host = new FrameHost(frameRef.current!);
-		host.onContentHeight = (contentHeight) => contentHeightRef.current?.(contentHeight);
-		host.onNavigate = (to) => navigateRef.current?.(to);
-		host.onEscape = () => escapeRef.current?.();
+		host.onContentHeight = (contentHeight) => contentHeightChanged(contentHeight);
+		host.onNavigate = (to) => navigated(to);
+		host.onEscape = () => escaped();
 		hostRef.current = host;
+
 		return () => {
 			host.dispose();
 			hostRef.current = null;
@@ -77,8 +75,17 @@ export function ScreenFrame({
 }
 
 /** A screen scaled down to fit inside `maxWidth` × `maxHeight`, for thumbnails. */
-export function ScreenPreview({ source, maxWidth, maxHeight }: { source: ScreenSource; maxWidth: number; maxHeight: number }) {
+export function ScreenPreview({
+	source,
+	maxWidth,
+	maxHeight,
+}: {
+	source: ScreenSource;
+	maxWidth: number;
+	maxHeight: number;
+}) {
 	const scale = Math.min(maxWidth / source.width, maxHeight / source.height);
+
 	return (
 		<div
 			className="overflow-hidden rounded-md bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_4px_12px_-4px_rgb(0_0_0/0.16)]"

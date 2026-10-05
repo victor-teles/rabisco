@@ -1,14 +1,26 @@
 import { afterAll, describe, expect, mock, test } from "bun:test";
-import { heightReporter, LINK_TO_ATTRIBUTE, LOC_ATTRIBUTE, resolveHit, sourceVersion } from "./protocol";
+import {
+	heightReporter,
+	isFrameMessage,
+	LINK_TO_ATTRIBUTE,
+	LOC_ATTRIBUTE,
+	resolveHit,
+	sourceVersion,
+	type HostMessage,
+} from "./protocol";
 import { LOC_ATTRIBUTE as JSX_LOC_ATTRIBUTE } from "../../../shared/jsx";
 
 // The real stylesheet imports Vite `?raw` assets; the host only needs its interface here
 mock.module("./styles", () => ({
 	screenStyles: { ready: true, css: "", subscribe: () => () => {}, whenReady: async () => {}, add: () => false },
 }));
-const scope = globalThis as { window?: unknown };
+
+const scope: { window?: unknown } = globalThis;
+
 const hadWindow = "window" in scope;
+
 scope.window ??= { addEventListener: () => {} };
+
 afterAll(() => {
 	if (!hadWindow) delete scope.window;
 });
@@ -16,10 +28,29 @@ afterAll(() => {
 const { FrameHost } = await import("./frame-host");
 
 const fakeFrame = () => {
-	const posted: unknown[] = [];
-	const frame = { contentWindow: { postMessage: (message: unknown) => posted.push(message) } } as unknown as HTMLIFrameElement;
+	const posted: HostMessage[] = [];
+
+	const postMessage = (message: HostMessage) => {
+		posted.push(message);
+	};
+
+	// SAFETY: FrameHost only calls `postMessage` on the window of these test frames, and only with a HostMessage
+	const contentWindow = { postMessage } as Window;
+	// SAFETY: FrameHost only reads `contentWindow` of the frames in these tests
+	const frame = { contentWindow } as HTMLIFrameElement;
+
 	return { frame, posted };
 };
+
+/** The last message of `type` the host posted. */
+function lastPosted<T extends HostMessage["type"]>(posted: HostMessage[], type: T) {
+	const matching = posted.filter((message): message is Extract<HostMessage, { type: T }> => message.type === type);
+	const last = matching.at(-1);
+
+	if (!last) throw new Error(`No ${type} message was posted`);
+
+	return last;
+}
 
 describe("heightReporter", () => {
 	test("rounds up and reports only changes", () => {
@@ -62,12 +93,14 @@ describe("FrameHost", () => {
 });
 
 const CARD = `export function StatCard({ label }: { label: string }) {\n\treturn <div className="rounded-xl border p-4">{label}</div>;\n}\n`;
+
 const screen = (name: string) =>
 	`import { StatCard } from "../components/stat-card";\nexport default function ${name}() {\n\treturn <main><StatCard label="${name}" /></main>;\n}\n`;
+
 const PROJECT = { "screens/a.tsx": screen("A"), "screens/b.tsx": screen("B"), "components/stat-card.tsx": CARD };
 
-const modulesMessages = (posted: unknown[]) =>
-	posted.filter((m): m is { type: "modules"; modules: Record<string, unknown> } => (m as { type: string }).type === "modules");
+const modulesMessages = (posted: HostMessage[]) =>
+	posted.filter((m): m is Extract<HostMessage, { type: "modules" }> => m.type === "modules");
 
 describe("FrameHost: components", () => {
 	test("editing a component re-sends it to every screen that uses it, and nothing else", () => {
@@ -75,19 +108,29 @@ describe("FrameHost: components", () => {
 		const b = fakeFrame();
 		const hostA = new FrameHost(a.frame);
 		const hostB = new FrameHost(b.frame);
-		for (const [host, entry] of [[hostA, "screens/a.tsx"], [hostB, "screens/b.tsx"]] as const) {
+
+		for (const [host, entry] of [
+			[hostA, "screens/a.tsx"],
+			[hostB, "screens/b.tsx"],
+		] as const) {
 			host.receive({ type: "ready" });
 			host.update(entry, PROJECT);
 		}
-		expect(Object.keys(modulesMessages(a.posted)[0]!.modules).sort()).toEqual(["components/stat-card.tsx", "screens/a.tsx"]);
+
+		expect(Object.keys(modulesMessages(a.posted)[0]!.modules).sort()).toEqual([
+			"components/stat-card.tsx",
+			"screens/a.tsx",
+		]);
 
 		const edited = { ...PROJECT, "components/stat-card.tsx": CARD.replace("p-4", "p-6") };
 		hostA.update("screens/a.tsx", edited);
 		hostB.update("screens/b.tsx", edited);
+
 		for (const { posted } of [a, b]) {
 			const last = modulesMessages(posted).at(-1)!;
 			expect(Object.keys(last.modules)).toEqual(["components/stat-card.tsx"]);
 		}
+
 		// A screen-only edit doesn't touch the other screen's frame
 		const before = b.posted.length;
 		hostB.update("screens/b.tsx", { ...edited, "screens/a.tsx": screen("A2") });
@@ -117,23 +160,32 @@ describe("hit testing", () => {
 		host.receive({ type: "ready" });
 		host.update("screens/a.tsx", PROJECT);
 		const pending = host.hitTest(12, 34);
-		const request = posted.at(-1) as { type: string; id: number; x: number; y: number };
+		const request = lastPosted(posted, "hit-test");
 		expect(request).toMatchObject({ type: "hit-test", x: 12, y: 34 });
 		const version = sourceVersion(PROJECT["screens/a.tsx"]!);
 		const box = { x: 1, y: 2, width: 30, height: 40 };
-		host.receive({ type: "hit", id: request.id, hit: { path: "screens/a.tsx", starts: [95, 40], version, boxes: [box, { x: "1" }] as never } });
-		// Malformed boxes become null, aligned with the starts
+		host.receive({
+			type: "hit",
+			id: request.id,
+			hit: { path: "screens/a.tsx", starts: [95, 40], version, boxes: [box] },
+		});
+		// Missing boxes become null, aligned with the starts
 		expect(await pending).toEqual({ path: "screens/a.tsx", starts: [95, 40], version, boxes: [box, null] });
 
 		const other = host.hitTest(1, 1);
-		const second = posted.at(-1) as { id: number };
+		const second = lastPosted(posted, "hit-test");
 		host.receive({ type: "hit", id: second.id, hit: { path: "components/stat-card.tsx", starts: [3], version } });
 		expect(await other).toBeNull();
-		const unversioned = host.hitTest(1, 1);
-		const third = posted.at(-1) as { id: number };
-		host.receive({ type: "hit", id: third.id, hit: { path: "screens/a.tsx", starts: [3] } as never });
-		expect(await unversioned).toBeNull();
 		host.dispose();
+	});
+
+	test("malformed hits never reach the host", () => {
+		const hit = { path: "screens/a.tsx", starts: [3], version: "v" };
+		expect(isFrameMessage({ type: "hit", id: 1, hit })).toBe(true);
+		expect(isFrameMessage({ type: "hit", id: 1, hit: null })).toBe(true);
+		expect(isFrameMessage({ type: "hit", id: 1, hit: { path: "screens/a.tsx", starts: [3] } })).toBe(false);
+		expect(isFrameMessage({ type: "hit", id: 1, hit: { ...hit, boxes: [null, { x: "1" }] } })).toBe(false);
+		expect(isFrameMessage({ type: "hit", hit })).toBe(false);
 	});
 
 	test("track sends the element once ready, and only current boxes come back", () => {
@@ -148,7 +200,7 @@ describe("hit testing", () => {
 		const box = { x: 0, y: 0, width: 10, height: 10 };
 		host.receive({ type: "boxes", start: 40, version: "v1", boxes: [box] });
 		host.receive({ type: "boxes", start: 40, version: "v0", boxes: [box] });
-		host.receive({ type: "boxes", start: 40, version: "v1", boxes: [{ x: 1 }] as never });
+		expect(isFrameMessage({ type: "boxes", start: 40, version: "v1", boxes: [{ x: 1 }] })).toBe(false);
 		expect(seen).toEqual([{ start: 40, version: "v1", boxes: [box] }]);
 		const count = posted.length;
 		host.track(40, "v1");
@@ -227,7 +279,7 @@ describe("play mode", () => {
 		host.receive({ type: "navigate", to: "screens/b.tsx" });
 		host.receive({ type: "navigate", to: "back" });
 		host.receive({ type: "navigate", to: "  " });
-		host.receive({ type: "navigate", to: 3 } as never);
+		expect(isFrameMessage({ type: "navigate", to: 3 })).toBe(false);
 		host.receive({ type: "escape" });
 		expect(seen).toEqual(["screens/b.tsx", "back", "escape"]);
 		expect(host.status).toBe("ready");
@@ -259,19 +311,24 @@ describe("FrameHost: image export", () => {
 		const host = new FrameHost(frame);
 		host.receive({ type: "ready" });
 		const measuring = host.measure();
-		const measure = posted.find((m) => (m as { type: string }).type === "measure") as { id: number };
+		const measure = lastPosted(posted, "measure");
 		host.receive({ type: "measured", id: measure.id + 100, height: 1 });
 		host.receive({ type: "measured", id: measure.id, height: 1200 });
 		expect(await measuring).toBe(1200);
 
 		const snapshotting = host.snapshot({ type: "image/png", scale: 2 });
-		const request = posted.find((m) => (m as { type: string }).type === "snapshot") as { id: number; raster: unknown };
+		const request = lastPosted(posted, "snapshot");
 		expect(request.raster).toEqual({ type: "image/png", scale: 2 });
-		host.receive({ type: "snapshot", id: request.id, scene, raster: { dataUrl: "data:image/png;base64,AA==", scale: 2 } });
+		host.receive({
+			type: "snapshot",
+			id: request.id,
+			scene,
+			raster: { dataUrl: "data:image/png;base64,AA==", scale: 2 },
+		});
 		expect((await snapshotting).scene.height).toBe(1200);
 
 		const failing = host.snapshot();
-		const second = posted.filter((m) => (m as { type: string }).type === "snapshot").at(-1) as { id: number };
+		const second = lastPosted(posted, "snapshot");
 		host.receive({ type: "snapshot", id: second.id, error: "no canvas" });
 		await expect(failing).rejects.toThrow("no canvas");
 		host.dispose();

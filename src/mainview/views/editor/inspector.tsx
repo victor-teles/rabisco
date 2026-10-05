@@ -38,9 +38,22 @@ import { variationName } from "@/lib/variations";
 import { isScreenFile } from "../../../shared/project";
 import type { Device, Frame, ProjectFiles } from "../../../shared/types";
 import { groupOf, isAlternate } from "../../../shared/variations";
-import { ALIGN_SHORTCUTS, CODE_VIEW_KEYS, COMPARE_KEYS, COMPONENTS_VIEW_KEYS, CONTEXT_VIEW_KEYS, DISTRIBUTE_SHORTCUTS } from "./shortcuts";
+import {
+	ALIGN_SHORTCUTS,
+	CODE_VIEW_KEYS,
+	COMPARE_KEYS,
+	COMPONENTS_VIEW_KEYS,
+	CONTEXT_VIEW_KEYS,
+	DISTRIBUTE_SHORTCUTS,
+} from "./shortcuts";
 
-export type InspectorTab = "design" | "code" | "context" | "components";
+const INSPECTOR_TABS = ["design", "code", "context", "components"] as const;
+
+export type InspectorTab = (typeof INSPECTOR_TABS)[number];
+
+function isInspectorTab(value: string): value is InspectorTab {
+	return INSPECTOR_TABS.some((tab) => tab === value);
+}
 
 export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device">>;
 
@@ -109,7 +122,13 @@ export function Inspector(props: InspectorProps) {
 				tab === "design" ? "w-72" : "w-[440px]",
 			)}
 		>
-			<Tabs value={tab} onValueChange={(value) => onTabChange(value as InspectorTab)} className="gap-0">
+			<Tabs
+				value={tab}
+				onValueChange={(value) => {
+					if (isInspectorTab(value)) onTabChange(value);
+				}}
+				className="gap-0"
+			>
 				<div className="flex h-10 shrink-0 items-center border-b px-2">
 					<TabsList variant="line" className="h-8!">
 						<TabsTrigger value="design" className="px-2 text-[13px]">
@@ -178,6 +197,7 @@ export function Inspector(props: InspectorProps) {
 							) : (
 								frames.map((frame) => {
 									const Icon = frame.device === "mobile" ? Smartphone : Monitor;
+
 									return (
 										<button
 											key={frame.file}
@@ -206,6 +226,7 @@ export function Inspector(props: InspectorProps) {
 function FrameDetails(props: InspectorProps & { frame: Frame }) {
 	const { frame, onChange, onEndStep, onDuplicate, onDelete } = props;
 	const field = useFieldSteps(frame.file);
+
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<Section title="Screen">
@@ -255,7 +276,17 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
  * and mix. Groups follow from file names, so a screen without alternates just
  * offers "Vary this".
  */
-function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, onVary, onMix }: InspectorProps & { frame: Frame }) {
+function Variations({
+	frame,
+	frames,
+	files,
+	busy,
+	onSelect,
+	onPick,
+	onCompare,
+	onVary,
+	onMix,
+}: InspectorProps & { frame: Frame }) {
 	const group = groupOf(frame.file, Object.keys(files));
 	const [preferred] = useVariations();
 	const [direction, setDirection] = useState("");
@@ -269,6 +300,7 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 		onVary(frame.file, direction, count);
 		setDirection("");
 	};
+
 	const mix = () => {
 		if (!mixSource || !section.trim()) return;
 		onMix(frame.file, mixSource, section);
@@ -284,7 +316,12 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 					{group ? (
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button variant="ghost" size="xs" className="-mr-1.5 text-muted-foreground" onClick={() => onCompare(group.base)}>
+								<Button
+									variant="ghost"
+									size="xs"
+									className="-mr-1.5 text-muted-foreground"
+									onClick={() => onCompare(group.base)}
+								>
 									<Columns2 />
 									Compare
 								</Button>
@@ -300,6 +337,7 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 					<div className="flex flex-col gap-0.5">
 						{group.files.map((file) => {
 							const picked = file === group.picked;
+
 							return (
 								<div
 									key={file}
@@ -314,7 +352,10 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 										onClick={() => onSelect(file, false)}
 										className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
 									>
-										<Check className={cn("size-3.5 shrink-0", !picked && "invisible")} aria-label={picked ? "Picked" : undefined} />
+										<Check
+											className={cn("size-3.5 shrink-0", !picked && "invisible")}
+											aria-label={picked ? "Picked" : undefined}
+										/>
 										<span className="truncate">{variationName(file, frames)}</span>
 									</button>
 									{isAlternate(file) ? (
@@ -333,7 +374,9 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 							);
 						})}
 						{group.picked ? null : (
-							<p className="px-2 pt-1 text-xs text-subtle-foreground">The picked version was deleted. Pick one to take its place.</p>
+							<p className="px-2 pt-1 text-xs text-subtle-foreground">
+								The picked version was deleted. Pick one to take its place.
+							</p>
 						)}
 					</div>
 				) : null}
@@ -371,7 +414,12 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 							<span className="text-xs text-subtle-foreground">from</span>
 							<DropdownMenu modal={false}>
 								<DropdownMenuTrigger asChild>
-									<Button variant="ghost" size="xs" className="h-8 min-w-0 flex-1 justify-between gap-1 px-2 text-[13px] text-muted-foreground" aria-label="Variation to take it from">
+									<Button
+										variant="ghost"
+										size="xs"
+										className="h-8 min-w-0 flex-1 justify-between gap-1 px-2 text-[13px] text-muted-foreground"
+										aria-label="Variation to take it from"
+									>
 										<span className="truncate">{variationName(mixSource, frames)}</span>
 										<ChevronDown className="size-3 shrink-0" />
 									</Button>
@@ -397,13 +445,7 @@ function Variations({ frame, frames, files, busy, onSelect, onPick, onCompare, o
 	);
 }
 
-function MultiDetails({
-	count,
-	onAlign,
-	onDistribute,
-	onDuplicate,
-	onDelete,
-}: InspectorProps & { count: number }) {
+function MultiDetails({ count, onAlign, onDistribute, onDuplicate, onDelete }: InspectorProps & { count: number }) {
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<Section title={`${count} screens`}>
@@ -437,7 +479,15 @@ function MultiDetails({
 	);
 }
 
-function SelectionActions({ label, onDuplicate, onDelete }: { label: string; onDuplicate: () => void; onDelete: () => void }) {
+function SelectionActions({
+	label,
+	onDuplicate,
+	onDelete,
+}: {
+	label: string;
+	onDuplicate: () => void;
+	onDelete: () => void;
+}) {
 	return (
 		<div className="flex gap-2">
 			<Tooltip>
@@ -489,7 +539,14 @@ function IconAction({
 			<TooltipTrigger asChild>
 				{/* The span keeps the tooltip working on a disabled button */}
 				<span>
-					<Button variant="ghost" size="icon-xs" className="size-7" aria-label={label} disabled={disabled} onClick={onClick}>
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						className="size-7"
+						aria-label={label}
+						disabled={disabled}
+						onClick={onClick}
+					>
 						<Icon className="size-4" strokeWidth={1.8} />
 					</Button>
 				</span>
@@ -507,6 +564,7 @@ function IconAction({
  */
 function useFieldSteps(file: string) {
 	const burst = useRef(0);
+
 	return {
 		begin: () => {
 			burst.current += 1;
@@ -541,6 +599,7 @@ function NumberField({
 	onBlur: () => void;
 }) {
 	const [draft, setDraft] = useState<string | null>(null);
+
 	return (
 		<label className="flex h-8 items-center gap-2 rounded-md border bg-transparent px-2 text-[13px] focus-within:border-ring">
 			<span className="w-3 text-xs text-subtle-foreground">{label}</span>
@@ -558,7 +617,9 @@ function NumberField({
 				onChange={(event) => {
 					setDraft(event.target.value);
 					const next = Math.round(Number(event.target.value));
-					if (event.target.value.trim() !== "" && Number.isFinite(next) && (min === undefined || next >= min)) onChange(next);
+
+					if (event.target.value.trim() !== "" && Number.isFinite(next) && (min === undefined || next >= min))
+						onChange(next);
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();

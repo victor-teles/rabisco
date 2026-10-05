@@ -1,14 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { createLinuxSecretStore, createMacSecretStore, createMemorySecretStore, createSecretStore, type RunCommand } from "./keychain";
+import {
+	createLinuxSecretStore,
+	createMacSecretStore,
+	createMemorySecretStore,
+	createSecretStore,
+	type RunCommand,
+} from "./keychain";
 
 /** Records commands and answers with `reply`. */
 function recorder(reply: (argv: string[]) => { exitCode: number; stdout?: string; stderr?: string }) {
 	const calls: { argv: string[]; stdin?: string }[] = [];
+
 	const run: RunCommand = async (argv, stdin) => {
 		calls.push({ argv, stdin });
 		const r = reply(argv);
+
 		return { exitCode: r.exitCode, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 	};
+
 	return { calls, run };
 }
 
@@ -19,7 +28,9 @@ describe("macOS secret store", () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.argv).toEqual(["/usr/bin/security", "-i"]);
 		expect(calls[0]!.argv.join(" ")).not.toContain("sk");
-		expect(calls[0]!.stdin).toBe(`add-generic-password -U -s "app.rabisco.desktop" -a "provider:anthropic" -X ${Buffer.from('sk "x"').toString("hex")}\n`);
+		expect(calls[0]!.stdin).toBe(
+			`add-generic-password -U -s "app.rabisco.desktop" -a "provider:anthropic" -X ${Buffer.from('sk "x"').toString("hex")}\n`,
+		);
 	});
 
 	test("get returns null when the item is missing", async () => {
@@ -37,6 +48,7 @@ describe("macOS secret store", () => {
 	test.skipIf(process.platform !== "darwin")("round-trips through the real keychain", async () => {
 		const store = createMacSecretStore(undefined, "app.rabisco.test");
 		const account = `test:${crypto.randomUUID()}`;
+
 		try {
 			expect(await store.get(account)).toBeNull();
 			await store.set(account, `sk-ant "quoted' \\ $HOME`);
@@ -46,6 +58,7 @@ describe("macOS secret store", () => {
 		} finally {
 			await store.delete(account);
 		}
+
 		expect(await store.get(account)).toBeNull();
 	});
 });
@@ -56,7 +69,15 @@ describe("Linux secret store", () => {
 		const store = createLinuxSecretStore(run);
 		await store.set("provider:openai", "sk-1");
 		expect(calls[0]).toEqual({
-			argv: ["secret-tool", "store", "--label=Rabisco (provider:openai)", "service", "app.rabisco.desktop", "account", "provider:openai"],
+			argv: [
+				"secret-tool",
+				"store",
+				"--label=Rabisco (provider:openai)",
+				"service",
+				"app.rabisco.desktop",
+				"account",
+				"provider:openai",
+			],
 			stdin: "sk-1",
 		});
 		expect(await store.get("provider:openai")).toBeNull();
@@ -66,6 +87,7 @@ describe("Linux secret store", () => {
 		const store = createLinuxSecretStore(async () => {
 			throw new Error("ENOENT");
 		});
+
 		await expect(store.get("provider:x")).rejects.toThrow("secret-tool is not installed");
 	});
 });

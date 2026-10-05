@@ -8,6 +8,7 @@ export function createTailwind(indexCss: string) {
 		base: "/",
 		loadStylesheet: async (id, base) => {
 			if (id !== "tailwindcss") throw new Error(`Unknown stylesheet ${id}`);
+
 			return { path: "tailwindcss/index.css", base, content: indexCss };
 		},
 	});

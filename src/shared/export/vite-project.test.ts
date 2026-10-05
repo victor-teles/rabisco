@@ -6,6 +6,7 @@ import type { Frame } from "../types";
 import { packageName, viteProject, type ViteProjectInput } from "./vite-project";
 
 const UI_DIR = join(import.meta.dir, "../../mainview/components/ui");
+
 /** The shadcn sources the webview passes in (`UI_SOURCES`) */
 const uiSources = Object.fromEntries(
 	readdirSync(UI_DIR)
@@ -13,7 +14,15 @@ const uiSources = Object.fromEntries(
 		.map((file) => [file.replace(/\.tsx$/, ""), readFileSync(join(UI_DIR, file), "utf8")]),
 );
 
-const frame = (file: string, x: number): Frame => ({ file, name: file, device: "mobile", x, y: 0, width: 390, height: 844 });
+const frame = (file: string, x: number): Frame => ({
+	file,
+	name: file,
+	device: "mobile",
+	x,
+	y: 0,
+	width: 390,
+	height: 844,
+});
 
 const files = {
 	"screens/welcome.tsx": `import { Button } from "@/components/ui/button";
@@ -50,16 +59,31 @@ const input: ViteProjectInput = {
 	uiSources,
 };
 
-const byPath = (project: ReturnType<typeof viteProject>) => Object.fromEntries(project.files.map((file) => [file.path, file.content]));
+const byPath = (project: ReturnType<typeof viteProject>) =>
+	Object.fromEntries(project.files.map((file) => [file.path, file.content]));
 
 describe("vite project", () => {
 	const project = viteProject(input);
 	const out = byPath(project);
 
 	test("has the files of a runnable project", () => {
-		for (const path of ["package.json", "vite.config.ts", "tsconfig.json", "index.html", "README.md", ".gitignore", "src/main.tsx", "src/App.tsx", "src/index.css", "src/lib/utils.ts", "PRODUCT.md", "DESIGN.md"]) {
+		for (const path of [
+			"package.json",
+			"vite.config.ts",
+			"tsconfig.json",
+			"index.html",
+			"README.md",
+			".gitignore",
+			"src/main.tsx",
+			"src/App.tsx",
+			"src/index.css",
+			"src/lib/utils.ts",
+			"PRODUCT.md",
+			"DESIGN.md",
+		]) {
 			expect(out[path]).toBeString();
 		}
+
 		expect(out["index.html"]).toContain("<title>Coffee Club</title>");
 		expect(out["vite.config.ts"]).toContain('"@": fileURLToPath(new URL("./src", import.meta.url))');
 		expect(project.warnings).toEqual([]);
@@ -81,9 +105,16 @@ describe("vite project", () => {
 	});
 
 	test("ships only the shadcn components used, with the ones they import", () => {
-		const ui = Object.keys(out).filter((path) => path.startsWith("src/components/ui/")).sort();
+		const ui = Object.keys(out)
+			.filter((path) => path.startsWith("src/components/ui/"))
+			.sort();
+
 		// toggle-group imports toggleVariants from toggle
-		expect(ui).toEqual(["src/components/ui/button.tsx", "src/components/ui/toggle-group.tsx", "src/components/ui/toggle.tsx"]);
+		expect(ui).toEqual([
+			"src/components/ui/button.tsx",
+			"src/components/ui/toggle-group.tsx",
+			"src/components/ui/toggle.tsx",
+		]);
 		expect(out["src/components/ui/button.tsx"]).toBe(uiSources.button!);
 	});
 
@@ -128,8 +159,13 @@ describe("vite project", () => {
 	test("unknown imports become warnings", () => {
 		const odd = viteProject({
 			...input,
-			files: { ...files, "screens/odd.tsx": 'import { Calendar } from "@/components/ui/calendar";\nimport dayjs from "dayjs";\nexport default function Odd() {\n\treturn null;\n}\n' },
+			files: {
+				...files,
+				"screens/odd.tsx":
+					'import { Calendar } from "@/components/ui/calendar";\nimport dayjs from "dayjs";\nexport default function Odd() {\n\treturn null;\n}\n',
+			},
 		});
+
 		expect(odd.warnings).toHaveLength(2);
 		expect(JSON.parse(byPath(odd)["package.json"]!).dependencies.dayjs).toBeUndefined();
 	});

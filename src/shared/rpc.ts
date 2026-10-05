@@ -48,7 +48,10 @@ export type RabiscoRPC = {
 			stopGeneration: { params: { generationId: string }; response: { ok: true } };
 
 			/** Configured providers with their health and models. `refresh` re-checks health and models. */
-			listProviders: { params: { refresh?: boolean }; response: { settings: ProviderSettings; statuses: ProviderStatus[] } };
+			listProviders: {
+				params: { refresh?: boolean };
+				response: { settings: ProviderSettings; statuses: ProviderStatus[] };
+			};
 			/** Adds a provider. `apiKey` goes to the OS keychain. */
 			addProvider: {
 				params: { type: ProviderType; label?: string; baseUrl?: string; binPath?: string; apiKey?: string };
@@ -56,7 +59,11 @@ export type RabiscoRPC = {
 			};
 			/** `apiKey: null` removes the stored key; omit it to keep the current one. */
 			updateProvider: {
-				params: { id: string; patch: Partial<Pick<ProviderConfig, "label" | "enabled" | "baseUrl" | "binPath" | "defaultModel">>; apiKey?: string | null };
+				params: {
+					id: string;
+					patch: Partial<Pick<ProviderConfig, "label" | "enabled" | "baseUrl" | "binPath" | "defaultModel">>;
+					apiKey?: string | null;
+				};
 				response: ProviderStatus;
 			};
 			removeProvider: { params: { id: string }; response: { ok: true } };
@@ -70,7 +77,13 @@ export type RabiscoRPC = {
 			 */
 			importContext: {
 				params: { from: string };
-				response: { files: { path: ContextFileName; content: string; /** Path inside `from` where it was found */ source: string }[] };
+				response: {
+					files: {
+						path: ContextFileName;
+						content: string;
+						/** Path inside `from` where it was found */ source: string;
+					}[];
+				};
 			};
 
 			// Phase 7: export and handoff
@@ -81,7 +94,10 @@ export type RabiscoRPC = {
 			 * when `name` is omitted. Paths can't leave the folder. `reveal` shows it in Finder.
 			 * Returns the folder written to.
 			 */
-			writeExport: { params: { dir: string; name?: string; files: ExportFile[]; reveal?: boolean }; response: { dir: string } };
+			writeExport: {
+				params: { dir: string; name?: string; files: ExportFile[]; reveal?: boolean };
+				response: { dir: string };
+			};
 
 			// Share a read-only link and export the viewer (decision 0008)
 			/** Starts sharing the project at a random link on the local network, or updates what the link shows. */
@@ -91,7 +107,10 @@ export type RabiscoRPC = {
 			/** Stops sharing: the link stops working. */
 			shareStop: { params: { path: string }; response: { ok: true } };
 			/** Writes the read-only viewer as a static site into `<dir>/<name>` (`-2`… when taken). */
-			exportViewer: { params: { dir: string; name: string; snapshot: ShareSnapshot; reveal?: boolean }; response: { dir: string } };
+			exportViewer: {
+				params: { dir: string; name: string; snapshot: ShareSnapshot; reveal?: boolean };
+				response: { dir: string };
+			};
 
 			// Sync to a git repository (decision 0008)
 			gitStatus: { params: { path: string }; response: GitStatus };

@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Hand, Maximize, MessageCircle, Minus, MousePointer2, Play, Plus, Redo2, Undo2 } from "lucide-react";
+import {
+	ChevronLeft,
+	Hand,
+	Maximize,
+	MessageCircle,
+	Minus,
+	MousePointer2,
+	Play,
+	Plus,
+	Redo2,
+	Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SettingsButton } from "@/components/app/settings-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
@@ -62,24 +73,53 @@ type EditorProps = {
 };
 
 const NO_FRAMES: Frame[] = [];
+
 const NO_FILES: ProjectFiles = {};
+
 const NO_SELECTION: string[] = [];
+
 const NO_MESSAGES: ChatMessage[] = [];
+
 /** Arrow-key nudges closer together than this are one undo step */
 const NUDGE_BURST_MS = 800;
 
 /** Replaces frames by file, keeping canvas order. */
 const withMoves = (frames: Frame[], moves: FrameMove[]) => {
 	const byFile = new Map(moves.map((move) => [move.file, move]));
+
 	return frames.map((frame) => {
 		const move = byFile.get(frame.file);
+
 		return move && (move.x !== frame.x || move.y !== frame.y) ? { ...frame, x: move.x, y: move.y } : frame;
 	});
 };
 
-export function EditorView({ projectPath, initialPrompt, initialFiles, initialVariations, theme, onToggleTheme, onBack }: EditorProps) {
-	const { project, error, stateRef, canUndo, canRedo, change, endStep, undo, redo, setSelection, setMeta, addMessages, flushCanvas, reloadFromDisk } =
-		useProject(projectPath);
+export function EditorView({
+	projectPath,
+	initialPrompt,
+	initialFiles,
+	initialVariations,
+	theme,
+	onToggleTheme,
+	onBack,
+}: EditorProps) {
+	const {
+		project,
+		error,
+		stateRef,
+		canUndo,
+		canRedo,
+		change,
+		endStep,
+		undo,
+		redo,
+		setSelection,
+		setMeta,
+		addMessages,
+		flushCanvas,
+		reloadFromDisk,
+	} = useProject(projectPath);
+
 	const [tool, setTool] = useState<Tool>("move");
 	const [tab, setTab] = useState<InspectorTab>("design");
 	const [contextFile, setContextFile] = useState<ContextFileName>("PRODUCT.md");
@@ -106,10 +146,12 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		if (!project || fittedOnLoad.current) return;
 		fittedOnLoad.current = true;
 		const initial = selected.length ? selected : project.canvas.frames;
+
 		if (initial.length) requestAnimationFrame(() => canvasRef.current?.fitTo(initial));
 	}, [project, selected]);
 
 	const onPlaced = useCallback((placed: Frame[]) => requestAnimationFrame(() => canvasRef.current?.fitTo(placed)), []);
+
 	const { generation, drafts, failure, dismissFailure, send, vary, mix, writeContext, stop, retry } = useGeneration({
 		projectPath,
 		stateRef,
@@ -127,7 +169,14 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	}, []);
 
 	const openProduct = useCallback(() => openContext("PRODUCT.md"), [openContext]);
-	const { interview, start: startInterview, answer, skip, cancel: cancelInterview } = useInterview({
+
+	const {
+		interview,
+		start: startInterview,
+		answer,
+		skip,
+		cancel: cancelInterview,
+	} = useInterview({
 		projectName: project?.canvas.name ?? "",
 		addMessages,
 		change,
@@ -138,10 +187,12 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	const writeDesign = useCallback(async () => {
 		const prompt =
 			"Write DESIGN.md from the existing screens and components: the tokens they use (colors, radius, fonts), typography, layout and spacing, and the component rules they follow.";
+
 		if (await writeContext("DESIGN.md", prompt, "Write DESIGN.md from my screens")) openContext("DESIGN.md");
 	}, [writeContext, openContext]);
 
 	const busy = generation !== null || interview !== null;
+
 	// The components panel: suggestions, Make component from them, drops onto screens, the selected component
 	const {
 		components,
@@ -152,6 +203,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		drop: dropComponent,
 		selectedComponent,
 	} = useComponents({ projectPath, files, selection, stateRef, change, undo, busy, open: tab === "components" });
+
 	const selectComponent = useCallback((path: string | null) => setSelection(path ? [path] : []), [setSelection]);
 
 	const exportContext: ExportContext = {
@@ -169,6 +221,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	const codeFile = selection.length === 1 ? selection[0]! : null;
 	const showCode = useCallback(() => setTab("code"), []);
 	const structure = useStructure({ files, file: codeFile, stateRef, change, onShowCode: showCode, busy });
+	const { select: selectNode, setChildren: setNodeChildren } = structure;
 	/** The element a prompt would change (point and prompt), when one is selected in the selected screen */
 	const focus = useMemo(() => focusOf(files, structure.node), [files, structure.node]);
 
@@ -189,14 +242,21 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	const selectElement = useCallback(
 		(file: string, element: ElementRef | null) => {
 			const current = stateRef.current?.canvas.selection;
+
 			if (!current || current.length !== 1 || current[0] !== file) setSelection([file]);
-			structure.select(element);
+			selectNode(element);
+
 			// Element props and styles live in the Design tab; the Code tab follows the selection in its outline
 			if (element) setTab((tab) => (tab === "context" || tab === "components" ? "design" : tab));
 		},
-		[stateRef, setSelection, structure.select],
+		[stateRef, setSelection, selectNode],
 	);
-	const editElementText = useCallback((element: ElementRef, text: string) => structure.setChildren(element, text), [structure.setChildren]);
+
+	const editElementText = useCallback(
+		(element: ElementRef, text: string) => setNodeChildren(element, text),
+		[setNodeChildren],
+	);
+
 	// Text with more than text in it (an icon, a nested element) is edited in the Design tab's props
 	const editTextElsewhere = useCallback(() => setTab("design"), []);
 
@@ -204,7 +264,9 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	const parentElement = (element: ElementRef): ElementRef | null => {
 		const source = files[element.file];
 		let parent = source === undefined ? null : (findElement(parseJsx(source), element.start)?.parent ?? null);
+
 		while (parent && parent.name === null) parent = parent.parent;
+
 		return parent ? { file: element.file, start: parent.start } : null;
 	};
 
@@ -212,12 +274,14 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		(targets: string[]) => {
 			setSelection(targets);
 			const shown = selectedFrames(frames, targets);
+
 			if (shown.length) canvasRef.current?.fitTo(shown);
 		},
 		[frames, setSelection],
 	);
 
 	const comments = useComments({ comments: project?.canvas.comments, frames, change, endStep });
+
 	/**
 	 * "Ask AI" on a comment: a change to the element under the pin (point and
 	 * prompt), else to the screen it is pinned to; a canvas pin creates new screens.
@@ -246,9 +310,12 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		(file: string) => {
 			if (generation) {
 				toast("Wait for the generation to finish");
+
 				return;
 			}
+
 			const current = stateRef.current;
+
 			if (!current) return;
 			change(
 				(snapshot) => {
@@ -256,9 +323,11 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 					// When the screen's own file was gone, the alternate's frame takes its name
 					const base = baseOf(file);
 					const hasBaseFrame = snapshot.frames.some((frame) => frame.file === base);
+
 					const frames = hasBaseFrame
 						? snapshot.frames
 						: snapshot.frames.map((frame) => (frame.file === file ? { ...frame, file: base } : frame));
+
 					return { ...snapshot, files, frames: frames.filter((frame) => frame.file in files) };
 				},
 				{ select: selectionAfterPick(current.canvas.selection, file) },
@@ -273,6 +342,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: text } }), { coalesce: step }),
 		[change],
 	);
+
 	const replaceContext = useCallback(
 		(replacements: Partial<Record<ContextFileName, string>>) =>
 			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, ...replacements } })),
@@ -281,7 +351,9 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 
 	// The context files the latest generation followed. Older replies and interview questions have no `context`.
 	const lastUsed = useMemo(() => {
-		for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === "assistant" && messages[i]!.context) return messages[i]!.context!;
+		for (let i = messages.length - 1; i >= 0; i--)
+			if (messages[i]!.role === "assistant" && messages[i]!.context) return messages[i]!.context!;
+
 		return null;
 	}, [messages]);
 
@@ -309,6 +381,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 						if (frame.file !== file) return frame;
 						// Switching device resets the frame to that device's size
 						const size = patch.device && patch.device !== frame.device ? FRAME_SIZE[patch.device] : {};
+
 						return { ...frame, ...patch, ...size };
 					}),
 				}),
@@ -319,7 +392,9 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 
 	const moveFrames = useCallback(
 		(moves: FrameMove[], dragId: string) =>
-			change((snapshot) => ({ ...snapshot, frames: withMoves(snapshot.frames, moves) }), { coalesce: `drag:${dragId}` }),
+			change((snapshot) => ({ ...snapshot, frames: withMoves(snapshot.frames, moves) }), {
+				coalesce: `drag:${dragId}`,
+			}),
 		[change],
 	);
 
@@ -327,7 +402,10 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		(alignment: Alignment) =>
 			change((snapshot) => {
 				const targets = selectedFrames(snapshot.frames, selection);
-				return targets.length < 2 ? snapshot : { ...snapshot, frames: withMoves(snapshot.frames, align(targets, alignment)) };
+
+				return targets.length < 2
+					? snapshot
+					: { ...snapshot, frames: withMoves(snapshot.frames, align(targets, alignment)) };
 			}),
 		[change, selection],
 	);
@@ -336,7 +414,10 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 		(axis: Axis) =>
 			change((snapshot) => {
 				const targets = selectedFrames(snapshot.frames, selection);
-				return targets.length < 3 ? snapshot : { ...snapshot, frames: withMoves(snapshot.frames, distribute(targets, axis)) };
+
+				return targets.length < 3
+					? snapshot
+					: { ...snapshot, frames: withMoves(snapshot.frames, distribute(targets, axis)) };
 			}),
 		[change, selection],
 	);
@@ -344,6 +425,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	/** Deleting a frame deletes its screen file; undo brings both back. A selected component file is never deleted this way. */
 	const deleteSelection = useCallback(() => {
 		const doomed = new Set(selectedFrames(frames, selection).map((frame) => frame.file));
+
 		if (!doomed.size) return;
 		change(
 			(snapshot) => ({
@@ -357,16 +439,21 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	/** Copies each selected screen to a new file, placed below the selection. */
 	const duplicateSelection = useCallback(() => {
 		const current = stateRef.current;
+
 		if (!current) return;
 		const sources = selectedFrames(current.canvas.frames, selection);
 		const bounds = boundsOf(sources);
+
 		if (!bounds) return;
 		const taken = new Set(Object.keys(current.files));
+
 		const copies = sources.map((frame) => {
 			const file = uniqueScreenPath(frame.file.replace(/^screens\//, "").replace(/\.tsx$/, ""), taken);
 			taken.add(file);
+
 			return { ...frame, file, name: `${frame.name} copy`, y: frame.y + bounds.height + FRAME_GAP };
 		});
+
 		change(
 			(snapshot) => ({
 				files: {
@@ -382,6 +469,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	const nudgeSelection = useCallback(
 		(dx: number, dy: number) => {
 			const now = Date.now();
+
 			if (now - nudge.current.at > NUDGE_BURST_MS) nudge.current.key = `nudge:${now}`;
 			nudge.current.at = now;
 			const targets = selectedFrames(frames, selection);
@@ -398,6 +486,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			if (additive) return setSelection(toggleInSelection(selection, file));
 			setSelection([file]);
 			const frame = frames.find((f) => f.file === file);
+
 			if (frame) canvasRef.current?.fitTo([frame]);
 		},
 		[frames, selection, setSelection],
@@ -407,26 +496,36 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	// reads the latest render through a ref so it is registered once.
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || isTyping(event.target) || !project) return;
+
 		// Text being edited in a frame owns the keys; Escape still cancels it if focus stayed here
 		if (canvasRef.current?.isEditingText()) {
 			if (event.key === "Escape") canvasRef.current.endTextEdit(false);
+
 			return;
 		}
-		const element = structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
+
+		const element =
+			structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
+
 		const mod = event.metaKey || (event.ctrlKey && !event.altKey);
 		const code = event.code;
+
 		// Play mode handles its own keys
 		if (playStart) return;
+
 		if (isPlay(event)) {
 			event.preventDefault();
 			startPlay();
+
 			return;
 		}
+
 		// Compare mode handles its own keys (Esc closes it); only undo/redo stay global
 		if (compareBase && !(mod && (code === "KeyZ" || code === "KeyY"))) return;
 
 		if (mod && code === "KeyZ") {
 			event.preventDefault();
+
 			if (event.shiftKey) redo();
 			else undo();
 		} else if (mod && code === "KeyY") {
@@ -449,12 +548,14 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			canvasRef.current?.zoomBy(1 / 1.2);
 		} else if (event.ctrlKey && event.altKey && !event.metaKey) {
 			const item = DISTRIBUTE_SHORTCUTS.find((s) => s.code === code);
+
 			if (item) {
 				event.preventDefault();
 				distributeSelection(item.axis);
 			}
 		} else if (event.altKey && !event.metaKey && !event.ctrlKey) {
 			const item = ALIGN_SHORTCUTS.find((s) => s.code === code);
+
 			if (code === COMPONENTS_VIEW_CODE) {
 				event.preventDefault();
 				setTab((current) => (current === "components" ? "design" : "components"));
@@ -470,8 +571,10 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			setTab((current) => (current === "context" ? "design" : "context"));
 		} else if (event.shiftKey && code === "KeyV") {
 			const group = selected.length === 1 ? groups.find((g) => g.base === baseOf(selected[0]!.file)) : undefined;
+
 			if (group) setCompareBase(group.base);
-			else if (selected.length === 1) toast("This screen has no variations yet", { description: "Use Vary this in the inspector." });
+			else if (selected.length === 1)
+				toast("This screen has no variations yet", { description: "Use Vary this in the inspector." });
 		} else if (event.shiftKey && code === "Digit1") {
 			canvasRef.current?.fitTo(frames);
 		} else if (event.shiftKey && code === "Digit2") {
@@ -489,6 +592,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			canvasRef.current?.editText(element);
 		} else if (event.key === "Backspace" || event.key === "Delete") {
 			event.preventDefault();
+
 			if (element) structure.removeNode();
 			else deleteSelection();
 		} else if (event.key.startsWith("Arrow") && selected.length) {
@@ -499,9 +603,11 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 			nudgeSelection(dx, dy);
 		}
 	};
+
 	/** Plays the prototype from the selected screen, or the first one. */
 	function startPlay() {
 		const start = selected.find((frame) => frame.file.startsWith("screens/"))?.file ?? frames[0]?.file;
+
 		if (start) setPlayStart(start);
 		else toast("Add a screen to play the prototype");
 	}
@@ -511,6 +617,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 	useEffect(() => {
 		const listener = (event: KeyboardEvent) => keyHandler.current(event);
 		window.addEventListener("keydown", listener);
+
 		return () => window.removeEventListener("keydown", listener);
 	}, []);
 
@@ -549,7 +656,13 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 				<NoDrag className="flex items-center gap-1">
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button variant="ghost" size="icon-sm" aria-label="Play prototype" onClick={startPlay} disabled={frames.length === 0}>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Play prototype"
+								onClick={startPlay}
+								disabled={frames.length === 0}
+							>
 								<Play />
 							</Button>
 						</TooltipTrigger>
@@ -575,7 +688,9 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 					onStop={stop}
 					onRetry={retry}
 					onDismissFailure={dismissFailure}
-					selectedScreenName={interview ? undefined : selected.length === 1 ? selected[0]!.name : selectedComponent?.name}
+					selectedScreenName={
+						interview ? undefined : selected.length === 1 ? selected[0]!.name : selectedComponent?.name
+					}
 					editingCount={interview ? 0 : selection.length}
 					focusLabel={interview ? undefined : focus?.label}
 					onClearFocus={() => structure.select(null)}
@@ -609,7 +724,14 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 						onEditText={editElementText}
 						onEditTextElsewhere={editTextElsewhere}
 						onPlaceComment={comments.startDraft}
-						overlay={<CommentsLayer controller={comments} frames={frames} zoom={viewport.zoom} onAskAI={(comment) => void askAboutComment(comment)} />}
+						overlay={
+							<CommentsLayer
+								controller={comments}
+								frames={frames}
+								zoom={viewport.zoom}
+								onAskAI={(comment) => void askAboutComment(comment)}
+							/>
+						}
 					>
 						{project && frames.length === 0 && !generation ? (
 							<div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -627,14 +749,7 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 						) : null}
 					</Canvas>
 
-					<Toolbar
-						tool={tool}
-						onToolChange={setTool}
-						canUndo={canUndo}
-						canRedo={canRedo}
-						onUndo={undo}
-						onRedo={redo}
-					/>
+					<Toolbar tool={tool} onToolChange={setTool} canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
 					<ZoomControls
 						zoom={viewport.zoom}
 						onZoomIn={() => canvasRef.current?.zoomBy(1.2)}
@@ -642,7 +757,9 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 						onReset={() => canvasRef.current?.resetZoom()}
 						onFit={() => canvasRef.current?.fitTo(frames)}
 					/>
-					{playStart ? <PlayView start={playStart} frames={frames} files={files} onClose={() => setPlayStart(null)} /> : null}
+					{playStart ? (
+						<PlayView start={playStart} frames={frames} files={files} onClose={() => setPlayStart(null)} />
+					) : null}
 					{compareGroup ? (
 						<CompareView
 							group={compareGroup}
@@ -677,7 +794,11 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 						<CodePanel
 							path={codeFile}
 							source={codeFile ? files[codeFile] : undefined}
-							emptyMessage={selection.length ? "Select a single screen or component to see its code." : "Select a screen to see its code."}
+							emptyMessage={
+								selection.length
+									? "Select a single screen or component to see its code."
+									: "Select a screen to see its code."
+							}
 							structure={structure}
 							onEndStep={endStep}
 							onUndo={undo}
@@ -687,7 +808,13 @@ export function EditorView({ projectPath, initialPrompt, initialFiles, initialVa
 					}
 					propsPanel={
 						<>
-							<NodeProps files={files} file={codeFile} structure={structure} onEndStep={endStep} onOpenComponent={selectComponent} />
+							<NodeProps
+								files={files}
+								file={codeFile}
+								structure={structure}
+								onEndStep={endStep}
+								onOpenComponent={selectComponent}
+							/>
 							<LinkControl
 								files={files}
 								frames={frames}
@@ -757,10 +884,12 @@ function Toolbar({
 		{ id: "hand" as const, label: "Hand", shortcut: "H", icon: Hand },
 		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
 	];
+
 	const history = [
 		{ label: "Undo", shortcut: "⌘Z", icon: Undo2, enabled: canUndo, onClick: onUndo },
 		{ label: "Redo", shortcut: "⇧⌘Z", icon: Redo2, enabled: canRedo, onClick: onRedo },
 	];
+
 	return (
 		<div className={cn(floatingBar, "bottom-4 left-1/2 -translate-x-1/2")}>
 			{tools.map((t) => (
@@ -772,7 +901,9 @@ function Toolbar({
 							aria-label={t.label}
 							aria-pressed={tool === t.id}
 							onClick={() => onToolChange(t.id)}
-							className={cn(tool === t.id && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground")}
+							className={cn(
+								tool === t.id && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+							)}
 						>
 							<t.icon />
 						</Button>
@@ -825,7 +956,13 @@ function ZoomControls({
 			<Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={onZoomOut}>
 				<Minus />
 			</Button>
-			<Button variant="ghost" size="sm" className="w-14 px-0 tabular-nums" onClick={onReset} aria-label="Reset zoom to 100%">
+			<Button
+				variant="ghost"
+				size="sm"
+				className="w-14 px-0 tabular-nums"
+				onClick={onReset}
+				aria-label="Reset zoom to 100%"
+			>
 				{Math.round(zoom * 100)}%
 			</Button>
 			<Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={onZoomIn}>

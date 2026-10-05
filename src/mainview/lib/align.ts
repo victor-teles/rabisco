@@ -12,6 +12,7 @@ export function boundsOf(rects: Rect[]): Rect | null {
 	const minY = Math.min(...rects.map((r) => r.y));
 	const maxX = Math.max(...rects.map((r) => r.x + r.width));
 	const maxY = Math.max(...rects.map((r) => r.y + r.height));
+
 	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
@@ -28,7 +29,9 @@ export function intersects(a: Rect, b: Rect) {
 /** Aligns every rect to the selection bounds (Figma behaviour). Returns copies in the same order. */
 export function align<T extends Rect>(rects: T[], alignment: Alignment): T[] {
 	const bounds = boundsOf(rects);
+
 	if (!bounds || rects.length < 2) return rects;
+
 	return rects.map((r) => {
 		switch (alignment) {
 			case "left":
@@ -63,10 +66,12 @@ export function distribute<T extends Rect>(rects: T[], axis: Axis): T[] {
 	const gap = (span - occupied) / (rects.length - 1);
 	const result = [...rects];
 	let cursor = first[pos];
+
 	for (const index of order) {
 		const r = rects[index]!;
 		result[index] = { ...r, [pos]: index === order.at(-1) ? r[pos] : Math.round(cursor) };
 		cursor += r[size] + gap;
 	}
+
 	return result;
 }

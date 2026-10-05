@@ -18,22 +18,48 @@ export class RenderError extends Error {
 	}
 }
 
-type Module = { exports: Record<string, unknown> };
-type Factory = (require: (specifier: string) => unknown, module: Module, exports: Module["exports"]) => void;
+/**
+ * A module's exports as its compiled code leaves them. Only `default` is read from outside, and it
+ * is whatever the module exported, so callers check it before using it.
+ */
+export type ModuleExports = { default?: unknown };
+
+type Module = { exports: ModuleExports };
+
+/** What `require` hands compiled code: a project module's exports or one of the runtime's externals. */
+type RequiredModule<External> = ModuleExports | External;
+
+type Factory<External> = (
+	require: (specifier: string) => RequiredModule<External>,
+	module: Module,
+	exports: ModuleExports,
+) => void;
+
+/** Lines `new Function` puts before the body: `function anonymous(<params>` and `) {` (ECMAScript CreateDynamicFunction). */
+export const FUNCTION_HEADER_LINES = 2;
 
 /**
- * Wraps compiled CommonJS in a function. Indirect eval keeps the code on its original lines
- * (`new Function` adds a header line), so stack traces point at the right source line.
+ * Wraps compiled CommonJS in a function. Its `sourceURL` names the project file, so stack traces
+ * carry it; their lines are `FUNCTION_HEADER_LINES` below the source's.
  */
-export function evaluateModule(code: string, path: string): Factory {
+export function evaluateModule<External>(code: string, path: string): Factory<External> {
 	const body = code.replace(/\n\/\/# sourceURL=[^\n]*\s*$/, "");
-	return (0, eval)(`(function (require, module, exports) {${body}\n})\n//# sourceURL=${SOURCE_URL_PREFIX}${path}`);
+
+	// SAFETY: the body is compiled CommonJS, which only uses its `require`, `module` and `exports`
+	// parameters and returns nothing
+	return new Function(
+		"require",
+		"module",
+		"exports",
+		`${body}\n//# sourceURL=${SOURCE_URL_PREFIX}${path}`,
+	) as Factory<External>;
 }
 
 /** Line of `source` that mentions `needle`, 1-based, for errors without a stack. */
 export function lineOf(source: string | undefined, needle: string) {
 	if (!source) return undefined;
 	const index = source.split("\n").findIndex((line) => line.includes(needle));
+
 	return index === -1 ? undefined : index + 1;
 }
 
@@ -41,15 +67,15 @@ export function lineOf(source: string | undefined, needle: string) {
  * The module registry of one frame. Bare specifiers resolve to `externals` (the runtime's
  * React, lucide and shadcn components); relative ones to project modules sent by the host.
  */
-export class ModuleRegistry {
-	#externals: Record<string, unknown>;
-	#evaluate: (code: string, path: string) => Factory;
+export class ModuleRegistry<External> {
+	#externals: Readonly<Record<string, External>>;
+	#evaluate: (code: string, path: string) => Factory<External>;
 	#payloads = new Map<string, ModulePayload>();
 	#cache = new Map<string, Module>();
 	/** Project modules each evaluated module required, recorded at runtime */
 	#edges = new Map<string, Set<string>>();
 
-	constructor(externals: Record<string, unknown>, evaluate = evaluateModule) {
+	constructor(externals: Readonly<Record<string, External>>, evaluate = evaluateModule<External>) {
 		this.#externals = externals;
 		this.#evaluate = evaluate;
 	}
@@ -61,19 +87,25 @@ export class ModuleRegistry {
 			this.#payloads.clear();
 			this.#cache.clear();
 			this.#edges.clear();
+
 			for (const [path, payload] of Object.entries(modules)) if (payload) this.#payloads.set(path, payload);
+
 			return all;
 		}
+
 		const changed = Object.keys(modules);
 		const invalid = withDependents(changed, this.#edges);
+
 		for (const path of invalid) {
 			this.#cache.delete(path);
 			this.#edges.delete(path);
 		}
+
 		for (const [path, payload] of Object.entries(modules)) {
 			if (payload) this.#payloads.set(path, payload);
 			else this.#payloads.delete(path);
 		}
+
 		return invalid;
 	}
 
@@ -92,31 +124,38 @@ export class ModuleRegistry {
 	}
 
 	/** Loads a project module by path and returns its exports. */
-	load(path: string): Record<string, unknown> {
+	load(path: string): ModuleExports {
 		const cached = this.#cache.get(path);
+
 		if (cached) return cached.exports;
 		const payload = this.#payloads.get(path);
+
 		if (!payload) throw new RenderError("missing-module", `Module not found: ${path}`, path);
+
 		if (payload.error) {
 			const { message, line, column } = payload.error;
 			throw new RenderError("compile", message, path, line, column);
 		}
+
 		const module: Module = { exports: {} };
 		// Cached before it runs, so import cycles see the partial exports like in Node
 		this.#cache.set(path, module);
 		this.#edges.set(path, new Set());
+
 		try {
 			this.#evaluate(payload.code, path)((specifier) => this.#require(path, specifier), module, module.exports);
 		} catch (error) {
 			this.#cache.delete(path);
 			throw error;
 		}
+
 		return module.exports;
 	}
 
-	#require(from: string, specifier: string): unknown {
+	#require(from: string, specifier: string): RequiredModule<External> {
 		if (isRelative(specifier)) {
 			const resolved = resolveRelative(from, specifier, (path) => this.#payloads.has(path));
+
 			if (!resolved) {
 				throw new RenderError(
 					"missing-module",
@@ -125,10 +164,14 @@ export class ModuleRegistry {
 					lineOf(this.source(from), specifier),
 				);
 			}
+
 			this.#edges.get(from)?.add(resolved);
+
 			return this.load(resolved);
 		}
+
 		const bare = specifier.replace(/\.(tsx|ts|jsx|js)$/, "");
+
 		if (Object.hasOwn(this.#externals, bare)) return this.#externals[bare];
 		throw new RenderError(
 			"missing-module",

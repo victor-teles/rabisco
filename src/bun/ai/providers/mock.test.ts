@@ -4,11 +4,21 @@ import { validateFiles } from "../validate";
 import { elementFocus } from "../../../shared/ai/focus";
 import { createMockProvider, mockProductMd, primaryFamilyOf, restyleElement, restyleForVariation } from "./mock";
 
-const request: GenerationRequest = { id: "g", task: "create", model: "mock", prompt: "A habit tracker", device: "mobile", context: {}, files: [] };
+const request: GenerationRequest = {
+	id: "g",
+	task: "create",
+	model: "mock",
+	prompt: "A habit tracker",
+	device: "mobile",
+	context: {},
+	files: [],
+};
 
 async function collect(events: AsyncIterable<GenerationEvent>) {
 	const all: GenerationEvent[] = [];
+
 	for await (const event of events) all.push(event);
+
 	return all;
 }
 
@@ -23,21 +33,37 @@ describe("mock provider", () => {
 
 		const ends = events.filter((e) => e.type === "file.end");
 		expect(ends.length).toBeGreaterThan(0);
+
 		for (const end of ends) {
 			const own = events.filter((e) => "path" in e && e.path === end.path);
 			expect(own[0]!.type).toBe("file.start");
 			expect(own.at(-1)).toBe(end);
-			const streamed = own.filter((e) => e.type === "file.delta").map((e) => (e as { text: string }).text).join("");
+
+			const streamed = own.flatMap((e) => (e.type === "file.delta" ? [e.text] : [])).join("");
+
 			expect(streamed).toBe(end.content);
 		}
+
 		const start = events.find((e) => e.type === "file.start" && e.kind === "screen");
 		expect(start).toMatchObject({ screen: { name: expect.any(String), device: "mobile" } });
-		expect(validateFiles(ends.map((e) => ({ path: e.path, content: e.content })), {})).toEqual([]);
+		expect(
+			validateFiles(
+				ends.map((e) => ({ path: e.path, content: e.content })),
+				{},
+			),
+		).toEqual([]);
 	});
 
 	test("respects existing files", async () => {
-		const files = [{ path: "screens/welcome.tsx", content: "" }, { path: "components/stat-card.tsx", content: "" }];
-		const events = await collect(createMockProvider({ delayMs: 0 }).generate({ ...request, files }, new AbortController().signal));
+		const files = [
+			{ path: "screens/welcome.tsx", content: "" },
+			{ path: "components/stat-card.tsx", content: "" },
+		];
+
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate({ ...request, files }, new AbortController().signal),
+		);
+
 		const paths = events.filter((e) => e.type === "file.end").map((e) => e.path);
 		expect(paths).toContain("screens/welcome-2.tsx");
 		expect(paths).not.toContain("screens/welcome.tsx");
@@ -47,10 +73,13 @@ describe("mock provider", () => {
 	test("stops with an aborted error", async () => {
 		const controller = new AbortController();
 		const events: GenerationEvent[] = [];
+
 		for await (const event of createMockProvider({ delayMs: 50 }).generate(request, controller.signal)) {
 			events.push(event);
+
 			if (events.length === 1) controller.abort();
 		}
+
 		expect(events.map((e) => e.type)).toEqual(["status", "error"]);
 		expect(events[1]).toMatchObject({ code: "aborted" });
 	});
@@ -67,14 +96,29 @@ describe("mock provider", () => {
 			{ path: "screens/b.tsx", content: `<div className="bg-emerald-500" />` },
 			{ path: "screens/a.tsx", content: `<div className="text-muted-foreground bg-violet-600 text-zinc-500" />` },
 		];
-		const events = await collect(createMockProvider({ delayMs: 0 }).generate({ ...request, task: "context", targets: ["DESIGN.md"], files }, new AbortController().signal));
-		expect(events.find((e) => e.type === "file.start")).toEqual({ type: "file.start", path: "DESIGN.md", kind: "context" });
-		const end = events.find((e) => e.type === "file.end") as { path: string; content: string };
+
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "context", targets: ["DESIGN.md"], files },
+				new AbortController().signal,
+			),
+		);
+
+		expect(events.find((e) => e.type === "file.start")).toEqual({
+			type: "file.start",
+			path: "DESIGN.md",
+			kind: "context",
+		});
+		const end = events.find((e) => e.type === "file.end");
+
+		if (end?.type !== "file.end") throw new Error("no file.end event");
 		expect(end.path).toBe("DESIGN.md");
 		expect(end.content).toContain("## Tokens\n\n- primary: oklch(0.541 0.281 293.009)\n");
 		expect(end.content).toContain("## Do / Don't");
 		expect(events.at(-1)!.type).toBe("done");
-		expect(validateFiles([{ path: end.path, content: end.content }], {}, [], { contextTarget: "DESIGN.md" })).toEqual([]);
+		expect(validateFiles([{ path: end.path, content: end.content }], {}, [], { contextTarget: "DESIGN.md" })).toEqual(
+			[],
+		);
 	});
 
 	test("primaryFamilyOf ignores neutrals and non-TSX files", () => {
@@ -84,13 +128,24 @@ describe("mock provider", () => {
 	});
 
 	test("context task: PRODUCT.md sorts the interview answers into sections", async () => {
-		const prompt = "What is the product?\nA habit tracker.\nWho is it for?\nBusy parents.\nHow should it sound?\nWarm and brief.\nAny constraints?\niOS first.";
+		const prompt =
+			"What is the product?\nA habit tracker.\nWho is it for?\nBusy parents.\nHow should it sound?\nWarm and brief.\nAny constraints?\niOS first.";
+
 		const md = mockProductMd(prompt);
 		expect(md).toBe(
 			"# Product\n\n## Product\n\nA habit tracker.\n\n## Audience\n\nBusy parents.\n\n## Voice\n\nWarm and brief.\n\n## Constraints\n\niOS first.\n",
 		);
-		expect(mockProductMd("Just a todo app")).toContain("## Product\n\nJust a todo app\n\n## Audience\n\nTo be decided.");
-		const events = await collect(createMockProvider({ delayMs: 0 }).generate({ ...request, task: "context", targets: ["PRODUCT.md"], prompt }, new AbortController().signal));
+		expect(mockProductMd("Just a todo app")).toContain(
+			"## Product\n\nJust a todo app\n\n## Audience\n\nTo be decided.",
+		);
+
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "context", targets: ["PRODUCT.md"], prompt },
+				new AbortController().signal,
+			),
+		);
+
 		expect(events.find((e) => e.type === "file.end")).toEqual({ type: "file.end", path: "PRODUCT.md", content: md });
 	});
 
@@ -100,10 +155,14 @@ describe("mock provider", () => {
 		const shifted = [1, 2, 3].map((shift) => restyleForVariation(source, shift));
 		expect(new Set([source, ...shifted]).size).toBe(4);
 		expect(shifted[0]).not.toContain("blue");
+
 		const ends = async (variation?: { index: number; count: number }) =>
-			(await collect(createMockProvider({ delayMs: 0 }).generate({ ...request, variation }, new AbortController().signal))).flatMap((e) =>
-				e.type === "file.end" ? [{ path: e.path, content: e.content }] : [],
-			);
+			(
+				await collect(
+					createMockProvider({ delayMs: 0 }).generate({ ...request, variation }, new AbortController().signal),
+				)
+			).flatMap((e) => (e.type === "file.end" ? [{ path: e.path, content: e.content }] : []));
+
 		const [first, second] = await Promise.all([ends({ index: 0, count: 2 }), ends({ index: 1, count: 2 })]);
 		expect(first!.map((f) => f.path)).toEqual(second!.map((f) => f.path));
 		expect(first![0]!.content).not.toBe(second![0]!.content);
@@ -111,11 +170,23 @@ describe("mock provider", () => {
 	});
 
 	test("edit restyles its target screens in place", async () => {
-		const files = [{ path: "screens/home.alt-1.tsx", content: `export default function H() { return <p className="text-rose-600 rounded-lg">h</p> }` }];
-		const events = await collect(createMockProvider({ delayMs: 0 }).generate({ ...request, task: "edit", targets: [files[0]!.path], files }, new AbortController().signal));
-		const ends = events.filter((e) => e.type === "file.end");
+		const files = [
+			{
+				path: "screens/home.alt-1.tsx",
+				content: `export default function H() { return <p className="text-rose-600 rounded-lg">h</p> }`,
+			},
+		];
+
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "edit", targets: [files[0]!.path], files },
+				new AbortController().signal,
+			),
+		);
+
+		const ends = events.flatMap((e) => (e.type === "file.end" ? [e] : []));
 		expect(ends.map((e) => e.path)).toEqual(["screens/home.alt-1.tsx"]);
-		expect((ends[0] as { content: string }).content).not.toBe(files[0]!.content);
+		expect(ends[0]!.content).not.toBe(files[0]!.content);
 	});
 });
 
@@ -131,7 +202,9 @@ describe("restyleElement", () => {
 
 	test("marks an element nothing restyles, and refuses a stale focus", () => {
 		const focus = elementFocus(source, "screens/a.tsx", source.indexOf("<Badge"))!;
-		expect(restyleElement(source, focus, 1)).toContain(`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`);
+		expect(restyleElement(source, focus, 1)).toContain(
+			`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`,
+		);
 		expect(restyleElement(source.replace("New", "Old"), focus, 1)).toBeNull();
 	});
 });

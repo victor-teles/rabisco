@@ -9,7 +9,16 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { controlKind, effectiveValue, UNSET, visibleProps, type Literal, type PropValue } from "@/lib/props";
+import { isNumber, isString } from "../../../shared/guards";
+import {
+	controlKind,
+	effectiveValue,
+	literalKind,
+	UNSET,
+	visibleProps,
+	type Literal,
+	type PropValue,
+} from "@/lib/props";
 import { cn } from "@/lib/utils";
 import type { ComponentExport, PropSpec, PropType } from "../../../shared/components/api";
 
@@ -40,6 +49,7 @@ export type PropControlsProps = {
 };
 
 const SEGMENTED_MAX_OPTIONS = 3;
+
 const SEGMENTED_MAX_CHARS = 18;
 
 function typeText(type: PropType): string {
@@ -66,12 +76,24 @@ export const propSignature = (prop: PropSpec) =>
  * text children as a field, and code-valued props as read-only code. Used by
  * the inspector and the components panel.
  */
-export function PropControls({ spec, values, onChange, childrenText, onChildrenChange, extra = [], onFieldFocus, onFieldBlur, disabled }: PropControlsProps) {
+export function PropControls({
+	spec,
+	values,
+	onChange,
+	childrenText,
+	onChildrenChange,
+	extra = [],
+	onFieldFocus,
+	onFieldBlur,
+	disabled,
+}: PropControlsProps) {
 	const props = spec ? visibleProps(spec) : [];
 	const fieldEvents = { onFocus: onFieldFocus, onBlur: onFieldBlur };
+
 	if (!props.length && !extra.length && childrenText === undefined) {
 		return <p className="text-xs text-subtle-foreground">No props.</p>;
 	}
+
 	return (
 		<div className="flex flex-col gap-1.5">
 			{props.map((prop) => (
@@ -106,11 +128,20 @@ export function PropControls({ spec, values, onChange, childrenText, onChildrenC
 			{extra.map((name) => {
 				const value = values[name] ?? UNSET;
 				const literal = value.kind === "literal" ? value.value : undefined;
-				const type: PropType =
-					typeof literal === "boolean" ? { kind: "boolean" } : typeof literal === "number" ? { kind: "number" } : { kind: "string" };
+
+				const type: PropType = { kind: literalKind(literal) };
+
 				return (
 					<PropRow key={name} label={name} title={`${name} (not declared by the component)`} subtle>
-						<Control name={name} type={type} value={value} onChange={onChange} disabled={disabled} optional {...fieldEvents} />
+						<Control
+							name={name}
+							type={type}
+							value={value}
+							onChange={onChange}
+							disabled={disabled}
+							optional
+							{...fieldEvents}
+						/>
 					</PropRow>
 				);
 			})}
@@ -118,10 +149,26 @@ export function PropControls({ spec, values, onChange, childrenText, onChildrenC
 	);
 }
 
-function PropRow({ label, title, subtle, children }: { label: string; title: string; subtle?: boolean; children: React.ReactNode }) {
+function PropRow({
+	label,
+	title,
+	subtle,
+	children,
+}: {
+	label: string;
+	title: string;
+	subtle?: boolean;
+	children: React.ReactNode;
+}) {
 	return (
 		<div className="flex min-h-8 items-center gap-2">
-			<span title={title} className={cn("w-[72px] shrink-0 truncate text-xs", subtle ? "text-subtle-foreground" : "text-muted-foreground")}>
+			<span
+				title={title}
+				className={cn(
+					"w-[72px] shrink-0 truncate text-xs",
+					subtle ? "text-subtle-foreground" : "text-muted-foreground",
+				)}
+			>
 				{label}
 			</span>
 			<div className="flex min-w-0 flex-1 items-center">{children}</div>
@@ -159,14 +206,21 @@ function Control({
 
 	switch (kind) {
 		case "readonly":
-			return <ReadOnly text={value.kind === "expression" ? `{${value.text}}` : spec ? typeText(spec.type) : "—"} code={value.kind === "expression"} />;
+			return (
+				<ReadOnly
+					text={value.kind === "expression" ? `{${value.text}}` : spec ? typeText(spec.type) : "—"}
+					code={value.kind === "expression"}
+				/>
+			);
 		case "boolean":
-			return <Switch label={name} checked={current === true} disabled={disabled} onChange={(checked) => discrete(checked)} />;
+			return (
+				<Switch label={name} checked={current === true} disabled={disabled} onChange={(checked) => discrete(checked)} />
+			);
 		case "number":
 			return (
 				<NumberInput
 					label={name}
-					value={typeof current === "number" && value.kind === "literal" ? current : null}
+					value={isNumber(current) && value.kind === "literal" ? current : null}
 					placeholder={placeholder}
 					disabled={disabled}
 					onChange={(next) => typing(next === null && !canRemove ? 0 : next)}
@@ -176,8 +230,9 @@ function Control({
 			);
 		case "enum": {
 			const options = type.kind === "enum" ? type.options : [];
-			const selected = typeof current === "string" ? current : "";
+			const selected = isString(current) ? current : "";
 			const segmented = options.length <= SEGMENTED_MAX_OPTIONS && options.join("").length <= SEGMENTED_MAX_CHARS;
+
 			return segmented ? (
 				<ToggleGroup
 					type="single"
@@ -214,7 +269,9 @@ function Control({
 							{options.map((option) => (
 								<DropdownMenuRadioItem key={option} value={option} className="text-[13px]">
 									{option}
-									{option === spec?.default ? <span className="ml-auto pl-3 text-xs text-subtle-foreground">default</span> : null}
+									{option === spec?.default ? (
+										<span className="ml-auto pl-3 text-xs text-subtle-foreground">default</span>
+									) : null}
 								</DropdownMenuRadioItem>
 							))}
 						</DropdownMenuRadioGroup>
@@ -222,6 +279,7 @@ function Control({
 				</DropdownMenu>
 			);
 		}
+
 		default:
 			return (
 				<TextField
@@ -259,6 +317,7 @@ function TextField({
 }) {
 	// What was typed, while focused: the source may normalize it (trimmed children, a trailing space)
 	const [draft, setDraft] = useState<string | null>(null);
+
 	return (
 		<input
 			value={draft ?? value}
@@ -300,6 +359,7 @@ function NumberInput({
 	onBlur?: () => void;
 }) {
 	const [draft, setDraft] = useState<string | null>(null);
+
 	return (
 		<input
 			inputMode="decimal"
@@ -318,6 +378,7 @@ function NumberInput({
 			onChange={(event) => {
 				const text = event.target.value;
 				setDraft(text);
+
 				if (text.trim() === "") onChange(null);
 				else if (Number.isFinite(Number(text))) onChange(Number(text));
 			}}
@@ -336,7 +397,17 @@ function NumberInput({
 	);
 }
 
-function Switch({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+function Switch({
+	label,
+	checked,
+	disabled,
+	onChange,
+}: {
+	label: string;
+	checked: boolean;
+	disabled?: boolean;
+	onChange: (checked: boolean) => void;
+}) {
 	return (
 		<button
 			type="button"
@@ -362,7 +433,10 @@ function Switch({ label, checked, disabled, onChange }: { label: string; checked
 
 function ReadOnly({ text, code }: { text: string; code?: boolean }) {
 	return (
-		<span title={text} className={cn("min-w-0 truncate text-xs text-subtle-foreground", code && "font-mono text-[11px]")}>
+		<span
+			title={text}
+			className={cn("min-w-0 truncate text-xs text-subtle-foreground", code && "font-mono text-[11px]")}
+		>
 			{text}
 		</span>
 	);

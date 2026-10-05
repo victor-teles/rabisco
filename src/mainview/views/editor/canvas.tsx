@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import {
+	memo,
+	useCallback,
+	useEffect,
+	useImperativeHandle,
+	useLayoutEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+	type Ref,
+} from "react";
 import { Check, Columns2 } from "lucide-react";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -41,8 +51,11 @@ export type ElementRef = { file: string; start: number };
 export type FrameMove = { file: string; x: number; y: number };
 
 const MIN_ZOOM = 0.05;
+
 const MAX_ZOOM = 4;
+
 const FIT_PADDING = 96;
+
 /** Screen pixels the pointer travels before a press becomes a drag */
 const DRAG_THRESHOLD = 3;
 
@@ -95,6 +108,7 @@ type Variation = "picked" | "alternate";
 
 /** Canvas-space padding around a group's frames, in screen pixels (divided by zoom) */
 const GROUP_PADDING = 16;
+
 /** Extra room above a group's frames for their labels, in screen pixels */
 const GROUP_LABEL_ROOM = 24;
 
@@ -102,10 +116,13 @@ const GROUP_LABEL_ROOM = 24;
 function groupLayouts(frames: Frame[], drafts: Frame[] = []): { group: VariationGroup; bounds: Rect; name: string }[] {
 	const all = [...frames, ...drafts];
 	const byFile = new Map(all.map((frame) => [frame.file, frame]));
+
 	return variationGroups(byFile.keys()).flatMap((group) => {
 		const bounds = boundsOf(group.files.flatMap((file) => byFile.get(file) ?? []));
+
 		if (!bounds) return [];
 		const picked = group.picked ? byFile.get(group.picked) : undefined;
+
 		return [{ group, bounds, name: picked?.name || screenNameFromPath(group.base) }];
 	});
 }
@@ -127,6 +144,9 @@ type Drag =
 			pick: string | null;
 	  }
 	| { kind: "marquee"; start: Point; current: Point; base: string[]; additive: boolean; moved: boolean };
+
+/** The latest pointer position to hit-test for hover, while one is in flight. */
+type HoverRequest = { clientX: number; clientY: number; deep: boolean };
 
 /**
  * Infinite canvas: wheel pans, ⌘/ctrl + wheel (or pinch) zooms around the
@@ -161,32 +181,35 @@ export function Canvas({
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [spaceHeld, setSpaceHeld] = useState(false);
 	const viewportRef = useRef(viewport);
-	viewportRef.current = viewport;
 	// Stable for the memoized frames, whatever the parent passes
 	const pickRef = useRef(onPick);
-	pickRef.current = onPick;
 	const pick = useCallback((file: string) => pickRef.current?.(file), []);
 	/** The frame a dragged component would land on */
 	const [dropFile, setDropFile] = useState<string | null>(null);
 	const draggingComponent = useSyncExternalStore(componentDrag.subscribe, () => componentDrag.current() !== null);
 	/** The element under the pointer, outlined on hover */
 	const [hover, setHover] = useState<{ file: string; start: number; box: Box } | null>(null);
-	const hovering = useRef({ busy: false, next: null as { clientX: number; clientY: number; deep: boolean } | null });
+	const hovering = useRef<{ busy: boolean; next: HoverRequest | null }>({ busy: false, next: null });
 	/** The screen whose element's text is being edited in place */
 	const [editing, setEditing] = useState<ElementRef | null>(null);
 	const editingRef = useRef(editing);
-	editingRef.current = editing;
 	const rendered = drafts?.files ?? files;
 	const filesRef = useRef(rendered);
-	filesRef.current = rendered;
-	const framesRef = useRef(frames);
-	framesRef.current = frames;
 	const callbacks = useRef({ onEditText, onEditTextElsewhere });
-	callbacks.current = { onEditText, onEditTextElsewhere };
+
+	// Latest props and state for the callbacks and listeners below, updated before any event can reach them
+	useLayoutEffect(() => {
+		viewportRef.current = viewport;
+		pickRef.current = onPick;
+		editingRef.current = editing;
+		filesRef.current = rendered;
+		callbacks.current = { onEditText, onEditTextElsewhere };
+	});
 
 	const zoomAround = useCallback(
 		(factor: number, clientX?: number, clientY?: number) => {
 			const rect = containerRef.current?.getBoundingClientRect();
+
 			if (!rect) return;
 			const current = viewportRef.current;
 			const px = (clientX ?? rect.left + rect.width / 2) - rect.left;
@@ -202,10 +225,13 @@ export function Canvas({
 		(targets: Rect[]) => {
 			const rect = containerRef.current?.getBoundingClientRect();
 			const bounds = boundsOf(targets);
+
 			if (!rect || !bounds) return;
+
 			const zoom = clampZoom(
 				Math.min((rect.width - FIT_PADDING * 2) / bounds.width, (rect.height - FIT_PADDING * 2) / bounds.height, 1),
 			);
+
 			onViewportChange({
 				zoom,
 				x: rect.width / 2 - (bounds.x + bounds.width / 2) * zoom,
@@ -217,7 +243,8 @@ export function Canvas({
 
 	/** The host feeding the frame of `file`, found through its iframe. */
 	const hostFor = useCallback(
-		(file: string) => hostOf(containerRef.current?.querySelector<HTMLIFrameElement>(`[data-frame-file="${CSS.escape(file)}"] iframe`)),
+		(file: string) =>
+			hostOf(containerRef.current?.querySelector<HTMLIFrameElement>(`[data-frame-file="${CSS.escape(file)}"] iframe`)),
 		[],
 	);
 
@@ -232,6 +259,7 @@ export function Canvas({
 			const node = source === undefined ? null : findElement(parseJsx(source), target.start);
 			const text = node && node.name !== null && !isVoidElement(node) ? readChildrenText(node) : null;
 			const host = hostFor(target.file);
+
 			if (source === undefined || text === null || !host) return callbacks.current.onEditTextElsewhere?.(target);
 			// The frame takes pointer input and focus while editing, so the caret can be placed with the mouse
 			void host
@@ -241,8 +269,10 @@ export function Canvas({
 				})
 				.then((result) => {
 					setEditing((current) => (current === target ? null : current));
+
 					// Give the keys back to the editor (undo, Escape)
 					if (document.activeElement === host.frame) host.frame.blur();
+
 					if (result === undefined) callbacks.current.onEditTextElsewhere?.(target);
 					else if (result !== null && result !== text) callbacks.current.onEditText?.(target, result);
 				});
@@ -266,8 +296,10 @@ export function Canvas({
 			elementAt: async (file, point) => {
 				const host = hostFor(file);
 				const source = filesRef.current[file];
+
 				if (!host || source === undefined) return null;
 				const starts = hitStarts(await host.hitTest(point.x, point.y), file, source);
+
 				return starts ? { file, start: starts[0]! } : null;
 			},
 		}),
@@ -277,9 +309,12 @@ export function Canvas({
 	// Non-passive wheel listener so we can stop the webview from scrolling/zooming
 	useEffect(() => {
 		const el = containerRef.current;
+
 		if (!el) return;
+
 		const onWheel = (event: WheelEvent) => {
 			event.preventDefault();
+
 			if (event.ctrlKey || event.metaKey) {
 				zoomAround(Math.exp(-event.deltaY * 0.01), event.clientX, event.clientY);
 			} else {
@@ -287,26 +322,32 @@ export function Canvas({
 				onViewportChange({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY });
 			}
 		};
+
 		el.addEventListener("wheel", onWheel, { passive: false });
+
 		return () => el.removeEventListener("wheel", onWheel);
 	}, [zoomAround, onViewportChange]);
 
 	useEffect(() => {
 		const isTyping = (target: EventTarget | null) =>
 			target instanceof HTMLElement && (target.isContentEditable || /input|textarea/i.test(target.tagName));
+
 		const down = (event: KeyboardEvent) => {
 			if (event.code === "Space" && !isTyping(event.target)) {
 				event.preventDefault();
 				setSpaceHeld(true);
 			}
 		};
+
 		const up = (event: KeyboardEvent) => {
 			if (event.code === "Space") setSpaceHeld(false);
 		};
+
 		const blur = () => setSpaceHeld(false);
 		window.addEventListener("keydown", down);
 		window.addEventListener("keyup", up);
 		window.addEventListener("blur", blur);
+
 		return () => {
 			window.removeEventListener("keydown", down);
 			window.removeEventListener("keyup", up);
@@ -318,16 +359,23 @@ export function Canvas({
 
 	const toCanvas = (clientX: number, clientY: number): Point => {
 		const rect = containerRef.current!.getBoundingClientRect();
-		return { x: (clientX - rect.left - viewport.x) / viewport.zoom, y: (clientY - rect.top - viewport.y) / viewport.zoom };
+
+		return {
+			x: (clientX - rect.left - viewport.x) / viewport.zoom,
+			y: (clientY - rect.top - viewport.y) / viewport.zoom,
+		};
 	};
 
 	/** The topmost frame under a client point, if any. */
 	const frameAt = (clientX: number, clientY: number) => {
 		const point = toCanvas(clientX, clientY);
+
 		const inside = (frame: Frame) =>
 			point.x >= frame.x && point.x <= frame.x + frame.width && point.y >= frame.y && point.y <= frame.y + frame.height;
+
 		// Later frames paint on top
 		for (let i = frames.length - 1; i >= 0; i--) if (inside(frames[i]!)) return frames[i];
+
 		return undefined;
 	};
 
@@ -341,11 +389,14 @@ export function Canvas({
 		event.preventDefault();
 		event.dataTransfer.dropEffect = "copy";
 		const file = frameAt(event.clientX, event.clientY)?.file ?? null;
+
 		if (file !== dropFile) setDropFile(file);
 	};
 
 	const onDragLeave = (event: React.DragEvent) => {
-		if (!containerRef.current?.contains(event.relatedTarget as Node | null)) setDropFile(null);
+		const entered = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+
+		if (!containerRef.current?.contains(entered)) setDropFile(null);
 	};
 
 	const onDrop = (event: React.DragEvent) => {
@@ -355,6 +406,7 @@ export function Canvas({
 		const data = componentDrag.current() ?? event.dataTransfer.getData(COMPONENT_MIME);
 		componentDrag.end();
 		const frame = frameAt(event.clientX, event.clientY);
+
 		if (!frame) return onDropItem!({ file: null, data, hit: null });
 		const point = toCanvas(event.clientX, event.clientY);
 		const host = hostFor(frame.file);
@@ -362,7 +414,12 @@ export function Canvas({
 		void hit.then((found) => onDropItem!({ file: frame.file, data, hit: found }));
 	};
 
-	const startFrameDrag = (event: React.PointerEvent, dragged: string[], pressed: string | null, pick: string | null = null) => {
+	const startFrameDrag = (
+		event: React.PointerEvent,
+		dragged: string[],
+		pressed: string | null,
+		pick: string | null = null,
+	) => {
 		setDrag({
 			kind: "frames",
 			id: crypto.randomUUID(),
@@ -383,11 +440,13 @@ export function Canvas({
 	const elementsAt = async (frame: Frame, clientX: number, clientY: number) => {
 		const host = hostFor(frame.file);
 		const source = filesRef.current[frame.file];
+
 		if (!host || source === undefined) return null;
 		const point = toCanvas(clientX, clientY);
 		const local = { x: point.x - frame.x, y: point.y - frame.y };
 		const hit = await host.hitTest(local.x, local.y);
 		const starts = hitStarts(hit, frame.file, source);
+
 		return starts && hit ? { starts, boxes: hit.boxes ?? [], point: local } : null;
 	};
 
@@ -395,6 +454,7 @@ export function Canvas({
 	const pickElement = async (frame: Frame, clientX: number, clientY: number) => {
 		const found = await elementsAt(frame, clientX, clientY);
 		onSelectElement?.(frame.file, found ? { file: frame.file, start: found.starts[0]! } : null);
+
 		return found;
 	};
 
@@ -402,20 +462,30 @@ export function Canvas({
 	const updateHover = (clientX: number, clientY: number, deep: boolean) => {
 		const state = hovering.current;
 		state.next = { clientX, clientY, deep };
+
 		if (state.busy) return;
 		state.busy = true;
+
 		const run = async () => {
 			while (state.next) {
 				const { clientX: x, clientY: y, deep: meta } = state.next;
 				state.next = null;
 				const frame = frameAt(x, y);
-				const eligible = frame && onSelectElement && !editingRef.current && (meta || (selection.length === 1 && selection[0] === frame.file));
+
+				const eligible =
+					frame &&
+					onSelectElement &&
+					!editingRef.current &&
+					(meta || (selection.length === 1 && selection[0] === frame.file));
+
 				const found = eligible ? await elementsAt(frame, x, y) : null;
 				const box = found?.boxes[0];
 				setHover(found && box && frame ? { file: frame.file, start: found.starts[0]!, box } : null);
 			}
+
 			state.busy = false;
 		};
+
 		void run();
 	};
 
@@ -426,33 +496,42 @@ export function Canvas({
 
 	const onPointerDown = (event: React.PointerEvent) => {
 		if (event.button !== 0 && event.button !== 1) return;
+
 		// A press outside the frame being edited ends the edit, keeping the text
 		if (editingRef.current) {
 			hostFor(editingRef.current.file)?.endTextEdit(true);
+
 			return;
 		}
+
 		event.currentTarget.setPointerCapture(event.pointerId);
 
 		if (panning || event.button === 1) {
 			event.preventDefault();
 			setDrag({ kind: "pan", startX: event.clientX, startY: event.clientY, origin: viewport });
+
 			return;
 		}
 
 		if (tool === "comment") {
 			onPlaceComment?.(toCanvas(event.clientX, event.clientY));
+
 			return;
 		}
 
-		const file = (event.target as HTMLElement).closest<HTMLElement>("[data-frame-file]")?.dataset.frameFile;
+		const target = event.target instanceof Element ? event.target : null;
+		const file = target?.closest<HTMLElement>("[data-frame-file]")?.dataset.frameFile;
+
 		if (!file) {
 			if (!event.shiftKey) onSelectionChange([]);
 			const start = toCanvas(event.clientX, event.clientY);
 			setDrag({ kind: "marquee", start, current: start, base: selection, additive: event.shiftKey, moved: false });
+
 			return;
 		}
 
 		const deep = event.metaKey || event.ctrlKey;
+
 		if (onSelectElement && !event.shiftKey && (deep || (selection.length === 1 && selection[0] === file))) {
 			// Inside the selected screen (or with ⌘ anywhere): a click picks an element, a drag still moves the screen
 			if (deep && !(selection.length === 1 && selection[0] === file)) onSelectionChange([file]);
@@ -460,6 +539,7 @@ export function Canvas({
 		} else if (event.shiftKey) {
 			const next = toggleInSelection(selection, file);
 			onSelectionChange(next);
+
 			if (next.includes(file)) startFrameDrag(event, next, null);
 		} else if (selection.includes(file)) {
 			startFrameDrag(event, selection, file);
@@ -471,11 +551,15 @@ export function Canvas({
 
 	const onPointerMove = (event: React.PointerEvent) => {
 		if (!drag) {
-			if (!panning && tool === "move" && onSelectElement) updateHover(event.clientX, event.clientY, event.metaKey || event.ctrlKey);
+			if (!panning && tool === "move" && onSelectElement)
+				updateHover(event.clientX, event.clientY, event.metaKey || event.ctrlKey);
 			else if (hover) clearHover();
+
 			return;
 		}
+
 		if (hover) clearHover();
+
 		if (drag.kind === "pan") {
 			onViewportChange({
 				...drag.origin,
@@ -485,7 +569,9 @@ export function Canvas({
 		} else if (drag.kind === "frames") {
 			const dx = event.clientX - drag.startX;
 			const dy = event.clientY - drag.startY;
+
 			if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+
 			if (!drag.moved) setDrag({ ...drag, moved: true });
 			onMoveFrames(
 				drag.origins.map((origin) => ({
@@ -497,10 +583,14 @@ export function Canvas({
 			);
 		} else {
 			const current = toCanvas(event.clientX, event.clientY);
-			const moved = drag.moved || Math.hypot(current.x - drag.start.x, current.y - drag.start.y) * viewport.zoom >= DRAG_THRESHOLD;
+
+			const moved =
+				drag.moved || Math.hypot(current.x - drag.start.x, current.y - drag.start.y) * viewport.zoom >= DRAG_THRESHOLD;
+
 			if (!moved) return;
 			setDrag({ ...drag, current, moved });
 			const next = marqueeSelection(frames, rectFromPoints(drag.start, current), drag.base, drag.additive);
+
 			if (!sameSelection(next, selection)) onSelectionChange(next);
 		}
 	};
@@ -510,9 +600,11 @@ export function Canvas({
 			if (drag.moved) onMoveEnd();
 			else if (drag.pick) {
 				const frame = frames.find((f) => f.file === drag.pick);
+
 				if (frame) void pickElement(frame, event.clientX, event.clientY);
 			} else if (drag.pressed && selection.length > 1) onSelectionChange([drag.pressed]);
 		}
+
 		setDrag(null);
 	};
 
@@ -520,6 +612,7 @@ export function Canvas({
 	const onDoubleClick = (event: React.MouseEvent) => {
 		if (!onSelectElement || panning || tool !== "move" || editingRef.current) return;
 		const frame = frameAt(event.clientX, event.clientY);
+
 		if (!frame) return;
 		void pickElement(frame, event.clientX, event.clientY).then((found) => {
 			if (found) editText({ file: frame.file, start: found.starts[0]! }, found.point);
@@ -532,6 +625,7 @@ export function Canvas({
 	const marquee = drag?.kind === "marquee" && drag.moved ? rectFromPoints(drag.start, drag.current) : null;
 	const groups = groupLayouts(frames, drafts?.frames);
 	const pickedFiles = new Set(groups.flatMap(({ group }) => (group.picked ? [group.picked] : [])));
+
 	const variationOf = (file: string): Variation | undefined =>
 		isAlternate(file) ? "alternate" : pickedFiles.has(file) ? "picked" : undefined;
 
@@ -540,7 +634,13 @@ export function Canvas({
 			ref={containerRef}
 			className={cn(
 				"relative h-full w-full touch-none overflow-hidden bg-muted/50 select-none",
-				panning || drag?.kind === "pan" ? (drag ? "cursor-grabbing" : "cursor-grab") : tool === "comment" ? "cursor-crosshair" : "cursor-default",
+				panning || drag?.kind === "pan"
+					? drag
+						? "cursor-grabbing"
+						: "cursor-grab"
+					: tool === "comment"
+						? "cursor-crosshair"
+						: "cursor-default",
 			)}
 			style={{
 				backgroundImage:
@@ -607,7 +707,14 @@ export function Canvas({
 					/>
 				) : null}
 				{groups.map(({ group, bounds, name }) => (
-					<GroupOutline key={group.base} group={group} bounds={bounds} name={name} zoom={viewport.zoom} onCompare={onCompare} />
+					<GroupOutline
+						key={group.base}
+						group={group}
+						bounds={bounds}
+						name={name}
+						zoom={viewport.zoom}
+						onCompare={onCompare}
+					/>
 				))}
 				{selectionBounds ? (
 					<div
@@ -673,6 +780,7 @@ const FrameView = memo(function FrameView({
 	editing?: boolean;
 }) {
 	const streaming = writing && !writing.done;
+
 	return (
 		<div
 			data-frame-file={draft ? undefined : frame.file}
@@ -693,14 +801,17 @@ const FrameView = memo(function FrameView({
 						Picked
 					</span>
 				) : null}
-				{streaming ? <span className="shrink-0 font-normal text-primary motion-safe:animate-pulse">Writing…</span> : null}
+				{streaming ? (
+					<span className="shrink-0 font-normal text-primary motion-safe:animate-pulse">Writing…</span>
+				) : null}
 				{variation === "alternate" && onPick && !draft ? (
 					<Button
 						variant="ghost"
 						size="xs"
 						className={cn(
 							"-my-0.5 h-5 shrink-0 px-1.5 text-foreground",
-							!selected && "opacity-0 group-hover/frame:opacity-100 focus-visible:opacity-100 motion-safe:transition-opacity",
+							!selected &&
+								"opacity-0 group-hover/frame:opacity-100 focus-visible:opacity-100 motion-safe:transition-opacity",
 						)}
 						onPointerDown={(event) => event.stopPropagation()}
 						onClick={() => onPick(frame.file)}
@@ -710,7 +821,10 @@ const FrameView = memo(function FrameView({
 				) : null}
 			</div>
 			<div
-				className={cn("h-full w-full overflow-hidden bg-white", frame.device === "mobile" ? "rounded-[28px]" : "rounded-md")}
+				className={cn(
+					"h-full w-full overflow-hidden bg-white",
+					frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+				)}
 				style={{
 					boxShadow: selected
 						? `0 0 0 ${2 / zoom}px var(--primary), 0 10px 40px -12px rgb(0 0 0 / 0.25)`
@@ -720,7 +834,13 @@ const FrameView = memo(function FrameView({
 				{draft && !writing?.done ? (
 					<StreamingCode text={writing?.text ?? ""} />
 				) : (
-					<ScreenFrame entry={frame.file} files={files} width={frame.width} height={frame.height} interactive={editing} />
+					<ScreenFrame
+						entry={frame.file}
+						files={files}
+						width={frame.width}
+						height={frame.height}
+						interactive={editing}
+					/>
 				)}
 			</div>
 			{selected ? null : (
@@ -734,7 +854,10 @@ const FrameView = memo(function FrameView({
 			)}
 			{dropTarget ? (
 				<div
-					className={cn("pointer-events-none absolute inset-0 bg-primary/5", frame.device === "mobile" ? "rounded-[28px]" : "rounded-md")}
+					className={cn(
+						"pointer-events-none absolute inset-0 bg-primary/5",
+						frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+					)}
 					style={{ boxShadow: `0 0 0 ${2 / zoom}px var(--primary)` }}
 				/>
 			) : null}
@@ -748,6 +871,7 @@ function clip(box: Box, frame: Frame): Box | null {
 	const y = Math.max(0, box.y);
 	const right = Math.min(frame.width, box.x + box.width);
 	const bottom = Math.min(frame.height, box.y + box.height);
+
 	return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
@@ -770,11 +894,16 @@ function ElementOutline({
 }) {
 	if (!frame) return null;
 	const visible = boxes.flatMap((box) => clip(box, frame) ?? []);
+
 	if (!visible.length) return null;
 	const color = component ? "var(--color-violet-500)" : "var(--primary)";
 	const first = visible[0]!;
+
 	return (
-		<div className="pointer-events-none absolute" style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}>
+		<div
+			className="pointer-events-none absolute"
+			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+		>
 			{visible.map((box, i) => (
 				<div
 					key={i}
@@ -828,17 +957,30 @@ function SelectedElement({
 	const version = source === undefined ? "" : sourceVersion(source);
 	useEffect(() => {
 		const target = host(element.file);
+
 		if (!target || !version) return;
 		target.onBoxes = (update) => setBoxes(update.boxes);
 		target.track(element.start, version);
+
 		return () => {
 			target.onBoxes = null;
 			target.track(null, version);
 		};
 	}, [host, element.file, element.start, version, frame?.width, frame?.height]);
 	const node = source === undefined ? null : findElement(parseJsx(source), element.start);
+
 	if (!node) return null;
-	return <ElementOutline frame={frame} boxes={boxes} zoom={zoom} label={node.name ?? "Fragment"} component={!node.intrinsic && node.name !== null} selected />;
+
+	return (
+		<ElementOutline
+			frame={frame}
+			boxes={boxes}
+			zoom={zoom}
+			label={node.name ?? "Fragment"}
+			component={!node.intrinsic && node.name !== null}
+			selected
+		/>
+	);
 }
 
 /**
@@ -863,6 +1005,7 @@ function GroupOutline({
 	const roomy = bounds.width * zoom >= 240;
 	const top = pad + GROUP_LABEL_ROOM / zoom;
 	const count = group.files.length;
+
 	return (
 		<div
 			className="pointer-events-none absolute"
@@ -881,7 +1024,8 @@ function GroupOutline({
 				onPointerDown={(event) => event.stopPropagation()}
 			>
 				<span className="min-w-0 truncate pl-1">
-					<span className="font-medium text-foreground/80">{name}</span> · {count} {count === 1 ? "variation" : "variations"}
+					<span className="font-medium text-foreground/80">{name}</span> · {count}{" "}
+					{count === 1 ? "variation" : "variations"}
 				</span>
 				{onCompare && count > 1 ? (
 					<Button
@@ -904,6 +1048,7 @@ function GroupOutline({
 /** The tail of a file as it streams in, shown in a frame before the screen can render. */
 function StreamingCode({ text }: { text: string }) {
 	const lines = text.split("\n");
+
 	return (
 		<div className="flex h-full flex-col justify-end overflow-hidden bg-zinc-950 p-6 font-mono text-[13px]/5 text-zinc-300">
 			<pre className="whitespace-pre-wrap break-all">{lines.slice(-60).join("\n")}</pre>

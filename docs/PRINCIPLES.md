@@ -36,11 +36,11 @@ A screen is a React component written in TSX and styled with Tailwind. It is not
 
 Rabisco does not lock you to one model or one vendor. A provider can be:
 
-| Kind | Examples | Why |
-| --- | --- | --- |
-| **CLI** | Claude Code, Codex CLI, Gemini CLI | Reuses a subscription the user already has. No keys in Rabisco. |
-| **SDK** | Claude Agent SDK, Vercel AI SDK | Agent loops, tools and streaming in-process. |
-| **API** | Anthropic, OpenAI, OpenRouter, Ollama or any OpenAI-compatible endpoint | Direct control over the model, cost and local models. |
+| Kind    | Examples                                                                | Why                                                             |
+| ------- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **CLI** | Claude Code, Codex CLI, Gemini CLI                                      | Reuses a subscription the user already has. No keys in Rabisco. |
+| **SDK** | Claude Agent SDK, Vercel AI SDK                                         | Agent loops, tools and streaming in-process.                    |
+| **API** | Anthropic, OpenAI, OpenRouter, Ollama or any OpenAI-compatible endpoint | Direct control over the model, cost and local models.           |
 
 - Every provider implements one interface, and the rest of the app does not know which one it is talking to.
 - Credentials stay on the user's machine and never appear in project files.

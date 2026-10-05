@@ -2,8 +2,8 @@
 	"name": "rabisco",
 	"version": "0.0.1",
 	"private": true,
-	"type": "module",
 	"description": "Rabisco — an AI-first design canvas",
+	"type": "module",
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.3.289",
 		"@fontsource-variable/geist": "^5.3.0",

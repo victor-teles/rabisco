@@ -9,6 +9,7 @@ function setup(detected: Record<string, boolean> = {}) {
 	const dir = tempDir();
 	const secrets = createMemorySecretStore();
 	const store = createSettingsStore({ userDataDir: dir, secrets, detect: async () => detected });
+
 	return { dir, secrets, store, file: join(dir, SETTINGS_FILE) };
 }
 
@@ -47,6 +48,7 @@ describe("settings store", () => {
 			],
 			defaultModel: "anthropic:claude",
 		});
+
 		expect(settings).toEqual({
 			version: 1,
 			providers: [{ id: "anthropic", type: "anthropic", label: "Anthropic", enabled: true, hasKey: true }],
