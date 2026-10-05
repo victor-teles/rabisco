@@ -1,4 +1,3 @@
-
 import { isComponentFile, isScreenFile, toKebab } from "../project";
 import type { FileChange } from "../types";
 import { addImport, readImports, removeUnusedImports, type ImportDecl } from "./imports";

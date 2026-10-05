@@ -1,54 +1,28 @@
-/**
- * Tailwind classes of a JSX element, read and written as style properties for
- * the inspector (Phase 6). Two layers:
- *
- * - The `className` attribute in the source. `readClassName` finds the editable
- *   string: a plain attribute, `{"…"}`, a template literal without `${}`, or
- *   the first string argument of `cn(…)`/`clsx(…)`/`cx(…)`. `setClassName`
- *   writes it back in place. Any other expression is read-only.
- * - A class model over that string. `getStyle`/`setStyle` read and write
- *   one-valued properties (display, text color, shadow…), and `getBox`/`setBox`
- *   grouped ones (padding sides, radius corners, width and height…), in the
- *   shortest form.
- *
- * Only classes without variants (`md:`, `hover:`, `dark:`…) are read or
- * replaced. Every other class keeps its text and its place in the string: a new
- * class takes the place of the one it replaces, or goes at the end.
- */
+// Only classes without variants (`md:`, `hover:`…) are read or replaced; every other class keeps its text
+// and place. A new class takes the place of the one it replaces, or goes at the end.
 
 import { twMerge } from "tailwind-merge";
 import { setAttribute } from "../jsx/transforms";
 import { findElement, parseFile, type JsxElement } from "../jsx/tree";
 
-// ---------------------------------------------------------------------------
-// The className attribute
-
-/**
- * How an element's `className` is written:
- * - `none`: no attribute (editable, empty)
- * - `string`: `className="…"`
- * - `literal`: `className={"…"}` or a template literal without `${}`
- * - `call`: the first string argument of `cn(…)`, `clsx(…)`, `cx(…)`… (the other arguments stay as they are)
- * - `dynamic`: anything else; read-only
- */
+/** `call`: the first string argument of `cn(…)`/`clsx(…)`…; `dynamic` is read-only. */
 export type ClassNameKind = "none" | "string" | "literal" | "call" | "dynamic";
 
 export type ClassNameInfo = {
 	kind: ClassNameKind;
 	editable: boolean;
-	/** The editable classes, decoded; empty when `none` or `dynamic` */
+	/** Decoded; empty when `none` or `dynamic` */
 	classes: string;
-	/** The attribute value as written (`{isOpen ? "a" : "b"}`), for a read-only view; `null` without an attribute */
+	/** As written, for a read-only view; `null` without an attribute */
 	text: string | null;
 };
 
-/** Helpers whose first string argument holds the static classes. */
 const CLASS_HELPERS = new Set(["cn", "clsx", "cx", "classNames", "classnames", "twMerge", "twJoin"]);
 
-/** Where the editable classes sit in the source: the literal's content, between its quotes. */
+/** The literal's content, between its quotes */
 type ClassSpan = { info: ClassNameInfo; from: number; to: number; quote: string };
 
-/** A JS string literal starting at `text[i]`; `null` when it isn't one or has `${}`. */
+/** `null` when it isn't a string literal or has `${}` */
 function scanLiteral(text: string, i: number): { end: number; quote: string; value: string } | null {
 	const quote = text[i];
 
@@ -153,19 +127,17 @@ function elementIn(source: string, start: number): JsxElement | null {
 	return element && element.name !== null ? element : null;
 }
 
-/** The `className` of the element at `elementStart`; `null` when there is no element (or it is a fragment). */
+/** `null` when there is no element (or it is a fragment) */
 export function readClassName(source: string, elementStart: number): ClassNameInfo | null {
 	const element = elementIn(source, elementStart);
 
 	return element ? classNameOf(source, element) : null;
 }
 
-/** The `className` of a parsed element of `source`. */
 export function classNameOf(source: string, element: JsxElement): ClassNameInfo {
 	return locate(source, element).info;
 }
 
-/** Escapes `value` for the inside of a JS string literal quoted with `quote`. */
 function escapeLiteral(value: string, quote: string) {
 	let text = value.replace(/\\/g, "\\\\");
 
@@ -175,12 +147,7 @@ function escapeLiteral(value: string, quote: string) {
 	return quote === "'" ? text.replace(/'/g, "\\'") : text.replace(/"/g, '\\"');
 }
 
-/**
- * Writes the element's classes and returns the new source; `null` when there is
- * no element there or its `className` is dynamic. Creates the attribute when
- * missing and edits the literal in place otherwise, with its own quotes.
- * Writing no classes removes the attribute, except inside `cn(…)` (it becomes `""`).
- */
+/** `null` when `className` is dynamic. Empty classes remove the attribute, except inside `cn(…)`. */
 export function setClassName(source: string, elementStart: number, classes: string): string | null {
 	const element = elementIn(source, elementStart);
 
@@ -210,22 +177,19 @@ export function setClassName(source: string, elementStart: number, classes: stri
 	);
 }
 
-// ---------------------------------------------------------------------------
-// Parsing one class
-
-/** A class split into its parts: `md:hover:!-mt-4` → variants `md`, `hover`; important; negative; `mt-4`. */
+/** `md:hover:!-mt-4` → variants `md`, `hover`; important; negative; `mt-4` */
 export type ParsedClass = {
 	raw: string;
 	variants: string[];
 	important: boolean;
-	/** `!` written last (Tailwind v4) rather than first */
+	/** `!` written last (Tailwind v4) */
 	importantLast: boolean;
 	negative: boolean;
-	/** The utility without variants, `!` and the leading `-` */
+	/** Without variants, `!` and the leading `-` */
 	utility: string;
 };
 
-/** Splits on `separator` outside `[]` and `()`. */
+/** Outside `[]` and `()` */
 function splitTop(text: string, separator: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
@@ -268,7 +232,7 @@ export function parseClass(raw: string): ParsedClass {
 	return { raw, variants: parts, important, importantLast, negative, utility };
 }
 
-/** `primary/50` → `["primary", "50"]`; the modifier is `null` without a top-level `/`. */
+/** `primary/50` → `["primary", "50"]` */
 export function splitModifier(value: string): [string, string | null] {
 	const parts = splitTop(value, "/");
 
@@ -278,10 +242,7 @@ export function splitModifier(value: string): [string, string | null] {
 	return [parts.join("/"), modifier];
 }
 
-// ---------------------------------------------------------------------------
-// Values: colors, lengths and scales
-
-/** Theme color tokens of the screens (shadcn), in the order the color picker lists them. */
+/** In color picker order */
 export const THEME_COLORS = [
 	"background",
 	"foreground",
@@ -302,7 +263,7 @@ export const THEME_COLORS = [
 	"ring",
 ] as const;
 
-/** Other tokens screens may use; recognized as colors but not offered by the picker. */
+/** Recognized as colors but not offered by the picker */
 const EXTRA_THEME_COLORS = [
 	"popover-foreground",
 	"destructive-foreground",
@@ -323,7 +284,6 @@ const EXTRA_THEME_COLORS = [
 	"sidebar-ring",
 ];
 
-/** Keyword colors, besides the theme and the palette. */
 export const SPECIAL_COLORS = ["black", "white", "transparent", "current", "inherit"] as const;
 
 export const PALETTE_SHADES = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"] as const;
@@ -619,12 +579,12 @@ const PALETTE_HUES = {
 
 export type PaletteHue = keyof typeof PALETTE_HUES;
 
-/** Tailwind v4's default palette: hue → the `oklch()` arguments of each shade in `PALETTE_SHADES`. */
+/** Hue → the `oklch()` arguments of each shade in `PALETTE_SHADES` */
 export const PALETTE: Readonly<Record<PaletteHue, readonly string[]>> = PALETTE_HUES;
 
 export const isPaletteHue = (name: string): name is PaletteHue => Object.hasOwn(PALETTE, name);
 
-/** Tailwind v4.1+ also ships these neutrals; recognized as colors, not offered by the picker. */
+/** Tailwind v4.1+ neutrals: recognized as colors, not offered by the picker */
 const EXTRA_HUES = ["mauve", "olive", "mist", "taupe"];
 
 const COLOR_WORDS = new Set<string>([...THEME_COLORS, ...EXTRA_THEME_COLORS, ...SPECIAL_COLORS]);
@@ -633,11 +593,11 @@ const PALETTE_COLOR = new RegExp(
 	`^(?:${[...Object.keys(PALETTE), ...EXTRA_HUES].join("|")})-(?:${PALETTE_SHADES.join("|")})$`,
 );
 
-/** The inside of an arbitrary value: `[13px]` → `13px`; `null` when not bracketed. */
+/** `[13px]` → `13px` */
 const bracketed = (value: string) =>
 	value.length > 2 && value[0] === "[" && value.endsWith("]") ? value.slice(1, -1) : null;
 
-/** The inside of a CSS variable shorthand: `(--brand)` → `--brand`. */
+/** `(--brand)` → `--brand` */
 const parenthesized = (value: string) =>
 	value.length > 2 && value[0] === "(" && value.endsWith(")") ? value.slice(1, -1) : null;
 
@@ -648,7 +608,7 @@ const LENGTH =
 
 const LENGTH_FUNCTION = /^(?:calc|clamp|min|max)\(/i;
 
-/** What an arbitrary value (`[…]` or `(…)`) holds, from its type hint or its shape; `null` when not arbitrary. */
+/** From its type hint or its shape; `null` when not arbitrary */
 function arbitraryType(value: string): "color" | "length" | "number" | "var" | "other" | null {
 	const inner = bracketed(value) ?? parenthesized(value);
 
@@ -678,7 +638,6 @@ function arbitraryType(value: string): "color" | "length" | "number" | "var" | "
 
 const OPACITY_MODIFIER = /^(?:\d+(?:\.\d+)?|\[[^\]]+\]|\([^)]+\))$/;
 
-/** True for a color value: a theme token, palette shade, keyword or arbitrary color, with an optional `/opacity`. */
 export function isColorValue(value: string): boolean {
 	const [base, modifier] = splitModifier(value);
 
@@ -690,10 +649,9 @@ export function isColorValue(value: string): boolean {
 	return type === "color" || type === "var";
 }
 
-/** One choice of a scale: `value` is what follows the prefix (`4` in `p-4`; `""` for a bare `rounded`). */
+/** `value` follows the prefix: `4` in `p-4`, `""` for a bare `rounded` */
 export type ScaleOption = { value: string; label: string; hint?: string };
 
-/** A scale of values for one kind of property, with how to read typed input. */
 export type Scale = {
 	kind:
 		| "spacing"
@@ -707,7 +665,6 @@ export type Scale = {
 		| "opacity"
 		| "shadow";
 	options: ScaleOption[];
-	/** Accepts negative values (margin) */
 	negative?: boolean;
 };
 
@@ -766,7 +723,6 @@ const CONTAINERS: [string, number][] = [
 	["7xl", 1280],
 ];
 
-/** Min and max sizes: the size scale plus `none`, `prose` and the container sizes. */
 export const MAX_SIZE_SCALE: Scale = {
 	kind: "size",
 	options: [
@@ -846,7 +802,6 @@ export const LETTER_SPACING_SCALE: Scale = {
 	].map(([value, hint]) => ({ value: value!, label: value!, hint })),
 };
 
-/** Radius hints follow the screens' default theme (`--radius: 0.625rem`). */
 export const RADIUS_SCALE: Scale = {
 	kind: "radius",
 	options: [
@@ -899,18 +854,12 @@ export const SHADOW_SCALE: Scale = {
 	],
 };
 
-/** Arbitrary value text: spaces become `_`, as Tailwind expects. */
+/** Spaces become `_`, as Tailwind expects */
 const arbitrary = (text: string) => `[${text.trim().replace(/\s+/g, "_")}]`;
 
 const optionByHint = (scale: Scale, hint: string) => scale.options.find((o) => o.hint === hint);
 
-/**
- * Reads what the user typed in a scale field as a class value: a scale value
- * (`4`, `lg`), its label (`Semibold`, `1` for a bare `border`), a CSS length
- * (`16px` → `4` when on the scale, otherwise `[13px]`), a number (font sizes and
- * radii in px), a fraction for sizes, or an arbitrary `[…]`/`(…)` as is.
- * `null` when it can't be read; callers treat empty input as "unset" first.
- */
+/** `16px` → `4` when on the scale, otherwise `[16px]`. Callers treat empty input as "unset" first. */
 export function parseScaleInput(input: string, scale: Scale): string | null {
 	let text = input.trim();
 
@@ -997,8 +946,6 @@ export function parseScaleInput(input: string, scale: Scale): string | null {
 	return null;
 }
 
-/** How a value shows in a field: its scale label and hint (`4`, `16px`), or an arbitrary value without brackets (`13px`). */
-/** How a scale value reads in the inspector, e.g. `4` with the hint `16px`. */
 export type ValueLabel = { label: string; hint?: string };
 
 export function describeValue(value: string, scale: Scale): ValueLabel {
@@ -1020,11 +967,7 @@ export function describeValue(value: string, scale: Scale): ValueLabel {
 	return { label: value };
 }
 
-/**
- * Reads typed color input: a theme token, palette shade or keyword (`primary`,
- * `red-500`, with an optional `/50`), a CSS color (`#fff`, `oklch(…)`) as an
- * arbitrary value, or `[…]` as is. `null` when it isn't a color.
- */
+/** CSS colors (`#fff`, `oklch(…)`) become arbitrary values. */
 export function parseColorInput(input: string): string | null {
 	const text = input.trim();
 
@@ -1037,11 +980,7 @@ export function parseColorInput(input: string): string | null {
 	return null;
 }
 
-/**
- * A CSS color for a swatch of a color value. Theme tokens resolve through
- * `token` (default `var(--name)`), opacity modifiers through `color-mix`.
- * `null` for `inherit` or a value that isn't a color.
- */
+/** For a swatch; opacity modifiers resolve through `color-mix`. */
 export function colorCss(value: string, token: (name: string) => string = (name) => `var(--${name})`): string | null {
 	if (!isColorValue(value)) return null;
 	const [base, modifier] = splitModifier(value);
@@ -1076,10 +1015,6 @@ export function colorCss(value: string, token: (name: string) => string = (name)
 	return percent === null ? css : `color-mix(in oklab, ${css} ${percent}%, transparent)`;
 }
 
-// ---------------------------------------------------------------------------
-// The class model
-
-/** Properties that take one class. */
 export type SimpleProp =
 	| "display"
 	| "flexDirection"
@@ -1104,16 +1039,16 @@ export type SimpleProp =
 	| "boxShadow"
 	| "shadowColor";
 
-/** Properties written by several classes that cover parts of a box: `p`, `px`, `pt`… */
+/** Written by several classes that cover parts of a box: `p`, `px`, `pt`… */
 export type BoxGroup = "gap" | "padding" | "margin" | "size" | "borderWidth" | "borderRadius";
 
-/** Values of a box group by part (`top`, `tl`, `width`…); `null` when unset. */
+/** By part (`top`, `tl`, `width`…); `null` when unset */
 export type Box = Record<string, string | null>;
 
 type Alias = {
 	name: string;
 	parts: readonly string[];
-	/** Recognized but never written (logical sides) */ readOnly?: boolean;
+	/** Logical sides: recognized, never written */ readOnly?: boolean;
 };
 
 type BoxSpec = { parts: readonly string[]; aliases: readonly Alias[] };
@@ -1132,7 +1067,7 @@ const sideAliases = (base: string, sep: string): Alias[] => [
 	{ name: `${base}${sep}e`, parts: ["right"], readOnly: true },
 ];
 
-/** Part names of each box group. Sides are `top`/`right`/`bottom`/`left`, corners `tl`/`tr`/`br`/`bl`. */
+/** Corners are `tl`/`tr`/`br`/`bl` */
 export const BOXES: Record<BoxGroup, BoxSpec> = {
 	padding: { parts: SIDES, aliases: sideAliases("p", "") },
 	margin: { parts: SIDES, aliases: sideAliases("m", "") },
@@ -1175,7 +1110,7 @@ export const BOXES: Record<BoxGroup, BoxSpec> = {
 	},
 };
 
-/** What a class sets: a property, the class prefix (`px`, `bg`; the alias in a box group) and its value (`4`, `-2`, `""` for a bare `border`). */
+/** `name` is the class prefix (the alias in a box group); `value` is `""` for a bare `border`. */
 export type ClassHit = { prop: SimpleProp | BoxGroup; name: string; value: string };
 
 const DISPLAY = new Set([
@@ -1226,7 +1161,7 @@ const BORDER_STYLES = new Set(["solid", "dashed", "dotted", "double", "hidden", 
 
 const SHADOW_SIZES = new Set(["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "none", "inner"]);
 
-/** Regexes for prefixed groups; longer alternatives first so `gap-x-4` isn't `gap` + `x-4`. */
+/** Longer alternatives first so `gap-x-4` isn't `gap` + `x-4` */
 const PADDING = /^(px|py|pt|pr|pb|pl|ps|pe|p)-(.+)$/;
 
 const MARGIN = /^(mx|my|mt|mr|mb|ml|ms|me|m)-(.+)$/;
@@ -1248,11 +1183,10 @@ const MIN_MAX_PROP = new Map<string, SimpleProp>([
 	["max-h", "maxHeight"],
 ]);
 
-/** A width-like value for `border-*`: an integer, or an arbitrary length. */
 const isBorderWidth = (value: string) =>
 	/^\d+$/.test(value) || arbitraryType(value) === "length" || arbitraryType(value) === "number";
 
-/** What an unprefixed class sets, or `null` (variants, or a utility the model doesn't cover). */
+/** `null` for variants or a utility the model doesn't cover */
 export function classifyClass(raw: string): ClassHit | null {
 	const parsed = parseClass(raw);
 
@@ -1370,7 +1304,6 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 	return null;
 }
 
-/** A class in a class string, with its offsets. */
 type Token = { text: string; start: number; end: number; parsed: ParsedClass; hit: ClassHit | null };
 
 function tokenize(classes: string): Token[] {
@@ -1385,7 +1318,7 @@ function tokenize(classes: string): Token[] {
 	return tokens;
 }
 
-/** A class from its parts, carrying over the `!` of the class it replaces. */
+/** Carries over the `!` of the class it replaces */
 function formatClass(name: string, value: string, like?: ParsedClass): string {
 	const negative = value.startsWith("-");
 	const body = negative ? value.slice(1) : value;
@@ -1396,11 +1329,7 @@ function formatClass(name: string, value: string, like?: ParsedClass): string {
 	return like.importantLast ? `${utility}!` : `!${utility}`;
 }
 
-/**
- * Rebuilds `classes` without the tokens in `drop`, with `insert` in place of
- * token `at` (or at the end when `at` is `null`). Whitespace between kept
- * classes stays as written.
- */
+/** `insert` goes in place of token `at` (or at the end); whitespace between kept classes stays as written. */
 function rewrite(classes: string, tokens: Token[], drop: Set<number>, at: number | null, insert: string[]): string {
 	if (!tokens.length) return insert.length ? `${classes}${insert.join(" ")}` : classes;
 	let out = classes.slice(0, tokens[0]!.start);
@@ -1421,10 +1350,7 @@ function rewrite(classes: string, tokens: Token[], drop: Set<number>, at: number
 	return out + classes.slice(tokens[tokens.length - 1]!.end);
 }
 
-/**
- * Indices of unprefixed classes the model doesn't recognize but that `added`
- * overrides, per tailwind-merge (`bg-brand` when setting `bg-red-500`).
- */
+/** Unrecognized classes that `added` overrides per tailwind-merge (`bg-brand` vs `bg-red-500`) */
 function conflicting(tokens: Token[], added: string[]): number[] {
 	const found: number[] = [];
 	tokens.forEach((token, i) => {
@@ -1442,10 +1368,9 @@ function conflicting(tokens: Token[], added: string[]): number[] {
 	return found;
 }
 
-/** Splits a class string into its classes. */
 export const splitClasses = (classes: string) => classes.split(/\s+/).filter(Boolean);
 
-/** The value of a one-class property (the last unprefixed class that sets it wins), or `null`. */
+/** The last unprefixed class that sets it wins */
 export function getStyle(classes: string, prop: SimpleProp): string | null {
 	let value: string | null = null;
 
@@ -1479,14 +1404,10 @@ const SIMPLE_PREFIX: Record<SimpleProp, string> = {
 	shadowColor: "shadow",
 };
 
-/** The class for a one-class property value: `("backgroundColor", "primary/50")` → `bg-primary/50`. */
+/** `("backgroundColor", "primary/50")` → `bg-primary/50` */
 export const styleClass = (prop: SimpleProp, value: string) => formatClass(SIMPLE_PREFIX[prop], value);
 
-/**
- * Sets a one-class property: the new class takes the place of the first
- * unprefixed class that set it, and the others go; with none, it goes at the
- * end. `null` removes them. Variant classes (`hover:bg-…`) stay.
- */
+/** Replaces the first unprefixed class that set it and drops the others; variant classes stay. */
 export function setStyle(classes: string, prop: SimpleProp, value: string | null): string {
 	const tokens = tokenize(classes);
 	const matches = tokens.flatMap((token, i) => (token.hit?.prop === prop ? [i] : []));
@@ -1507,7 +1428,7 @@ export function setStyle(classes: string, prop: SimpleProp, value: string | null
 	return rewrite(classes, tokens, drop, at, [cls]);
 }
 
-/** Each part's value: the most specific unprefixed class wins (`pt-2` over `py-4` over `p-6`), then the last one. */
+/** Most specific wins (`pt-2` over `py-4` over `p-6`), then the last one */
 export function getBox(classes: string, group: BoxGroup): Box {
 	const spec = BOXES[group];
 	const box: Box = Object.fromEntries(spec.parts.map((part) => [part, null]));
@@ -1529,7 +1450,7 @@ export function getBox(classes: string, group: BoxGroup): Box {
 	return box;
 }
 
-/** The shortest classes for a box: `p-4`, `px-4 py-2`, or one per side; unset parts get no class. */
+/** Shortest form: `p-4`, `px-4 py-2`, or one per side */
 export function boxClasses(group: BoxGroup, box: Box): string[] {
 	const spec = BOXES[group];
 	const remaining = new Set(spec.parts.filter((part) => box[part] !== null && box[part] !== undefined));
@@ -1553,11 +1474,7 @@ export function boxClasses(group: BoxGroup, box: Box): string[] {
 const sameBox = (a: Box, b: Box, parts: readonly string[]) =>
 	parts.every((part) => (a[part] ?? null) === (b[part] ?? null));
 
-/**
- * Writes a box group in its shortest form, replacing every unprefixed class of
- * the group: the new classes go where the first of them was, or at the end.
- * Parts missing from `box` count as unset. Unchanged values leave `classes` as is.
- */
+/** Parts missing from `box` count as unset; unchanged values leave `classes` as is. */
 export function setBox(classes: string, group: BoxGroup, box: Box): string {
 	const spec = BOXES[group];
 
@@ -1575,7 +1492,7 @@ export function setBox(classes: string, group: BoxGroup, box: Box): string {
 
 const formatClassLike = (cls: string, like: ParsedClass) => (like.importantLast ? `${cls}!` : `!${cls}`);
 
-/** Sets some parts of a box (`["left", "right"]` for padding X) and rewrites the group. */
+/** e.g. `["left", "right"]` for padding X */
 export function setBoxParts(classes: string, group: BoxGroup, parts: readonly string[], value: string | null): string {
 	const box = getBox(classes, group);
 

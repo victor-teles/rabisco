@@ -3,7 +3,6 @@ import { isComponentFile, isScreenFile } from "../project";
 import type { ComponentSignature } from "../ai/contract";
 import { componentApi, propsSignature, type ComponentApi, type ComponentExport } from "./api";
 
-
 export type ComponentUsage = {
 	path: string;
 	/** `default` / `*` for default and namespace imports */

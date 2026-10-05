@@ -1,7 +1,6 @@
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "./project";
 import type { Device, FileChange, Frame, GenerateScreensResult } from "./types";
 
-
 export const GENERATION_STEPS = [
 	{ label: "Reading your brief" },
 	{ label: "Choosing layout and type scale" },

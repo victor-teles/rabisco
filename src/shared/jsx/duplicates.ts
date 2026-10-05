@@ -1,4 +1,3 @@
-
 import { isComponentFile, isScreenFile } from "../project";
 import { extractComponent, extractionSignature, type ExtractResult } from "./extract";
 import { hashString } from "./hash";

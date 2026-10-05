@@ -80,7 +80,6 @@ const renameKeys = <T>(record: Record<string, T>, map: ReadonlyMap<string, strin
 
 const invert = (map: ReadonlyMap<string, string>) => new Map([...map].map(([a, b]) => [b, a]));
 
-
 export type VariantRenamerOptions = {
 	/** 0 keeps paths (only `readOnly` applies) */
 	variant: number;
@@ -175,7 +174,6 @@ export function createVariantRenamer(options: VariantRenamerOptions): VariantRen
 		},
 	};
 }
-
 
 export type VariantOutput = {
 	variant: number;
