@@ -1,4 +1,5 @@
 import { BrowserView, BrowserWindow, PATHS, Updater, Utils } from "electrobun/main";
+import { existsSync } from "fs";
 import { join } from "path";
 import type { RabiscoRPC } from "../shared/rpc";
 import { assertSnapshot } from "../shared/share/snapshot";
@@ -52,8 +53,16 @@ const store = createProjectStore({
 
 const channel = await Updater.localInfo.channel();
 
+/** Copied into the bundle by `build.copy` in electrobun.config.ts */
+const claudeExecutable = join(
+	PATHS.RESOURCES_FOLDER,
+	"app/bin",
+	process.platform === "win32" ? "claude.exe" : "claude",
+);
+
 const ai = createAiService({
 	userDataDir: Utils.paths.userData,
+	claudeExecutable: existsSync(claudeExecutable) ? claudeExecutable : undefined,
 	secrets: createSecretStore(),
 	// The Phase 0 mock generator never ships
 	includeMock: channel === "dev",

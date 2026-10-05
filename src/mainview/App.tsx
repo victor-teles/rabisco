@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
+import { screenStyles } from "@/lib/render/styles";
 import { api } from "@/lib/rpc";
 import { EditorView } from "@/views/editor/editor";
 import { HomeView, type StartDesign } from "@/views/home";
@@ -27,10 +28,16 @@ export default function App() {
 
 	useEffect(() => void loadProviders(), []);
 
+	// Each project starts from a fresh Tailwind build (decision 0002)
+	const openEditor = (next: Extract<Route, { view: "editor" }>) => {
+		screenStyles.reset();
+		setRoute(next);
+	};
+
 	const startDesign: StartDesign = async ({ prompt, device, files, variations }) => {
 		try {
 			const project = await api.createProject({ name: projectNameFromPrompt(prompt), device });
-			setRoute({
+			openEditor({
 				view: "editor",
 				projectPath: project.path,
 				initialPrompt: prompt || undefined,
@@ -49,7 +56,7 @@ export default function App() {
 					theme={theme}
 					onToggleTheme={toggleTheme}
 					onStart={startDesign}
-					onOpenProject={(projectPath) => setRoute({ view: "editor", projectPath })}
+					onOpenProject={(projectPath) => openEditor({ view: "editor", projectPath })}
 				/>
 			) : (
 				<EditorView

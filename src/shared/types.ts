@@ -68,6 +68,8 @@ export type ChatMessage = {
 	createdAt: string;
 	/** Assistant replies: context files the generation followed */
 	context?: ContextFileName[];
+	/** User prompts: the images sent with them. On disk they live in `attachments/`. */
+	attachments?: Attachment[];
 };
 
 /** A folder; its absolute path is its id. */

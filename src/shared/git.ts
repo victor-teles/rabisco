@@ -85,11 +85,13 @@ export function commitMessage(changes: ChangedPath[]): string {
 		isScreenFile(path) || isComponentFile(path) || path === "PRODUCT.md" || path === "DESIGN.md";
 
 	if (paths.has("rabisco.json")) parts.push("update the canvas");
-	const others = [...paths].filter((path) => !known(path) && path !== "rabisco.json" && path !== "chat.jsonl");
+	// Images attached to prompts belong to the chat
+	const isChat = (path: string) => path === "chat.jsonl" || path.startsWith("attachments/");
+	const others = [...paths].filter((path) => !known(path) && path !== "rabisco.json" && !isChat(path));
 
 	if (others.length) parts.push(`update ${plural(others.length, "other file")}`);
 
-	if (parts.length === 0 && paths.has("chat.jsonl")) parts.push("update the chat");
+	if (parts.length === 0 && [...paths].some(isChat)) parts.push("update the chat");
 
 	if (parts.length === 0) parts.push("update the project");
 

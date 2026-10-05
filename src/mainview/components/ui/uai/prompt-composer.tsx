@@ -47,7 +47,10 @@ export type PromptComposerProps = Omit<ComponentProps<"form">, "onSubmit" | "onC
 	value?: string;
 	defaultValue?: string;
 	onValueChange?: (value: string) => void;
-	onSubmit?: (prompt: string, files: File[]) => void | Promise<void>;
+	/** Return `false` to keep the prompt and attachments, e.g. when it couldn't be sent. */
+	onSubmit?: (prompt: string, files: File[]) => void | boolean | Promise<void | boolean>;
+	/** Images to start with; read once, like `defaultValue` */
+	defaultFiles?: File[];
 };
 
 type Attachment = { id: string; file: File };
@@ -169,12 +172,17 @@ export function PromptComposer({
 	defaultValue = "",
 	onValueChange,
 	onSubmit,
+	defaultFiles,
 	className,
 	children,
 	...props
 }: PromptComposerProps) {
 	const [internalPrompt, setInternalPrompt] = useState(defaultValue);
-	const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+	const [attachments, setAttachments] = useState<Attachment[]>(() =>
+		(defaultFiles ?? []).map((file, index) => ({ id: `default-${index}`, file })),
+	);
+
 	const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 	const [expanded, setExpanded] = useState(false);
 	const attachmentId = useRef(0);
@@ -213,10 +221,13 @@ export function PromptComposer({
 		event.preventDefault();
 
 		if (!canSend) return;
-		await onSubmit?.(
+
+		const sent = await onSubmit?.(
 			prompt.trim(),
 			attachments.map((item) => item.file),
 		);
+
+		if (sent === false) return;
 		setPrompt("");
 		setAttachments([]);
 		setOpenMenu(null);

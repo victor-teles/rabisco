@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Crosshair, MessageSquareText, Sparkles, X } from "lucide-react";
 import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,12 @@ import { openSettings, useProviders } from "@/hooks/use-providers";
 import type { Generation } from "@/hooks/use-generation";
 import type { Interview } from "@/hooks/use-interview";
 import { api } from "@/lib/rpc";
+import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
+
+/** A prompt that couldn't be sent yet, shown in the composer */
+export type HeldPrompt = { prompt: string; files?: File[] };
 
 type ChatPanelProps = {
 	messages: ChatMessage[];
@@ -18,7 +22,11 @@ type ChatPanelProps = {
 	failure: GenerationFailure | null;
 	device: Device;
 	onDeviceChange: (device: Device) => void;
-	onSend: (prompt: string, files: File[]) => void;
+	/** `false`: nothing was sent, so the prompt stays in the composer */
+	onSend: (prompt: string, files: File[]) => boolean;
+	/** Sent on its own once a model is set up */
+	heldPrompt?: HeldPrompt | null;
+	onHeldPromptSent?: () => void;
 	onStop: () => void;
 	onRetry: () => void;
 	onDismissFailure: () => void;
@@ -59,6 +67,8 @@ export function ChatPanel({
 	device,
 	onDeviceChange,
 	onSend,
+	heldPrompt,
+	onHeldPromptSent,
 	onStop,
 	onRetry,
 	onDismissFailure,
@@ -89,6 +99,23 @@ export function ChatPanel({
 			composerRef.current?.querySelector<HTMLTextAreaElement>('[data-slot="prompt-composer-input"]')?.focus();
 	}, [interviewing]);
 
+	// A prompt sent without a model waits in the composer, then goes out once one is set up
+	const { model } = useProviders();
+	const [missedModel, setMissedModel] = useState(false);
+	const waiting = heldPrompt != null || missedModel;
+	useEffect(() => {
+		if (waiting && model) composerRef.current?.querySelector("form")?.requestSubmit();
+	}, [waiting, model]);
+
+	const submit = (prompt: string, files: File[]) => {
+		const sent = onSend(prompt, files);
+		setMissedModel(!sent && !model);
+
+		if (sent) onHeldPromptSent?.();
+
+		return sent;
+	};
+
 	return (
 		<aside className="flex w-[340px] shrink-0 flex-col border-r bg-background">
 			<ScrollArea className="min-h-0 flex-1">
@@ -113,6 +140,7 @@ export function ChatPanel({
 						<Message key={message.id} from={message.role} variant="bubble">
 							{message.role === "assistant" ? <MessageAvatar /> : null}
 							<MessageBody>
+								{message.attachments?.length ? <AttachedImages images={message.attachments} /> : null}
 								<MessageContent className="whitespace-pre-wrap">{message.content}</MessageContent>
 								{message.role === "assistant" && message.context?.length ? (
 									<ContextLine files={message.context} onOpen={onOpenContext} />
@@ -177,12 +205,21 @@ export function ChatPanel({
 				) : focusLabel ? (
 					<FocusChip label={focusLabel} where={selectedScreenName} onClear={onClearFocus} />
 				) : null}
+				{waiting && !model ? (
+					<p className="mb-1.5 px-1 text-xs text-subtle-foreground" aria-live="polite">
+						Set up a model and this prompt will be sent.
+					</p>
+				) : null}
 				<DesignComposer
+					// Remount so the held prompt fills the composer
+					key={heldPrompt ? "held" : "empty"}
+					defaultValue={heldPrompt?.prompt}
+					defaultFiles={heldPrompt?.files}
 					busy={generation !== null}
 					onStop={onStop}
 					device={device}
 					onDeviceChange={onDeviceChange}
-					onSubmit={onSend}
+					onSubmit={submit}
 					inlineOptions={false}
 					placeholder={
 						interview
@@ -216,6 +253,22 @@ export function ChatPanel({
 				</div>
 			</div>
 		</aside>
+	);
+}
+
+function AttachedImages({ images }: { images: Attachment[] }) {
+	return (
+		<div className="flex flex-wrap justify-end gap-1.5">
+			{images.map((image, index) => (
+				<img
+					key={index}
+					src={`data:${image.mediaType};base64,${image.data}`}
+					alt={image.name}
+					title={image.name}
+					className="size-16 rounded-lg border object-cover"
+				/>
+			))}
+		</div>
 	);
 }
 

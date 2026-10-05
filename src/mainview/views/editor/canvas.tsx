@@ -21,6 +21,7 @@ import { marqueeSelection, sameSelection, selectedFrames, toggleInSelection } fr
 import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
 import { LinksLayer } from "./links-layer";
+import { focusOwnsKey } from "./shortcuts";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { screenNameFromPath } from "../../../shared/project";
 import type { Frame, ProjectFiles } from "../../../shared/types";
@@ -295,11 +296,8 @@ export function Canvas({
 	}, [zoomAround, onViewportChange]);
 
 	useEffect(() => {
-		const isTyping = (target: EventTarget | null) =>
-			target instanceof HTMLElement && (target.isContentEditable || /input|textarea/i.test(target.tagName));
-
 		const down = (event: KeyboardEvent) => {
-			if (event.code === "Space" && !isTyping(event.target)) {
+			if (event.code === "Space" && !focusOwnsKey(event)) {
 				event.preventDefault();
 				setSpaceHeld(true);
 			}

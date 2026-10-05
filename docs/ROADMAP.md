@@ -36,6 +36,7 @@ Replace HTML strings with TSX components, and store each project as a folder of 
     screens/welcome.tsx
     components/button.tsx
     chat.jsonl          # conversation history
+    attachments/        # images attached to prompts, referenced from chat.jsonl
   ```
 - ✅ Open any folder as a project, and keep a list of recent folders on Home
 - ✅ Watch the folder so that edits made in an external editor appear on the canvas
@@ -183,7 +184,7 @@ _Principle: Screens are React (what you see is what you ship)_
 
 ---
 
-## Phase 8: Finish and verify ⬜
+## Phase 8: Finish and verify 🚧
 
 _Principle: UX first (no dead ends)_
 
@@ -191,14 +192,14 @@ Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase c
 
 **Bugs**
 
-- ⬜ The first prompt is lost when no provider is set up: Home creates the project, the editor marks the prompt as sent, and `ready()` gives up (`editor.tsx`, `use-generation.ts`). Keep the prompt in the composer, and send it once a provider is added
-- ⬜ Arrow keys with an element selected nudge the whole screen (`editor.tsx` checks `selected`, not `element`)
-- ⬜ AI actions are silently ignored while a generation runs (comment "Ask AI", chat). Disable them with a reason, or queue them
-- ⬜ ⌫ deletes the selected screens while focus is on an inspector button (`isTyping` only skips text fields). The canvas Space handler uses its own `isTyping` that misses `<select>`
-- ⬜ Resolved comments can't be shown again (`setShowResolved` has no UI)
-- ⬜ Home: "Projects" and the sidebar Settings button do nothing; "New design" with an empty prompt creates a folder right away
-- ⬜ Images attached to a prompt are sent but not kept in `chat.jsonl`
-- ⬜ The Tailwind builder is never reset, so classes and CSS grow across every project opened in a session (`styles.ts`)
+- ✅ The first prompt is lost when no provider is set up: Home creates the project, the editor marks the prompt as sent, and `ready()` gives up (`editor.tsx`, `use-generation.ts`). Keep the prompt in the composer, and send it once a provider is added
+- ✅ Arrow keys with an element selected nudge the whole screen (`editor.tsx` checks `selected`, not `element`)
+- ✅ AI actions are silently ignored while a generation runs (comment "Ask AI", chat). Disable them with a reason, or queue them
+- ✅ ⌫ deletes the selected screens while focus is on an inspector button (`isTyping` only skips text fields). The canvas Space handler uses its own `isTyping` that misses `<select>`
+- ✅ Resolved comments can't be shown again (`setShowResolved` has no UI)
+- ✅ Home: "Projects" and the sidebar Settings button do nothing; "New design" with an empty prompt creates a folder right away
+- ✅ Images attached to a prompt are sent but not kept in `chat.jsonl`
+- ✅ The Tailwind builder is never reset, so classes and CSS grow across every project opened in a session (`styles.ts`)
 
 **Checks in the running app (WKWebView)**
 
@@ -212,11 +213,11 @@ Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase c
 
 - ⬜ The same prompt with an API key, Claude Code and Ollama: screens, `context` tasks, variations (parallel CLI runs, rate limits), Mix, point and prompt (how often the guard fires), component reuse
 - ⬜ A real Codex run to check its event mapping; Gemini CLI against its docs
-- ⬜ Embed the Claude Agent SDK native binary in the app bundle (`pathToClaudeCodeExecutable`)
+- ✅ Embed the Claude Agent SDK native binary in the app bundle (`pathToClaudeCodeExecutable`)
 
 **Packaging**
 
-- ⬜ The runtime bundle path `views/mainview/runtime` resolves in a packaged build
+- ✅ The runtime bundle path `views/mainview/runtime` resolves in a packaged build (checked in an unpacked canary build, with `app/bin/claude`)
 - ⬜ Git sync against GitHub over HTTPS and SSH
 
 **Done when** every phase above can be marked ✅.

@@ -50,7 +50,7 @@ export type GenerationDrafts = {
 
 type SendOptions = {
 	targets?: string[];
-	files?: File[];
+	attachments?: Attachment[];
 	/** Unset: edit when `targets` is non-empty, else create. */
 	task?: "context" | "vary";
 	variations?: number;
@@ -259,7 +259,7 @@ export function useGeneration({
 					references: options.references,
 					focus: options.focus,
 					problems: options.repair?.problems,
-					attachments: await toAttachments(options.files),
+					attachments: options.attachments,
 				});
 
 				const latest = stateRef.current;
@@ -331,7 +331,13 @@ export function useGeneration({
 	);
 
 	const ready = useCallback(() => {
-		if (!stateRef.current || live.current) return false;
+		if (!stateRef.current) return false;
+
+		if (live.current) {
+			toast("Wait for the current generation to finish");
+
+			return false;
+		}
 
 		if (!model) {
 			toast("Choose an AI provider first", { description: "Add an API key, a CLI or a local model." });
@@ -343,32 +349,53 @@ export function useGeneration({
 		return true;
 	}, [stateRef, model]);
 
-	/** `variations` is ignored when editing `targets`; a stale `focus` falls back to editing the whole file. */
+	/**
+	 * `variations` is ignored when editing `targets`; a stale `focus` falls back to editing the whole file.
+	 * `false` when nothing was sent (no model, or a generation is running), so the caller can keep the prompt.
+	 */
 	const send = useCallback(
 		(
 			prompt: string,
 			{
 				focus: node,
+				files,
 				...options
 			}: { targets?: string[]; files?: File[]; variations?: number; focus?: StructureNode | null } = {},
-		) => {
-			if (!ready()) return;
-			const current = stateRef.current!;
+		): boolean => {
+			if (!ready()) return false;
 
-			if (node && node.file in current.files) {
-				const focus = focusOf(current.files, node);
-				const where = variationName(node.file, current.canvas.frames);
-				addMessages([message("user", focus ? focusNote(focus.label, where, prompt) : prompt)]);
-				const send: SendOptions = { targets: [node.file], files: options.files };
+			void toAttachments(files).then(
+				(attachments) => {
+					const current = stateRef.current;
 
-				if (focus) send.focus = focus;
-				void run(prompt, send);
+					if (!current) return;
 
-				return;
-			}
+					const user = (content: string) =>
+						attachments.length ? { ...message("user", content), attachments } : message("user", content);
 
-			addMessages([message("user", prompt)]);
-			void run(prompt, options.targets?.length ? { ...options, variations: undefined } : options);
+					if (node && node.file in current.files) {
+						const focus = focusOf(current.files, node);
+						const where = variationName(node.file, current.canvas.frames);
+						addMessages([user(focus ? focusNote(focus.label, where, prompt) : prompt)]);
+						const send: SendOptions = { targets: [node.file], attachments };
+
+						if (focus) send.focus = focus;
+						void run(prompt, send);
+
+						return;
+					}
+
+					addMessages([user(prompt)]);
+					void run(prompt, {
+						...options,
+						attachments,
+						variations: options.targets?.length ? undefined : options.variations,
+					});
+				},
+				(reason) => toast.error("Couldn't read the attached images", { description: String(reason) }),
+			);
+
+			return true;
 		},
 		[ready, stateRef, addMessages, run],
 	);

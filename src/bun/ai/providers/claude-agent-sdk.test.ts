@@ -115,6 +115,27 @@ describe("Claude Agent SDK provider", () => {
 		expect(options.abortController).toBeInstanceOf(AbortController);
 	});
 
+	test("passes the bundled binary unless binPath overrides it", async () => {
+		const run = async (providerConfig: ProviderConfig) => {
+			const { sdk, calls } = fakeSdk(recording);
+
+			const provider = createClaudeAgentSdkProvider({
+				config: providerConfig,
+				getApiKey: async () => "sk-test",
+				stagingRoot: tempDir(),
+				executable: "/App/Resources/app/bin/claude",
+				sdk,
+			});
+
+			await collect(provider.generate(request, new AbortController().signal));
+
+			return calls[0]!.options.pathToClaudeCodeExecutable;
+		};
+
+		expect(await run(config)).toBe("/App/Resources/app/bin/claude");
+		expect(await run({ ...config, binPath: "/usr/local/bin/claude" })).toBe("/usr/local/bin/claude");
+	});
+
 	test("without an API key it fails with not_authenticated", async () => {
 		const provider = createClaudeAgentSdkProvider({ config, getApiKey: async () => null, sdk: fakeSdk(recording).sdk });
 		expect(await provider.health()).toMatchObject({ ok: false, code: "not_authenticated" });

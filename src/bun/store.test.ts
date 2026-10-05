@@ -4,6 +4,7 @@ import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import type { FileChange } from "../shared/types";
 import {
+	appendChat,
 	assertProjectFilePath,
 	createProjectFolder,
 	freeProjectDir,
@@ -142,6 +143,48 @@ describe("project files", () => {
 
 	test("chat parsing skips bad lines", () => {
 		expect(parseChat('\n{"id":"a","role":"assistant","content":"x","createdAt":"t"}\n{"id":1}\n[')).toHaveLength(1);
+	});
+
+	test("attached images are kept in attachments/ and load back with the chat", () => {
+		const dir = createProjectFolder(tempDir(), "Pics", "mobile");
+
+		const png = {
+			name: "sketch.png",
+			mediaType: "image/png" as const,
+			data: Buffer.from("png bytes").toString("base64"),
+		};
+
+		appendChat(dir, [
+			{ id: "m1", role: "user", content: "Like this", createdAt: "t", attachments: [png] },
+			{ id: "m2", role: "assistant", content: "Done", createdAt: "t" },
+		]);
+
+		expect(readFileSync(join(dir, "attachments/m1-0.png"), "utf-8")).toBe("png bytes");
+		const stored = readFileSync(join(dir, "chat.jsonl"), "utf-8");
+		expect(stored).not.toContain(png.data);
+		expect(stored).toContain('"path":"attachments/m1-0.png"');
+		expect(loadProject(dir).messages.map((m) => m.attachments)).toEqual([[png], undefined]);
+		// The AI history reads the chat without the images
+		expect(parseChat(stored)[0]!.attachments).toBeUndefined();
+	});
+
+	test("missing or unsafe attachment paths are dropped", () => {
+		const line = (path: string) =>
+			JSON.stringify({
+				id: "m",
+				role: "user",
+				content: "x",
+				createdAt: "t",
+				attachments: [{ name: "a.png", mediaType: "image/png", path }],
+			});
+
+		const read = (path: string) => (path === "attachments/m-0.png" ? "AA==" : "BB==");
+
+		expect(parseChat(line("../secret.png"), read)[0]!.attachments).toBeUndefined();
+		expect(parseChat(line("attachments/m-0.png"), read)[0]!.attachments).toEqual([
+			{ name: "a.png", mediaType: "image/png", data: "AA==" },
+		]);
+		expect(parseChat(line("attachments/gone.png"), () => null)[0]!.attachments).toBeUndefined();
 	});
 
 	test("new project folders get a free name", () => {

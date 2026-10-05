@@ -21,6 +21,8 @@ export type ProviderDeps = {
 	fetch?: typeof fetch;
 	spawn?: SpawnFn;
 	stagingRoot?: string;
+	/** The Claude Code binary shipped in the app bundle */
+	claudeExecutable?: string;
 };
 
 export function createProvider(config: ProviderConfig, deps: ProviderDeps): Provider {
@@ -43,7 +45,12 @@ export function createProvider(config: ProviderConfig, deps: ProviderDeps): Prov
 		case "gemini-cli":
 			return createGeminiCliProvider(cli);
 		case "claude-agent-sdk":
-			return createClaudeAgentSdkProvider({ config, getApiKey, stagingRoot: deps.stagingRoot });
+			return createClaudeAgentSdkProvider({
+				config,
+				getApiKey,
+				stagingRoot: deps.stagingRoot,
+				executable: deps.claudeExecutable,
+			});
 		case "mock":
 			return { ...createMockProvider(), id: config.id, label: config.label };
 	}

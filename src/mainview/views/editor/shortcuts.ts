@@ -39,6 +39,37 @@ export function isTyping(target: EventTarget | null) {
 	);
 }
 
+const CONTROL =
+	"button, a[href], [role=button], [role=checkbox], [role=combobox], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=radio], [role=separator], [role=slider], [role=switch], [role=tab]";
+
+const PANEL = "aside, [role=dialog], [role=menu], [data-radix-popper-content-wrapper]";
+
+/** The slice of `Element` the check reads, so it runs without a DOM */
+export type KeyTarget = {
+	tagName: string;
+	isContentEditable?: boolean;
+	closest: (selector: string) => KeyTarget | null;
+};
+
+type Modifiers = { metaKey: boolean; ctrlKey: boolean; altKey: boolean };
+
+/**
+ * Whether the focused element keeps a key from the canvas shortcuts. Text fields own every key; buttons and
+ * other controls in a panel or popover own the plain ones (⌫, arrows, Space), so ⌘Z still works from them.
+ */
+export function ownsKey(target: KeyTarget | null, modifiers: Modifiers) {
+	if (!target) return false;
+
+	if (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName)) return true;
+
+	if (modifiers.metaKey || modifiers.ctrlKey || modifiers.altKey) return false;
+
+	return Boolean(target.closest(CONTROL)?.closest(PANEL));
+}
+
+export const focusOwnsKey = (event: KeyboardEvent) =>
+	ownsKey(event.target instanceof HTMLElement ? event.target : null, event);
+
 /** Keys the focused structure tree consumes, so they never reach the editor's global handler (nudge, delete screen). */
 export const treeOwnsKey = (key: string) => key.startsWith("Arrow") || key === "Backspace" || key === "Delete";
 

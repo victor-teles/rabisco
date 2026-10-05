@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	FolderOpen,
 	FolderSearch,
@@ -41,6 +41,7 @@ import { ScreenPreview } from "@/components/app/screen-preview";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
+import { openSettings } from "@/hooks/use-providers";
 import { useVariations } from "@/hooks/use-variations";
 import { api, isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,8 @@ const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
 	},
 ];
 
+type Section = "home" | "projects";
+
 export type StartDesign = (input: { prompt: string; device: Device; files?: File[]; variations?: number }) => void;
 
 type HomeProps = {
@@ -84,6 +87,8 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const [variations, setVariations] = useVariations();
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
+	const [section, setSection] = useState<Section>("home");
+	const heroRef = useRef<HTMLElement>(null);
 
 	useEffect(() => {
 		api.listRecents({}).then(setProjects, (error) => {
@@ -98,6 +103,11 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 		const path = await api.pickProjectFolder({});
 
 		if (path) onOpenProject(path);
+	};
+
+	const newDesign = () => {
+		setSection("home");
+		requestAnimationFrame(() => heroRef.current?.querySelector("textarea")?.focus());
 	};
 
 	const removeRecent = async (path: string) => {
@@ -137,11 +147,17 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 			</TitleBar>
 
 			<div className="flex min-h-0 flex-1">
-				<Sidebar onNew={() => onStart({ prompt: "", device })} onOpenFolder={openFolder} />
+				<Sidebar section={section} onSection={setSection} onNew={newDesign} onOpenFolder={openFolder} />
 
 				<ScrollArea className="min-w-0 flex-1 rounded-tl-2xl border-t border-l bg-background">
 					<main className="mx-auto flex max-w-5xl flex-col px-10 pb-16">
-						<section className="flex flex-col items-center pt-[12vh] pb-14 text-center">
+						<section
+							ref={heroRef}
+							className={cn(
+								"flex flex-col items-center pt-[12vh] pb-14 text-center",
+								section === "projects" && "hidden",
+							)}
+						>
 							<Badge variant="secondary" className="mb-5 rounded-full px-2.5 text-subtle-foreground">
 								AI-first design canvas
 							</Badge>
@@ -182,9 +198,13 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 							</div>
 						</section>
 
-						<section>
+						<section className={cn(section === "projects" && "pt-10")}>
 							<div className="mb-4 flex items-center justify-between gap-3">
-								<h2 className="text-sm font-medium">Recent designs</h2>
+								{section === "projects" ? (
+									<h1 className="text-xl font-semibold tracking-[-0.02em]">Projects</h1>
+								) : (
+									<h2 className="text-sm font-medium">Recent designs</h2>
+								)}
 								<div className="flex items-center gap-3">
 									{projects?.length ? (
 										<span className="text-xs text-subtle-foreground tabular-nums">
@@ -245,10 +265,20 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	);
 }
 
-function Sidebar({ onNew, onOpenFolder }: { onNew: () => void; onOpenFolder: () => void }) {
-	const items = [
-		{ label: "Home", icon: House, active: true },
-		{ label: "Projects", icon: FolderOpen },
+function Sidebar({
+	section,
+	onSection,
+	onNew,
+	onOpenFolder,
+}: {
+	section: Section;
+	onSection: (section: Section) => void;
+	onNew: () => void;
+	onOpenFolder: () => void;
+}) {
+	const items: { label: string; icon: typeof House; section?: Section; soon?: boolean }[] = [
+		{ label: "Home", icon: House, section: "home" },
+		{ label: "Projects", icon: FolderOpen, section: "projects" },
 		{ label: "Templates", icon: LayoutTemplate, soon: true },
 		{ label: "Design systems", icon: Palette, soon: true },
 	];
@@ -270,9 +300,11 @@ function Sidebar({ onNew, onOpenFolder }: { onNew: () => void; onOpenFolder: () 
 						key={item.label}
 						type="button"
 						disabled={item.soon}
+						aria-current={item.section === section ? "page" : undefined}
+						onClick={() => item.section && onSection(item.section)}
 						className={cn(
 							"flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none",
-							item.active && "bg-accent font-medium text-accent-foreground",
+							item.section === section && "bg-accent font-medium text-accent-foreground",
 						)}
 					>
 						<item.icon className="size-4" strokeWidth={1.8} />
@@ -287,7 +319,7 @@ function Sidebar({ onNew, onOpenFolder }: { onNew: () => void; onOpenFolder: () 
 					<AvatarFallback className="text-[11px]">P</AvatarFallback>
 				</Avatar>
 				<div className="min-w-0 flex-1 text-[13px] font-medium">Personal</div>
-				<Button variant="ghost" size="icon-sm" aria-label="Settings">
+				<Button variant="ghost" size="icon-sm" aria-label="Settings" onClick={() => openSettings()}>
 					<Settings />
 				</Button>
 			</div>

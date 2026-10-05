@@ -34,6 +34,12 @@ describe("commitMessage", () => {
 			]),
 		).toBe("Rabisco: update the canvas");
 		expect(subject([{ status: "M", path: "chat.jsonl" }])).toBe("Rabisco: update the chat");
+		expect(
+			subject([
+				{ status: "M", path: "chat.jsonl" },
+				{ status: "?", path: "attachments/a-0.png" },
+			]),
+		).toBe("Rabisco: update the chat");
 		expect(subject([{ status: "?", path: ".gitignore" }])).toBe("Rabisco: update 1 other file");
 	});
 

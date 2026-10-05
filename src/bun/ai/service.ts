@@ -29,6 +29,7 @@ export type AiServiceOptions = {
 	send: (message: GenerationEventMessage) => void;
 	fetch?: typeof fetch;
 	spawn?: ProviderDeps["spawn"];
+	claudeExecutable?: string;
 	detect?: () => Promise<Detected>;
 	createProvider?: RegistryOptions["create"];
 };
@@ -46,6 +47,7 @@ export function createAiService(options: AiServiceOptions) {
 		secrets: options.secrets,
 		fetch: options.fetch,
 		spawn: options.spawn,
+		claudeExecutable: options.claudeExecutable,
 		includeMock: options.includeMock,
 		create: options.createProvider,
 	});

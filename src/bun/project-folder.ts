@@ -13,6 +13,7 @@ import {
 	screenNameFromPath,
 	toKebab,
 } from "../shared/project";
+import type { Attachment } from "../shared/ai/contract";
 import type {
 	AlternateGroup,
 	CanvasDoc,
@@ -28,6 +29,16 @@ import { arrayOr, objectOr, optionalNumber, optionalString, parseJson } from "./
 export const CANVAS_FILE = "rabisco.json";
 
 export const CHAT_FILE = "chat.jsonl";
+
+/** Images attached to prompts; `chat.jsonl` refers to them by path */
+export const ATTACHMENTS_DIR = "attachments";
+
+const IMAGE_EXTENSIONS: Record<Attachment["mediaType"], string> = {
+	"image/png": "png",
+	"image/jpeg": "jpg",
+	"image/webp": "webp",
+	"image/gif": "gif",
+};
 
 const FILE_DIRS = ["screens", "components"];
 
@@ -150,21 +161,46 @@ export function writeCanvas(dir: string, canvas: CanvasDoc) {
 	writeFileSync(join(dir, CANVAS_FILE), `${JSON.stringify(canvas, null, "\t")}\n`);
 }
 
-/** Malformed lines are skipped. */
-export function parseChat(text: string): ChatMessage[] {
+/** Malformed lines are skipped. Images load only with `readAttachment`; the AI history doesn't need them. */
+export function parseChat(text: string, readAttachment?: (path: string) => string | null): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 
 	for (const line of text.split("\n")) {
 		if (!line.trim()) continue;
 
 		try {
-			const message = parseJson(line);
+			const value = parseJson(line);
 
-			if (isChatMessage(message)) messages.push(message);
+			if (!isChatMessage(value)) continue;
+			const message: ChatMessage = { ...value };
+			delete message.attachments;
+
+			const images = readAttachment
+				? arrayOr(objectOr(value).attachments).flatMap((ref) => loadAttachment(ref, readAttachment))
+				: [];
+
+			if (images.length) message.attachments = images;
+			messages.push(message);
 		} catch {}
 	}
 
 	return messages;
+}
+
+const isImageType = (value: Json | undefined): value is Attachment["mediaType"] =>
+	isString(value) && Object.hasOwn(IMAGE_EXTENSIONS, value);
+
+const ATTACHMENT_PATH = /^attachments\/[\w-]+\.(png|jpg|webp|gif)$/;
+
+function loadAttachment(ref: Json, read: (path: string) => string | null): Attachment[] {
+	const stored = objectOr(ref);
+	const name = optionalString(stored.name) ?? "image";
+	const path = optionalString(stored.path);
+
+	if (!isImageType(stored.mediaType) || !path || !ATTACHMENT_PATH.test(path)) return [];
+	const data = read(path);
+
+	return data === null ? [] : [{ name, mediaType: stored.mediaType, data }];
 }
 
 export function isChatMessage(value: unknown): value is ChatMessage {
@@ -182,9 +218,37 @@ export function isChatMessage(value: unknown): value is ChatMessage {
 	);
 }
 
+/** Writes attached images to `attachments/` and keeps only their paths in the chat. */
 export function appendChat(dir: string, messages: ChatMessage[]) {
 	if (!messages.length) return;
-	appendFileSync(join(dir, CHAT_FILE), messages.map((m) => `${JSON.stringify(m)}\n`).join(""));
+
+	const lines = messages.map((message) => {
+		const images = (message.attachments ?? []).filter((image) => isImageType(image.mediaType));
+
+		if (!images.length) return JSON.stringify({ ...message, attachments: undefined });
+		mkdirSync(join(dir, ATTACHMENTS_DIR), { recursive: true });
+		const id = message.id.replace(/[^\w-]/g, "") || crypto.randomUUID();
+
+		const attachments = images.map((image, index) => {
+			const path = `${ATTACHMENTS_DIR}/${id}-${index}.${IMAGE_EXTENSIONS[image.mediaType]}`;
+			writeFileSync(join(dir, path), Buffer.from(image.data, "base64"));
+
+			return { name: image.name, mediaType: image.mediaType, path };
+		});
+
+		return JSON.stringify({ ...message, attachments });
+	});
+
+	appendFileSync(join(dir, CHAT_FILE), lines.map((line) => `${line}\n`).join(""));
+}
+
+/** Base64, or `null` when the file is gone */
+function readAttachment(dir: string, path: string) {
+	try {
+		return readFileSync(join(dir, path)).toString("base64");
+	} catch {
+		return null;
+	}
 }
 
 /** Writes `rabisco.json` when missing or when frames had to be reconciled with the files on disk. */
@@ -195,7 +259,7 @@ export function loadProject(dir: string): Project {
 	const canvas = reconcileFrames(stored ?? emptyCanvas(projectNameFromPath(dir), "mobile"), files);
 
 	if (!stored || canvas !== stored) writeCanvas(dir, canvas);
-	const messages = parseChat(readFileIfExists(join(dir, CHAT_FILE)) ?? "");
+	const messages = parseChat(readFileIfExists(join(dir, CHAT_FILE)) ?? "", (path) => readAttachment(dir, path));
 
 	return { path: dir, canvas, files, messages };
 }

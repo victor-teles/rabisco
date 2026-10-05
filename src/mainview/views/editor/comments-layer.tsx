@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { CircleCheck, Pencil, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,13 +21,15 @@ type CommentsLayerProps = {
 	frames: Frame[];
 	zoom: number;
 	onAskAI?: (comment: CanvasComment) => void;
+	/** Why "Ask AI" is off right now */
+	askAIBlocked?: string;
 };
 
 // Threads render in a portal, but React still bubbles their events through the canvas: stop them reaching it
 const stop = (event: React.PointerEvent) => event.stopPropagation();
 
 /** Pins counter-scale so they keep their screen size; a click opens the thread, a drag moves the pin */
-export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLayerProps) {
+export function CommentsLayer({ controller, frames, zoom, onAskAI, askAIBlocked }: CommentsLayerProps) {
 	const { comments, draft, openId, showResolved } = controller;
 	const draftAt = draft ? pinPosition(draft, frames) : null;
 
@@ -48,6 +51,7 @@ export function CommentsLayer({ controller, frames, zoom, onAskAI }: CommentsLay
 						open={comment.id === openId}
 						controller={controller}
 						onAskAI={onAskAI}
+						askAIBlocked={askAIBlocked}
 					/>
 				);
 			})}
@@ -159,6 +163,7 @@ function CommentPin({
 	open,
 	controller,
 	onAskAI,
+	askAIBlocked,
 }: {
 	comment: CanvasComment;
 	number: number;
@@ -167,6 +172,7 @@ function CommentPin({
 	open: boolean;
 	controller: CommentsController;
 	onAskAI?: (comment: CanvasComment) => void;
+	askAIBlocked?: string;
 }) {
 	const drag = useRef<PinDrag | null>(null);
 	const [dragging, setDragging] = useState(false);
@@ -269,8 +275,11 @@ function CommentPin({
 									variant="ghost"
 									size="icon-xs"
 									aria-label="Ask AI"
-									title="Ask AI"
-									onClick={() => onAskAI(comment)}
+									title={askAIBlocked ?? "Ask AI"}
+									// Not `disabled`, so the reason still shows on hover and on click
+									aria-disabled={askAIBlocked ? true : undefined}
+									className={cn(askAIBlocked && "opacity-50")}
+									onClick={() => (askAIBlocked ? toast(askAIBlocked) : onAskAI(comment))}
 								>
 									<Sparkles />
 								</Button>

@@ -47,6 +47,8 @@ export type ContextPanelProps = {
 	lastUsed: ContextFileName[] | null;
 	hasScreens: boolean;
 	busy: boolean;
+	/** Why the AI actions are off while `busy` */
+	busyReason?: string;
 	onWriteDesign: () => void;
 	onInterview: () => void;
 };
@@ -214,16 +216,18 @@ export function ContextPanel(props: ContextPanelProps) {
 }
 
 /** Writing DESIGN.md needs screens; PRODUCT.md comes from an interview */
-function aiAction({ file, hasScreens, busy, onWriteDesign, onInterview }: ContextPanelProps) {
+function aiAction({ file, hasScreens, busy, busyReason, onWriteDesign, onInterview }: ContextPanelProps) {
+	const busyHint = busy ? busyReason : undefined;
+
 	return file === "DESIGN.md"
 		? {
 				label: "Write from my screens",
 				icon: Wand2,
 				disabled: busy || !hasScreens,
-				hint: hasScreens ? undefined : "Design a screen first; DESIGN.md is inferred from your screens.",
+				hint: hasScreens ? busyHint : "Design a screen first; DESIGN.md is inferred from your screens.",
 				run: onWriteDesign,
 			}
-		: { label: "Interview me", icon: MessageSquareText, disabled: busy, hint: undefined, run: onInterview };
+		: { label: "Interview me", icon: MessageSquareText, disabled: busy, hint: busyHint, run: onInterview };
 }
 
 function ContextActions(props: ContextPanelProps & { missing: boolean; onImport: () => void }) {

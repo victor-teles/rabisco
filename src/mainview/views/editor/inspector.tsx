@@ -74,6 +74,8 @@ type InspectorProps = {
 	onDuplicate: () => void;
 	onDelete: () => void;
 	busy: boolean;
+	/** Why Vary and Mix are off while `busy` */
+	busyReason?: string;
 	onPick: (file: string) => void;
 	onCompare: (base: string) => void;
 	onVary: (target: string, direction: string, count: number) => void;
@@ -268,6 +270,7 @@ function Variations({
 	frames,
 	files,
 	busy,
+	busyReason,
 	onSelect,
 	onPick,
 	onCompare,
@@ -427,6 +430,7 @@ function Variations({
 						</Button>
 					</div>
 				) : null}
+				{busy && busyReason ? <p className="text-xs text-subtle-foreground">{busyReason}</p> : null}
 			</section>
 		</>
 	);

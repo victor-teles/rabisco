@@ -273,6 +273,31 @@ describe("tailwind", () => {
 		expect(builder.css).toContain(".bg-primary");
 	});
 
+	test("reset drops the candidates added since the last project open", async () => {
+		const builder = new TailwindBuilder(() => createCompiler(stylesheets), ["p-4"]);
+		await builder.whenReady();
+		builder.add(["bg-primary"]);
+		expect(builder.css).toContain(".bg-primary");
+
+		builder.reset();
+		expect(builder.ready).toBe(false);
+		builder.add(["m-2"]);
+		await builder.whenReady();
+		expect(builder.css).toContain(".p-4");
+		expect(builder.css).toContain(".m-2");
+		expect(builder.css).not.toContain(".bg-primary");
+		expect(builder.add(["bg-primary"])).toBe(true);
+	});
+
+	test("a reset during startup waits for the latest compiler", async () => {
+		const builder = new TailwindBuilder(() => createCompiler(stylesheets), ["p-4"]);
+		const first = builder.whenReady();
+		builder.reset();
+		await first;
+		expect(builder.ready).toBe(true);
+		expect(builder.css).toContain(".p-4");
+	});
+
 	test("DESIGN.md tokens override the theme variables the build uses", async () => {
 		const builder = new TailwindBuilder(() => createCompiler(stylesheets), ["bg-primary", "rounded-lg", "font-mono"]);
 		await builder.whenReady();

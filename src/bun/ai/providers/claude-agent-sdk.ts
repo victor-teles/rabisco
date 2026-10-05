@@ -1,5 +1,6 @@
 // The SDK is imported lazily, so a missing or broken package only disables this provider.
-// `binPath` overrides its bundled Claude Code binary (needed when the SDK itself is bundled).
+// The SDK finds its native Claude Code binary through node_modules, which a packaged app doesn't ship.
+// `binPath` overrides it, then `executable` (the copy in the app bundle).
 
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { GenerationEvent, Provider } from "../../../shared/ai/contract";
@@ -14,6 +15,7 @@ export type SdkProviderOptions = {
 	config: ProviderConfig;
 	getApiKey: () => Promise<string | null>;
 	stagingRoot?: string;
+	executable?: string;
 };
 
 export type AgentSdk = {
@@ -82,7 +84,7 @@ export function createClaudeAgentSdkProvider(
 			}
 
 			const model = request.model || options.config.defaultModel;
-			const binPath = options.config.binPath;
+			const binPath = options.config.binPath || options.executable;
 			yield* runInStaging(
 				request,
 				signal,

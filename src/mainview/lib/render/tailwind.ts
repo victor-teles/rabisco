@@ -24,22 +24,22 @@ export function createCompiler(stylesheets: StylesheetSources): Promise<Compiler
 	});
 }
 
-/** Rebuilds only when the candidate union gains a class; the set only grows during a session. */
+/** Rebuilds only when the candidate union gains a class; `reset()` drops it back to the base set. */
 export class TailwindBuilder {
+	#create: () => Promise<Compiler>;
+	#base: string[];
 	#compiler: Compiler | null = null;
-	#ready: Promise<void>;
+	#ready!: Promise<void>;
+	#generation = 0;
 	#known = new Set<string>();
 	#listeners = new Set<(css: string) => void>();
 	css = "";
 	builds = 0;
 
 	constructor(create: () => Promise<Compiler>, baseCandidates: Iterable<string> = []) {
-		for (const candidate of baseCandidates) this.#known.add(candidate);
-		this.#ready = create().then((compiler) => {
-			this.#compiler = compiler;
-			this.#build([...this.#known]);
-		});
-		this.#ready.catch((error) => console.error("[render] Tailwind failed to start", error));
+		this.#create = create;
+		this.#base = [...baseCandidates];
+		this.#start();
 	}
 
 	get ready() {
@@ -48,6 +48,23 @@ export class TailwindBuilder {
 
 	whenReady() {
 		return this.#ready;
+	}
+
+	/** Tailwind's compiler keeps every candidate it has built, so a reset needs a fresh one. */
+	reset() {
+		this.#compiler = null;
+		this.#start();
+	}
+
+	#start() {
+		const generation = ++this.#generation;
+		this.#known = new Set(this.#base);
+		this.#ready = this.#create().then((compiler) => {
+			if (generation !== this.#generation) return this.#ready;
+			this.#compiler = compiler;
+			this.#build([...this.#known]);
+		});
+		this.#ready.catch((error) => console.error("[render] Tailwind failed to start", error));
 	}
 
 	add(candidates: Iterable<string>): boolean {

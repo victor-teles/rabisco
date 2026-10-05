@@ -30,9 +30,13 @@ import { MAX_VARIATIONS } from "../../../shared/variations";
 export type DesignComposerProps = {
 	value?: string;
 	onValueChange?: (value: string) => void;
+	/** Uncontrolled starting prompt and images */
+	defaultValue?: string;
+	defaultFiles?: File[];
 	device: Device;
 	onDeviceChange: (device: Device) => void;
-	onSubmit: (prompt: string, files: File[]) => void;
+	/** `false` keeps the prompt in the composer */
+	onSubmit: (prompt: string, files: File[]) => void | boolean;
 	busy?: boolean;
 	onStop?: () => void;
 	placeholder?: string;
@@ -49,6 +53,8 @@ export type DesignComposerProps = {
 export function DesignComposer({
 	value,
 	onValueChange,
+	defaultValue,
+	defaultFiles,
 	device,
 	onDeviceChange,
 	onSubmit,
@@ -68,6 +74,8 @@ export function DesignComposer({
 			busy={busy}
 			value={value}
 			onValueChange={onValueChange}
+			defaultValue={defaultValue}
+			defaultFiles={defaultFiles}
 			onSubmit={(prompt, files) => onSubmit(prompt, files)}
 			className={className}
 		>

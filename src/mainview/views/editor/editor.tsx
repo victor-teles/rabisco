@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ChevronLeft,
+	CheckCheck,
 	Hand,
 	Maximize,
 	MessageCircle,
@@ -30,7 +31,7 @@ import { useComments } from "@/hooks/use-comments";
 import { useComponents } from "@/hooks/use-components";
 import { useGeneration } from "@/hooks/use-generation";
 import { useInterview } from "@/hooks/use-interview";
-import { useProviders } from "@/hooks/use-providers";
+import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useProject } from "@/hooks/use-project";
 import { useStructure } from "@/hooks/use-structure";
 import type { Theme } from "@/hooks/use-theme";
@@ -46,7 +47,7 @@ import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project
 import type { CanvasComment, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import { Canvas, type CanvasHandle, type ElementRef, type FrameMove, type Tool, type Viewport } from "./canvas";
-import { ChatPanel } from "./chat-panel";
+import { ChatPanel, type HeldPrompt } from "./chat-panel";
 import { CommentsLayer } from "./comments-layer";
 import { CodePanel } from "./code-panel";
 import { CompareView } from "./compare-view";
@@ -58,7 +59,14 @@ import { NodeProps } from "./node-props";
 import { ExportMenu, type ExportContext } from "./export/export-menu";
 import { ShareButton } from "./export/share-button";
 import { PlayView } from "./play-view";
-import { ALIGN_SHORTCUTS, COMPONENTS_VIEW_CODE, DISTRIBUTE_SHORTCUTS, isPlay, isTyping, PLAY_KEYS } from "./shortcuts";
+import {
+	ALIGN_SHORTCUTS,
+	COMPONENTS_VIEW_CODE,
+	DISTRIBUTE_SHORTCUTS,
+	focusOwnsKey,
+	isPlay,
+	PLAY_KEYS,
+} from "./shortcuts";
 
 type EditorProps = {
 	projectPath: string;
@@ -188,6 +196,13 @@ export function EditorView({
 
 	const busy = generation !== null || interview !== null;
 
+	/** Shown where an AI action is off, so it is never ignored silently */
+	const busyReason = generation
+		? "Wait for the current generation to finish."
+		: interview
+			? "Finish or cancel the PRODUCT.md interview first."
+			: undefined;
+
 	const {
 		components,
 		suggestions,
@@ -220,8 +235,13 @@ export function EditorView({
 	/** Answers the PRODUCT.md interview, else changes the selected element, edits the selected screens, or creates new ones */
 	const sendPrompt = useCallback(
 		(prompt: string, attachments: File[] = []) => {
-			if (interview) answer(prompt);
-			else send(prompt, { targets: selection, files: attachments, variations, focus: structure.node });
+			if (interview) {
+				answer(prompt);
+
+				return true;
+			}
+
+			return send(prompt, { targets: selection, files: attachments, variations, focus: structure.node });
 		},
 		[interview, answer, send, selection, variations, structure.node],
 	);
@@ -334,13 +354,20 @@ export function EditorView({
 		return null;
 	}, [messages]);
 
-	// The model comes from the providers, so wait for them before sending the first prompt
-	const { loading: providersLoading } = useProviders();
+	// The model comes from the providers, so wait for them before sending the first prompt.
+	// Without one, the prompt waits in the composer and goes out once a model is set up.
+	const { loading: providersLoading, model } = useProviders();
+	const [heldPrompt, setHeldPrompt] = useState<HeldPrompt | null>(null);
 	useEffect(() => {
 		if (!project || !initialPrompt || providersLoading || startedInitialPrompt.current) return;
 		startedInitialPrompt.current = true;
-		send(initialPrompt, { files: initialFiles, variations: initialVariations });
-	}, [project, initialPrompt, initialFiles, initialVariations, providersLoading, send]);
+
+		if (model) send(initialPrompt, { files: initialFiles, variations: initialVariations });
+		else {
+			setHeldPrompt({ prompt: initialPrompt, files: initialFiles });
+			openSettings();
+		}
+	}, [project, initialPrompt, initialFiles, initialVariations, providersLoading, model, send]);
 
 	const draftCount = drafts?.frames.length ?? 0;
 	useEffect(() => {
@@ -469,7 +496,7 @@ export function EditorView({
 
 	// Reads the latest render through a ref so the handler is registered once
 	const onKeyDown = (event: KeyboardEvent) => {
-		if (event.defaultPrevented || isTyping(event.target) || !project) return;
+		if (event.defaultPrevented || focusOwnsKey(event) || !project) return;
 
 		// Text being edited in a frame owns the keys; Escape still cancels it if focus stayed here
 		if (canvasRef.current?.isEditingText()) {
@@ -568,7 +595,7 @@ export function EditorView({
 
 			if (element) structure.removeNode();
 			else deleteSelection();
-		} else if (event.key.startsWith("Arrow") && selected.length) {
+		} else if (event.key.startsWith("Arrow") && selected.length && !element) {
 			event.preventDefault();
 			const step = event.shiftKey ? 10 : 1;
 			const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
@@ -657,6 +684,8 @@ export function EditorView({
 					device={device}
 					onDeviceChange={(next: Device) => setMeta({ device: next })}
 					onSend={sendPrompt}
+					heldPrompt={heldPrompt}
+					onHeldPromptSent={() => setHeldPrompt(null)}
 					onStop={stop}
 					onRetry={retry}
 					onDismissFailure={dismissFailure}
@@ -702,6 +731,7 @@ export function EditorView({
 								frames={frames}
 								zoom={viewport.zoom}
 								onAskAI={(comment) => void askAboutComment(comment)}
+								askAIBlocked={busyReason}
 							/>
 						}
 					>
@@ -721,7 +751,17 @@ export function EditorView({
 						) : null}
 					</Canvas>
 
-					<Toolbar tool={tool} onToolChange={setTool} canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
+					<Toolbar
+						tool={tool}
+						onToolChange={setTool}
+						canUndo={canUndo}
+						canRedo={canRedo}
+						onUndo={undo}
+						onRedo={redo}
+						resolvedCount={comments.comments.filter((comment) => comment.resolved).length}
+						showResolved={comments.showResolved}
+						onShowResolvedChange={comments.setShowResolved}
+					/>
 					<ZoomControls
 						zoom={viewport.zoom}
 						onZoomIn={() => canvasRef.current?.zoomBy(1.2)}
@@ -761,6 +801,7 @@ export function EditorView({
 					onCompare={setCompareBase}
 					onVary={vary}
 					onMix={mix}
+					busyReason={busyReason}
 					componentsBadge={unseenSuggestions}
 					codePanel={
 						<CodePanel
@@ -823,6 +864,7 @@ export function EditorView({
 							lastUsed={lastUsed}
 							hasScreens={frames.length > 0}
 							busy={generation !== null || interview !== null}
+							busyReason={busyReason}
 							onWriteDesign={() => void writeDesign()}
 							onInterview={startInterview}
 						/>
@@ -843,6 +885,9 @@ function Toolbar({
 	canRedo,
 	onUndo,
 	onRedo,
+	resolvedCount,
+	showResolved,
+	onShowResolvedChange,
 }: {
 	tool: Tool;
 	onToolChange: (tool: Tool) => void;
@@ -850,6 +895,9 @@ function Toolbar({
 	canRedo: boolean;
 	onUndo: () => void;
 	onRedo: () => void;
+	resolvedCount: number;
+	showResolved: boolean;
+	onShowResolvedChange: (show: boolean) => void;
 }) {
 	const tools = [
 		{ id: "move" as const, label: "Move", shortcut: "V", icon: MousePointer2 },
@@ -885,6 +933,25 @@ function Toolbar({
 					</TooltipContent>
 				</Tooltip>
 			))}
+			{resolvedCount > 0 || showResolved ? (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							aria-label="Show resolved comments"
+							aria-pressed={showResolved}
+							onClick={() => onShowResolvedChange(!showResolved)}
+							className={showResolved ? "bg-accent" : "text-muted-foreground"}
+						>
+							<CheckCheck />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="top">
+						{showResolved ? "Hide" : "Show"} resolved comments ({resolvedCount})
+					</TooltipContent>
+				</Tooltip>
+			) : null}
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />
 			{history.map((h) => (
 				<Tooltip key={h.label}>
