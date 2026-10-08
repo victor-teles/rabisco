@@ -12,8 +12,10 @@ import type {
 	ScreenMeta,
 } from "../../shared/ai/contract";
 import { focusNote, focusOf } from "../../shared/ai/focus";
+import type { AppliedTheme } from "../../shared/context/theme";
 import { draftLayout, mixNote, mixPrompt, variantLabel, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
 import { renderCheckOf, renderRepairOf, type RenderCheck } from "@/lib/render-check";
+import { setResolved } from "../../shared/comments";
 import { isContextFile, isScreenFile } from "../../shared/project";
 import type {
 	ChatMessage,
@@ -26,14 +28,14 @@ import type {
 } from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
 import { openSettings, useProviders } from "./use-providers";
-import type { ChangeOptions, ProjectState } from "./use-project";
+import { flushProjectFiles, type ChangeOptions, type ProjectState } from "./use-project";
 import type { StructureNode } from "./use-structure";
 
 export type WritingFile = { kind: FileKind; screen?: ScreenMeta; text: string; done: boolean };
 
 export type Generation = {
 	id: string;
-	task: "create" | "edit" | "repair" | "context" | "vary";
+	task: "create" | "edit" | "repair" | "context" | "vary" | "theme";
 	variations: number;
 	/** `variant` is set only for the extra variations (1…) of a parallel run. */
 	steps: { label: string; detail?: string; variant?: number }[];
@@ -57,9 +59,19 @@ type SendOptions = {
 	references?: string[];
 	focus?: ElementFocus;
 	repair?: { problems: Problem[] };
+	/** A provider command; `prompt` is `/name args` */
+	command?: { name: string; args: string };
+	/** Comments the prompt came from, resolved in the same undo step as a result that changes files */
+	resolves?: string[];
 };
 
 type LastRequest = { prompt: string; options: SendOptions };
+
+export type ThemeReading =
+	| { ok: true; theme: AppliedTheme }
+	/** `busy`: another generation runs; `no-model`: no provider is set up */
+	| { ok: false; reason: "busy" | "no-model" | "aborted" }
+	| { ok: false; reason: "failed"; error: GenerationFailure };
 
 const RENDER_CHECK_MS = 2500;
 
@@ -162,6 +174,8 @@ export function useGeneration({
 	frames,
 	device,
 	onPlaced,
+	onResolved,
+	undo,
 }: {
 	projectPath: string;
 	stateRef: RefObject<ProjectState | null>;
@@ -171,6 +185,10 @@ export function useGeneration({
 	frames: Frame[];
 	device: Device;
 	onPlaced: (frames: Frame[]) => void;
+	/** Comments a result resolved */
+	onResolved?: (ids: string[]) => void;
+	/** Regenerating takes the last result back first, while it is still the latest undo step */
+	undo?: () => void;
 }) {
 	const { model } = useProviders();
 	const [generation, setGeneration] = useState<Generation | null>(null);
@@ -178,6 +196,9 @@ export function useGeneration({
 	const live = useRef<Generation | null>(null);
 	const flush = useRef(0);
 	const last = useRef<LastRequest | null>(null);
+	/** The undo step the last request's result made */
+	const lastResult = useRef<Snapshot | null>(null);
+	const [regenerable, setRegenerable] = useState(false);
 
 	// Events arrive per token; batch them into one render per frame
 	useEffect(
@@ -239,7 +260,13 @@ export function useGeneration({
 			const generationId = crypto.randomUUID();
 			const task = options.repair ? "repair" : (options.task ?? (options.targets?.length ? "edit" : "create"));
 			const variations = task === "create" || task === "vary" ? Math.max(1, options.variations ?? 1) : 1;
-			last.current = options.repair ? last.current : { prompt, options };
+
+			if (!options.repair) {
+				last.current = { prompt, options };
+				lastResult.current = null;
+				setRegenerable(true);
+			}
+
 			setFailure(null);
 			live.current = { id: generationId, task, variations, steps: [], reply: "", attempt: 1, writing: {} };
 			setGeneration(live.current);
@@ -247,6 +274,8 @@ export function useGeneration({
 			let applied = false;
 
 			try {
+				await flushProjectFiles();
+
 				const result = await api.generate({
 					generationId,
 					projectPath,
@@ -260,6 +289,8 @@ export function useGeneration({
 					focus: options.focus,
 					problems: options.repair?.problems,
 					attachments: options.attachments,
+					chatId: current.chatId,
+					command: options.command,
 				});
 
 				const latest = stateRef.current;
@@ -280,15 +311,26 @@ export function useGeneration({
 					result.frames.filter((frame) => !placedFiles.has(frame.file)),
 				);
 
+				const resolving = result.changes.length
+					? (latest.canvas.comments ?? []).flatMap((comment) =>
+							options.resolves?.includes(comment.id) && !comment.resolved ? [comment.id] : [],
+						)
+					: [];
+
 				if (result.changes.length) {
 					change(
 						(snapshot) => {
 							const files = applyFileChanges(snapshot.files, result.changes);
+							const frames = [...snapshot.frames, ...placed].filter((frame) => frame.file in files);
 
-							return { files, frames: [...snapshot.frames, ...placed].filter((frame) => frame.file in files) };
+							return resolving.length
+								? { files, frames, comments: setResolved(snapshot.comments ?? [], resolving, true) }
+								: { files, frames };
 						},
 						placed.length ? { select: placed.map((frame) => frame.file) } : undefined,
 					);
+
+					if (!options.repair) lastResult.current = stateRef.current?.history.present ?? null;
 				}
 
 				const reply = result.reply.trim() || summarize(result.changes);
@@ -300,6 +342,8 @@ export function useGeneration({
 				addMessages([{ ...message("assistant", reply + leftOut), context: result.context ?? [] }]);
 
 				if (placed.length) onPlaced(placed);
+
+				if (resolving.length) onResolved?.(resolving);
 				applied = true;
 
 				if (!options.repair) check = renderCheckOf(applyFileChanges(latest.files, result.changes), result.changes);
@@ -327,7 +371,7 @@ export function useGeneration({
 		},
 		// `run` calls itself for the repair; the latest closure is fine there
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[stateRef, model, projectPath, device, change, addMessages, onPlaced, collectRenderErrors],
+		[stateRef, model, projectPath, device, change, addMessages, onPlaced, onResolved, collectRenderErrors],
 	);
 
 	const ready = useCallback(() => {
@@ -360,7 +404,14 @@ export function useGeneration({
 				focus: node,
 				files,
 				...options
-			}: { targets?: string[]; files?: File[]; variations?: number; focus?: StructureNode | null } = {},
+			}: {
+				targets?: string[];
+				files?: File[];
+				variations?: number;
+				focus?: StructureNode | null;
+				command?: { name: string; args: string };
+				resolves?: string[];
+			} = {},
 		): boolean => {
 			if (!ready()) return false;
 
@@ -377,7 +428,13 @@ export function useGeneration({
 						const focus = focusOf(current.files, node);
 						const where = variationName(node.file, current.canvas.frames);
 						addMessages([user(focus ? focusNote(focus.label, where, prompt) : prompt)]);
-						const send: SendOptions = { targets: [node.file], attachments };
+
+						const send: SendOptions = {
+							targets: [node.file],
+							attachments,
+							command: options.command,
+							resolves: options.resolves,
+						};
 
 						if (focus) send.focus = focus;
 						void run(prompt, send);
@@ -396,6 +453,18 @@ export function useGeneration({
 			);
 
 			return true;
+		},
+		[ready, stateRef, addMessages, run],
+	);
+
+	/** Another repair, on request, for a screen that still fails to render after the automatic one */
+	const fix = useCallback(
+		(target: string, problem: Problem) => {
+			if (!ready()) return;
+			const frames = stateRef.current!.canvas.frames;
+			addMessages([message("user", `Fix ${variationName(target, frames)} so it renders`)]);
+			const targets = [...new Set([target, problem.path])];
+			void run(`Fix ${target} so it renders.`, { targets, repair: { problems: [problem] } });
 		},
 		[ready, stateRef, addMessages, run],
 	);
@@ -432,6 +501,43 @@ export function useGeneration({
 		[ready, addMessages, run],
 	);
 
+	/** Reads DESIGN.md's theme with AI; changes nothing, the caller applies the result. */
+	const readTheme = useCallback(async (): Promise<ThemeReading> => {
+		if (!stateRef.current || live.current) return { ok: false, reason: "busy" };
+
+		if (!model) return { ok: false, reason: "no-model" };
+		const generationId = crypto.randomUUID();
+		live.current = { id: generationId, task: "theme", variations: 1, steps: [], reply: "", attempt: 1, writing: {} };
+		setGeneration(live.current);
+
+		try {
+			await flushProjectFiles();
+
+			const result = await api.generate({ generationId, projectPath, prompt: "", device, model, task: "theme" });
+
+			if (result.ok && result.theme) return { ok: true, theme: result.theme };
+
+			if (result.ok)
+				return {
+					ok: false,
+					reason: "failed",
+					error: { code: "invalid_output", message: "No theme came back.", retryable: true },
+				};
+
+			return result.error.code === "aborted"
+				? { ok: false, reason: "aborted" }
+				: { ok: false, reason: "failed", error: result.error };
+		} catch (reason) {
+			return { ok: false, reason: "failed", error: { code: "unknown", message: String(reason), retryable: true } };
+		} finally {
+			if (flush.current) cancelAnimationFrame(flush.current);
+			flush.current = 0;
+
+			if (live.current?.id === generationId) live.current = null;
+			setGeneration((g) => (g?.id === generationId ? null : g));
+		}
+	}, [stateRef, model, projectPath, device]);
+
 	const stop = useCallback(() => {
 		const id = live.current?.id;
 
@@ -441,6 +547,16 @@ export function useGeneration({
 	const retry = useCallback(() => {
 		if (last.current) void run(last.current.prompt, last.current.options);
 	}, [run]);
+
+	/** Runs the last request again, in place of its result when nothing changed since */
+	const regenerate = useCallback(() => {
+		const request = last.current;
+
+		if (!request || !ready()) return;
+
+		if (lastResult.current && stateRef.current?.history.present === lastResult.current) undo?.();
+		void run(request.prompt, request.options);
+	}, [ready, stateRef, undo, run]);
 
 	useEffect(() => () => stop(), [stop]);
 
@@ -474,10 +590,13 @@ export function useGeneration({
 		dismissFailure: () => setFailure(null),
 		send,
 		vary,
+		fix,
 		mix,
 		writeContext,
+		readTheme,
 		stop,
 		retry,
+		regenerate: regenerable ? regenerate : null,
 	};
 }
 

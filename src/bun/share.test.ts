@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeTarget } from "../shared/prototype/links";
-import { shareScreens, type ShareSnapshot } from "../shared/share/snapshot";
+import { assertSnapshot, shareScreens, type ShareSnapshot } from "../shared/share/snapshot";
 import { inlineRuntime, NORMALIZE_TARGET_JS, SNAPSHOT_GLOBAL, viewerFiles } from "../shared/share/viewer";
 import { createShareService, readScreenRuntime } from "./share";
 import { tempDir } from "./test-utils";
@@ -60,6 +60,20 @@ describe("viewerFiles", () => {
 		]) {
 			expect(normalize(to)).toBe(normalizeTarget(to));
 		}
+	});
+
+	test("images travel in the snapshot and reach the frame before the modules", () => {
+		const withImages = { ...snapshot(), assets: { "/images/logo.png": "data:image/png;base64,bG9nbw==" } };
+		const files = Object.fromEntries(viewerFiles(withImages, runtime).map((file) => [file.path, file.content]));
+		expect(files["snapshot.js"]).toContain('"/images/logo.png":"data:image/png;base64,bG9nbw=="');
+		expect(files["viewer.js"]).toContain(
+			'if (data.assets) post({ type: "assets", assets: data.assets, reset: true });',
+		);
+		expect(assertSnapshot(withImages)).toEqual(withImages);
+		expect(() => assertSnapshot({ ...snapshot(), assets: { "/images/a.png": "https://x.test/a.png" } })).toThrow(
+			"isn't an image",
+		);
+		expect(() => assertSnapshot({ ...snapshot(), assets: { "../a.png": "data:image/png;base64,AA==" } })).toThrow();
 	});
 
 	test("viewer.js parses", () => {

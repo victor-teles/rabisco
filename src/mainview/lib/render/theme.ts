@@ -1,5 +1,4 @@
-import { parseDesignTokens, tokensToCss } from "../../../shared/context/tokens";
-import type { ProjectFiles } from "../../../shared/types";
+import { tokensToCss, type DesignTokens } from "../../../shared/context/tokens";
 
 export const SCREEN_THEME_CSS = `
 @custom-variant dark (&:is(.dark *));
@@ -103,13 +102,13 @@ export const SCREEN_THEME_CSS = `
 }
 `;
 
-let lastDesign: { source: string; css: string } | null = null;
+const themeCache = new WeakMap<DesignTokens, string>();
 
-/** Loaded after the shared Tailwind stylesheet so DESIGN.md tokens re-theme screens without a rebuild. */
-export function designThemeCss(files: ProjectFiles): string {
-	const source = files["DESIGN.md"] ?? "";
+/** Loaded after the shared Tailwind stylesheet so the applied tokens re-theme screens without a rebuild. */
+export function themeCss(tokens: DesignTokens): string {
+	let css = themeCache.get(tokens);
 
-	if (lastDesign?.source !== source) lastDesign = { source, css: source ? tokensToCss(parseDesignTokens(source)) : "" };
+	if (css === undefined) themeCache.set(tokens, (css = tokensToCss(tokens)));
 
-	return lastDesign.css;
+	return css;
 }

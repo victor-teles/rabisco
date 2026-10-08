@@ -1,4 +1,8 @@
 import type { Attachment, ElementFocus, GenerationEvent, Problem, ProviderErrorCode, Usage } from "./ai/contract";
+import type { ProjectAssets } from "./assets";
+import type { ChatSummary } from "./chats";
+import type { AppliedTheme } from "./context/theme";
+import type { DesignTokens } from "./context/tokens";
 
 export type Device = "mobile" | "desktop";
 
@@ -36,6 +40,8 @@ export type CanvasDoc = {
 	alternates: AlternateGroup[];
 	/** Missing in projects saved before comments existed */
 	comments?: CanvasComment[];
+	/** The theme screens render with, applied on request (decision 0009). Missing in older projects: DESIGN.md's tokens count as applied */
+	theme?: AppliedTheme;
 };
 
 export type CommentReply = { id: string; text: string; createdAt: string };
@@ -77,7 +83,13 @@ export type Project = {
 	path: string;
 	canvas: CanvasDoc;
 	files: ProjectFiles;
+	/** The open chat session; a new one has no file until its first message */
+	chatId: string;
+	/** Of `chatId` */
 	messages: ChatMessage[];
+	chats: ChatSummary[];
+	/** Images under `public/`, pushed to frames as bytes (decision 0010). Not files: they stay out of history */
+	assets?: ProjectAssets;
 };
 
 /** Everything to render one screen on its own (thumbnails) */
@@ -87,7 +99,11 @@ export type ScreenSource = {
 	width: number;
 	height: number;
 	files: ProjectFiles;
+	theme: DesignTokens;
 };
+
+/** Which screen a project's cover shows; its files load with `loadCover` */
+export type ScreenCover = Pick<ScreenSource, "entry" | "device" | "width" | "height">;
 
 export type ProjectSummary = {
 	path: string;
@@ -95,7 +111,7 @@ export type ProjectSummary = {
 	device: Device;
 	updatedAt: string;
 	screenCount: number;
-	cover: ScreenSource | null;
+	cover: ScreenCover | null;
 	/** Moved or deleted since last opened */
 	missing: boolean;
 };
@@ -119,7 +135,7 @@ export type GenerateParams = {
 	/** Empty or missing: create new screens */
 	targets?: string[];
 	/** `vary`: new alternates of the one screen in `targets`, leaving it as it is. */
-	task?: "create" | "edit" | "repair" | "context" | "vary";
+	task?: "create" | "edit" | "repair" | "context" | "vary" | "theme";
 	/** 1 to `MAX_VARIATIONS`, for `create` and `vary`; run as parallel generations */
 	variations?: number;
 	/** Read but must not change, e.g. the variation a "Mix" takes a section from */
@@ -128,6 +144,10 @@ export type GenerateParams = {
 	focus?: ElementFocus;
 	problems?: Problem[];
 	attachments?: Attachment[];
+	/** The chat session whose messages are the history. Missing: no history */
+	chatId?: string;
+	/** `prompt` is `/name args`; the main process expands the provider's command */
+	command?: { name: string; args: string };
 };
 
 export type GenerationFailure = {
@@ -152,6 +172,8 @@ export type GenerateResult =
 			usage?: Usage;
 			/** Context files that had content and went into the request */
 			context: ContextFileName[];
+			/** `theme` task: the valid tokens read from DESIGN.md, with the source they were read from */
+			theme?: AppliedTheme;
 	  }
 	| { ok: false; error: GenerationFailure };
 

@@ -140,3 +140,24 @@ export function retargetLinks(files: ProjectFiles, from: string, to: string): Fi
 
 	return changes;
 }
+
+/** The exported app's hash route for a screen (`src/App.tsx` in the Vite export): `screens/settings.tsx` → `#/settings` */
+export const screenHref = (file: string) => `#/${file.replace(/^screens\//, "").replace(/\.tsx$/, "")}`;
+
+/** The screen a `#/settings` href routes to in the export, if it exists */
+export function hrefScreen(href: string, files: ProjectFiles): string | null {
+	const match = /^#\/([\w.-]+)$/.exec(href.trim());
+	const file = match ? `screens/${match[1]}.tsx` : null;
+
+	return file && isScreenFile(file) && files[file] !== undefined ? file : null;
+}
+
+/**
+ * Points a link at a screen: `href` gets the export's route and `data-link-to` the screen, so the click
+ * navigates in play mode and in the exported app alike.
+ */
+export function linkHrefToScreen(source: string, start: number, file: string): string | null {
+	const withHref = setAttribute(source, start, "href", screenHref(file));
+
+	return withHref === null ? null : setLink(withHref, start, file);
+}

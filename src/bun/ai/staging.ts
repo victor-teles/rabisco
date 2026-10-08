@@ -7,6 +7,7 @@ import { dirname, join, resolve, sep } from "path";
 import type { FileKind, GenerationEvent, GenerationRequest, Usage } from "../../shared/ai/contract";
 import { contextBody } from "../../shared/context/body";
 import { screenNameFromPath } from "../../shared/project";
+import { stagedAttachments } from "./attachments";
 import { abortedEvent } from "./cli";
 import { systemPrompt } from "./prompt";
 import { contextTargetOf } from "./run";
@@ -61,6 +62,11 @@ export async function createStagingDir(request: GenerationRequest, root = tmpdir
 
 		for (const [name, content] of Object.entries(context)) {
 			if (name !== contextTarget && content && contextBody(content)) await writeFile(join(dir, name), content);
+		}
+
+		for (const { path, attachment } of stagedAttachments(request)) {
+			await mkdir(dirname(join(dir, path)), { recursive: true });
+			await writeFile(join(dir, path), Buffer.from(attachment.data, "base64"));
 		}
 
 		const instructions = systemPrompt(request, "agent");

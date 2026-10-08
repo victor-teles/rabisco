@@ -4,9 +4,10 @@ import { contextBody } from "../../shared/context/body";
 import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
+import { stagedAttachments } from "./attachments";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 6;
+export const PROMPT_VERSION = 9;
 
 export type PromptMode = "text" | "agent";
 
@@ -102,10 +103,51 @@ Rules for the Tokens section:
 const PRODUCT_MD_FORMAT = `# PRODUCT.md format
 Sections, in this order: Product (what it is and the problem it solves, in a few sentences), Audience (who uses it, their situation and what they need), Voice (how the product speaks: tone, words to use and avoid, with an example line), Constraints (platforms, accessibility, legal, content or brand limits). Use "## " headings. Plain, specific sentences in the user's own terms; don't invent facts they didn't give.`;
 
+const THEME_ROLE = `You read design documents for Rabisco, a design canvas whose screens are styled with the shadcn/ui theme variables. You turn a DESIGN.md, written in any format (prose, tables, YAML, token references), into Rabisco's theme tokens.`;
+
+const THEME_RULES = `# Output
+Reply with only this block, in this format, and nothing else:
+
+## Tokens
+
+- background: #ffffff
+- foreground: #0a0b0d
+- primary: #0052ff
+- primary-foreground: #ffffff
+- radius: 0.75rem
+- font-sans: "Inter", system-ui, sans-serif
+
+### Dark
+
+- background: #0a0b0d
+
+# Token names
+Map the document's own names onto these by meaning. No other names.
+- background: the page; foreground: the main text on it.
+- card, popover (each with -foreground): raised surfaces and their text, only when the document sets them apart from the page.
+- primary, primary-foreground: the main action or brand color, and the text on it.
+- secondary, secondary-foreground: the fill and text of secondary buttons.
+- muted: a subtle background (soft bands, tags, input fills). muted-foreground: secondary text (captions, hints, gray body text).
+- accent, accent-foreground: hover and selected fills in menus and lists.
+- destructive, success, warning: status colors.
+- border: dividers and outlines. input: input borders. ring: the focus ring.
+- chart-1 to chart-5: data visualization colors.
+- radius: the base corner radius that cards and inputs use (not pills or circles).
+- font-sans (body and UI text), font-serif, font-mono: CSS font stacks. For licensed or custom fonts, use the substitute the document names, else a close widely available font, then system fallbacks.
+
+# Rules
+- Only include tokens the document states or clearly implies. Leave the rest out: they keep Rabisco's defaults. Don't invent colors.
+- Values are plain CSS: colors as hex, rgb(), hsl() or oklch(); radius as a length (0.75rem, 12px); fonts as a font stack, quoting names with spaces ("SF Pro Text", system-ui, sans-serif). Resolve references like {colors.primary} to their values.
+- Light values go under "## Tokens". Add "### Dark" only if the document describes a dark theme or dark mode for the whole interface, not just a dark section or hero; then give the dark values of the same roles.
+- Keep each text color readable on its fill (foreground on background, primary-foreground on primary, every -foreground pair): at least 4.5:1 contrast. When the document gives no text color for a fill, use white or near-black, whichever reads better.
+- Don't write, edit or delete any file: DESIGN.md stays as it is. Everything you need is in the request.`;
+
 const contextFileOf = (request: GenerationRequest) =>
 	request.targets?.find((path) => FILE_RULES.paths.context.test(path));
 
 export function systemPrompt(request: GenerationRequest, mode: PromptMode): string {
+	if (request.task === "theme") return [THEME_ROLE, THEME_RULES].join("\n\n");
+
 	const output = mode === "text" ? TEXT_PROTOCOL_RULES.replace("DEVICE", request.device) : AGENT_RULES;
 	const target = contextFileOf(request);
 	const format = target === "DESIGN.md" ? [DESIGN_MD_FORMAT] : target === "PRODUCT.md" ? [PRODUCT_MD_FORMAT] : [];
@@ -138,6 +180,8 @@ function taskText(request: GenerationRequest, mode: PromptMode): string {
 
 		case "context":
 			return contextTaskText(request, mode);
+		case "theme":
+			return `Task: theme. Read the theme of the DESIGN.md above and reply with its "## Tokens" block${mode === "agent" ? ", as text. Don't write any file" : ""}.`;
 	}
 }
 
@@ -171,7 +215,7 @@ export function varyPrompt(direction: string) {
 }
 
 function componentsText(request: GenerationRequest, mode: PromptMode): string | null {
-	if (request.task === "context") return null;
+	if (request.task === "context" || request.task === "theme") return null;
 
 	const catalog =
 		request.components ??
@@ -246,6 +290,19 @@ function variationText(variation: NonNullable<GenerationRequest["variation"]>) {
 	return `This is variation ${variation.index + 1} of ${variation.count}. The others answer the same request separately, so take a visibly distinct direction: a different layout, composition and emphasis, while keeping the project's tokens and DESIGN.md. Use the file paths you would use anyway.`;
 }
 
+/** API models get the images in the message; agents open the copies in their staging directory. */
+function attachmentsText(request: GenerationRequest, mode: PromptMode) {
+	if (!request.attachments?.length) return null;
+
+	if (mode === "text") {
+		return `Attached images, sent with this message: ${request.attachments.map((a) => a.name).join(", ")}. Use them as reference for the request.`;
+	}
+
+	const paths = stagedAttachments(request).map((staged) => `- ${staged.path} (${staged.attachment.name})`);
+
+	return `Attached images, in the current directory. Open each one with your file tools before you start, and use them as reference for the request. Don't change, move or copy them:\n${paths.join("\n")}`;
+}
+
 export function userPrompt(request: GenerationRequest, mode: PromptMode): string {
 	const parts: string[] = [];
 	const product = contextBody(request.context.product);
@@ -273,9 +330,9 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 
 	if (components) parts.push(components);
 
-	if (request.attachments?.length) {
-		parts.push(`Attached images: ${request.attachments.map((a) => a.name).join(", ")}. Use them as reference.`);
-	}
+	const attachments = attachmentsText(request, mode);
+
+	if (attachments) parts.push(attachments);
 
 	parts.push(taskText(request, mode));
 	const focus = focusText(request, mode);
@@ -289,7 +346,31 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 	}
 
 	if (request.variation && request.variation.count > 1) parts.push(variationText(request.variation));
-	parts.push(section("request", request.prompt || "(no extra instructions)"));
+
+	const conversation = mode === "agent" ? conversationText(request) : "";
+
+	if (conversation) parts.push(conversation);
+
+	if (request.task !== "theme" || request.prompt)
+		parts.push(section("request", request.prompt || "(no extra instructions)"));
 
 	return parts.join("\n\n");
+}
+
+/** Longer turns are cut: the files on disk already hold what was made */
+const TURN_LENGTH = 800;
+
+/** API providers send history as messages; an agent run is one prompt, so the chat so far goes into it */
+function conversationText(request: GenerationRequest) {
+	const turns = (request.history ?? []).flatMap(({ role, content }) => {
+		const text = content.trim();
+
+		if (!text) return [];
+
+		const cut = text.length > TURN_LENGTH ? `${text.slice(0, TURN_LENGTH).trimEnd()}…` : text;
+
+		return [`${role === "user" ? "User" : "You"}: ${cut}`];
+	});
+
+	return turns.length ? section("conversation", `This chat so far, oldest first:\n\n${turns.join("\n\n")}`) : "";
 }

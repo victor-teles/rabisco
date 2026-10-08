@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import {
 	componentInsertion,
-	hitStarts,
+	dropTarget,
 	insertDrop,
 	libraryInsertion,
 	parseDragItem,
 	type Insertion,
 } from "@/lib/component-drop";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
-import type { FrameHit } from "@/lib/render/protocol";
+import { sourceVersion } from "@/lib/render/protocol";
 import { projectComponents, type ProjectComponent } from "../../shared/components/usages";
 import { LIBRARY } from "../../shared/components/library";
 import { extractSuggestion, findDuplicates, parseJsx, type DuplicateGroup } from "../../shared/jsx";
@@ -17,7 +17,12 @@ import { isComponentFile } from "../../shared/project";
 import type { ProjectFiles } from "../../shared/types";
 import type { ChangeOptions, ProjectState } from "./use-project";
 
-export type ComponentDrop = { file: string | null; data: string; hit: FrameHit | null };
+/** `version` is the source the canvas placed the drop in; a drop placed in another version goes to the end of the screen */
+export type ComponentDrop = {
+	file: string | null;
+	data: string;
+	target: { parent: number; index: number; version: string } | null;
+};
 
 type Options = {
 	projectPath: string;
@@ -28,9 +33,26 @@ type Options = {
 	undo: () => void;
 	busy: boolean;
 	open: boolean;
+	/** After a drop, with the added element's offset in the new source */
+	onInserted?: (element: { file: string; start: number }) => void;
 };
 
 const MAX_REMEMBERED = 200;
+
+/** The duplicate scan and catalog parse every file, so they wait for a pause in typing. */
+const SCAN_DELAY_MS = 500;
+
+function useSettled<T>(value: T, delayMs: number): T {
+	const [settled, setSettled] = useState(value);
+
+	useEffect(() => {
+		const timer = setTimeout(() => setSettled(() => value), delayMs);
+
+		return () => clearTimeout(timer);
+	}, [value, delayMs]);
+
+	return settled;
+}
 
 function readKeys(key: string): Set<string> {
 	try {
@@ -61,6 +83,7 @@ function useSuggestions(projectPath: string, files: ProjectFiles, busy: boolean,
 	);
 
 	if (!busy && found.files !== files) setFound({ files, groups: findDuplicates(files) });
+	const scanned = found.files;
 
 	const all = found.groups;
 
@@ -85,16 +108,33 @@ function useSuggestions(projectPath: string, files: ProjectFiles, busy: boolean,
 		[dismissedKey],
 	);
 
-	return { suggestions, unseen, dismiss };
+	return { suggestions, unseen, dismiss, scanned };
 }
 
 export function componentName(component: ProjectComponent | undefined, path: string) {
 	return component?.exports[0]?.name ?? path.replace(/^components\//, "").replace(/\.tsx$/, "");
 }
 
-export function useComponents({ projectPath, files, selection, stateRef, change, undo, busy, open }: Options) {
-	const components = useMemo(() => projectComponents(files), [files]);
-	const { suggestions, unseen, dismiss } = useSuggestions(projectPath, files, busy, open);
+export function useComponents({
+	projectPath,
+	files,
+	selection,
+	stateRef,
+	change,
+	undo,
+	busy,
+	open,
+	onInserted,
+}: Options) {
+	const insertedRef = useRef(onInserted);
+
+	useLayoutEffect(() => {
+		insertedRef.current = onInserted;
+	});
+
+	const settled = useSettled(files, SCAN_DELAY_MS);
+	const components = useMemo(() => projectComponents(settled), [settled]);
+	const { suggestions, unseen, dismiss, scanned } = useSuggestions(projectPath, settled, busy, open);
 
 	const selectedPath =
 		selection.length === 1 && isComponentFile(selection[0]!) && selection[0]! in files ? selection[0]! : null;
@@ -130,8 +170,11 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 
 			if (busy) return "Wait for the generation to finish.";
 
-			if (!group.occurrences.length) return "Nothing to extract.";
-			const result = extractSuggestion(current.files, group, name);
+			// The scan may lag the files by a keystroke or two, so stale offsets are found again
+			const fresh = scanned === current.files ? group : findDuplicates(current.files).find((g) => g.key === group.key);
+
+			if (!fresh?.occurrences.length) return "Nothing to extract.";
+			const result = extractSuggestion(current.files, fresh, name);
 
 			if (!result.ok) return result.reason;
 			change((snapshot) => ({ ...snapshot, files: applyFileChanges(snapshot.files, result.changes) }), {
@@ -146,11 +189,11 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 
 			return null;
 		},
-		[stateRef, busy, change, undoAction],
+		[stateRef, busy, scanned, change, undoAction],
 	);
 
 	const drop = useCallback(
-		({ file, data, hit }: ComponentDrop) => {
+		({ file, data, target }: ComponentDrop) => {
 			const item = parseDragItem(data);
 			const current = stateRef.current;
 
@@ -195,8 +238,11 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 				return;
 			}
 
-			// Stale offsets (file changed since render) are dropped, so the drop goes to the root
-			const next = insertDrop(source, hitStarts(hit, file, source), insertion);
+			// Offsets placed in another version point at the wrong elements: append to the screen instead
+			const placed = target?.version === sourceVersion(source) ? target : null;
+			const fallback = placed ? null : dropTarget(source, null);
+			const at = placed ?? (fallback && { parent: fallback.parent, index: fallback.slots.length });
+			const next = at && insertDrop(source, at.parent, at.index, insertion);
 
 			if (next === null) {
 				const description = parseJsx(source).ok
@@ -208,7 +254,8 @@ export function useComponents({ projectPath, files, selection, stateRef, change,
 				return;
 			}
 
-			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: next } }), { select: [file] });
+			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: next.source } }), { select: [file] });
+			insertedRef.current?.({ file, start: next.start });
 			toast(`Added ${name} to ${frame.name}`, { action: undoAction() });
 		},
 		[stateRef, busy, change, undoAction],

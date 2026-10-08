@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Component, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Structure } from "@/hooks/use-structure";
-import { buildOutline, findNode, visibleRows, type Outline, type OutlineNode } from "@/lib/outline";
+import { findNode } from "@/lib/outline";
 import { cn } from "@/lib/utils";
 import { elementAt, findElement, parseJsx, readImports, suggestName } from "../../../shared/jsx";
 import { isBoolean, isNumber } from "../../../shared/guards";
 import { CodeEditor, CodeHeader } from "./code-view";
-import { CODE_VIEW_KEYS, isMakeComponent, MAKE_COMPONENT_KEYS, treeOwnsKey } from "./shortcuts";
+import { CODE_VIEW_KEYS, isMakeComponent, MAKE_COMPONENT_KEYS } from "./shortcuts";
+import { StructureTree, useOutline } from "./structure-tree";
 
 type CodePanelProps = {
 	path: string | null;
@@ -21,6 +22,10 @@ type CodePanelProps = {
 	onUndo: () => void;
 	onRedo: () => void;
 	onShowProps: () => void;
+	/** Items of the right-click menu on a row, which it selects first */
+	elementMenu?: () => React.ReactNode;
+	/** Bumped to scroll the code to the selected element */
+	revealKey?: number;
 };
 
 const OPEN_KEY = "rabisco:structure-open";
@@ -42,7 +47,7 @@ function stored<T>(key: string, fallback: T, isValid: (value: unknown) => value 
 	}
 }
 
-export function CodePanel(props: CodePanelProps) {
+export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
 	const { path, source, emptyMessage } = props;
 
 	if (!path) return <p className="p-4 text-[13px] text-subtle-foreground">{emptyMessage}</p>;
@@ -57,7 +62,7 @@ export function CodePanel(props: CodePanelProps) {
 			)}
 		</div>
 	);
-}
+});
 
 function FileCode({
 	path,
@@ -67,6 +72,8 @@ function FileCode({
 	onUndo,
 	onRedo,
 	onShowProps,
+	elementMenu,
+	revealKey: revealRequest = 0,
 }: CodePanelProps & { path: string; source: string }) {
 	const { node, select, busy, naming, setNaming, makeComponent, editCode } = structure;
 	const [open, setOpen] = useState(() => stored(OPEN_KEY, true, isBoolean));
@@ -75,13 +82,7 @@ function FileCode({
 	const tree = useRef<HTMLDivElement>(null);
 	const container = useRef<HTMLDivElement>(null);
 
-	// While the source doesn't parse (mid-typing), keep showing the last good outline, inert
-	const [lastGood, setLastGood] = useState<Outline | null>(null);
-	const outline = useMemo(() => buildOutline(path, source), [path, source]);
-
-	if (outline.ok && outline !== lastGood) setLastGood(outline);
-	const shown = outline.ok ? outline : lastGood;
-	const stale = !outline.ok;
+	const { outline, shown, stale } = useOutline(path, source);
 
 	const selected = node && !stale ? findNode(outline.roots, node.start) : null;
 
@@ -170,6 +171,7 @@ function FileCode({
 						{shown ? (
 							<StructureTree
 								treeRef={tree}
+								file={path}
 								roots={shown.roots}
 								stale={stale}
 								selectedStart={selected?.node.start ?? null}
@@ -177,6 +179,7 @@ function FileCode({
 								onSelect={(start) => pick(start, true)}
 								onMake={startNaming}
 								onDelete={structure.removeNode}
+								menu={elementMenu}
 							/>
 						) : (
 							<p className="px-4 py-3 text-xs text-subtle-foreground">
@@ -203,7 +206,7 @@ function FileCode({
 				readOnly={busy}
 				label={`${path} source`}
 				highlight={selected ? { start: selected.node.start, end: selected.node.end } : null}
-				revealKey={revealKey}
+				revealKey={revealKey + revealRequest}
 				onEdit={(text, step) => editCode(path, text, `${path}:${step}`)}
 				onEndStep={onEndStep}
 				onUndo={onUndo}
@@ -243,6 +246,10 @@ function NameField({
 		return element ? suggestName(element, icons) : "";
 	});
 
+	// After the commit rather than in it (`autoFocus`): a menu that opened this still traps focus until then
+	const input = useRef<HTMLInputElement>(null);
+	useEffect(() => input.current?.focus(), []);
+
 	return (
 		<form
 			className="flex shrink-0 items-center gap-1.5 border-b bg-muted/40 px-3 py-2"
@@ -254,7 +261,7 @@ function NameField({
 		>
 			<Component className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
 			<input
-				autoFocus
+				ref={input}
 				value={name}
 				onChange={(event) => setName(event.target.value)}
 				onFocus={(event) => event.currentTarget.select()}
@@ -322,238 +329,5 @@ function Divider({
 			}}
 			className="relative h-px shrink-0 cursor-row-resize bg-border outline-none after:absolute after:inset-x-0 after:-top-1 after:-bottom-1 after:content-[''] hover:bg-ring/60 focus-visible:bg-ring"
 		/>
-	);
-}
-
-function contextChip(node: OutlineNode): { text: string; title: string } | null {
-	const context = node.context;
-
-	if (!context) return null;
-
-	switch (context.kind) {
-		case "map":
-			return { text: "map", title: "Repeated for each item" };
-		case "conditional":
-			return { text: "if", title: "Shown conditionally" };
-		case "prop":
-			return { text: `${context.name}=`, title: `Passed as the ${context.name} prop` };
-		default:
-			return { text: "{…}", title: "Inside an expression" };
-	}
-}
-
-/** ⌫ deletes the element (undoable) */
-function StructureTree({
-	treeRef,
-	roots,
-	stale,
-	selectedStart,
-	ancestors,
-	onSelect,
-	onMake,
-	onDelete,
-}: {
-	treeRef: React.RefObject<HTMLDivElement | null>;
-	roots: OutlineNode[];
-	stale: boolean;
-	selectedStart: number | null;
-	ancestors: OutlineNode[];
-	onSelect: (start: number) => void;
-	onMake: () => void;
-	onDelete: () => void;
-}) {
-	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-	// A selection made elsewhere (code click, make component) opens its ancestors and scrolls into view
-	const ancestorKeys = ancestors.map((a) => a.key).join(" ");
-	const [openedFor, setOpenedFor] = useState("");
-
-	if (ancestorKeys !== openedFor) {
-		setOpenedFor(ancestorKeys);
-		const keys = ancestorKeys ? ancestorKeys.split(" ").filter((key) => collapsed.has(key)) : [];
-
-		if (keys.length) {
-			const next = new Set(collapsed);
-
-			for (const key of keys) next.delete(key);
-			setCollapsed(next);
-		}
-	}
-
-	const rows = useMemo(() => visibleRows(roots, collapsed), [roots, collapsed]);
-	const index = selectedStart === null ? -1 : rows.findIndex((row) => row.start === selectedStart);
-	const selectedRow = index === -1 ? null : rows[index]!;
-
-	useEffect(() => {
-		if (selectedRow)
-			treeRef.current?.querySelector(`[data-key="${selectedRow.key}"]`)?.scrollIntoView({ block: "nearest" });
-	}, [selectedRow, treeRef]);
-
-	const toggle = (key: string, value?: boolean) =>
-		setCollapsed((current) => {
-			const next = new Set(current);
-
-			if (value ?? !next.has(key)) next.add(key);
-			else next.delete(key);
-
-			return next;
-		});
-
-	const onKeyDown = (event: React.KeyboardEvent) => {
-		if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-		// Arrows and ⌫ act on the tree, never the selected screen: keep them from the canvas even while inert
-		if (treeOwnsKey(event.key)) {
-			event.preventDefault();
-			event.stopPropagation();
-		}
-
-		if (stale || !rows.length) return;
-		const row = selectedRow;
-
-		const go = (target: OutlineNode | undefined) => {
-			event.preventDefault();
-
-			if (target) onSelect(target.start);
-		};
-
-		switch (event.key) {
-			case "ArrowDown":
-				return go(row ? rows[index + 1] : rows[0]);
-			case "ArrowUp":
-				return go(row ? rows[index - 1] : rows[rows.length - 1]);
-			case "Home":
-				return go(rows[0]);
-			case "End":
-				return go(rows[rows.length - 1]);
-			case "ArrowRight":
-				if (!row) return go(rows[0]);
-				event.preventDefault();
-
-				if (row.children.length && collapsed.has(row.key)) toggle(row.key, false);
-				else if (row.children.length) onSelect(row.children[0]!.start);
-
-				return;
-			case "ArrowLeft": {
-				if (!row) return;
-				event.preventDefault();
-
-				if (row.children.length && !collapsed.has(row.key)) toggle(row.key, true);
-				else {
-					const parent = rows
-						.slice(0, index)
-						.reverse()
-						.find((r) => r.depth < row.depth);
-
-					if (parent) onSelect(parent.start);
-				}
-
-				return;
-			}
-
-			case "Enter":
-				if (row) {
-					event.preventDefault();
-					onMake();
-				}
-
-				return;
-			case "Backspace":
-			case "Delete":
-				// The element, not the screen: keep ⌫ from reaching the canvas
-				event.preventDefault();
-
-				if (row) onDelete();
-
-				return;
-		}
-	};
-
-	if (!rows.length) return <p className="px-4 py-3 text-xs text-subtle-foreground">No JSX in this file.</p>;
-	const minDepth = Math.min(...roots.map((root) => root.depth));
-
-	return (
-		<div
-			ref={treeRef}
-			role="tree"
-			aria-label="Structure"
-			aria-activedescendant={selectedRow ? `outline-${selectedRow.key}` : undefined}
-			tabIndex={0}
-			onKeyDown={onKeyDown}
-			className={cn("py-1 outline-none focus-visible:bg-accent/30", stale && "pointer-events-none opacity-50")}
-		>
-			{rows.map((row) => {
-				const chip = contextChip(row);
-				const isSelected = row === selectedRow;
-				const hasChildren = row.children.length > 0;
-				const isComponent = row.kind === "component";
-
-				return (
-					<div
-						key={row.key}
-						id={`outline-${row.key}`}
-						data-key={row.key}
-						role="treeitem"
-						aria-level={row.depth - minDepth + 1}
-						aria-selected={isSelected}
-						aria-expanded={hasChildren ? !collapsed.has(row.key) : undefined}
-						onClick={() => {
-							onSelect(row.start);
-							treeRef.current?.focus();
-						}}
-						onDoubleClick={() => hasChildren && toggle(row.key)}
-						className={cn(
-							"flex h-6 cursor-default items-center gap-1 pr-3 text-xs select-none hover:bg-accent/60",
-							isSelected && "bg-accent hover:bg-accent",
-						)}
-						style={{ paddingLeft: 8 + (row.depth - minDepth) * 12 }}
-					>
-						<span
-							className="grid size-4 shrink-0 place-items-center text-subtle-foreground"
-							onClick={(event) => {
-								if (!hasChildren) return;
-								event.stopPropagation();
-								toggle(row.key);
-							}}
-						>
-							{hasChildren ? (
-								collapsed.has(row.key) ? (
-									<ChevronRight className="size-3" />
-								) : (
-									<ChevronDown className="size-3" />
-								)
-							) : null}
-						</span>
-						{isComponent ? (
-							<Component className="size-3 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
-						) : null}
-						<span
-							className={cn(
-								"shrink-0 font-mono text-[11px]",
-								isComponent
-									? "font-medium text-violet-700 dark:text-violet-300"
-									: row.kind === "fragment"
-										? "text-subtle-foreground italic"
-										: "text-foreground/80",
-							)}
-						>
-							{row.label}
-						</span>
-						{chip ? (
-							<span
-								title={chip.title}
-								className="shrink-0 rounded-sm bg-muted px-1 font-mono text-[10px]/4 text-muted-foreground"
-							>
-								{chip.text}
-							</span>
-						) : null}
-						{row.hint ? (
-							<span className="min-w-0 truncate text-subtle-foreground" title={row.hint}>
-								{row.hint}
-							</span>
-						) : null}
-					</div>
-				);
-			})}
-		</div>
 	);
 }

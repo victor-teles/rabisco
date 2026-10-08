@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
+import type { AssetChange } from "../shared/assets";
 import type { FileChange } from "../shared/types";
 import {
 	appendChat,
@@ -80,6 +81,10 @@ describe("project files", () => {
 		expect(project.canvas.frames.map((f) => f.file)).toEqual(["screens/home.tsx"]);
 		expect(Object.keys(project.files).sort()).toEqual(["PRODUCT.md", "screens/home.tsx"]);
 		expect(project.messages).toHaveLength(1);
+		// The single chat of older projects becomes their first session
+		expect(existsSync(join(dir, "chat.jsonl"))).toBe(false);
+		expect(project.chats.map((chat) => chat.id)).toEqual([project.chatId]);
+		expect(existsSync(join(dir, `chats/${project.chatId}.jsonl`))).toBe(true);
 		expect(JSON.parse(readFileSync(join(dir, "rabisco.json"), "utf-8")).frames).toHaveLength(1);
 	});
 
@@ -127,6 +132,16 @@ describe("project files", () => {
 		expect(normalizeCanvas(withComments, "x").comments).toEqual([{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }]);
 	});
 
+	test("the applied theme loads when present and stays missing in older files", () => {
+		const old = { version: 1, name: "Old", frames: [] };
+		expect("theme" in normalizeCanvas(old, "x")).toBe(false);
+		const theme = { light: { primary: "#2563eb", radius: "1rem;}" }, dark: {} };
+		expect(normalizeCanvas({ ...old, theme }, "x").theme).toEqual({ light: { primary: "#2563eb" }, dark: {} });
+		const read = { ...theme, source: "abc123" };
+		expect(normalizeCanvas({ ...old, theme: read }, "x").theme?.source).toBe("abc123");
+		expect("source" in normalizeCanvas({ ...old, theme: { ...theme, source: 4 } }, "x").theme!).toBe(false);
+	});
+
 	test("comments round-trip through rabisco.json and survive a screen deleted on disk", () => {
 		const dir = createProjectFolder(tempDir(), "Pins", "mobile");
 		writeProjectFiles(dir, [{ path: "screens/home.tsx", content: "export default () => null" }]);
@@ -154,13 +169,13 @@ describe("project files", () => {
 			data: Buffer.from("png bytes").toString("base64"),
 		};
 
-		appendChat(dir, [
+		appendChat(dir, "c1", [
 			{ id: "m1", role: "user", content: "Like this", createdAt: "t", attachments: [png] },
 			{ id: "m2", role: "assistant", content: "Done", createdAt: "t" },
 		]);
 
 		expect(readFileSync(join(dir, "attachments/m1-0.png"), "utf-8")).toBe("png bytes");
-		const stored = readFileSync(join(dir, "chat.jsonl"), "utf-8");
+		const stored = readFileSync(join(dir, "chats/c1.jsonl"), "utf-8");
 		expect(stored).not.toContain(png.data);
 		expect(stored).toContain('"path":"attachments/m1-0.png"');
 		expect(loadProject(dir).messages.map((m) => m.attachments)).toEqual([[png], undefined]);
@@ -203,6 +218,7 @@ describe("project store", () => {
 	function setup(poll = false) {
 		const root = tempDir();
 		const events: { path: string; changes: FileChange[] }[] = [];
+		const assetEvents: { path: string; changes: AssetChange[] }[] = [];
 		const trashed: string[] = [];
 		store = createProjectStore({
 			documentsDir: join(root, "Documents"),
@@ -216,10 +232,11 @@ describe("project store", () => {
 			showItemInFolder: () => {},
 			pickFolder: async () => [""],
 			onFilesChanged: (path, changes) => events.push({ path, changes }),
+			onAssetsChanged: (path, changes) => assetEvents.push({ path, changes }),
 			watchOptions: { poll, pollMs: 40, debounceMs: 20 },
 		});
 
-		return { store, root, events, trashed };
+		return { store, root, events, assetEvents, trashed };
 	}
 
 	const settle = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -240,16 +257,17 @@ describe("project store", () => {
 
 		const recents = store.listRecents();
 		expect(recents.map((r) => r.name)).toEqual(["Beta", "Alpha"]);
-		expect(recents[0]!.cover).toMatchObject({
+		// Listing reads no screen files; the cover's load when it shows
+		expect(recents[0]!.cover).toEqual({ entry: "screens/home.tsx", device: "mobile", width: 390, height: 844 });
+		const cover = store.loadCover(b.path);
+		expect(cover).toMatchObject({
 			entry: "screens/home.tsx",
-			files: { "screens/home.tsx": "home", "components/card.tsx": "card", "DESIGN.md": DESIGN_TEMPLATE },
+			files: { "screens/home.tsx": "home", "components/card.tsx": "card" },
+			theme: { light: {}, dark: {} },
 		});
-		// The cover carries DESIGN.md for its theme, not PRODUCT.md
-		expect(Object.keys(recents[0]!.cover!.files).sort()).toEqual([
-			"DESIGN.md",
-			"components/card.tsx",
-			"screens/home.tsx",
-		]);
+		// The cover carries the applied theme, not the context files
+		expect(Object.keys(cover!.files).sort()).toEqual(["components/card.tsx", "screens/home.tsx"]);
+		expect(store.loadCover(root)).toBeNull();
 
 		renameSync(a.path, `${a.path}.moved`);
 		expect(store.listRecents()[1]).toMatchObject({ name: "alpha", missing: true });
@@ -271,10 +289,32 @@ describe("project store", () => {
 	test("appends chat lines", () => {
 		const { store } = setup();
 		const p = store.createProject("Chat", "mobile");
+		expect(p.messages).toEqual([]);
+		expect(p.chats).toEqual([]);
 		const message = { id: "1", role: "user" as const, content: "hi", createdAt: "t" };
-		store.appendMessages(p.path, [message]);
-		store.appendMessages(p.path, [{ ...message, id: "2" }]);
+		store.appendMessages(p.path, p.chatId, [message]);
+		store.appendMessages(p.path, p.chatId, [{ ...message, id: "2" }]);
 		expect(store.openProject(p.path).messages.map((m) => m.id)).toEqual(["1", "2"]);
+	});
+
+	test("chat sessions: the latest opens, each reads on its own, deleting goes to the trash", () => {
+		const { store, trashed } = setup();
+		const p = store.createProject("Sessions", "mobile");
+		const at = (id: string, createdAt: string) => ({ id, role: "user" as const, content: `Prompt ${id}`, createdAt });
+		store.appendMessages(p.path, "older", [at("1", "2026-01-01T00:00:00.000Z")]);
+		store.appendMessages(p.path, "newer", [at("2", "2026-02-01T00:00:00.000Z")]);
+
+		const opened = store.openProject(p.path);
+		expect(opened.chatId).toBe("newer");
+		expect(opened.chats.map((chat) => [chat.id, chat.title])).toEqual([
+			["newer", "Prompt 2"],
+			["older", "Prompt 1"],
+		]);
+		expect(store.openChat(p.path, "older").map((m) => m.id)).toEqual(["1"]);
+		expect(() => store.openChat(p.path, "../rabisco")).toThrow(/Not a chat id/);
+
+		store.deleteChat(p.path, "newer");
+		expect(trashed).toEqual([join(p.path, "chats/newer.jsonl")]);
 	});
 
 	for (const poll of [false, true]) {
@@ -305,6 +345,35 @@ describe("project store", () => {
 			writeFileSync(join(p.path, "screens/home.tsx"), "v3");
 			await settle();
 			expect(events).toEqual([]);
+		});
+	}
+
+	for (const poll of [false, true]) {
+		test(`images under public/ load with the project and push when they change (${poll ? "polling" : "fs.watch"})`, async () => {
+			const { store, events, assetEvents } = setup(poll);
+			const p = store.createProject("Images", "mobile");
+			expect(p.assets).toEqual({});
+
+			const picked = join(tempDir(), "Logo.png");
+			writeFileSync(picked, "logo");
+			expect(store.importImage(p.path, picked)).toBe("/images/logo.png");
+			// Picking pushes right away; the watcher then sees nothing new
+			expect(assetEvents).toEqual([{ path: p.path, changes: [{ src: "/images/logo.png", data: "bG9nbw==" }] }]);
+			await settle();
+			expect(assetEvents).toHaveLength(1);
+
+			writeFileSync(join(p.path, "public/hero.svg"), "<svg/>");
+			await settle();
+			expect(assetEvents.slice(1).flatMap((e) => e.changes)).toEqual([{ src: "/hero.svg", data: "PHN2Zy8+" }]);
+			// Images aren't project files
+			expect(events).toEqual([]);
+
+			expect(store.openProject(p.path).assets).toEqual({ "/images/logo.png": "bG9nbw==", "/hero.svg": "PHN2Zy8+" });
+			store.closeProject(p.path);
+			assetEvents.length = 0;
+			writeFileSync(join(p.path, "public/late.png"), "late");
+			await settle();
+			expect(assetEvents).toEqual([]);
 		});
 	}
 });

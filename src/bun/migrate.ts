@@ -4,6 +4,7 @@ import { isFiniteNumber } from "../shared/guards";
 import { isJsonArray, isJsonObject, type Json } from "../shared/json";
 import { FRAME_GAP, FRAME_SIZE, emptyCanvas, uniqueScreenPath } from "../shared/project";
 import type { CanvasDoc, ChatMessage, Device, FileChange, Frame } from "../shared/types";
+import { newChatId } from "../shared/chats";
 import { appendChat, freeProjectDir, isChatMessage, writeCanvas, writeProjectFiles } from "./project-folder";
 import { arrayOr, objectOr, optionalString, parseJson } from "./json";
 import type { RecentEntry } from "./recents";
@@ -171,7 +172,7 @@ export function migrateLegacyProjects(legacyDir: string, projectsDir: string): R
 			mkdirSync(dir, { recursive: true });
 			writeProjectFiles(dir, changes);
 			writeCanvas(dir, canvas);
-			appendChat(dir, messages);
+			appendChat(dir, newChatId(new Date(messages[0]?.createdAt ?? canvas.updatedAt)), messages);
 			renameSync(source, `${source}.migrated`);
 			migrated.push({ path: dir, openedAt: canvas.updatedAt });
 		} catch (error) {

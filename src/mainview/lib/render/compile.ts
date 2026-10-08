@@ -19,6 +19,8 @@ export type CompiledModule = {
 	error: CompileError | null;
 	imports: string[];
 	candidates: string[];
+	/** Names imported from `lucide-react`, so the frame can load them before rendering. */
+	icons: string[];
 };
 
 /** cyrb53; collisions are checked against the source anyway. */
@@ -46,6 +48,49 @@ function importsFromSource(source: string) {
 	return [...found];
 }
 
+/** `import { A, B as C }` and `import * as Icons` + `Icons.A` from lucide-react */
+export function iconsFromSource(source: string) {
+	const found = new Set<string>();
+
+	// Type-only imports render nothing
+	for (const match of source.matchAll(/import\s+(?!type\s)([^;]*?)\s+from\s*(['"])lucide-react\2/g)) {
+		const clause = match[1]!;
+		const named = /\{([^}]*)\}/.exec(clause)?.[1] ?? "";
+
+		for (const part of named.split(",")) {
+			const name = part.trim().split(/\s+as\s+/)[0]!;
+
+			if (/^[A-Z]\w*$/.test(name)) found.add(name);
+		}
+
+		const namespace = /\*\s*as\s+([A-Za-z_$][\w$]*)/.exec(clause)?.[1];
+
+		if (namespace)
+			for (const use of source.matchAll(new RegExp(`\\b${namespace.replace(/\$/g, "\\$")}\\.([A-Z]\\w*)`, "g")))
+				found.add(use[1]!);
+	}
+
+	return [...found];
+}
+
+/** Top-level `function Name` declarations, which the epilogue can rebind to stable components. */
+const DECLARED = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Z][\w$]*)\s*\(/gm;
+
+/**
+ * Rebinds the module's components to proxies that survive a new version (`runtime/refresh.ts`), so React
+ * reconciles instead of remounting. The hook calls are the signature: when they change, the proxies are new.
+ */
+function refreshEpilogue(path: string, source: string) {
+	const names = new Set([...source.matchAll(DECLARED)].map((match) => match[1]!));
+	const signature = hashString([...source.matchAll(/\buse[A-Z]\w*/g)].join(","));
+
+	const rebind = [...names].map(
+		(name) => `try { if (typeof ${name} === "function") ${name} = $r(exports, "${name}", ${name}); } catch {}`,
+	);
+
+	return `\n;try { const $r = require("rabisco:refresh")(${JSON.stringify(path)}, "${signature}"); ${rebind.join(" ")} $r.exports(exports); } catch {}`;
+}
+
 const LOCATED = /\.(tsx|jsx)$/;
 
 /** Never throws. Injected `data-rabisco-loc` attributes stay within a line, so error lines still match `source`. */
@@ -65,10 +110,11 @@ export function compileSource(path: string, source: string): CompiledModule {
 			path,
 			source,
 			hash,
-			code: `${code}\n//# sourceURL=${SOURCE_URL_PREFIX}${path}`,
+			code: `${code}${refreshEpilogue(path, source)}\n//# sourceURL=${SOURCE_URL_PREFIX}${path}`,
 			error: null,
 			imports: extractRequires(code),
 			candidates,
+			icons: iconsFromSource(source),
 		};
 	} catch (error) {
 		const loc = error instanceof Error && hasLocation(error) ? error.loc : undefined;
@@ -86,6 +132,7 @@ export function compileSource(path: string, source: string): CompiledModule {
 			error: { message, line: loc?.line ?? 1, column: loc?.column },
 			imports: importsFromSource(source),
 			candidates,
+			icons: iconsFromSource(source),
 		};
 	}
 }

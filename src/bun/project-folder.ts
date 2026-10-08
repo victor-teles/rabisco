@@ -1,9 +1,22 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "fs";
 import { dirname, join } from "path";
+import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
 import { CONTEXT_TEMPLATES } from "../shared/context/templates";
+import type { AppliedTheme } from "../shared/context/theme";
+import { validateToken } from "../shared/context/tokens";
 import { normalizeComments } from "../shared/comments";
 import { isString } from "../shared/guards";
-import { isJsonObject, type Json } from "../shared/json";
+import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import {
 	emptyCanvas,
 	FRAME_SIZE,
@@ -28,9 +41,7 @@ import { arrayOr, objectOr, optionalNumber, optionalString, parseJson } from "./
 
 export const CANVAS_FILE = "rabisco.json";
 
-export const CHAT_FILE = "chat.jsonl";
-
-/** Images attached to prompts; `chat.jsonl` refers to them by path */
+/** Images attached to prompts; the chat files refer to them by path */
 export const ATTACHMENTS_DIR = "attachments";
 
 const IMAGE_EXTENSIONS: Record<Attachment["mediaType"], string> = {
@@ -63,8 +74,8 @@ export function assertProjectFilePath(path: string) {
 	}
 }
 
-export function readProjectFiles(dir: string): ProjectFiles {
-	const files: ProjectFiles = {};
+/** Project files by name only; context files may not exist. */
+function projectFileCandidates(dir: string) {
 	const candidates = ["PRODUCT.md", "DESIGN.md"];
 
 	for (const sub of FILE_DIRS) {
@@ -73,14 +84,29 @@ export function readProjectFiles(dir: string): ProjectFiles {
 		for (const name of readdirSync(join(dir, sub))) candidates.push(`${sub}/${name}`);
 	}
 
-	for (const path of candidates) {
-		if (!isProjectFile(path)) continue;
+	return candidates.filter(isProjectFile);
+}
+
+export function readProjectFiles(dir: string, only?: (path: string) => boolean): ProjectFiles {
+	const files: ProjectFiles = {};
+
+	for (const path of projectFileCandidates(dir)) {
+		if (only && !only(path)) continue;
 		const content = readFileIfExists(join(dir, path));
 
 		if (content !== null) files[path] = content;
 	}
 
 	return files;
+}
+
+/** Screens and components with empty contents, for listing without reading them. */
+export function listProjectFiles(dir: string): ProjectFiles {
+	return Object.fromEntries(
+		projectFileCandidates(dir)
+			.filter((path) => !path.endsWith(".md"))
+			.map((path) => [path, ""]),
+	);
 }
 
 export function readFileIfExists(path: string): string | null {
@@ -131,7 +157,7 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 	const name = optionalString(raw.name);
 	const device = parseDevice(raw.device) ?? "mobile";
 
-	return {
+	const canvas: CanvasDoc = {
 		version: 1,
 		name: name?.trim() ? name : fallbackName,
 		device,
@@ -142,6 +168,27 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 		alternates: arrayOr(raw.alternates).flatMap(parseAlternateGroup),
 		comments: normalizeComments(raw.comments),
 	};
+
+	if (isJsonObject(raw.theme)) canvas.theme = parseTheme(raw.theme);
+
+	return canvas;
+}
+
+/** Invalid tokens are dropped, as in DESIGN.md */
+function parseTheme(theme: JsonObject): AppliedTheme {
+	const mode = (value: Json | undefined) =>
+		Object.fromEntries(
+			Object.entries(objectOr(value)).flatMap(([name, token]) =>
+				isString(token) && validateToken(name, token) === null ? [[name, token]] : [],
+			),
+		);
+
+	const parsed: AppliedTheme = { light: mode(theme.light), dark: mode(theme.dark) };
+	const source = optionalString(theme.source);
+
+	if (source) parsed.source = source;
+
+	return parsed;
 }
 
 /** `null` when missing; throws when it exists but isn't valid JSON. */
@@ -218,8 +265,14 @@ export function isChatMessage(value: unknown): value is ChatMessage {
 	);
 }
 
+export function chatPath(dir: string, chatId: string) {
+	if (!isChatId(chatId)) throw new Error(`Not a chat id: ${chatId}`);
+
+	return join(dir, CHATS_DIR, `${chatId}.jsonl`);
+}
+
 /** Writes attached images to `attachments/` and keeps only their paths in the chat. */
-export function appendChat(dir: string, messages: ChatMessage[]) {
+export function appendChat(dir: string, chatId: string, messages: ChatMessage[]) {
 	if (!messages.length) return;
 
 	const lines = messages.map((message) => {
@@ -239,7 +292,42 @@ export function appendChat(dir: string, messages: ChatMessage[]) {
 		return JSON.stringify({ ...message, attachments });
 	});
 
-	appendFileSync(join(dir, CHAT_FILE), lines.map((line) => `${line}\n`).join(""));
+	const target = chatPath(dir, chatId);
+	mkdirSync(dirname(target), { recursive: true });
+	appendFileSync(target, lines.map((line) => `${line}\n`).join(""));
+}
+
+/** With images; for the history a provider gets, use `parseChat` on the file */
+export function readChat(dir: string, chatId: string): ChatMessage[] {
+	return parseChat(readFileIfExists(chatPath(dir, chatId)) ?? "", (path) => readAttachment(dir, path));
+}
+
+/** Moves a pre-sessions `chat.jsonl` to `chats/`, named after its first message */
+export function migrateChat(dir: string) {
+	const legacy = join(dir, LEGACY_CHAT_FILE);
+
+	if (!existsSync(legacy)) return;
+	const first = parseChat(readFileIfExists(legacy) ?? "")[0];
+	const created = first ? new Date(first.createdAt) : statSync(legacy).mtime;
+	let target = chatPath(dir, newChatId(Number.isNaN(created.getTime()) ? new Date() : created));
+
+	while (existsSync(target)) target = chatPath(dir, newChatId(created));
+	mkdirSync(dirname(target), { recursive: true });
+	renameSync(legacy, target);
+}
+
+export function listChats(dir: string) {
+	const folder = join(dir, CHATS_DIR);
+
+	if (!isDirectory(folder)) return [];
+
+	const summaries = readdirSync(folder).flatMap((name) => {
+		const id = name.endsWith(".jsonl") ? name.slice(0, -".jsonl".length) : "";
+
+		return isChatId(id) ? [summarizeChat(id, parseChat(readFileIfExists(join(folder, name)) ?? ""))] : [];
+	});
+
+	return sortChats(summaries);
 }
 
 /** Base64, or `null` when the file is gone */
@@ -259,9 +347,12 @@ export function loadProject(dir: string): Project {
 	const canvas = reconcileFrames(stored ?? emptyCanvas(projectNameFromPath(dir), "mobile"), files);
 
 	if (!stored || canvas !== stored) writeCanvas(dir, canvas);
-	const messages = parseChat(readFileIfExists(join(dir, CHAT_FILE)) ?? "", (path) => readAttachment(dir, path));
+	migrateChat(dir);
+	const chats = listChats(dir);
+	// The latest chat opens; a project without one starts a new one
+	const chatId = chats[0]?.id ?? newChatId();
 
-	return { path: dir, canvas, files, messages };
+	return { path: dir, canvas, files, chatId, messages: readChat(dir, chatId), chats };
 }
 
 /** Validates every path first, so a bad path writes nothing. */

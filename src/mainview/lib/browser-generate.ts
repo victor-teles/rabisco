@@ -10,11 +10,13 @@ import {
 } from "../../shared/ai/variants";
 import type { RabiscoRPC } from "../../shared/rpc";
 import { contextBody } from "../../shared/context/body";
+import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocus } from "../../shared/ai/focus";
 import { DESIGN_TEMPLATE } from "../../shared/context/templates";
 import type {
 	ContextFileName,
 	GenerateParams,
+	GenerateResult,
 	GenerationEventMessage,
 	GenerationFailure,
 	ProjectFiles,
@@ -45,7 +47,7 @@ const MOCK_STATUS: ProviderStatus = {
 	kind: "api",
 	label: "Mock (dev)",
 	enabled: true,
-	capabilities: { streaming: true, images: false, agentic: false, maxContextTokens: 0 },
+	capabilities: { streaming: true, images: true, agentic: false, maxContextTokens: 0 },
 	health: { ok: true },
 	models: [{ id: "mock", label: "Mock (dev)" }],
 };
@@ -110,6 +112,59 @@ async function mockEvents(request: GenerationRequest, signal: AbortSignal) {
 	return createMockProvider().generate(request, signal);
 }
 
+/** Mirrors `runThemeReading` in `src/bun/ai/run.ts` */
+async function readTheme(
+	params: GenerateParams,
+	design: string | undefined,
+	signal: AbortSignal,
+	emit: (message: GenerationEventMessage) => void,
+): Promise<GenerateResult> {
+	if (!contextBody(design)) {
+		return {
+			ok: false,
+			error: { code: "unknown", message: "DESIGN.md is empty, so there is no theme to read.", retryable: false },
+		};
+	}
+
+	const request: GenerationRequest = {
+		id: params.generationId,
+		task: "theme",
+		model: "mock",
+		prompt: "",
+		device: params.device,
+		context: { design },
+		files: [],
+	};
+
+	let reply = "";
+
+	for await (const event of await mockEvents(request, signal)) {
+		emit({ generationId: params.generationId, attempt: 1, event });
+
+		if (event.type === "message.delta") reply += event.text;
+		else if (event.type === "error")
+			return { ok: false, error: { code: event.code, message: event.message, retryable: event.retryable } };
+	}
+
+	if (signal.aborted) return { ok: false, error: { code: "aborted", message: "Generation stopped.", retryable: true } };
+	const parsed = parseThemeReply(reply);
+
+	if (!hasTokens(parsed)) {
+		return {
+			ok: false,
+			error: {
+				code: "invalid_output",
+				message: "The model didn't return any theme tokens Rabisco can use.",
+				retryable: true,
+			},
+		};
+	}
+
+	const theme: AppliedTheme = { light: parsed.light, dark: parsed.dark, source: designSourceOf(design) };
+
+	return { ok: true, changes: [], frames: [], reply: reply.trim(), problems: [], context: ["DESIGN.md"], theme };
+}
+
 const unsupported = async (): Promise<never> => {
 	throw new Error("AI providers run in the desktop app. In the browser, only the mock generator is available.");
 };
@@ -155,6 +210,20 @@ export function createBrowserGenerator(
 			}
 
 			const files = readFiles(params.projectPath);
+
+			if (task === "theme") {
+				const controller = new AbortController();
+				running.set(params.generationId, controller);
+
+				try {
+					return await readTheme(params, files["DESIGN.md"], controller.signal, emit);
+				} catch (cause) {
+					return { ok: false, error: failureOf(cause) };
+				} finally {
+					running.delete(params.generationId);
+				}
+			}
+
 			const vary = task === "vary";
 
 			if (vary && !(params.targets?.length === 1 && isScreenFile(params.targets[0]!) && params.targets[0]! in files)) {
@@ -204,6 +273,8 @@ export function createBrowserGenerator(
 			if (references.length) base.references = references;
 
 			if (focus) base.focus = focus;
+
+			if (params.attachments?.length) base.attachments = params.attachments;
 
 			const run = async (variant: number, index: number): Promise<VariantRun> => {
 				const renamer = createVariantRenamer({ variant, taken: Object.keys(files), readOnly: references });

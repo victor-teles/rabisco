@@ -1,15 +1,31 @@
 import { detachComments } from "../../shared/comments";
-import type { CanvasComment, FileChange, Frame, ProjectFiles } from "../../shared/types";
+import type { AppliedTheme } from "../../shared/context/theme";
+import type { CanvasComment, Device, FileChange, Frame, ProjectFiles } from "../../shared/types";
 
-/** Recipes may omit `comments`; `nextSnapshot` carries them over. */
-export type Snapshot = { frames: Frame[]; files: ProjectFiles; comments?: CanvasComment[] };
+/** Recipes may omit `comments`, `theme`, `name` and `device`; `nextSnapshot` carries them over. */
+export type Snapshot = {
+	frames: Frame[];
+	files: ProjectFiles;
+	comments?: CanvasComment[];
+	theme?: AppliedTheme;
+	/** The project name */
+	name?: string;
+	/** The project's default device */
+	device?: Device;
+};
 
 /** Pins on removed frames are detached in the same step, so undo puts them back on their frame. */
 export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	if (update === present) return present;
 	const comments = detachComments(update.comments ?? present.comments ?? [], present.frames, update.frames);
+	const theme = update.theme ?? present.theme;
+	const name = update.name ?? present.name;
+	const device = update.device ?? present.device;
 
-	return comments === update.comments ? update : { ...update, comments };
+	if (comments === update.comments && theme === update.theme && name === update.name && device === update.device)
+		return update;
+
+	return { ...update, comments, theme, name, device };
 }
 
 export type History = {

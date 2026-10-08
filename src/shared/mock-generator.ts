@@ -1,3 +1,4 @@
+import { validateToken, type DesignTokens } from "./context/tokens";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "./project";
 import type { Device, FileChange, Frame, GenerateScreensResult } from "./types";
 
@@ -495,5 +496,103 @@ export function generateMockScreens(input: {
 		reply: `I drafted ${frames.length} ${input.device} screens for ${context.title}: ${frames
 			.map((f) => f.name)
 			.join(", ")}. Select a frame to refine it, or tell me what to change.`,
+	};
+}
+
+/** First match wins, so the specific roles come before the broad ones */
+const MOCK_COLOR_ROLES: [string, RegExp][] = [
+	["primary-foreground", /on[- ]primary|primary[- ]foreground|text on (?:the )?(?:primary|brand)/],
+	["muted", /surface[- ]soft|subtle (?:background|surface)|muted (?:background|surface|fill)/],
+	["muted-foreground", /muted|secondary text|caption|placeholder/],
+	["primary", /primary|brand|accent|\bcta\b/],
+	["border", /border|hairline|divider|outline|stroke/],
+	["ring", /\bring\b|focus/],
+	["destructive", /destructive|error|danger/],
+	["success", /success|positive/],
+	["warning", /warning|caution/],
+	["foreground", /\bink\b|foreground|\btext\b|heading/],
+	["background", /background|canvas|\bpage\b|surface/],
+];
+
+/** States and dark sections aren't the base light theme */
+const MOCK_SKIP = /dark|night|disabled|hover|active|pressed/;
+
+const SANS_FONTS = [
+	"Inter",
+	"Roboto",
+	"Geist",
+	"Manrope",
+	"IBM Plex Sans",
+	"DM Sans",
+	"Poppins",
+	"Open Sans",
+	"Lato",
+	"Montserrat",
+	"Plus Jakarta Sans",
+	"Figtree",
+	"Work Sans",
+	"Nunito",
+	"SF Pro Text",
+	"Helvetica Neue",
+];
+
+const MONO_FONTS = ["JetBrains Mono", "Geist Mono", "IBM Plex Mono", "Fira Code", "Roboto Mono", "SF Mono"];
+
+function mostMentioned(text: string, names: string[]) {
+	const counts = names.map((name) => ({
+		name,
+		count: text.match(new RegExp(`\\b${name.replace(/ /g, "\\s+")}\\b`, "gi"))?.length ?? 0,
+	}));
+
+	const best = counts.reduce((a, b) => (b.count > a.count ? b : a));
+
+	return best.count ? best.name : undefined;
+}
+
+/** Median of the radii mentioned, without pills and circles */
+function mockRadius(text: string) {
+	const sizes = text
+		.split("\n")
+		.filter((line) => /radius|rounded|corner/i.test(line))
+		.flatMap((line) =>
+			[...line.matchAll(/(\d*\.?\d+)(px|rem)\b/g)].map((m) => Number(m[1]) * (m[2] === "rem" ? 16 : 1)),
+		)
+		.filter((px) => px >= 1 && px <= 32)
+		.sort((a, b) => a - b);
+
+	return sizes.length ? `${sizes[Math.floor(sizes.length / 2)]}px` : undefined;
+}
+
+/** The mock `theme` task: hex colors named near a role word, the radius and fonts most mentioned. Light only. */
+export function mockThemeTokens(design: string): DesignTokens {
+	const light: Record<string, string> = {};
+
+	for (const line of design.split("\n")) {
+		let from = 0;
+
+		for (const match of line.matchAll(/#(?:[0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+			const window = line.slice(Math.max(from, match.index - 80), match.index).toLowerCase();
+			from = match.index + match[0].length;
+
+			if (MOCK_SKIP.test(window)) continue;
+			const role = MOCK_COLOR_ROLES.find(([, words]) => words.test(window))?.[0];
+
+			if (role && !(role in light)) light[role] = match[0].toLowerCase();
+		}
+	}
+
+	const radius = mockRadius(design);
+
+	if (radius) light.radius = radius;
+	const sans = mostMentioned(design, SANS_FONTS);
+
+	if (sans) light["font-sans"] = `"${sans}", system-ui, sans-serif`;
+	const mono = mostMentioned(design, MONO_FONTS);
+
+	if (mono) light["font-mono"] = `"${mono}", ui-monospace, monospace`;
+
+	return {
+		light: Object.fromEntries(Object.entries(light).filter(([name, value]) => validateToken(name, value) === null)),
+		dark: {},
 	};
 }

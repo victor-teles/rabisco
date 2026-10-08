@@ -9,6 +9,8 @@ import {
 	FONT_SIZE_SCALE,
 	FONT_WEIGHT_SCALE,
 	getBox,
+	GRID_COLUMNS_SCALE,
+	INSET_SCALE,
 	getStyle,
 	isColorValue,
 	LETTER_SPACING_SCALE,
@@ -28,6 +30,8 @@ import {
 	SPACING_SCALE,
 	splitModifier,
 	styleClass,
+	usedVariants,
+	Z_INDEX_SCALE,
 	type ClassHit,
 } from "./classes";
 
@@ -221,7 +225,33 @@ describe("classifyClass", () => {
 		["hidden", "display", "", "hidden"],
 		["flex-col", "flexDirection", "flex", "col"],
 		["flex-wrap", "flexWrap", "flex", "wrap"],
-		["flex-1", null],
+		["flex-1", "flex", "flex", "1"],
+		["flex-none", "flex", "flex", "none"],
+		["grow", "flexGrow", "grow", ""],
+		["grow-0", "flexGrow", "grow", "0"],
+		["flex-grow", "flexGrow", "grow", ""],
+		["shrink-0", "flexShrink", "shrink", "0"],
+		["flex-shrink-0", "flexShrink", "shrink", "0"],
+		["self-center", "alignSelf", "self", "center"],
+		["self-stretch", "alignSelf", "self", "stretch"],
+		["relative", "position", "", "relative"],
+		["sticky", "position", "", "sticky"],
+		["inset-0", "inset", "inset", "0"],
+		["inset-x-4", "inset", "inset-x", "4"],
+		["top-1/2", "inset", "top", "1/2"],
+		["-left-2", "inset", "left", "-2"],
+		["right-[13px]", "inset", "right", "[13px]"],
+		["inset-shadow-sm", null],
+		["inset-ring-2", null],
+		["z-10", "zIndex", "z", "10"],
+		["-z-10", "zIndex", "z", "-10"],
+		["z-[5]", "zIndex", "z", "[5]"],
+		["overflow-hidden", "overflow", "overflow", "hidden"],
+		["overflow-x-auto", null],
+		["grid-cols-3", "gridColumns", "grid-cols", "3"],
+		["grid-cols-[200px_1fr]", "gridColumns", "grid-cols", "[200px_1fr]"],
+		["grid-cols-subgrid", "gridColumns", "grid-cols", "subgrid"],
+		["font-serif", "fontFamily", "font", "serif"],
 		["justify-between", "justifyContent", "justify", "between"],
 		["justify-items-center", null],
 		["items-center", "alignItems", "items", "center"],
@@ -391,6 +421,122 @@ describe("getStyle / setStyle", () => {
 		expect(styleClass("display", "flex")).toBe("flex");
 		expect(styleClass("backgroundColor", "primary/50")).toBe("bg-primary/50");
 		expect(styleClass("boxShadow", "")).toBe("shadow");
+	});
+});
+
+describe("new properties", () => {
+	test("position, z-index, overflow and grid columns write their classes", () => {
+		expect(setStyle("flex p-4", "position", "absolute")).toBe("flex p-4 absolute");
+		expect(setStyle("relative p-4", "position", "sticky")).toBe("sticky p-4");
+		expect(setStyle("z-10", "zIndex", "-10")).toBe("-z-10");
+		expect(setStyle("overflow-auto", "overflow", "hidden")).toBe("overflow-hidden");
+		expect(setStyle("grid grid-cols-2 gap-4", "gridColumns", "3")).toBe("grid grid-cols-3 gap-4");
+		expect(setStyle("flex-1", "flex", null)).toBe("");
+		expect(setStyle("p-2", "flexShrink", "0")).toBe("p-2 shrink-0");
+		expect(setStyle("p-2", "flexGrow", "")).toBe("p-2 grow");
+		expect(setStyle("self-start", "alignSelf", "end")).toBe("self-end");
+		expect(setStyle("font-sans text-sm", "fontFamily", "mono")).toBe("font-mono text-sm");
+	});
+
+	test("direction classes stay apart from the flex shorthand", () => {
+		expect(getStyle("flex flex-col flex-1 flex-wrap", "flex")).toBe("1");
+		expect(getStyle("flex flex-col flex-1 flex-wrap", "flexDirection")).toBe("col");
+		expect(setStyle("flex flex-col flex-1", "flex", "none")).toBe("flex flex-col flex-none");
+	});
+
+	test("inset is a box", () => {
+		expect(getBox("absolute inset-0 top-4", "inset")).toEqual({ top: "4", right: "0", bottom: "0", left: "0" });
+		expect(setBoxParts("absolute", "inset", ["top", "right", "bottom", "left"], "0")).toBe("absolute inset-0");
+		expect(setBoxParts("absolute inset-0", "inset", ["top"], "auto")).toBe("absolute inset-x-0 top-auto bottom-0");
+		expect(setBoxParts("absolute top-2", "inset", ["top"], "-2")).toBe("absolute -top-2");
+	});
+
+	test("parseScaleInput: inset, z-index and grid columns", () => {
+		expect(parseScaleInput("1/2", INSET_SCALE)).toBe("1/2");
+		expect(parseScaleInput("16px", INSET_SCALE)).toBe("4");
+		expect(parseScaleInput("-8px", INSET_SCALE)).toBe("-2");
+		expect(parseScaleInput("full", INSET_SCALE)).toBe("full");
+		expect(parseScaleInput("10", Z_INDEX_SCALE)).toBe("10");
+		expect(parseScaleInput("15", Z_INDEX_SCALE)).toBe("[15]");
+		expect(parseScaleInput("-10", Z_INDEX_SCALE)).toBe("-10");
+		expect(parseScaleInput("auto", Z_INDEX_SCALE)).toBe("auto");
+		expect(parseScaleInput("1.5", Z_INDEX_SCALE)).toBeNull();
+		expect(parseScaleInput("3", GRID_COLUMNS_SCALE)).toBe("3");
+		expect(parseScaleInput("16", GRID_COLUMNS_SCALE)).toBe("16");
+		expect(parseScaleInput("0", GRID_COLUMNS_SCALE)).toBeNull();
+		expect(parseScaleInput("subgrid", GRID_COLUMNS_SCALE)).toBe("subgrid");
+	});
+});
+
+describe("variants", () => {
+	const classes = "flex bg-card p-4 hover:bg-primary md:flex-col md:p-8 dark:text-white";
+
+	test("reading a variant sees only its classes", () => {
+		expect(getStyle(classes, "backgroundColor")).toBe("card");
+		expect(getStyle(classes, "backgroundColor", "hover")).toBe("primary");
+		expect(getStyle(classes, "backgroundColor", "focus")).toBeNull();
+		expect(getStyle(classes, "flexDirection")).toBeNull();
+		expect(getStyle(classes, "flexDirection", "md")).toBe("col");
+		expect(getStyle(classes, "textColor", "dark")).toBe("white");
+		expect(getBox(classes, "padding", "md")).toEqual({ top: "8", right: "8", bottom: "8", left: "8" });
+		expect(getBox(classes, "padding", "hover")).toEqual({ top: null, right: null, bottom: null, left: null });
+	});
+
+	test("writing a variant leaves the base classes alone", () => {
+		expect(setStyle(classes, "backgroundColor", "accent", "hover")).toBe(
+			"flex bg-card p-4 hover:bg-accent md:flex-col md:p-8 dark:text-white",
+		);
+		expect(setStyle(classes, "backgroundColor", "muted", "focus")).toBe(`${classes} focus:bg-muted`);
+		expect(setStyle(classes, "backgroundColor", null, "hover")).toBe(
+			"flex bg-card p-4 md:flex-col md:p-8 dark:text-white",
+		);
+		expect(setStyle(classes, "flexDirection", "row", "md")).toBe(
+			"flex bg-card p-4 hover:bg-primary md:flex-row md:p-8 dark:text-white",
+		);
+	});
+
+	test("writing the base leaves the variants alone", () => {
+		expect(setStyle(classes, "backgroundColor", null)).toBe(
+			"flex p-4 hover:bg-primary md:flex-col md:p-8 dark:text-white",
+		);
+		expect(setBoxParts(classes, "padding", ["left", "right"], "6")).toBe(
+			"flex bg-card px-6 py-4 hover:bg-primary md:flex-col md:p-8 dark:text-white",
+		);
+	});
+
+	test("boxes write with the prefix on every class", () => {
+		expect(setBoxParts(classes, "padding", ["top"], "2", "md")).toBe(
+			"flex bg-card p-4 hover:bg-primary md:flex-col md:px-8 md:pt-2 md:pb-8 dark:text-white",
+		);
+		expect(setBoxParts("p-4", "padding", ["top", "right", "bottom", "left"], "2", "sm")).toBe("p-4 sm:p-2");
+		expect(boxClasses("margin", { top: "-2", right: "auto", bottom: "-2", left: "auto" }, "lg")).toEqual([
+			"lg:mx-auto",
+			"lg:-my-2",
+		]);
+	});
+
+	test("unknown conflicting classes are replaced only within the variant", () => {
+		expect(setStyle("bg-brand hover:bg-brand", "backgroundColor", "primary", "hover")).toBe(
+			"bg-brand hover:bg-primary",
+		);
+		expect(setStyle("bg-brand hover:bg-brand", "backgroundColor", "primary")).toBe("bg-primary hover:bg-brand");
+	});
+
+	test("important goes after the variant", () => {
+		expect(setStyle("hover:!bg-card", "backgroundColor", "primary", "hover")).toBe("hover:!bg-primary");
+		expect(setBoxParts("md:p-4!", "padding", ["top", "right", "bottom", "left"], "2", "md")).toBe("md:p-2!");
+	});
+
+	test("stacked variants are their own variant", () => {
+		expect(getStyle("md:hover:bg-primary", "backgroundColor", "md")).toBeNull();
+		expect(getStyle("md:hover:bg-primary", "backgroundColor", "md:hover")).toBe("primary");
+	});
+
+	test("styleClass and usedVariants", () => {
+		expect(styleClass("backgroundColor", "primary", "hover")).toBe("hover:bg-primary");
+		expect(usedVariants(classes)).toEqual(["", "hover", "md", "dark"]);
+		expect(usedVariants("hover:bg-primary")).toEqual(["hover"]);
+		expect(usedVariants("")).toEqual([]);
 	});
 });
 

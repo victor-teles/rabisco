@@ -55,7 +55,7 @@ export type ContextPanelProps = {
 
 const DESCRIPTION: Record<ContextFileName, string> = {
 	"PRODUCT.md": "What the product is, who it's for, how it sounds and what it must respect.",
-	"DESIGN.md": "Tokens, typography, layout and component rules. Tokens re-theme every screen.",
+	"DESIGN.md": "Tokens, typography, layout and component rules. Rabisco asks before new tokens re-theme the screens.",
 };
 
 /** Text comes straight from the project files, so external edits show up live */
@@ -335,6 +335,7 @@ function UsageLine({
 
 function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLine: (line: number) => void }) {
 	const tokens = useMemo(() => parseDesignTokens(markdown), [markdown]);
+	const hasContent = useMemo(() => contextBody(markdown) !== undefined, [markdown]);
 	const colorNames = new Set<string>(COLOR_TOKENS);
 
 	const entries = TOKEN_NAMES.filter((name) => name in tokens.light).map(
@@ -345,7 +346,15 @@ function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLi
 	const others = entries.filter(([name]) => !colorNames.has(name));
 	const darkCount = Object.keys(tokens.dark).length;
 
-	if (!entries.length && !darkCount && !tokens.invalid.length) return null;
+	if (!entries.length && !darkCount && !tokens.invalid.length) {
+		// Any format works: the theme is read with AI, on request (decision 0009)
+		return hasContent ? (
+			<p className="shrink-0 border-b px-4 pt-2 pb-3 text-xs/4 text-pretty text-muted-foreground">
+				Rabisco reads the theme from this file with AI and asks before it re-themes the screens. A{" "}
+				<span className="font-mono">## Tokens</span> section, if there is one, is used as it is.
+			</p>
+		) : null;
+	}
 
 	return (
 		<div className="flex shrink-0 flex-col gap-2 border-b px-4 pt-2 pb-3">

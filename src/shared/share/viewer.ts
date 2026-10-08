@@ -202,6 +202,7 @@ const VIEWER_JS = `(function () {
 		if (message.type === "ready") {
 			// A (re)loaded frame starts empty: send everything, then turn play mode on
 			ready = true;
+			if (data.assets) post({ type: "assets", assets: data.assets, reset: true });
 			post({ type: "modules", entry: current, modules: data.modules, css: data.css, theme: data.theme, reset: true });
 			post({ type: "play", on: true });
 		} else if (message.type === "navigate" && typeof message.to === "string") {

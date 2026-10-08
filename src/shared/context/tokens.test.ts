@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DESIGN_TEMPLATE } from "./templates";
-import { parseDesignTokens, TOKEN_NAMES, tokensToCss, validateToken } from "./tokens";
+import {
+	changedTokenCount,
+	designTokensOf,
+	parseDesignTokens,
+	TOKEN_NAMES,
+	tokensToCss,
+	validateToken,
+} from "./tokens";
 
 const DESIGN = `# Design
 
@@ -180,5 +187,56 @@ describe("tokensToCss", () => {
 		expect(tokensToCss({ light: { primary: "red;}*{x:y", brand: "#fff" }, dark: { ring: "#000" } })).toBe(
 			".dark {\n\t--ring: #000;\n}\n",
 		);
+	});
+});
+
+// The common DESIGN.md format (tokens in front matter, colors named in prose) has no tokens section,
+// so it applies nothing; the Context panel says so and offers to add one.
+const PROSE_DESIGN = `## Overview
+
+Quiet and institutional, one blue accent.
+
+## Colors
+
+### Brand & Accent
+- **Brand Blue** (\`{colors.primary}\` — #0052ff): every primary CTA.
+- **Muted** (\`{colors.muted}\` — #7c828a): sub-titles.
+
+## Shapes
+
+| Token | Value |
+|---|---|
+| \`{rounded.pill}\` | 100px |
+`;
+
+describe("DESIGN.md without a tokens section", () => {
+	test("applies nothing", () => {
+		expect(designTokensOf(PROSE_DESIGN)).toEqual({ light: {}, dark: {} });
+	});
+
+	test("the template's tokens are commented out until the user keeps them", () => {
+		expect(designTokensOf(DESIGN_TEMPLATE)).toEqual({ light: {}, dark: {} });
+
+		const uncommented = designTokensOf(DESIGN_TEMPLATE.replace(/<!--|-->/g, ""));
+		expect(uncommented.light.primary).toBe("oklch(0.55 0.2 264)");
+		expect(uncommented.dark.primary).toBe("oklch(0.7 0.15 264)");
+	});
+});
+
+describe("applied tokens", () => {
+	test("designTokensOf drops invalid entries", () => {
+		expect(designTokensOf("## Tokens\n- primary: #fff\n- ring: nope{}")).toEqual({
+			light: { primary: "#fff" },
+			dark: {},
+		});
+		expect(designTokensOf(undefined)).toEqual({ light: {}, dark: {} });
+	});
+
+	test("changedTokenCount counts added, changed and removed tokens per mode", () => {
+		const from = { light: { primary: "#111", radius: "1rem" }, dark: { primary: "#222" } };
+		expect(changedTokenCount(from, from)).toBe(0);
+		expect(changedTokenCount(from, { light: { primary: "#111", radius: "1rem" }, dark: { primary: "#222" } })).toBe(0);
+		expect(changedTokenCount(from, { light: { primary: "#999", ring: "red" }, dark: { primary: "#222" } })).toBe(3);
+		expect(changedTokenCount(from, { light: {}, dark: {} })).toBe(3);
 	});
 });

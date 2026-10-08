@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, FolderDown, Link2, LoaderCircle, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, DESKTOP_ONLY, isDesktop } from "@/lib/rpc";
 import { buildShareSnapshot } from "@/lib/share-snapshot";
+import type { DesignTokens } from "../../../../shared/context/tokens";
 import { hashString } from "../../../../shared/jsx/hash";
 import { toKebab } from "../../../../shared/project";
 import { shareScreens, type ShareStatus } from "../../../../shared/share/snapshot";
@@ -18,15 +19,15 @@ import { errorMessage, timeAgo } from "./share-utils";
 /** Lets the popover tell when a shared link is out of date */
 const publishedFingerprints = new Map<string, string>();
 
-const fingerprintOf = (frames: Frame[], files: ProjectFiles) =>
-	hashString(JSON.stringify([shareScreens(frames, files), files]));
+const fingerprintOf = (frames: Frame[], files: ProjectFiles, theme: DesignTokens) =>
+	hashString(JSON.stringify([shareScreens(frames, files), files, theme]));
 
 type ShareTab = "link" | "git";
 
 const isShareTab = (value: string): value is ShareTab => value === "link" || value === "git";
 
 /** Decision 0008 */
-export function ShareButton(props: ExportContext) {
+export const ShareButton = memo(function ShareButton(props: ExportContext) {
 	const { projectPath } = props;
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState<ShareTab>("link");
@@ -88,13 +89,14 @@ export function ShareButton(props: ExportContext) {
 							projectName={props.projectName}
 							onBeforeSync={props.flushCanvas}
 							onPulled={props.reloadFromDisk}
+							hasUndoHistory={props.hasUndoHistory}
 						/>
 					</TabsContent>
 				</Tabs>
 			</PopoverContent>
 		</Popover>
 	);
-}
+});
 
 /** Falls back to a selected field and `execCommand` where the Clipboard API is blocked */
 async function copyText(text: string, field: HTMLInputElement | null) {
@@ -119,17 +121,17 @@ function LinkSection({
 	status: ShareStatus | null;
 	onStatus: (status: ShareStatus | null) => void;
 }) {
-	const { projectPath, projectName, frames, files, selected } = context;
+	const { projectPath, projectName, frames, files, theme, selected } = context;
 	const [busy, setBusy] = useState<"publish" | "stop" | "export" | null>(null);
 	const [copied, setCopied] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
-	const fingerprint = useMemo(() => fingerprintOf(frames, files), [frames, files]);
+	const fingerprint = useMemo(() => fingerprintOf(frames, files, theme), [frames, files, theme]);
 	const screenCount = useMemo(() => shareScreens(frames, files).length, [frames, files]);
 	const stale = status !== null && publishedFingerprints.get(projectPath) !== fingerprint;
 
 	const snapshot = useCallback(
-		() => buildShareSnapshot({ name: projectName, frames, files, start: selected[0]?.file }),
-		[projectName, frames, files, selected],
+		() => buildShareSnapshot({ name: projectName, frames, files, theme, start: selected[0]?.file }),
+		[projectName, frames, files, theme, selected],
 	);
 
 	const publish = async () => {

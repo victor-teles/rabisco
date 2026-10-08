@@ -151,6 +151,18 @@ describe("anthropic provider", () => {
 		expect(out.at(-1)).toMatchObject({ type: "error", code: "invalid_output", retryable: true });
 	});
 
+	test("a theme task ends with a text reply and no files", async () => {
+		const tokens = "## Tokens\n\n- primary: #0052ff\n";
+		const { provider: p } = provider(({ init }) => sseResponse(textEvents(tokens), init.signal));
+		const theme: GenerationRequest = { ...request, task: "theme", attachments: undefined, history: undefined };
+		const out = await collect(p.generate(theme, new AbortController().signal));
+		const text = out.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		expect(text).toBe(tokens);
+		expect(out.at(-1)?.type).toBe("done");
+		const plain = await collect(p.generate({ ...theme, task: "create" }, new AbortController().signal));
+		expect(plain.at(-1)).toMatchObject({ type: "error", code: "invalid_output" });
+	});
+
 	test("abort stops the stream promptly with aborted", async () => {
 		const controller = new AbortController();
 

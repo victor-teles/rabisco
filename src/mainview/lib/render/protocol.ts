@@ -1,15 +1,17 @@
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
+import type { ElementLayout, Spacing } from "./spacing";
 
 /** Where an error points to in project source. Lines and columns are 1-based. */
 export type SourceLocation = { line: number; column?: number };
 
 export type CompileError = SourceLocation & { message: string };
 
+/** `icons` are the lucide-react imports, which the frame loads before rendering. */
 export type ModulePayload =
-	| { code: string; source: string; error?: undefined }
-	| { code?: undefined; source: string; error: CompileError };
+	| { code: string; source: string; error?: undefined; icons?: string[] }
+	| { code?: undefined; source: string; error: CompileError; icons?: undefined };
 
 /** Host → frame. `modules` holds only what changed since the last message; `null` deletes a module. */
 export type HostMessage =
@@ -24,23 +26,42 @@ export type HostMessage =
 			reset?: boolean;
 	  }
 	| { type: "css"; css: string }
+	/** Project images by `src` (decision 0010); only what changed unless `reset`. `null` deletes. */
+	| { type: "assets"; assets: Record<string, AssetPayload | null>; reset?: boolean }
 	| { type: "theme"; css: string }
 	/** Answered by a `hit` with the same `id`; `x`, `y` are frame-local CSS pixels. */
 	| { type: "hit-test"; id: number; x: number; y: number }
+	/** Answered by a `drop-layout` with the same `id`; `x`, `y` pick the instance under the pointer (else the first). */
+	| { type: "drop-layout"; id: number; start: number; version: string; x: number; y: number }
+	/** Answered by an `element-boxes` with the same `id`: where the element at `start` renders, without tracking it. */
+	| { type: "element-boxes"; id: number; start: number; version: string }
 	/** Stream `boxes` for the element at `start` on every layout change until the next `track`; `null` stops. */
 	| { type: "track"; start: number | null; version: string }
+	/** Inline styles on every instance of the element at `start` while a handle drags; `null` (or the next render) restores them */
+	| { type: "preview-style"; start: number; version: string; style: Record<string, string> | null }
 	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
 	| { type: "edit-text"; start: number; version: string; text: string; x?: number; y?: number }
 	| { type: "end-edit"; commit: boolean }
 	/** Play mode (decision 0007): `data-link-to` clicks post `navigate` instead of their default. */
 	| { type: "play"; on: boolean }
+	/** Offscreen: stop measuring and streaming boxes until resumed. */
+	| { type: "pause"; on: boolean }
 	/** Answered by a `measured` with the same `id`. */
 	| { type: "measure"; id: number }
 	/** Answered by a `snapshot` with the same `id`. */
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster };
 
+/** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
+export type AssetPayload = Blob | string;
+
 /** `scale` is device pixels per CSS pixel (lowered for very tall screens). */
-export type SnapshotRaster = { type: "image/png" | "image/jpeg"; scale: number; quality?: number };
+export type SnapshotRaster = {
+	type: "image/png" | "image/jpeg";
+	scale: number;
+	quality?: number;
+	/** Crops the image (not the scene) to this many CSS pixels from the top. */
+	maxHeight?: number;
+};
 
 export type FrameError = {
 	kind: "compile" | "runtime" | "missing-module";
@@ -58,8 +79,19 @@ export type FrameMessage =
 	| { type: "error"; error: FrameError }
 	| { type: "size"; height: number }
 	| { type: "hit"; id: number; hit: FrameHit | null }
-	/** One box per rendered instance. */
-	| { type: "boxes"; start: number; version: string; boxes: Box[] }
+	/** `null` when `version` isn't the rendered one or the element isn't rendered. */
+	| { type: "drop-layout"; id: number; layout: DropLayout | null }
+	/** `null` when `version` isn't the rendered one. */
+	| { type: "element-boxes"; id: number; boxes: Box[] | null }
+	/** One box per rendered instance; `spacing` and `layout` describe the first instance. */
+	| {
+			type: "boxes";
+			start: number;
+			version: string;
+			boxes: Box[];
+			spacing?: Spacing | null;
+			layout?: ElementLayout | null;
+	  }
 	/** `refused` when the element's DOM doesn't hold just its text; `done` with `text: null` means cancelled. */
 	| { type: "text-edit"; start: number; version: string; state: "editing" | "refused" }
 	| { type: "text-edit"; start: number; version: string; state: "done"; text: string | null }
@@ -72,6 +104,23 @@ export type FrameMessage =
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };
+
+/** Frame-local CSS pixels. `children` are the container's direct children from the entry file, in DOM order; an element rendered by `.map` reports one entry per instance, all with the same `start`. */
+export type DropLayout = {
+	start: number;
+	version: string;
+	box: Box;
+	/** Computed style of the element that lays out the children (the container's own element, or for a component usage like `<Card>`, the DOM parent of its first child) */
+	display: string;
+	flexDirection: string;
+	flexWrap: string;
+	gridAutoFlow: string;
+	/** Number of tracks in grid-template-columns; 0 when not a grid */
+	gridColumns: number;
+	/** `direction` CSS property (ltr/rtl) */
+	direction: string;
+	children: { start: number; box: Box }[];
+};
 
 /** `starts` are innermost-first offsets into the entry source at `version`, which may be older than the file. */
 export type FrameHit = {
@@ -194,6 +243,66 @@ function isRaster(raster: unknown): raster is { dataUrl: string; scale: number }
 const isTracked = (value: unknown): value is { start: number; version: string } =>
 	isObject(value) && "start" in value && "version" in value && isNumber(value.start) && isString(value.version);
 
+const isDropChild = (child: unknown): child is { start: number; box: Box } =>
+	isObject(child) && "start" in child && "box" in child && isNumber(child.start) && isBox(child.box);
+
+function isDropLayout(layout: unknown): layout is DropLayout {
+	if (
+		!isTracked(layout) ||
+		!("box" in layout && "children" in layout && "gridColumns" in layout) ||
+		!("display" in layout && "flexDirection" in layout && "flexWrap" in layout) ||
+		!("gridAutoFlow" in layout && "direction" in layout)
+	)
+		return false;
+
+	return (
+		isBox(layout.box) &&
+		isNumber(layout.gridColumns) &&
+		[layout.display, layout.flexDirection, layout.flexWrap, layout.gridAutoFlow, layout.direction].every(isString) &&
+		Array.isArray(layout.children) &&
+		layout.children.every(isDropChild)
+	);
+}
+
+const isBoxList = (boxes: unknown): boxes is Box[] => Array.isArray(boxes) && boxes.every(isBox);
+
+function isSpacing(spacing: unknown): spacing is Spacing {
+	return (
+		isObject(spacing) &&
+		"padding" in spacing &&
+		"gaps" in spacing &&
+		isBoxList(spacing.padding) &&
+		isBoxList(spacing.gaps)
+	);
+}
+
+const isInsets = (insets: unknown): insets is ElementLayout["padding"] =>
+	isObject(insets) &&
+	"top" in insets &&
+	"right" in insets &&
+	"bottom" in insets &&
+	"left" in insets &&
+	[insets.top, insets.right, insets.bottom, insets.left].every((n) => Number.isFinite(n));
+
+const AXES: readonly (string | null)[] = ["row", "column", null];
+
+function isElementLayout(layout: unknown): layout is ElementLayout {
+	if (!isObject(layout) || !("padding" in layout && "gap" in layout && "flow" in layout && "parent" in layout))
+		return false;
+	const { gap } = layout;
+
+	return (
+		isInsets(layout.padding) &&
+		isObject(gap) &&
+		"row" in gap &&
+		"column" in gap &&
+		Number.isFinite(gap.row) &&
+		Number.isFinite(gap.column) &&
+		(layout.flow === "grid" || layout.flow === null || (isString(layout.flow) && AXES.includes(layout.flow))) &&
+		(layout.parent === null || (isString(layout.parent) && AXES.includes(layout.parent)))
+	);
+}
+
 /** Frames run project code, so their messages are validated before the host acts on them. */
 export function isFrameMessage(data: unknown): data is FrameMessage {
 	if (!isObject(data) || !("type" in data)) return false;
@@ -209,8 +318,18 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 			return "height" in data && isNumber(data.height);
 		case "hit":
 			return hasId(data) && "hit" in data && (data.hit === null || isFrameHit(data.hit));
+		case "drop-layout":
+			return hasId(data) && "layout" in data && (data.layout === null || isDropLayout(data.layout));
+		case "element-boxes":
+			return hasId(data) && "boxes" in data && (data.boxes === null || isBoxList(data.boxes));
 		case "boxes":
-			return isTracked(data) && "boxes" in data && Array.isArray(data.boxes) && data.boxes.every(isBox);
+			return (
+				isTracked(data) &&
+				"boxes" in data &&
+				isBoxList(data.boxes) &&
+				(!("spacing" in data) || data.spacing === undefined || data.spacing === null || isSpacing(data.spacing)) &&
+				(!("layout" in data) || data.layout === undefined || data.layout === null || isElementLayout(data.layout))
+			);
 		case "text-edit":
 			if (!isTracked(data) || !("state" in data)) return false;
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { detachComments, normalizeComments, pinAt, pinPosition } from "./comments";
+import { detachComments, normalizeComments, pinAt, pinPosition, setResolved } from "./comments";
 import { reconcileFrames, emptyCanvas } from "./project";
 import type { CanvasComment, Frame } from "./types";
 
@@ -100,5 +100,36 @@ describe("detachComments", () => {
 		const next = reconcileFrames(canvas, {});
 		expect(next.frames).toEqual([]);
 		expect(next.comments).toEqual([{ id: "1", x: 110, y: 20, text: "Hi", createdAt: "t" }]);
+	});
+});
+
+describe("setResolved", () => {
+	const open = (id: string): CanvasComment => ({ id, x: 0, y: 0, text: id, createdAt: "" });
+
+	test("resolves the open comments it names", () => {
+		const comments = [open("a"), open("b"), { ...open("c"), resolved: true }];
+		const next = setResolved(comments, ["a", "c", "gone"], true);
+
+		expect(next.map((c) => [c.id, c.resolved ?? false])).toEqual([
+			["a", true],
+			["b", false],
+			["c", true],
+		]);
+		expect(next[1]).toBe(comments[1]!);
+		expect(next[2]).toBe(comments[2]!);
+	});
+
+	test("reopens without leaving a `resolved` field", () => {
+		const next = setResolved([{ ...open("a"), resolved: true }, open("b")], ["a"], false);
+
+		expect(next[0]).toEqual(open("a"));
+	});
+
+	test("returns the same list when nothing changes", () => {
+		const comments = [open("a"), { ...open("b"), resolved: true }];
+
+		expect(setResolved(comments, ["b", "gone"], true)).toBe(comments);
+		expect(setResolved(comments, ["a"], false)).toBe(comments);
+		expect(setResolved(comments, [], true)).toBe(comments);
 	});
 });

@@ -8,6 +8,9 @@ import { createProjectFolder } from "../project-folder";
 import { tempDir } from "../test-utils";
 import { createMemorySecretStore } from "./keychain";
 import { createAiService } from "./service";
+import { designSourceOf } from "../../shared/context/theme";
+import { commandMethods } from "./command-template";
+import { MOCK_COMMANDS } from "./providers/mock";
 
 function setup() {
 	const root = tempDir();
@@ -103,6 +106,24 @@ describe("ai service", () => {
 		expect(result.problems).toEqual([]);
 	});
 
+	test("theme task reads DESIGN.md's tokens and changes no file", async () => {
+		const { ai, sent, projectPath } = setup();
+		const design = "## Colors\n\n- **Primary** (#0052ff): every CTA.\n";
+		writeFileSync(join(projectPath, "DESIGN.md"), design);
+		const result = await ai.generate({ ...params(projectPath), prompt: "", task: "theme" });
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.changes).toEqual([]);
+		expect(result.theme).toEqual({ light: { primary: "#0052ff" }, dark: {}, source: designSourceOf(design) });
+		expect(sent.at(-1)!.event.type).toBe("done");
+	});
+
+	test("theme task needs a DESIGN.md with content", async () => {
+		const { ai, projectPath } = setup();
+		const result = await ai.generate({ ...params(projectPath), prompt: "", task: "theme" });
+		expect(result.ok).toBe(false);
+	});
+
 	test("context task needs exactly one context target", async () => {
 		const { ai, projectPath } = setup();
 
@@ -136,6 +157,7 @@ function setupFake(play: Play) {
 		capabilities: { streaming: true, images: false, agentic: false, maxContextTokens: 1000 },
 		health: async () => ({ ok: true }),
 		listModels: async () => [{ id: "mock", label: "Fake" }],
+		...commandMethods(() => MOCK_COMMANDS),
 		generate(request, signal) {
 			requests.push(request);
 
@@ -400,7 +422,7 @@ describe("point and prompt", () => {
 		put(projectPath, path, source);
 		put(
 			projectPath,
-			"chat.jsonl",
+			"chats/c1.jsonl",
 			[
 				chatLine("user", "A welcome screen"),
 				chatLine("assistant", "Made it."),
@@ -414,6 +436,7 @@ describe("point and prompt", () => {
 			targets: [path],
 			focus,
 			prompt: "Say hello",
+			chatId: "c1",
 		});
 
 		if (!result.ok) throw new Error(result.error.message);
@@ -423,6 +446,27 @@ describe("point and prompt", () => {
 		expect(result.reply).toBe(
 			`Done.\n\nNote: this also changed ${path} outside <h1> “Welcome” (line 5). Undo reverts the whole edit.`,
 		);
+	});
+
+	test("a command reaches the provider expanded; the chat keeps what the user typed", async () => {
+		const { ai, requests, projectPath } = setupFake(() => events(...write(path, source), { type: "done" }));
+		put(projectPath, "chats/c1.jsonl", [chatLine("user", "A shop"), chatLine("user", "/brief a bakery")].join("\n"));
+		expect((await ai.listCommands("mock:mock", projectPath)).map((command) => command.name)).toEqual(["brief"]);
+
+		const result = await ai.generate({
+			...params(projectPath),
+			prompt: "/brief a bakery",
+			command: { name: "brief", args: "a bakery" },
+			chatId: "c1",
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(requests[0]!.prompt).toBe("Design the main screens for: a bakery");
+		expect(requests[0]!.history?.map((turn) => turn.content)).toEqual(["A shop"]);
+
+		const unknown = await ai.generate({ ...params(projectPath, "g2"), command: { name: "nope", args: "" } });
+		expect(unknown.ok ? null : unknown.error.message).toBe("Fake has no /nope command.");
+		expect(await ai.listCommands("gone:model", projectPath)).toEqual([]);
 	});
 
 	test("a stale focus is dropped: the request is a plain edit of the file", async () => {

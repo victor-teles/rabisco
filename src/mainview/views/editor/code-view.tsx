@@ -1,8 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { tokenizeLines, type TokenKind } from "@/lib/highlight";
+import { tokenizeLines, type Token, type TokenKind } from "@/lib/highlight";
 import { cn } from "@/lib/utils";
 
 const TOKEN_CLASS: Record<TokenKind, string> = {
@@ -220,25 +220,13 @@ export function CodeEditor({
 					aria-hidden
 					className="sticky left-0 z-10 w-11 shrink-0 bg-background pr-3 text-right text-subtle-foreground/70 tabular-nums select-none"
 				>
-					{lines.map((_, index) => (
-						<div key={index} className={cn(index >= first && index <= last && "text-muted-foreground")}>
-							{index + 1}
-						</div>
-					))}
+					<LineNumbers count={lines.length} first={first} last={last} />
 				</div>
 				<div className="relative grow pr-4">
 					<pre aria-hidden className="pointer-events-none" style={{ tabSize: TAB_SIZE }}>
 						<code>
 							{lines.map((tokens, index) => (
-								<div key={index} className={cn(index >= first && index <= last && "-ml-1 bg-primary/[0.07] pl-1")}>
-									{tokens.length
-										? tokens.map((token, i) => (
-												<span key={i} className={cn(TOKEN_CLASS[token.kind])}>
-													{token.text}
-												</span>
-											))
-										: "​"}
-								</div>
+								<CodeLine key={index} tokens={tokens} highlighted={index >= first && index <= last} />
 							))}
 						</code>
 					</pre>
@@ -287,3 +275,32 @@ export function CodeEditor({
 		</div>
 	);
 }
+
+const LineNumbers = memo(function LineNumbers({ count, first, last }: { count: number; first: number; last: number }) {
+	return Array.from({ length: count }, (_, index) => (
+		<div key={index} className={cn(index >= first && index <= last && "text-muted-foreground")}>
+			{index + 1}
+		</div>
+	));
+});
+
+const sameTokens = (a: Token[], b: Token[]) =>
+	a.length === b.length && a.every((token, i) => token.kind === b[i]!.kind && token.text === b[i]!.text);
+
+/** A keystroke re-tokenizes the file: compared by content, so only the edited lines re-render */
+const CodeLine = memo(
+	function CodeLine({ tokens, highlighted }: { tokens: Token[]; highlighted: boolean }) {
+		return (
+			<div className={cn(highlighted && "-ml-1 bg-primary/[0.07] pl-1")}>
+				{tokens.length
+					? tokens.map((token, i) => (
+							<span key={i} className={cn(TOKEN_CLASS[token.kind])}>
+								{token.text}
+							</span>
+						))
+					: "\u200b"}
+			</div>
+		);
+	},
+	(a, b) => a.highlighted === b.highlighted && sameTokens(a.tokens, b.tokens),
+);

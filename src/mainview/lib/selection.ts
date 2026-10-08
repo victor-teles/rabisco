@@ -23,3 +23,8 @@ export function selectedFrames(frames: Frame[], selection: string[]) {
 export function sameSelection(a: string[], b: string[]) {
 	return a.length === b.length && a.every((file, i) => file === b[i]);
 }
+
+/** Right-click acts on the selection when it holds `file`, else selects just `file` first, as in Figma. */
+export function contextSelection(selection: string[], file: string) {
+	return selection.includes(file) ? selection : [file];
+}

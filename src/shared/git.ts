@@ -1,4 +1,5 @@
 // Git sync: docs/decisions/0008-share-link-and-git-sync.md
+import { CHATS_DIR, LEGACY_CHAT_FILE } from "./chats";
 import { isComponentFile, isScreenFile, screenNameFromPath } from "./project";
 
 export type GitCommit = { hash: string; subject: string; date: string };
@@ -85,8 +86,11 @@ export function commitMessage(changes: ChangedPath[]): string {
 		isScreenFile(path) || isComponentFile(path) || path === "PRODUCT.md" || path === "DESIGN.md";
 
 	if (paths.has("rabisco.json")) parts.push("update the canvas");
+
 	// Images attached to prompts belong to the chat
-	const isChat = (path: string) => path === "chat.jsonl" || path.startsWith("attachments/");
+	const isChat = (path: string) =>
+		path === LEGACY_CHAT_FILE || path.startsWith(`${CHATS_DIR}/`) || path.startsWith("attachments/");
+
 	const others = [...paths].filter((path) => !known(path) && path !== "rabisco.json" && !isChat(path));
 
 	if (others.length) parts.push(`update ${plural(others.length, "other file")}`);

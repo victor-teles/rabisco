@@ -31,19 +31,12 @@ Example: "Mobile first. No dark patterns around subscriptions. No social feature
 -->
 `;
 
-export const DESIGN_TEMPLATE = `# Design
-
-## Visual direction
+const TOKENS_SECTION = `## Tokens
 
 <!--
-The feel, in a few words, and a reference or two.
-Example: "Quiet and precise, like a good notebook. Lots of white space, one strong accent color."
--->
-
-## Tokens
-
-<!--
-Tokens re-theme every screen. Remove the comment markers around the lines you want to apply.
+Optional. Rabisco reads the theme from this whole file with AI, and asks before it re-themes the
+screens. Tokens listed here are used as they are, without AI: remove the comment markers around
+the lines you want to use.
 Colors: background, foreground, card, popover, primary, secondary, muted, accent (each with a
 -foreground pair), destructive, success, warning, border, input, ring, chart-1 to chart-5.
 Also radius, font-sans, font-serif and font-mono. Values under "### Dark" apply in dark mode.
@@ -58,7 +51,18 @@ Also radius, font-sans, font-serif and font-mono. Values under "### Dark" apply 
 - primary: oklch(0.7 0.15 264)
 -->
 
-## Typography
+`;
+
+export const DESIGN_TEMPLATE = `# Design
+
+## Visual direction
+
+<!--
+The feel, in a few words, and a reference or two.
+Example: "Quiet and precise, like a good notebook. Lots of white space, one strong accent color."
+-->
+
+${TOKENS_SECTION}## Typography
 
 <!--
 Type scale and how to use it.

@@ -1,11 +1,13 @@
 import type { Scene } from "../../../shared/export/scene";
 import type { ProjectFiles } from "../../../shared/types";
+import { projectAssets } from "./assets";
 import { compileCache, type CompiledModule } from "./compile";
 import { collectGraph } from "./graph";
 import {
 	hitBoxes,
 	isFrameMessage,
 	type Box,
+	type DropLayout,
 	type FrameError,
 	type FrameHit,
 	type FrameMessage,
@@ -13,8 +15,8 @@ import {
 	type ModulePayload,
 	type SnapshotRaster,
 } from "./protocol";
+import type { ElementLayout, Spacing } from "./spacing";
 import { screenStyles } from "./styles";
-import { designThemeCss } from "./theme";
 
 export type FrameStatus = {
 	frame: HTMLIFrameElement;
@@ -69,10 +71,22 @@ let requestId = 0;
 
 type TrackedElement = { start: number | null; version: string };
 
+export type TrackedBoxes = {
+	start: number;
+	version: string;
+	boxes: Box[];
+	spacing: Spacing | null;
+	layout: ElementLayout | null;
+};
+
 export type Snapshot = { scene: Scene; raster?: { dataUrl: string; scale: number } };
 
 function payloadOf(module: CompiledModule): ModulePayload {
-	return module.error ? { source: module.source, error: module.error } : { source: module.source, code: module.code! };
+	if (module.error) return { source: module.source, error: module.error };
+
+	return module.icons.length
+		? { source: module.source, code: module.code!, icons: module.icons }
+		: { source: module.source, code: module.code! };
 }
 
 /** Posts only the modules and CSS the frame doesn't have yet; unchanged graphs post nothing. */
@@ -84,20 +98,26 @@ export class FrameHost {
 	onContentHeight: ((height: number) => void) | null = null;
 	#entry = "";
 	#files: ProjectFiles = {};
+	#theme = "";
 	#ready = false;
 	#waitingForStyles = false;
 	#sent = new Map<string, string>();
 	#sentEntry = "";
 	#sentCss = "";
 	#sentTheme = "";
+	#sentAssets = new Map<string, Blob>();
+	#sentAssetsVersion = -1;
 	#unsubscribe: () => void;
+	#unsubscribeAssets: () => void;
 	#hitTests = new Map<number, (hit: FrameHit | null) => void>();
 	/** Re-sent when the frame reloads. */
 	#tracked: TrackedElement = { start: null, version: "" };
-	onBoxes: ((boxes: { start: number; version: string; boxes: Box[] }) => void) | null = null;
+	onBoxes: ((boxes: TrackedBoxes) => void) | null = null;
 	#textEdit: { start: number; version: string; resolve: (text: string | null | undefined) => void } | null = null;
 	/** Re-sent when the frame reloads. */
 	#play = false;
+	/** Re-sent when the frame reloads. */
+	#paused = false;
 	onNavigate: ((to: string) => void) | null = null;
 	onEscape: (() => void) | null = null;
 	#requests = new Map<number, (message: FrameMessage | null) => void>();
@@ -108,11 +128,13 @@ export class FrameHost {
 		hosts.add(this);
 		listen();
 		this.#unsubscribe = screenStyles.subscribe((css) => this.#pushCss(css));
+		this.#unsubscribeAssets = projectAssets.subscribe(() => this.#pushAssets());
 	}
 
 	dispose() {
 		hosts.delete(this);
 		this.#unsubscribe();
+		this.#unsubscribeAssets();
 
 		for (const resolve of this.#hitTests.values()) resolve(null);
 		this.#hitTests.clear();
@@ -204,6 +226,11 @@ export class FrameHost {
 		if (this.#ready) this.#post({ type: "track", start, version });
 	}
 
+	/** Inline styles on the element while a handle drags; `null` restores them. The next render restores them too */
+	previewStyle(start: number, version: string, style: Record<string, string> | null) {
+		if (this.#ready) this.#post({ type: "preview-style", start, version, style });
+	}
+
 	/** Resolves with the new text, `null` if cancelled, or `undefined` if the frame refused. */
 	editText(
 		edit: { start: number; version: string; text: string; x?: number; y?: number },
@@ -229,6 +256,14 @@ export class FrameHost {
 		this.#play = on;
 
 		if (this.#ready) this.#post({ type: "play", on });
+	}
+
+	/** Stops the frame's layout observers while it's offscreen. */
+	setPaused(paused: boolean) {
+		if (paused === this.#paused) return;
+		this.#paused = paused;
+
+		if (this.#ready) this.#post({ type: "pause", on: paused });
 	}
 
 	endTextEdit(commit: boolean) {
@@ -257,9 +292,31 @@ export class FrameHost {
 		});
 	}
 
-	update(entry: string, files: ProjectFiles) {
+	/** Compare `layout.version` with the file's `sourceVersion` before using its offsets. */
+	async dropLayout(start: number, version: string, x: number, y: number): Promise<DropLayout | null> {
+		if (!this.#sentEntry) return null;
+
+		const reply = await this.#request(
+			{ type: "drop-layout", id: ++requestId, start, version, x, y },
+			HIT_TEST_TIMEOUT_MS,
+		);
+
+		return reply?.type === "drop-layout" && reply.layout?.start === start ? reply.layout : null;
+	}
+
+	/** One box per rendered instance; `null` when the frame shows another version or doesn't answer. */
+	async elementBoxes(start: number, version: string): Promise<Box[] | null> {
+		if (!this.#sentEntry) return null;
+		const reply = await this.#request({ type: "element-boxes", id: ++requestId, start, version }, HIT_TEST_TIMEOUT_MS);
+
+		return reply?.type === "element-boxes" ? reply.boxes : null;
+	}
+
+	/** `theme` is the CSS of the applied tokens (`themeCss`) */
+	update(entry: string, files: ProjectFiles, theme: string) {
 		this.#entry = entry;
 		this.#files = files;
+		this.#theme = theme;
 		this.#sync();
 	}
 
@@ -270,13 +327,18 @@ export class FrameHost {
 			this.#sentEntry = "";
 			this.#sentCss = "";
 			this.#sentTheme = "";
+			this.#sentAssets.clear();
+			this.#sentAssetsVersion = -1;
 			this.#textEdit?.resolve(null);
 			this.#emit({ status: "ready" });
+			this.#pushAssets();
 			this.#sync();
 
 			if (this.#tracked.start !== null) this.#post({ type: "track", ...this.#tracked });
 
 			if (this.#play) this.#post({ type: "play", on: true });
+
+			if (this.#paused) this.#post({ type: "pause", on: true });
 		} else if (message?.type === "rendered") {
 			this.#emit({ status: "rendered" });
 		} else if (message?.type === "error") {
@@ -303,7 +365,10 @@ export class FrameHost {
 		} else if (message?.type === "boxes") {
 			const current = message.start === this.#tracked.start && message.version === this.#tracked.version;
 
-			if (current) this.onBoxes?.({ start: message.start, version: message.version, boxes: message.boxes });
+			if (current) {
+				const { start, version, boxes } = message;
+				this.onBoxes?.({ start, version, boxes, spacing: message.spacing ?? null, layout: message.layout ?? null });
+			}
 		} else if (message?.type === "text-edit") {
 			const edit = this.#textEdit;
 
@@ -314,7 +379,12 @@ export class FrameHost {
 			else if (message.state === "done") edit.resolve(message.text);
 		} else if (message?.type === "navigate") {
 			if (this.#play && message.to.trim()) this.onNavigate?.(message.to);
-		} else if (message?.type === "measured" || message?.type === "snapshot") {
+		} else if (
+			message?.type === "measured" ||
+			message?.type === "snapshot" ||
+			message?.type === "drop-layout" ||
+			message?.type === "element-boxes"
+		) {
 			this.#requests.get(message.id)?.(message);
 		} else if (message?.type === "escape") {
 			if (this.#play) this.onEscape?.();
@@ -343,6 +413,15 @@ export class FrameHost {
 		if (!this.#ready || !this.#sentEntry || css === this.#sentCss) return;
 		this.#sentCss = css;
 		this.#post({ type: "css", css });
+	}
+
+	/** Before modules, so the first render already finds the images */
+	#pushAssets() {
+		if (!this.#ready || projectAssets.version === this.#sentAssetsVersion) return;
+		this.#sentAssetsVersion = projectAssets.version;
+		const delta = projectAssets.delta(this.#sentAssets);
+
+		if (delta.size) this.#post({ type: "assets", assets: Object.fromEntries(delta) });
 	}
 
 	#sync() {
@@ -380,8 +459,7 @@ export class FrameHost {
 
 		const reset = this.#sentEntry === "";
 		const css = screenStyles.css !== this.#sentCss ? screenStyles.css : undefined;
-		const themeCss = designThemeCss(this.#files);
-		const theme = themeCss !== this.#sentTheme ? themeCss : undefined;
+		const theme = this.#theme !== this.#sentTheme ? this.#theme : undefined;
 
 		if (!changed && !reset && this.#entry === this.#sentEntry && css === undefined) {
 			if (theme !== undefined) {

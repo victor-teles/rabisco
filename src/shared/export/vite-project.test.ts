@@ -55,6 +55,8 @@ const input: ViteProjectInput = {
 	// Home sits left of Welcome on the canvas, so it opens first
 	frames: [frame("screens/home.tsx", 0), frame("screens/welcome.tsx", 500), frame("screens/welcome.alt-1.tsx", 1000)],
 	files,
+	// Applied before DESIGN.md's radius changed, so the export keeps what the canvas shows
+	theme: { light: { primary: "#2563eb", radius: "0.75rem" }, dark: {} },
 	uiSources,
 };
 
@@ -134,12 +136,12 @@ describe("vite project", () => {
 		expect(pkg.scripts.build).toBe("vite build");
 	});
 
-	test("the theme is the canvas theme, with DESIGN.md tokens after it", () => {
+	test("the theme is the canvas theme, with the applied tokens after it", () => {
 		const css = out["src/index.css"]!;
 		expect(css.startsWith('@import "tailwindcss";\n@import "tw-animate-css";')).toBe(true);
 		expect(css).toContain(SCREEN_THEME_CSS.trim());
 		expect(css).toContain(":root:not(.dark) {\n\t--primary: #2563eb;");
-		expect(css).toContain(":root {\n\t--radius: 0.5rem;");
+		expect(css).toContain(":root {\n\t--radius: 0.75rem;");
 		expect(css.indexOf("--primary: #2563eb")).toBeGreaterThan(css.indexOf(SCREEN_THEME_CSS.trim()));
 	});
 
@@ -177,4 +179,13 @@ describe("vite project", () => {
 		expect(packageName("Café Délice!")).toBe("cafe-delice");
 		expect(packageName("!!!")).toBe("rabisco-design");
 	});
+});
+
+test("copies the project's images into public/, where Vite serves them at /", () => {
+	const project = viteProject({ ...input, assets: { "/images/logo.png": "bG9nbw==", "../escape.png": "eA==" } });
+	const image = project.files.find((file) => file.path === "public/images/logo.png");
+	expect(image).toEqual({ path: "public/images/logo.png", content: "bG9nbw==", encoding: "base64" });
+	expect(project.files.some((file) => file.path.includes("escape"))).toBe(false);
+	expect(byPath(project)["README.md"]).toContain("`public/`: the images the screens show");
+	expect(byPath(viteProject(input))["README.md"]).not.toContain("`public/`");
 });

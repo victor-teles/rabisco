@@ -5,11 +5,14 @@ import {
 	DEFAULT_REQUEST_CHARS,
 	GenerationError,
 	buildGenerationRequest,
+	buildThemeRequest,
 	type BuildRequestParams,
 	contextFilesOf,
 	contextTargetOf,
 	runGeneration,
+	runThemeReading,
 } from "./run";
+import { designSourceOf } from "../../shared/context/theme";
 
 const GOOD_SCREEN = `import { Row } from "../components/row";\nexport default function A() { return <Row /> }\n`;
 
@@ -591,5 +594,81 @@ describe("point and prompt", () => {
 		const { provider } = fakeProvider([[...file(path, source.replace("Hello", "Welcome back")), { type: "done" }]]);
 		const { result } = await run(provider, project, undefined, build());
 		expect(result.notes).toEqual([]);
+	});
+});
+
+describe("theme reading", () => {
+	const DESIGN = "## Colors\n\nBrand blue #0052ff on white.\n";
+	const themeRequest = buildThemeRequest({ id: "t1", model: "m", device: "mobile", design: DESIGN })!;
+
+	const read = (events: GenerationEvent[]) => {
+		const { provider } = fakeProvider([events]);
+		const seen: GenerationEvent[] = [];
+
+		const result = runThemeReading({
+			provider,
+			request: themeRequest,
+			signal: new AbortController().signal,
+			onEvent: (event) => seen.push(event),
+		});
+
+		return { result, seen };
+	};
+
+	test("the request carries only DESIGN.md", () => {
+		expect(themeRequest).toEqual({
+			id: "t1",
+			task: "theme",
+			model: "m",
+			prompt: "",
+			device: "mobile",
+			context: { design: DESIGN },
+			files: [],
+		});
+		expect(buildThemeRequest({ id: "t", model: "m", device: "mobile", design: "# Design\n\n<!-- todo -->" })).toBe(
+			undefined,
+		);
+	});
+
+	test("valid tokens from the reply become the theme, with DESIGN.md's source", async () => {
+		const { result, seen } = read([
+			{ type: "status", label: "Reading" },
+			{ type: "message.delta", text: "## Tokens\n- primary: #0052ff\n- background: #fff\n" },
+			{ type: "message.delta", text: "- ring: url(x)\n### Dark\n- primary: #4d8bff\n" },
+			{ type: "done", usage: { outputTokens: 20 } },
+		]);
+
+		expect(await result).toEqual({
+			theme: {
+				light: { primary: "#0052ff", background: "#fff" },
+				dark: { primary: "#4d8bff" },
+				source: designSourceOf(DESIGN),
+			},
+			reply: "## Tokens\n- primary: #0052ff\n- background: #fff\n- ring: url(x)\n### Dark\n- primary: #4d8bff",
+			usage: { outputTokens: 20 },
+		});
+		expect(seen[0]).toEqual({ type: "status", label: "Reading" });
+	});
+
+	test("files the provider writes are never applied", async () => {
+		const { result } = read([
+			...file("screens/home.tsx", GOOD_SCREEN),
+			{ type: "message.delta", text: "- primary: #0052ff" },
+			{ type: "done" },
+		]);
+
+		expect(Object.keys(await result)).toEqual(["theme", "reply", "usage"]);
+		expect((await result).theme.light).toEqual({ primary: "#0052ff" });
+	});
+
+	test("a reply without usable tokens is invalid output", async () => {
+		const { result } = read([{ type: "message.delta", text: "This document has no colors." }, { type: "done" }]);
+		await expect(result).rejects.toBeInstanceOf(GenerationError);
+		await expect(result).rejects.toMatchObject({ code: "invalid_output" });
+	});
+
+	test("provider errors pass through", async () => {
+		const { result } = read([{ type: "error", code: "rate_limited", message: "slow down", retryable: true }]);
+		await expect(result).rejects.toMatchObject({ code: "rate_limited" });
 	});
 });

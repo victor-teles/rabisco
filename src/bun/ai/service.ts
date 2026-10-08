@@ -1,21 +1,22 @@
-import { join } from "path";
 import type { ProviderStatus } from "../../shared/ai/settings";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
 import type { GenerateParams, GenerateResult, GenerationEventMessage, ProjectFiles } from "../../shared/types";
-import type { ScreenMeta, Usage } from "../../shared/ai/contract";
+import type { ProviderCommand, ScreenMeta, Usage } from "../../shared/ai/contract";
 import { isAlternate } from "../../shared/variations";
 import { clampVariations, combineVariations, createVariantRenamer, variationsNote } from "../../shared/ai/variants";
-import { CHAT_FILE, parseChat, readFileIfExists, readProjectFiles } from "../project-folder";
+import { chatPath, parseChat, readFileIfExists, readProjectFiles } from "../project-folder";
 import type { SecretStore } from "./keychain";
 import { ProviderRegistry, type ProviderDeps, type RegistryOptions } from "./providers";
 import { varyPrompt } from "./prompt";
 import {
 	addUsage,
 	buildGenerationRequest,
+	buildThemeRequest,
 	contextFilesOf,
 	dedupeProblems,
 	GenerationError,
 	runGeneration,
+	runThemeReading,
 	type BuildRequestParams,
 } from "./run";
 import { variantProvider } from "./variant-provider";
@@ -109,6 +110,13 @@ export function createAiService(options: AiServiceOptions) {
 
 		setDefaultModel: (model: string) => store.setDefaultModel(model),
 
+		/** The active model's provider commands; an unavailable model or a tool without commands has none */
+		async listCommands(model: string, projectPath: string): Promise<ProviderCommand[]> {
+			await sync();
+
+			return (await registry.resolve(model)?.provider.listCommands?.(projectPath)) ?? [];
+		},
+
 		async generate(params: GenerateParams): Promise<GenerateResult> {
 			if (params.task === "context" && !isContextTarget(params.targets)) {
 				return {
@@ -166,6 +174,45 @@ export function createAiService(options: AiServiceOptions) {
 
 			try {
 				const projectFiles = readProjectFiles(params.projectPath);
+
+				if (params.task === "theme") {
+					const request = buildThemeRequest({
+						id: params.generationId,
+						model: resolved.model,
+						device: params.device,
+						design: projectFiles["DESIGN.md"],
+					});
+
+					if (!request) {
+						return {
+							ok: false,
+							error: {
+								code: "unknown",
+								message: "DESIGN.md is empty, so there is no theme to read.",
+								retryable: false,
+							},
+						};
+					}
+
+					const result = await runThemeReading({
+						provider: resolved.provider,
+						request,
+						signal: controller.signal,
+						onEvent: (event) => options.send({ generationId: params.generationId, attempt: 1, event }),
+					});
+
+					return {
+						ok: true,
+						changes: [],
+						frames: [],
+						reply: result.reply,
+						problems: [],
+						usage: result.usage,
+						context: ["DESIGN.md"],
+						theme: result.theme,
+					};
+				}
+
 				const vary = params.task === "vary";
 
 				if (vary && !isVaryTarget(params.targets, projectFiles)) {
@@ -179,9 +226,25 @@ export function createAiService(options: AiServiceOptions) {
 					};
 				}
 
-				const history = parseChat(readFileIfExists(join(params.projectPath, CHAT_FILE)) ?? "").map(
-					({ role, content }) => ({ role, content }),
-				);
+				// The chat shows `/name args`; the provider gets what the command stands for
+				const prompt = params.command
+					? await resolved.provider.expandCommand?.(params.projectPath, params.command.name, params.command.args)
+					: params.prompt;
+
+				if (prompt === null || prompt === undefined) {
+					return {
+						ok: false,
+						error: {
+							code: "unknown",
+							message: `${resolved.provider.label} has no /${params.command?.name} command.`,
+							fix: "Pick a command from the list that opens when you type /.",
+							retryable: false,
+						},
+					};
+				}
+
+				const chat = params.chatId ? readFileIfExists(chatPath(params.projectPath, params.chatId)) : null;
+				const history = parseChat(chat ?? "").map(({ role, content }) => ({ role, content }));
 
 				// The webview appends the prompt before generating; it is the request, not history.
 				// A focused prompt's message starts with `focusNote`, so it ends with the prompt.
@@ -198,7 +261,7 @@ export function createAiService(options: AiServiceOptions) {
 				const request = buildGenerationRequest({
 					id: params.generationId,
 					task,
-					prompt: vary ? varyPrompt(params.prompt) : params.prompt,
+					prompt: vary ? varyPrompt(prompt) : prompt,
 					device: params.device,
 					model: resolved.model,
 					projectFiles,

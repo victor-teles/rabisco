@@ -44,7 +44,15 @@ describe("UI_MODULES", () => {
 			.filter((f) => f.endsWith(".tsx"))
 			.map((f) => f.replace(/\.tsx$/, ""));
 
-		expect(files.filter((f) => !(f in UI_MODULES))).toEqual(["sonner"]);
+		// Editor chrome only: screens never get a right-click, the breadcrumb is the inspector's, alert
+		// dialogs confirm editor actions (screens use `dialog`), and the switch is for settings
+		expect(files.filter((f) => !(f in UI_MODULES)).sort()).toEqual([
+			"alert-dialog",
+			"breadcrumb",
+			"context-menu",
+			"sonner",
+			"switch",
+		]);
 	});
 });
 
@@ -123,6 +131,23 @@ describe("userPrompt", () => {
 		expect(prompt).not.toContain("export function TabBar");
 	});
 
+	test("agent mode carries the chat so far; text mode sends it as messages instead", () => {
+		const history = [
+			{ role: "user" as const, content: "A habit tracker" },
+			{ role: "assistant" as const, content: `Made it. ${"x".repeat(900)}` },
+			{ role: "user" as const, content: "  " },
+		];
+
+		const prompt = userPrompt(request({ history, prompt: "Make it calmer" }), "agent");
+		expect(prompt).toContain("<conversation>");
+		expect(prompt).toContain("User: A habit tracker");
+		expect(prompt).toContain(`You: Made it. ${"x".repeat(100)}`);
+		expect(prompt).not.toContain("x".repeat(900));
+		expect(prompt.indexOf("<conversation>")).toBeLessThan(prompt.indexOf("<request>"));
+		expect(userPrompt(request({ history }), "text")).not.toContain("<conversation>");
+		expect(userPrompt(request(), "agent")).not.toContain("<conversation>");
+	});
+
 	test("edit lists the targets", () => {
 		const prompt = userPrompt(
 			request({ task: "edit", files, targets: ["screens/home.tsx"], prompt: "Make it dark" }),
@@ -197,6 +222,23 @@ describe("userPrompt", () => {
 		);
 
 		expect(prompt).toContain("sketch.png");
+		expect(prompt).toContain("sent with this message");
+	});
+
+	test("points agents at the staged copies of the attachments", () => {
+		const prompt = userPrompt(
+			request({
+				attachments: [
+					{ name: "Sketch 1.PNG", mediaType: "image/png", data: "AA==" },
+					{ name: "mood.jpeg", mediaType: "image/jpeg", data: "AA==" },
+				],
+			}),
+			"agent",
+		);
+
+		expect(prompt).toContain("- .rabisco/attachments/1-sketch-1.png (Sketch 1.PNG)");
+		expect(prompt).toContain("- .rabisco/attachments/2-mood.jpg (mood.jpeg)");
+		expect(prompt).toContain("Open each one with your file tools");
 	});
 
 	test("variation runs ask for a distinct direction, in both modes", () => {
@@ -344,5 +386,29 @@ describe("userPrompt", () => {
 			expect(out).toHaveLength(121);
 			expect(out.at(-1)).toBe("… 10 more lines, to line 134");
 		});
+	});
+});
+
+describe("theme task", () => {
+	const theme = () => request({ task: "theme", prompt: "", context: { design: "## Colors\n\nBrand blue #0052ff." } });
+
+	test("the system prompt only covers reading tokens", () => {
+		const prompt = systemPrompt(theme(), "text");
+		expect(prompt).toContain("## Tokens");
+		expect(prompt).toContain("muted-foreground");
+		expect(prompt).toContain("only if the document describes a dark theme");
+		expect(prompt).toContain("4.5:1");
+		expect(prompt).toContain("DESIGN.md stays as it is");
+		expect(prompt).not.toContain("<rabisco-file");
+		expect(prompt).not.toContain("@/components/ui");
+	});
+
+	test("the user prompt is DESIGN.md and the task, without a request", () => {
+		const text = userPrompt(theme(), "text");
+		expect(text).toContain("<design>\n## Colors");
+		expect(text).toContain("Task: theme.");
+		expect(text).not.toContain("<request>");
+		expect(text).not.toContain("Project components");
+		expect(userPrompt(theme(), "agent")).toContain("Don't write any file");
 	});
 });

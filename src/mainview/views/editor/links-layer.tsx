@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { listLinks, resolveLink, type ElementRef, type ProjectLink } from "../../../shared/prototype/links";
 import type { Frame, ProjectFiles } from "../../../shared/types";
@@ -27,7 +27,7 @@ const DOT = 3;
 
 const STUB = 40;
 
-/** Canvas units, at most */
+/** Canvas units */
 const MAX_BOW = 320;
 
 /** `null` when the frames overlap */
@@ -137,22 +137,30 @@ function routesOf(connectors: Connector[]): Route[] {
 	});
 }
 
+/** Screen-pixel sizes go through `--unzoom` (set by the canvas), so zooming doesn't re-render the links */
+const unzoomed = (n: number) => `calc(${n}px * var(--unzoom))`;
+
+const atScreenScale = (at: Point, degrees = 0) =>
+	`translate(${at.x}px, ${at.y}px) rotate(${degrees}deg) scale(var(--unzoom))`;
+
+/** Points along +x, tip at the origin, in screen pixels */
+const HEAD = `0,0 ${-ARROW},${-ARROW / 2} ${-ARROW},${ARROW / 2}`;
+
+const degreesOf = (direction: Point) => (Math.atan2(direction.y, direction.x) * 180) / Math.PI;
+
 /** Prototype links (decision 0007), in canvas coordinates. Never takes pointer input. */
-export function LinksLayer({
+export const LinksLayer = memo(function LinksLayer({
 	frames,
 	files,
-	zoom,
 	selected,
 }: {
 	frames: Frame[];
 	files: ProjectFiles;
-	zoom: number;
 	selected?: ElementRef | null;
 }) {
 	const routes = useMemo(() => routesOf(connectorsOf(frames, files)), [frames, files]);
 
 	if (!routes.length) return null;
-	const px = (n: number) => n / zoom;
 
 	const isSelected = (connector: Connector) =>
 		!!selected && connector.links.some((link) => link.file === selected.file && link.start === selected.start);
@@ -168,44 +176,60 @@ export function LinksLayer({
 					const broken = connector.kind === "broken";
 					const color = broken ? "var(--destructive)" : "var(--primary)";
 					const out = OUTWARD[fromSide];
-					let path: string;
-					let end: Point;
-					let direction: Point;
+					const stroke = active ? STROKE_SELECTED : STROKE;
 
-					if (toSide) {
-						const into = OUTWARD[toSide];
-						const distance = Math.hypot(to.x - from.x, to.y - from.y);
-						const bow = Math.min(MAX_BOW, Math.max(px(40), distance * 0.4));
-						const c1 = { x: from.x + out.x * bow, y: from.y + out.y * bow };
-						const c2 = { x: to.x + into.x * bow, y: to.y + into.y * bow };
-						// Stop at the arrowhead's base, so the stroke doesn't poke through its tip
-						end = to;
-						direction = { x: -into.x, y: -into.y };
-						const base = { x: to.x + into.x * px(ARROW), y: to.y + into.y * px(ARROW) };
-						path = `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${base.x} ${base.y}`;
-					} else {
-						end = { x: from.x + out.x * px(STUB), y: from.y + out.y * px(STUB) };
-						direction = out;
-						path = `M ${from.x} ${from.y} L ${end.x - out.x * px(ARROW)} ${end.y - out.y * px(ARROW)}`;
+					if (!toSide) {
+						// A stub keeps its screen length, so it's drawn in screen pixels
+						const end = { x: out.x * STUB, y: out.y * STUB };
+
+						return (
+							<g
+								key={connector.key}
+								opacity={active ? 1 : broken ? 0.8 : 0.45}
+								style={{ transform: atScreenScale(from) }}
+							>
+								<path
+									d={`M 0 0 L ${end.x - out.x * ARROW} ${end.y - out.y * ARROW}`}
+									fill="none"
+									stroke={color}
+									strokeWidth={stroke}
+									strokeLinecap="round"
+									strokeDasharray={broken ? "4 3" : undefined}
+								/>
+								<circle r={DOT} fill={color} />
+								<polygon
+									points={HEAD}
+									fill={color}
+									style={{ transform: `translate(${end.x}px, ${end.y}px) rotate(${degreesOf(out)}deg)` }}
+								/>
+							</g>
+						);
 					}
 
-					const normal = { x: -direction.y, y: direction.x };
-					const tail = { x: end.x - direction.x * px(ARROW), y: end.y - direction.y * px(ARROW) };
-					const half = px(ARROW) / 2;
-					const head = `${end.x},${end.y} ${tail.x + normal.x * half},${tail.y + normal.y * half} ${tail.x - normal.x * half},${tail.y - normal.y * half}`;
+					const into = OUTWARD[toSide];
+					const distance = Math.hypot(to.x - from.x, to.y - from.y);
+					const bow = Math.min(MAX_BOW, Math.max(40, distance * 0.4));
+					const c1 = { x: from.x + out.x * bow, y: from.y + out.y * bow };
+					const c2 = { x: to.x + into.x * bow, y: to.y + into.y * bow };
 
 					return (
 						<g key={connector.key} opacity={active ? 1 : broken ? 0.8 : 0.45}>
+							{/* Butt-capped to the tip, so the arrowhead covers its end */}
 							<path
-								d={path}
+								d={`M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`}
 								fill="none"
 								stroke={color}
-								strokeWidth={px(active ? STROKE_SELECTED : STROKE)}
-								strokeLinecap="round"
-								strokeDasharray={broken ? `${px(4)} ${px(3)}` : undefined}
+								style={{
+									strokeWidth: unzoomed(stroke),
+									strokeDasharray: broken ? `${unzoomed(4)} ${unzoomed(3)}` : undefined,
+								}}
 							/>
-							<circle cx={from.x} cy={from.y} r={px(DOT)} fill={color} />
-							<polygon points={head} fill={color} />
+							<circle r={DOT} fill={color} style={{ transform: atScreenScale(from) }} />
+							<polygon
+								points={HEAD}
+								fill={color}
+								style={{ transform: atScreenScale(to, degreesOf({ x: -into.x, y: -into.y })) }}
+							/>
 						</g>
 					);
 				})}
@@ -213,7 +237,6 @@ export function LinksLayer({
 			{ordered.map(({ connector, from, fromSide, toSide }) => {
 				if (toSide || connector.kind === "screen") return null;
 				const out = OUTWARD[fromSide];
-				const at = { x: from.x + out.x * px(STUB + 4), y: from.y };
 				const missing = connector.kind === "broken" ? connector.to : null;
 				const broken = missing !== null;
 
@@ -221,7 +244,7 @@ export function LinksLayer({
 					<div
 						key={connector.key}
 						className="pointer-events-none absolute"
-						style={{ left: at.x, top: at.y, width: 0, height: 0 }}
+						style={{ left: from.x, top: from.y, width: 0, height: 0 }}
 					>
 						<div
 							className={cn(
@@ -229,7 +252,10 @@ export function LinksLayer({
 								broken ? "border-destructive/40 text-destructive" : "text-muted-foreground",
 								isSelected(connector) && !broken && "border-primary/50 text-primary",
 							)}
-							style={{ transform: `scale(${1 / zoom}) translateY(-50%)`, transformOrigin: "0 0" }}
+							style={{
+								transform: `scale(var(--unzoom)) translate(${out.x * (STUB + 4)}px, ${out.y * (STUB + 4)}px) translateY(-50%)`,
+								transformOrigin: "0 0",
+							}}
 							title={broken ? `${missing} is not a screen of this project` : "Goes back to the previous screen"}
 						>
 							{broken ? `Missing: ${missing}` : "Back"}
@@ -239,4 +265,4 @@ export function LinksLayer({
 			})}
 		</>
 	);
-}
+});

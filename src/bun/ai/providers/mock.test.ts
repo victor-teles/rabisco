@@ -84,6 +84,19 @@ describe("mock provider", () => {
 		expect(events[1]).toMatchObject({ code: "aborted" });
 	});
 
+	test("looks at attached images and says so in the reply", async () => {
+		const withImage: GenerationRequest = {
+			...request,
+			attachments: [{ name: "sketch.png", mediaType: "image/png", data: "AAAA" }],
+		};
+
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(withImage, new AbortController().signal));
+		expect(events[0]).toEqual({ type: "status", label: "Looking at the image" });
+		const reply = events.find((e) => e.type === "message.delta");
+		expect(reply?.type === "message.delta" && reply.text).toStartWith("I used the attached image as a reference.");
+		expect(createMockProvider().capabilities.images).toBe(true);
+	});
+
 	test("metadata", async () => {
 		const provider = createMockProvider();
 		expect(provider.kind).toBe("api");
@@ -187,6 +200,18 @@ describe("mock provider", () => {
 		const ends = events.flatMap((e) => (e.type === "file.end" ? [e] : []));
 		expect(ends.map((e) => e.path)).toEqual(["screens/home.alt-1.tsx"]);
 		expect(ends[0]!.content).not.toBe(files[0]!.content);
+	});
+});
+
+describe("mock theme task", () => {
+	test("replies with a tokens block read from DESIGN.md, and writes no file", async () => {
+		const design = "## Colors\n\n- **Primary** (#0052ff): every CTA.\n- **Canvas** (#ffffff): the page.\n";
+		const theme: GenerationRequest = { ...request, task: "theme", prompt: "", context: { design } };
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(theme, new AbortController().signal));
+		expect(events.some((e) => e.type.startsWith("file."))).toBe(false);
+		expect(events.at(-1)?.type).toBe("done");
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		expect(reply).toBe("## Tokens\n\n- background: #ffffff\n- primary: #0052ff\n");
 	});
 });
 

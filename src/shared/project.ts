@@ -1,6 +1,8 @@
 import type { ScreenMeta } from "./ai/contract";
 import { detachComments } from "./comments";
-import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenSource } from "./types";
+import type { AppliedTheme } from "./context/theme";
+import { designTokensOf } from "./context/tokens";
+import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenCover, ScreenSource } from "./types";
 
 export const FRAME_SIZE = {
 	mobile: { width: 390, height: 844 },
@@ -146,6 +148,13 @@ export function projectNameFromPath(path: string) {
 	return base.replace(/\.rabisco$/i, "") || "Untitled";
 }
 
+/** The first frame whose file exists; only the keys of `files` are read */
+export function coverOf(canvas: CanvasDoc, files: ProjectFiles): ScreenCover | null {
+	const frame = canvas.frames.find((f) => f.file in files);
+
+	return frame ? { entry: frame.file, device: frame.device, width: frame.width, height: frame.height } : null;
+}
+
 /** The first frame with everything it needs to render on its own */
 export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource | null {
 	const frame = canvas.frames.find((f) => f.file in files);
@@ -153,12 +162,24 @@ export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource |
 	if (!frame) return null;
 	const coverFiles: ProjectFiles = { [frame.file]: files[frame.file]! };
 
-	for (const [path, content] of Object.entries(files))
-		if (isComponentFile(path) || path === "DESIGN.md") coverFiles[path] = content;
+	for (const [path, content] of Object.entries(files)) if (isComponentFile(path)) coverFiles[path] = content;
 
-	return { entry: frame.file, device: frame.device, width: frame.width, height: frame.height, files: coverFiles };
+	return {
+		entry: frame.file,
+		device: frame.device,
+		width: frame.width,
+		height: frame.height,
+		files: coverFiles,
+		theme: appliedTheme(canvas, files),
+	};
 }
 
+/** Projects saved before tokens were applied on request take DESIGN.md's tokens as applied */
+export function appliedTheme(canvas: CanvasDoc, files: ProjectFiles): AppliedTheme {
+	return canvas.theme ?? designTokensOf(files["DESIGN.md"]);
+}
+
+/** Only the keys of `files` are read, so listing needs no file contents */
 export function summarizeProject(path: string, canvas: CanvasDoc, files: ProjectFiles): ProjectSummary {
 	return {
 		path,
@@ -166,7 +187,7 @@ export function summarizeProject(path: string, canvas: CanvasDoc, files: Project
 		device: canvas.device,
 		updatedAt: canvas.updatedAt,
 		screenCount: canvas.frames.length,
-		cover: coverFor(canvas, files),
+		cover: coverOf(canvas, files),
 		missing: false,
 	};
 }

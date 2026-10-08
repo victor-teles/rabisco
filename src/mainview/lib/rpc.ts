@@ -1,7 +1,8 @@
 import { Electroview } from "electrobun/view";
 import { normalizeComments } from "../../shared/comments";
+import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
 import { CONTEXT_TEMPLATES } from "../../shared/context/templates";
-import { emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
+import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
 import type { RabiscoRPC } from "../../shared/rpc";
 import type {
 	CanvasDoc,
@@ -20,6 +21,8 @@ export type RabiscoApi = {
 };
 
 export type FilesChanged = RabiscoRPC["webview"]["messages"]["filesChanged"];
+
+export type AssetsChanged = RabiscoRPC["webview"]["messages"]["assetsChanged"];
 
 function listenerSet<T>() {
 	const listeners = new Set<(value: T) => void>();
@@ -40,9 +43,13 @@ const generationEvents = listenerSet<GenerationEventMessage>();
 
 const fileChanges = listenerSet<FilesChanged>();
 
+const assetChanges = listenerSet<AssetsChanged>();
+
 export const onGenerationEvent = generationEvents.add;
 
 export const onFilesChanged = fileChanges.add;
+
+export const onAssetsChanged = assetChanges.add;
 
 function createElectrobunApi(): RabiscoApi {
 	const rpc = Electroview.defineRPC<RabiscoRPC>({
@@ -50,7 +57,11 @@ function createElectrobunApi(): RabiscoApi {
 		maxRequestTime: 15 * 60_000,
 		handlers: {
 			requests: {},
-			messages: { generationEvent: generationEvents.emit, filesChanged: fileChanges.emit },
+			messages: {
+				generationEvent: generationEvents.emit,
+				filesChanged: fileChanges.emit,
+				assetsChanged: assetChanges.emit,
+			},
 		},
 	});
 
@@ -60,7 +71,13 @@ function createElectrobunApi(): RabiscoApi {
 }
 
 // Browser fallback (`hutch run hmr`): main-process handlers mirrored on localStorage, paths are `browser://<uuid>`.
-type Stored = { canvas: CanvasDoc; files: ProjectFiles; messages: ChatMessage[] };
+type Stored = {
+	canvas: CanvasDoc;
+	files: ProjectFiles;
+	/** The one chat of projects stored before sessions */
+	messages?: ChatMessage[];
+	chats?: Record<string, ChatMessage[]>;
+};
 
 function isStored(value: unknown): value is Stored {
 	return typeof value === "object" && value !== null && "canvas" in value && Boolean(value.canvas);
@@ -114,10 +131,18 @@ function createBrowserApi(): RabiscoApi {
 		const normalized = { ...stored.canvas, comments: normalizeComments(stored.canvas.comments) };
 		const canvas = reconcileFrames(normalized, stored.files);
 
-		if (canvas !== normalized) write(path, { ...stored, canvas });
-		writeRecents([{ path, openedAt: new Date().toISOString() }, ...readRecents().filter((r) => r.path !== path)]);
+		const chats = { ...stored.chats };
 
-		return { path, canvas, files: stored.files, messages: stored.messages };
+		const legacy = stored.messages?.[0];
+
+		if (legacy && stored.messages) chats[newChatId(new Date(legacy.createdAt))] = stored.messages;
+
+		if (canvas !== normalized || stored.messages) write(path, { canvas, files: stored.files, chats });
+		writeRecents([{ path, openedAt: new Date().toISOString() }, ...readRecents().filter((r) => r.path !== path)]);
+		const summaries = sortChats(Object.entries(chats).map(([id, messages]) => summarizeChat(id, messages)));
+		const chatId = summaries[0]?.id ?? newChatId();
+
+		return { path, canvas, files: stored.files, chatId, messages: chats[chatId] ?? [], chats: summaries };
 	}
 
 	function applyChanges(files: ProjectFiles, changes: FileChange[]) {
@@ -158,6 +183,11 @@ function createBrowserApi(): RabiscoApi {
 				return summarizeProject(recent.path, reconcileFrames(stored.canvas, stored.files), stored.files);
 			});
 		},
+		async loadCover({ path }) {
+			const stored = read(path);
+
+			return stored ? coverFor(reconcileFrames(stored.canvas, stored.files), stored.files) : null;
+		},
 		async pickProjectFolder() {
 			return null;
 		},
@@ -170,7 +200,7 @@ function createBrowserApi(): RabiscoApi {
 			write(path, {
 				canvas: emptyCanvas(name.trim() || "Untitled", device),
 				files: { ...CONTEXT_TEMPLATES },
-				messages: [],
+				chats: {},
 			});
 
 			return openProject({ path });
@@ -186,9 +216,26 @@ function createBrowserApi(): RabiscoApi {
 
 			return ok;
 		},
-		async appendMessages({ path, messages }) {
+		// Nowhere to copy a file to: the inspector says so
+		async pickImage() {
+			return null;
+		},
+		async appendMessages({ path, chatId, messages }) {
 			const stored = mustRead(path);
-			write(path, { ...stored, messages: [...stored.messages, ...messages] });
+			const chats = { ...stored.chats };
+			chats[chatId] = [...(chats[chatId] ?? []), ...messages];
+			write(path, { ...stored, chats });
+
+			return ok;
+		},
+		async openChat({ path, chatId }) {
+			return mustRead(path).chats?.[chatId] ?? [];
+		},
+		async deleteChat({ path, chatId }) {
+			const stored = mustRead(path);
+			const chats = { ...stored.chats };
+			delete chats[chatId];
+			write(path, { ...stored, chats });
 
 			return ok;
 		},
@@ -209,6 +256,12 @@ function createBrowserApi(): RabiscoApi {
 		async openExternal({ url }) {
 			window.open(url, "_blank", "noopener");
 
+			return ok;
+		},
+		async listCommands() {
+			return [];
+		},
+		async titleBarDoubleClick() {
 			return ok;
 		},
 		async importContext() {

@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { CircleCheck, Pencil, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import type { CommentsController } from "@/hooks/use-comments";
+import type { ChatComment } from "@/lib/comment-threads";
+import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { pinPosition } from "../../../shared/comments";
 import type { CanvasComment, Frame } from "../../../shared/types";
@@ -19,24 +21,31 @@ type Point = { x: number; y: number };
 type CommentsLayerProps = {
 	controller: CommentsController;
 	frames: Frame[];
-	zoom: number;
-	onAskAI?: (comment: CanvasComment) => void;
-	/** Why "Ask AI" is off right now */
-	askAIBlocked?: string;
+	/** Read when a drag moves, so zooming doesn't re-render the pins */
+	getZoom: () => number;
+	/** Puts the thread in the chat composer, to send from there */
+	onSendToChat?: (thread: ChatComment) => void;
+	/** Why "Send to chat" is off right now */
+	sendBlocked?: string;
 };
 
 // Threads render in a portal, but React still bubbles their events through the canvas: stop them reaching it
 const stop = (event: React.PointerEvent) => event.stopPropagation();
 
 /** Pins counter-scale so they keep their screen size; a click opens the thread, a drag moves the pin */
-export function CommentsLayer({ controller, frames, zoom, onAskAI, askAIBlocked }: CommentsLayerProps) {
+export const CommentsLayer = memo(function CommentsLayer({
+	controller,
+	frames,
+	getZoom,
+	onSendToChat,
+	sendBlocked,
+}: CommentsLayerProps) {
 	const { comments, draft, openId, showResolved } = controller;
 	const draftAt = draft ? pinPosition(draft, frames) : null;
 
 	return (
 		<>
 			{comments.map((comment, index) => {
-				if (comment.resolved && !showResolved && comment.id !== openId) return null;
 				const at = pinPosition(comment, frames);
 
 				if (!at) return null;
@@ -47,16 +56,18 @@ export function CommentsLayer({ controller, frames, zoom, onAskAI, askAIBlocked 
 						comment={comment}
 						number={index + 1}
 						at={at}
-						zoom={zoom}
+						// Hidden, not removed: the thread animates closed against its pin, and the pin fades out
+						hidden={comment.resolved === true && !showResolved && comment.id !== openId}
+						getZoom={getZoom}
 						open={comment.id === openId}
 						controller={controller}
-						onAskAI={onAskAI}
-						askAIBlocked={askAIBlocked}
+						onSendToChat={onSendToChat}
+						sendBlocked={sendBlocked}
 					/>
 				);
 			})}
 			{draft && draftAt ? (
-				<PinAnchor key={draft.id} at={draftAt} zoom={zoom}>
+				<PinAnchor key={draft.id} at={draftAt}>
 					<Popover open onOpenChange={(open) => !open && controller.cancelDraft(draft.id)}>
 						<PopoverAnchor asChild>
 							<PinMarker active label="New comment" pinId={draft.id} />
@@ -74,13 +85,13 @@ export function CommentsLayer({ controller, frames, zoom, onAskAI, askAIBlocked 
 			) : null}
 		</>
 	);
-}
+});
 
 /** Its child is counter-scaled from the bottom-left, where the pin's tip is */
-function PinAnchor({ at, zoom, children }: { at: Point; zoom: number; children: React.ReactNode }) {
+function PinAnchor({ at, hidden = false, children }: { at: Point; hidden?: boolean; children: React.ReactNode }) {
 	return (
-		<div className="absolute" style={{ left: at.x, top: at.y }}>
-			<div className="absolute bottom-0 left-0 origin-bottom-left" style={{ transform: `scale(${1 / zoom})` }}>
+		<div className={cn("absolute", hidden && "pointer-events-none")} style={{ left: at.x, top: at.y }} inert={hidden}>
+			<div className="absolute bottom-0 left-0 origin-bottom-left" style={{ transform: "scale(var(--unzoom))" }}>
 				{children}
 			</div>
 		</div>
@@ -94,6 +105,7 @@ function PinMarker({
 	active = false,
 	resolved = false,
 	dragging = false,
+	hidden = false,
 	...props
 }: React.ComponentProps<"button"> & {
 	label: string;
@@ -102,6 +114,7 @@ function PinMarker({
 	active?: boolean;
 	resolved?: boolean;
 	dragging?: boolean;
+	hidden?: boolean;
 }) {
 	return (
 		<button
@@ -110,9 +123,10 @@ function PinMarker({
 			aria-label={label}
 			title={label}
 			className={cn(
-				"grid size-7 place-items-center rounded-full rounded-bl-none border-2 border-background text-xs font-semibold tabular-nums shadow-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-safe:transition-transform",
+				"grid size-7 origin-bottom-left place-items-center rounded-full rounded-bl-none border-2 border-background text-xs font-semibold tabular-nums shadow-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-safe:transition-[scale,opacity,background-color,color] motion-safe:duration-150 motion-safe:ease-out",
 				resolved ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground",
 				active && "scale-110",
+				hidden && "scale-50 opacity-0",
 				dragging ? "cursor-grabbing" : "cursor-pointer",
 			)}
 			onPointerDown={stop}
@@ -153,29 +167,33 @@ function ThreadContent({
 	);
 }
 
-type PinDrag = { id: string; startX: number; startY: number; origin: Point; moved: boolean };
+type PinDrag = { id: string; startX: number; startY: number; origin: Point; at: Point; moved: boolean };
 
 function CommentPin({
 	comment,
 	number,
 	at,
-	zoom,
+	getZoom,
 	open,
 	controller,
-	onAskAI,
-	askAIBlocked,
+	onSendToChat,
+	sendBlocked,
+	hidden,
 }: {
 	comment: CanvasComment;
 	number: number;
 	at: Point;
-	zoom: number;
+	hidden: boolean;
+	getZoom: () => number;
 	open: boolean;
 	controller: CommentsController;
-	onAskAI?: (comment: CanvasComment) => void;
-	askAIBlocked?: string;
+	onSendToChat?: (thread: ChatComment) => void;
+	sendBlocked?: string;
 }) {
 	const drag = useRef<PinDrag | null>(null);
-	const [dragging, setDragging] = useState(false);
+	/** Where the pin is while it drags; the comment moves once, on release */
+	const [dragAt, setDragAt] = useState<Point | null>(null);
+	const dragging = dragAt !== null;
 	const [editing, setEditing] = useState(false);
 	// The click that ends a drag must not toggle the thread
 	const justDragged = useRef(false);
@@ -185,7 +203,14 @@ function CommentPin({
 
 		if (event.button !== 0) return;
 		event.currentTarget.setPointerCapture(event.pointerId);
-		drag.current = { id: crypto.randomUUID(), startX: event.clientX, startY: event.clientY, origin: at, moved: false };
+		drag.current = {
+			id: crypto.randomUUID(),
+			startX: event.clientX,
+			startY: event.clientY,
+			origin: at,
+			at,
+			moved: false,
+		};
 	};
 
 	const onPointerMove = (event: React.PointerEvent) => {
@@ -196,23 +221,23 @@ function CommentPin({
 		const dy = event.clientY - current.startY;
 
 		if (!current.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-
-		if (!current.moved) {
-			current.moved = true;
-			setDragging(true);
-		}
-
-		controller.move(comment.id, { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom }, current.id);
+		current.moved = true;
+		const zoom = getZoom();
+		current.at = { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom };
+		setDragAt(current.at);
 	};
 
 	const endDrag = () => {
-		if (drag.current?.moved) {
+		const current = drag.current;
+
+		if (current?.moved) {
 			justDragged.current = true;
+			controller.move(comment.id, current.at, current.id);
 			controller.endStep();
 		}
 
 		drag.current = null;
-		setDragging(false);
+		setDragAt(null);
 	};
 
 	const onClick = () => {
@@ -235,7 +260,7 @@ function CommentPin({
 	const replies = comment.replies ?? [];
 
 	return (
-		<PinAnchor at={at} zoom={zoom}>
+		<PinAnchor at={dragAt ?? at} hidden={hidden}>
 			<Popover open={open && !dragging} onOpenChange={onOpenChange}>
 				<PopoverAnchor asChild>
 					<PinMarker
@@ -245,6 +270,7 @@ function CommentPin({
 						active={open}
 						resolved={comment.resolved}
 						dragging={dragging}
+						hidden={hidden}
 						aria-expanded={open}
 						onPointerDown={onPointerDown}
 						onPointerMove={onPointerMove}
@@ -266,20 +292,20 @@ function CommentPin({
 					<div className="flex items-center gap-1">
 						<span className="text-xs text-subtle-foreground">
 							<span className="font-medium text-muted-foreground tabular-nums">#{number}</span>
-							{` · ${timeAgo(comment.createdAt)}`}
+							{` · ${formatWhen(comment.createdAt)}`}
 							{comment.resolved ? " · Resolved" : null}
 						</span>
 						<div className="ml-auto flex items-center">
-							{onAskAI && !comment.resolved ? (
+							{onSendToChat && !comment.resolved ? (
 								<Button
 									variant="ghost"
 									size="icon-xs"
-									aria-label="Ask AI"
-									title={askAIBlocked ?? "Ask AI"}
+									aria-label="Send to chat"
+									title={sendBlocked ?? "Send to chat"}
 									// Not `disabled`, so the reason still shows on hover and on click
-									aria-disabled={askAIBlocked ? true : undefined}
-									className={cn(askAIBlocked && "opacity-50")}
-									onClick={() => (askAIBlocked ? toast(askAIBlocked) : onAskAI(comment))}
+									aria-disabled={sendBlocked ? true : undefined}
+									className={cn(sendBlocked && "opacity-50")}
+									onClick={() => (sendBlocked ? toast(sendBlocked) : onSendToChat({ comment, number }))}
 								>
 									<Sparkles />
 								</Button>
@@ -331,7 +357,7 @@ function CommentPin({
 							{replies.map((reply) => (
 								<li key={reply.id} className="group/reply flex flex-col gap-0.5">
 									<div className="flex items-center text-xs text-subtle-foreground">
-										{timeAgo(reply.createdAt)}
+										{formatWhen(reply.createdAt)}
 										<Button
 											variant="ghost"
 											size="icon-xs"
@@ -449,20 +475,4 @@ function Composer({
 			</div>
 		</div>
 	);
-}
-
-function timeAgo(iso: string) {
-	const time = new Date(iso).getTime();
-
-	if (!Number.isFinite(time)) return "";
-	const seconds = Math.round((Date.now() - time) / 1000);
-	const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-	if (seconds < 60) return "just now";
-
-	if (seconds < 3600) return format.format(-Math.round(seconds / 60), "minute");
-
-	if (seconds < 86400) return format.format(-Math.round(seconds / 3600), "hour");
-
-	return format.format(-Math.round(seconds / 86400), "day");
 }

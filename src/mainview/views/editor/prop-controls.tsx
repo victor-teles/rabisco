@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -44,6 +44,10 @@ export type PropControlsProps = {
 	/** Seals the current burst as one undo step */
 	onFieldBlur?: () => void;
 	disabled?: boolean;
+	/** After a prop's field: a picker for `src`, a screen menu for `href` */
+	adornment?: (name: string) => React.ReactNode;
+	/** Shows "Add attribute"; one undo step */
+	onAddAttribute?: (name: string, value: Literal) => void;
 };
 
 const SEGMENTED_MAX_OPTIONS = 3;
@@ -78,12 +82,20 @@ export function PropControls({
 	onFieldFocus,
 	onFieldBlur,
 	disabled,
+	adornment,
+	onAddAttribute,
 }: PropControlsProps) {
 	const props = spec ? visibleProps(spec) : [];
 	const fieldEvents = { onFocus: onFieldFocus, onBlur: onFieldBlur };
+	const add = onAddAttribute ? <AddAttribute disabled={disabled} onAdd={onAddAttribute} /> : null;
 
 	if (!props.length && !extra.length && childrenText === undefined) {
-		return <p className="text-xs text-subtle-foreground">No props.</p>;
+		return (
+			<div className="flex flex-col gap-1.5">
+				<p className="text-xs text-subtle-foreground">No props.</p>
+				{add}
+			</div>
+		);
 	}
 
 	return (
@@ -99,6 +111,7 @@ export function PropControls({
 						disabled={disabled}
 						{...fieldEvents}
 					/>
+					{adornment?.(prop.name)}
 				</PropRow>
 			))}
 			{childrenText !== undefined ? (
@@ -134,9 +147,98 @@ export function PropControls({
 							optional
 							{...fieldEvents}
 						/>
+						{adornment?.(name)}
 					</PropRow>
 				);
 			})}
+			{add}
+		</div>
+	);
+}
+
+const ATTRIBUTE_NAME = /^[A-Za-z_][\w:.-]*$/;
+
+/** An empty value writes a bare attribute (`disabled`) */
+function AddAttribute({ disabled, onAdd }: { disabled?: boolean; onAdd: (name: string, value: Literal) => void }) {
+	const [adding, setAdding] = useState(false);
+	const [name, setName] = useState("");
+	const [value, setValue] = useState("");
+	const valid = ATTRIBUTE_NAME.test(name.trim());
+
+	const close = () => {
+		setAdding(false);
+		setName("");
+		setValue("");
+	};
+
+	const commit = () => {
+		if (!valid) return;
+		onAdd(name.trim(), value === "" ? true : value);
+		close();
+	};
+
+	const keys = (event: React.KeyboardEvent<HTMLInputElement>) => {
+		if (event.key === "Enter") commit();
+		else if (event.key === "Escape") close();
+	};
+
+	if (!adding) {
+		return (
+			<Button
+				variant="ghost"
+				size="xs"
+				disabled={disabled}
+				onClick={() => setAdding(true)}
+				className="-ml-1.5 self-start text-subtle-foreground"
+			>
+				<Plus />
+				Add attribute
+			</Button>
+		);
+	}
+
+	return (
+		<div
+			className="flex min-h-8 items-center gap-2"
+			onBlur={(event) => {
+				// Leaving both fields without a name drops the row
+				if (!event.currentTarget.contains(event.relatedTarget) && !name.trim()) close();
+			}}
+		>
+			<input
+				autoFocus
+				value={name}
+				placeholder="name"
+				aria-label="Attribute name"
+				aria-invalid={(name.trim() !== "" && !valid) || undefined}
+				spellCheck={false}
+				onChange={(event) => setName(event.target.value)}
+				onKeyDown={keys}
+				className={cn(
+					fieldClass,
+					"w-[72px] shrink-0 font-mono text-[11px]",
+					name.trim() && !valid && "border-destructive/60",
+				)}
+			/>
+			<input
+				value={value}
+				placeholder="value"
+				aria-label="Attribute value"
+				spellCheck={false}
+				onChange={(event) => setValue(event.target.value)}
+				onKeyDown={keys}
+				className={fieldClass}
+			/>
+			<Button
+				variant="ghost"
+				size="icon-xs"
+				className="size-7 shrink-0"
+				disabled={!valid}
+				aria-label="Add"
+				onClick={commit}
+			>
+				<Plus />
+			</Button>
 		</div>
 	);
 }
@@ -163,7 +265,7 @@ function PropRow({
 			>
 				{label}
 			</span>
-			<div className="flex min-w-0 flex-1 items-center">{children}</div>
+			<div className="flex min-w-0 flex-1 items-center gap-1">{children}</div>
 		</div>
 	);
 }

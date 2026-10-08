@@ -10,6 +10,8 @@ import { parseJson } from "../../json";
 import { systemPrompt, userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 import { CLAUDE_DENIED_TOOLS, CLAUDE_FILE_TOOLS, CLAUDE_MODELS, createClaudeMapper } from "./claude-code";
+import { commandMethods } from "../command-template";
+import { claudeCommands } from "../commands";
 
 export type SdkProviderOptions = {
 	config: ProviderConfig;
@@ -36,7 +38,8 @@ export function createClaudeAgentSdkProvider(
 		id: options.config.id,
 		kind: "sdk",
 		label: options.config.label || "Claude Agent SDK",
-		capabilities: { streaming: true, images: false, agentic: true, maxContextTokens: 200_000 },
+		capabilities: { streaming: true, images: true, agentic: true, maxContextTokens: 200_000 },
+		...commandMethods(claudeCommands),
 
 		async health() {
 			if (!(await options.getApiKey()))

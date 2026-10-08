@@ -76,6 +76,22 @@ describe("runInStaging", () => {
 		await rm(root, { recursive: true, force: true });
 	});
 
+	test("copies attached images into a hidden folder the diff never reports", async () => {
+		const root = tempDir();
+		let bytes: number[] = [];
+
+		const agent: AgentRunner = async function* (dir) {
+			bytes = [...readFileSync(join(dir, ".rabisco/attachments/1-sketch.png"))];
+			yield { type: "done" };
+		};
+
+		const withImage = request({ attachments: [{ name: "sketch.png", mediaType: "image/png", data: "AQID" }] });
+		const events = await collect(runInStaging(withImage, new AbortController().signal, agent, { root }));
+		expect(events).toEqual([{ type: "done" }]);
+		expect(bytes).toEqual([1, 2, 3]);
+		await rm(root, { recursive: true, force: true });
+	});
+
 	test("reports writes, edits and deletes; ignores other paths", async () => {
 		const root = tempDir();
 

@@ -20,6 +20,8 @@ import { objectOr, optionalNumber, optionalObject, optionalString } from "../../
 import { userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 import type { CliProviderOptions } from "./claude-code";
+import { commandMethods } from "../command-template";
+import { geminiCommands } from "../commands";
 
 export const GEMINI_MODELS: ProviderModel[] = [
 	{ id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
@@ -131,7 +133,8 @@ export function createGeminiCliProvider(options: CliProviderOptions): Provider {
 		id: options.config.id,
 		kind: "cli",
 		label: options.config.label || "Gemini CLI",
-		capabilities: { streaming: true, images: false, agentic: true, maxContextTokens: 1_000_000 },
+		capabilities: { streaming: true, images: true, agentic: true, maxContextTokens: 1_000_000 },
+		...commandMethods(geminiCommands),
 
 		async health() {
 			const result = await versionHealth("gemini-cli", spawn, binary());

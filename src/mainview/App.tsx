@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { OnboardingDialog } from "@/components/app/onboarding-dialog";
 import { SettingsDialog } from "@/components/app/settings-dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
-import { screenStyles } from "@/lib/render/styles";
 import { api } from "@/lib/rpc";
 import { EditorView } from "@/views/editor/editor";
 import { HomeView, type StartDesign } from "@/views/home";
@@ -28,11 +28,8 @@ export default function App() {
 
 	useEffect(() => void loadProviders(), []);
 
-	// Each project starts from a fresh Tailwind build (decision 0002)
-	const openEditor = (next: Extract<Route, { view: "editor" }>) => {
-		screenStyles.reset();
-		setRoute(next);
-	};
+	// useProject resets the Tailwind build with the project's candidates once its files load
+	const openEditor = (next: Extract<Route, { view: "editor" }>) => setRoute(next);
 
 	const startDesign: StartDesign = async ({ prompt, device, files, variations }) => {
 		try {
@@ -71,6 +68,7 @@ export default function App() {
 				/>
 			)}
 			<SettingsDialog />
+			<OnboardingDialog />
 			<Toaster theme={theme} position="bottom-center" />
 		</TooltipProvider>
 	);

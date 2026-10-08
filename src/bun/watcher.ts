@@ -1,5 +1,6 @@
 import { watch, type FSWatcher } from "fs";
 import { join } from "path";
+import { PUBLIC_DIR } from "../shared/assets";
 import { isProjectFile } from "../shared/project";
 import type { FileChange, ProjectFiles } from "../shared/types";
 import { readFileIfExists, readProjectFiles } from "./project-folder";
@@ -9,6 +10,8 @@ type Options = {
 	/** Used only when recursive `fs.watch` is unavailable */
 	pollMs?: number;
 	poll?: boolean;
+	/** Something under `public/` may have changed; images aren't project files (decision 0010) */
+	onAssets?: () => void;
 };
 
 /** Rabisco's own writes go through `noteWrite` first, so they are never echoed back. */
@@ -16,10 +19,12 @@ export class ProjectWatcher {
 	private known = new Map<string, string>();
 	private pending = new Set<string>();
 	private rescan = false;
+	private assetsChanged = false;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private watcher: FSWatcher | null = null;
 	private poller: ReturnType<typeof setInterval> | null = null;
 	private readonly debounceMs: number;
+	private readonly onAssets: (() => void) | undefined;
 
 	constructor(
 		readonly dir: string,
@@ -28,6 +33,7 @@ export class ProjectWatcher {
 		options: Options = {},
 	) {
 		this.debounceMs = options.debounceMs ?? 50;
+		this.onAssets = options.onAssets;
 		this.reset(files);
 
 		if (!options.poll) {
@@ -77,6 +83,7 @@ export class ProjectWatcher {
 		const path = name?.replace(/\\/g, "/");
 
 		if (path && isProjectFile(path)) this.pending.add(path);
+		else if (path === PUBLIC_DIR || path?.startsWith(`${PUBLIC_DIR}/`)) this.assetsChanged = true;
 		// A null name, or a whole folder moved or deleted: compare everything
 		else if (!path || path === "screens" || path === "components") this.rescan = true;
 		else return;
@@ -89,6 +96,11 @@ export class ProjectWatcher {
 		this.timer = null;
 		const paths = new Set(this.pending);
 		this.pending.clear();
+
+		if (this.assetsChanged || this.rescan) {
+			this.assetsChanged = false;
+			this.onAssets?.();
+		}
 
 		if (this.rescan) {
 			this.rescan = false;

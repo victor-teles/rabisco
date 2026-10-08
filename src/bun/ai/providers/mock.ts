@@ -1,8 +1,22 @@
 import type { ElementFocus, GenerationEvent, GenerationRequest, Provider } from "../../../shared/ai/contract";
-import { GENERATION_STEPS, generateMockScreens } from "../../../shared/mock-generator";
+import { tokenBlock } from "../../../shared/context/theme";
+import { GENERATION_STEPS, generateMockScreens, mockThemeTokens } from "../../../shared/mock-generator";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
 import type { FileChange } from "../../../shared/types";
 import { contextTargetOf } from "../run";
+import { commandMethods, type CommandFile } from "../command-template";
+
+/** What a command file would hold, so the chat's command menu runs without a CLI */
+export const MOCK_COMMANDS: CommandFile[] = [
+	{
+		name: "brief",
+		description: "Design screens from a one-line brief",
+		argumentHint: "<what to build>",
+		source: "user",
+		template: "Design the main screens for: $ARGUMENTS",
+		syntax: "markdown",
+	},
+];
 
 export type MockProviderOptions = {
 	/** ms */
@@ -25,6 +39,8 @@ const sleep = (ms: number, signal: AbortSignal) =>
 		signal.addEventListener("abort", done, { once: true });
 	});
 
+const THEME_STEPS = ["Reading DESIGN.md", "Mapping colors to theme tokens"];
+
 /** Development only. */
 export function createMockProvider(options: MockProviderOptions = {}): Provider {
 	const delay = options.delayMs ?? 300;
@@ -37,6 +53,24 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 			message: "Generation stopped.",
 			retryable: true,
 		};
+
+		if (request.task === "theme") {
+			for (const label of THEME_STEPS) {
+				if (signal.aborted) return yield aborted;
+				yield { type: "status", label };
+				await sleep(delay * 2, signal);
+			}
+
+			if (signal.aborted) return yield aborted;
+			yield { type: "message.delta", text: tokenBlock(mockThemeTokens(request.context.design ?? "")) };
+			yield { type: "done", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+
+			return;
+		}
+
+		const images = request.attachments?.length ?? 0;
+
+		if (images) yield { type: "status", label: `Looking at ${images === 1 ? "the image" : `${images} images`}` };
 
 		for (const step of GENERATION_STEPS) {
 			if (signal.aborted) return yield aborted;
@@ -59,7 +93,8 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 				? mockEdit(request, edits)
 				: mockCreate(request);
 
-		yield { type: "message.delta", text: result.reply };
+		const seen = images ? `I used the attached ${images === 1 ? "image" : "images"} as a reference. ` : "";
+		yield { type: "message.delta", text: seen + result.reply };
 
 		for (const change of result.changes) {
 			if (change.content === null) continue;
@@ -94,7 +129,8 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 		id: "mock",
 		kind: "api",
 		label: "Mock (dev)",
-		capabilities: { streaming: true, images: false, agentic: false, maxContextTokens: 200_000 },
+		capabilities: { streaming: true, images: true, agentic: false, maxContextTokens: 200_000 },
+		...commandMethods(() => MOCK_COMMANDS),
 		health: async () => ({ ok: true, version: "dev" }),
 		listModels: async () => [{ id: "mock", label: "Mock (dev)" }],
 		generate,

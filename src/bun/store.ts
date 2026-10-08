@@ -1,20 +1,33 @@
 import { existsSync } from "fs";
 import { join, resolve } from "path";
-import type { CanvasDoc, ChatMessage, Device, FileChange, Project, ProjectSummary } from "../shared/types";
+import type { AssetChange } from "../shared/assets";
+import type {
+	CanvasDoc,
+	ChatMessage,
+	Device,
+	FileChange,
+	Project,
+	ProjectSummary,
+	ScreenSource,
+} from "../shared/types";
+import { AssetTracker, importImage } from "./assets";
 import { migrateLegacyProjects } from "./migrate";
 import {
 	CANVAS_FILE,
 	appendChat,
 	assertProjectDir,
 	assertProjectFilePath,
+	chatPath,
 	createProjectFolder,
 	loadProject,
+	readChat,
 	writeCanvas,
 	writeProjectFiles,
 } from "./project-folder";
 import {
 	forgetRecent,
 	missingSummary,
+	readCover,
 	readRecents,
 	sortRecents,
 	summarizeFolder,
@@ -32,6 +45,7 @@ export type StoreOptions = {
 	showItemInFolder: (path: string) => void;
 	pickFolder: () => Promise<string[]>;
 	onFilesChanged: (path: string, changes: FileChange[]) => void;
+	onAssetsChanged?: (path: string, changes: AssetChange[]) => void;
 	watchOptions?: ConstructorParameters<typeof ProjectWatcher>[3];
 };
 
@@ -40,6 +54,7 @@ export function createProjectStore(options: StoreOptions) {
 	const recentsFile = join(options.userDataDir, "recents.json");
 	const legacyDir = join(options.userDataDir, "projects");
 	const watchers = new Map<string, ProjectWatcher>();
+	const assetTrackers = new Map<string, AssetTracker>();
 	let migrated = false;
 
 	const recents = () => readRecents(recentsFile);
@@ -54,27 +69,34 @@ export function createProjectStore(options: StoreOptions) {
 	function stopWatching(path: string) {
 		watchers.get(path)?.close();
 		watchers.delete(path);
+		assetTrackers.delete(path);
+	}
+
+	function pushAssets(path: string) {
+		const changes = assetTrackers.get(path)?.changes() ?? [];
+
+		if (changes.length) options.onAssetsChanged?.(path, changes);
 	}
 
 	function openProject(rawPath: string): Project {
 		const path = normalize(rawPath);
 		const project = loadProject(path);
 		const watcher = watchers.get(path);
+		const assets = assetTrackers.get(path) ?? new AssetTracker(path);
+		assetTrackers.set(path, assets);
 
 		if (watcher) watcher.reset(project.files);
 		else
 			watchers.set(
 				path,
-				new ProjectWatcher(
-					path,
-					project.files,
-					(changes) => options.onFilesChanged(path, changes),
-					options.watchOptions,
-				),
+				new ProjectWatcher(path, project.files, (changes) => options.onFilesChanged(path, changes), {
+					...options.watchOptions,
+					onAssets: () => pushAssets(path),
+				}),
 			);
 		writeRecents(recentsFile, touchRecent(recents(), path));
 
-		return project;
+		return { ...project, assets: assets.load() };
 	}
 
 	return {
@@ -95,6 +117,17 @@ export function createProjectStore(options: StoreOptions) {
 					return missingSummary(entry);
 				}
 			});
+		},
+
+		/** Only for recent projects, so the webview can't read other folders through it. */
+		loadCover(path: string): ScreenSource | null {
+			if (!recents().some((entry) => entry.path === path)) return null;
+
+			try {
+				return readCover(path);
+			} catch {
+				return null;
+			}
 		},
 
 		async pickProjectFolder(): Promise<string | null> {
@@ -128,9 +161,32 @@ export function createProjectStore(options: StoreOptions) {
 			writeProjectFiles(path, changes);
 		},
 
-		appendMessages(path: string, messages: ChatMessage[]) {
+		/** Pushes the new image right away instead of waiting for the watcher */
+		importImage(path: string, file: string): string {
 			assertProject(path);
-			appendChat(path, messages);
+			const src = importImage(path, file);
+			pushAssets(normalize(path));
+
+			return src;
+		},
+
+		appendMessages(path: string, chatId: string, messages: ChatMessage[]) {
+			assertProject(path);
+			appendChat(path, chatId, messages);
+		},
+
+		openChat(path: string, chatId: string) {
+			assertProject(path);
+
+			return readChat(path, chatId);
+		},
+
+		/** To the trash, like a project: a chat can hold the only copy of a prompt */
+		deleteChat(path: string, chatId: string) {
+			assertProject(path);
+			const file = chatPath(path, chatId);
+
+			if (existsSync(file) && !options.moveToTrash(file)) throw new Error(`Could not move ${file} to the trash`);
 		},
 
 		removeRecent(path: string) {

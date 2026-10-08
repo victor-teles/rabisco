@@ -4,7 +4,7 @@ import type { ParsedFile, Token } from "./tree";
 // Sucrase's IdentifierRole values
 const ACCESS = new Set([0, 1, 8, 11]);
 
-const DECLARATION = new Set([2, 3, 4, 5, 6, 7, 9]);
+export const DECLARATION = new Set([2, 3, 4, 5, 6, 7, 9]);
 
 const TOP_LEVEL_DECLARATION = 2;
 

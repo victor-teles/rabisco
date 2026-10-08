@@ -23,6 +23,8 @@ import type { JsonObject, Json } from "../../../shared/json";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
 import { userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
+import { commandMethods } from "../command-template";
+import { claudeCommands } from "../commands";
 
 export type CliProviderOptions = { config: ProviderConfig; spawn?: SpawnFn; stagingRoot?: string };
 
@@ -157,7 +159,8 @@ export function createClaudeCodeProvider(options: CliProviderOptions): Provider 
 		id: options.config.id,
 		kind: "cli",
 		label: options.config.label || "Claude Code",
-		capabilities: { streaming: true, images: false, agentic: true, maxContextTokens: 200_000 },
+		capabilities: { streaming: true, images: true, agentic: true, maxContextTokens: 200_000 },
+		...commandMethods(claudeCommands),
 
 		async health() {
 			const bin = binary();

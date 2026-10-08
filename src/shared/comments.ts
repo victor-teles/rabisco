@@ -96,3 +96,20 @@ export function detachComments(comments: CanvasComment[], before: Frame[], after
 
 	return changed ? next : comments;
 }
+
+/** Resolves or reopens the comments `ids` names. Returns `comments` when none of them changes */
+export function setResolved(comments: CanvasComment[], ids: readonly string[], resolved: boolean): CanvasComment[] {
+	const targets = new Set(ids);
+	const changes = (comment: CanvasComment) => targets.has(comment.id) && Boolean(comment.resolved) !== resolved;
+
+	if (!comments.some(changes)) return comments;
+
+	return comments.map((comment) => {
+		if (!changes(comment)) return comment;
+
+		if (resolved) return { ...comment, resolved: true };
+		const { resolved: _resolved, ...rest } = comment;
+
+		return rest;
+	});
+}

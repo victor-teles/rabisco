@@ -1,7 +1,8 @@
 // Screens and components are copied verbatim, so the export looks like the canvas without conversion.
 
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
-import { parseDesignTokens, tokensToCss } from "../context/tokens";
+import { assetKey, PUBLIC_DIR, type ProjectAssets } from "../assets";
+import { tokensToCss, type DesignTokens } from "../context/tokens";
 import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
 import type { ExportFile, Frame, ProjectFiles } from "../types";
@@ -12,9 +13,13 @@ export type ViteProjectInput = {
 	/** The first screen opens first */
 	frames: Frame[];
 	files: ProjectFiles;
+	/** The tokens applied to the screens, which may lag behind DESIGN.md */
+	theme: DesignTokens;
 	/** By module name (`button` for `@/components/ui/button`) */
 	uiSources: Record<string, string>;
 	includeAlternates?: boolean;
+	/** The project's `public/` images; Vite serves them at `/`, where screens point */
+	assets?: ProjectAssets;
 };
 
 export type ViteProject = {
@@ -296,20 +301,20 @@ export default function App() {
 `;
 }
 
-function indexCss(files: ProjectFiles) {
-	const tokens = files["DESIGN.md"] ? tokensToCss(parseDesignTokens(files["DESIGN.md"])) : "";
+function indexCss(theme: DesignTokens) {
+	const tokens = tokensToCss(theme);
 
 	return [
 		`@import "tailwindcss";\n@import "tw-animate-css";\n`,
 		`/* The screen theme: shadcn tokens with neutral colors */\n${SCREEN_THEME_CSS.trim()}\n`,
 		`/* Screens fill the window, like a frame on the canvas */\nhtml,\nbody,\n#root {\n\theight: 100%;\n}\n`,
-		tokens && `/* Tokens from DESIGN.md: they override the theme above */\n${tokens}`,
+		tokens && `/* The DESIGN.md tokens applied to the screens: they override the theme above */\n${tokens}`,
 	]
 		.filter(Boolean)
 		.join("\n");
 }
 
-function readme(name: string, screens: string[], components: string[], ui: string[]) {
+function readme(name: string, screens: string[], components: string[], ui: string[], images: number) {
 	const list = (items: string[]) => items.map((item) => `- \`${item}\``).join("\n");
 
 	return `# ${name}
@@ -330,8 +335,8 @@ npm run dev
 - \`src/screens/\`: one file per screen. \`src/App.tsx\` shows them in canvas order, starting with the first.
 - \`src/components/\`: the project's components${components.length ? "" : " (none yet)"}.
 - \`src/components/ui/\`: the [shadcn/ui](https://ui.shadcn.com) components the screens use.
-- \`src/index.css\`: Tailwind, the theme tokens and the overrides from \`DESIGN.md\`.
-- \`PRODUCT.md\` and \`DESIGN.md\`: the product and design context, when the project has them.
+- \`src/index.css\`: Tailwind, the theme tokens and the \`DESIGN.md\` tokens applied on the canvas.
+${images ? `- \`public/\`: the images the screens show. Vite serves them at \`/\`, so \`/images/logo.png\` is \`public/images/logo.png\`.\n` : ""}- \`PRODUCT.md\` and \`DESIGN.md\`: the product and design context, when the project has them.
 
 Screens: ${screens.length ? `\n\n${list(screens.map((file) => `src/${file}`))}` : "none"}
 ${ui.length ? `\nshadcn/ui components: ${ui.map((name) => `\`${name}\``).join(", ")}\n` : ""}
@@ -363,6 +368,15 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 	for (const specifier of missingUi)
 		warnings.push(`"${specifier}" isn't a component the canvas provides, so it was left out`);
 	const uiSources = ui.map((module) => input.uiSources[module]!);
+	const assets: [string, string][] = [];
+
+	for (const [src, content] of Object.entries(input.assets ?? {})) {
+		const key = assetKey(src);
+
+		if (key) assets.push([key, content]);
+	}
+
+	assets.sort(([a], [b]) => a.localeCompare(b));
 
 	const out: ExportFile[] = [
 		{ path: "package.json", content: packageJson(name, [...projectSources, ...uiSources], warnings) },
@@ -370,10 +384,10 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 		{ path: "tsconfig.json", content: TSCONFIG },
 		{ path: "index.html", content: indexHtml(name) },
 		{ path: ".gitignore", content: GITIGNORE },
-		{ path: "README.md", content: readme(name, screens, projectFiles.filter(isComponentFile), ui) },
+		{ path: "README.md", content: readme(name, screens, projectFiles.filter(isComponentFile), ui, assets.length) },
 		{ path: "src/main.tsx", content: MAIN },
 		{ path: "src/App.tsx", content: appTsx(screens) },
-		{ path: "src/index.css", content: indexCss(files) },
+		{ path: "src/index.css", content: indexCss(input.theme) },
 		{ path: "src/vite-env.d.ts", content: '/// <reference types="vite/client" />\n' },
 		{ path: "src/lib/utils.ts", content: UTILS },
 		...ui.map((module) => ({ path: `src/components/ui/${module}.tsx`, content: input.uiSources[module]! })),
@@ -382,6 +396,8 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 
 	for (const context of ["PRODUCT.md", "DESIGN.md"])
 		if (files[context]?.trim()) out.push({ path: context, content: files[context]! });
+
+	for (const [src, content] of assets) out.push({ path: `${PUBLIC_DIR}${src}`, content, encoding: "base64" });
 
 	return { files: out, warnings };
 }

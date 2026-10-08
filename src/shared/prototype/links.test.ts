@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { findElement, parseJsx } from "../jsx";
 import {
 	hasExpressionLink,
+	hrefScreen,
 	LINK_ATTRIBUTE,
+	linkHrefToScreen,
 	listLinks,
 	normalizeTarget,
 	readLink,
 	resolveLink,
 	retargetLinks,
+	screenHref,
 	setLink,
 } from "./links";
 
@@ -113,5 +116,23 @@ describe("resolving links", () => {
 		// Components and context files are not screens
 		expect(resolveLink("components/tab-bar.tsx", FILES)).toEqual({ kind: "broken", to: "components/tab-bar.tsx" });
 		expect(resolveLink("https://example.com", FILES).kind).toBe("broken");
+	});
+});
+
+describe("href links", () => {
+	test("screenHref and hrefScreen round-trip through the export's hash route", () => {
+		expect(screenHref("screens/settings.tsx")).toBe("#/settings");
+		expect(hrefScreen("#/settings", FILES)).toBe("screens/settings.tsx");
+		expect(hrefScreen("#/missing", FILES)).toBeNull();
+		expect(hrefScreen("https://example.com", FILES)).toBeNull();
+	});
+
+	test("linkHrefToScreen writes href and data-link-to in one edit", () => {
+		const source = `export default function A() {\n\treturn <a href="/x">Go</a>;\n}\n`;
+		const next = linkHrefToScreen(source, source.indexOf("<a"), "screens/settings.tsx");
+		expect(next).toBe(
+			`export default function A() {\n\treturn <a href="#/settings" data-link-to="screens/settings.tsx">Go</a>;\n}\n`,
+		);
+		expect(linkHrefToScreen(source, 0, "screens/settings.tsx")).toBeNull();
 	});
 });

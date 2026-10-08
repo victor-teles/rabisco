@@ -1,10 +1,11 @@
-import { BrowserView, BrowserWindow, PATHS, Updater, Utils } from "electrobun/main";
+import { ApplicationMenu, BrowserView, BrowserWindow, PATHS, Updater, Utils } from "electrobun/main";
 import { existsSync } from "fs";
 import { join } from "path";
 import type { RabiscoRPC } from "../shared/rpc";
 import { assertSnapshot } from "../shared/share/snapshot";
 import { viewerFiles } from "../shared/share/viewer";
 import { createSecretStore } from "./ai/keychain";
+import { IMAGE_EXTENSIONS } from "./assets";
 import { createAiService } from "./ai/service";
 import { freeExportDir, writeExportFiles } from "./export";
 import { createGit } from "./git";
@@ -26,7 +27,8 @@ async function getMainViewUrl(): Promise<string> {
 		}
 	}
 
-	return "views://mainview/index.html";
+	// The built UI can't tell the channel apart; development-only tools read it from the hash
+	return `views://mainview/index.html${channel === "dev" ? "#channel=dev" : ""}`;
 }
 
 const store = createProjectStore({
@@ -47,6 +49,13 @@ const store = createProjectStore({
 			mainWindow.webview.rpc?.send.filesChanged({ path, changes });
 		} catch (error) {
 			console.warn("Could not push filesChanged:", error);
+		}
+	},
+	onAssetsChanged: (path, changes) => {
+		try {
+			mainWindow.webview.rpc?.send.assetsChanged({ path, changes });
+		} catch (error) {
+			console.warn("Could not push assetsChanged:", error);
 		}
 	},
 });
@@ -96,12 +105,36 @@ function openExternal(url: string) {
 	Utils.openExternal(url);
 }
 
+/** System Settings › Desktop & Dock › "Double-click a window's title bar to". Read each time, so a change applies at once */
+function titleBarAction(): "zoom" | "minimize" | "none" {
+	if (process.platform !== "darwin") return "zoom";
+
+	const value = Bun.spawnSync(["defaults", "read", "-g", "AppleActionOnDoubleClick"]).stdout.toString().trim();
+
+	if (value === "Minimize") return "minimize";
+
+	if (value === "None") return "none";
+
+	return "zoom";
+}
+
+function titleBarDoubleClick() {
+	const action = titleBarAction();
+
+	if (action === "minimize") mainWindow.minimize();
+	else if (action === "zoom") {
+		if (mainWindow.isMaximized()) mainWindow.unmaximize();
+		else mainWindow.maximize();
+	}
+}
+
 const rpc = BrowserView.defineRPC<RabiscoRPC>({
 	// Agentic providers can run for minutes
 	maxRequestTime: 15 * 60_000,
 	handlers: {
 		requests: {
 			listRecents: () => store.listRecents(),
+			loadCover: ({ path }) => store.loadCover(path),
 			pickProjectFolder: () => store.pickProjectFolder(),
 			openProject: ({ path }) => store.openProject(path),
 			// A share link lives while its project is open
@@ -109,7 +142,22 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			createProject: ({ name, device }) => store.createProject(name, device),
 			saveCanvas: ({ path, canvas }) => (store.saveCanvas(path, canvas), ok),
 			writeFiles: ({ path, changes }) => (store.writeFiles(path, changes), ok),
-			appendMessages: ({ path, messages }) => (store.appendMessages(path, messages), ok),
+			appendMessages: ({ path, chatId, messages }) => (store.appendMessages(path, chatId, messages), ok),
+			openChat: ({ path, chatId }) => store.openChat(path, chatId),
+			deleteChat: ({ path, chatId }) => (store.deleteChat(path, chatId), ok),
+			pickImage: async ({ path }) => {
+				const [file] = (
+					await Utils.openFileDialog({
+						startingFolder: Utils.paths.pictures,
+						allowedFileTypes: IMAGE_EXTENSIONS.join(","),
+						canChooseFiles: true,
+						canChooseDirectory: false,
+						allowsMultipleSelection: false,
+					})
+				).filter(Boolean);
+
+				return file ? { src: store.importImage(path, file) } : null;
+			},
 			removeRecent: ({ path }) => (store.removeRecent(path), ok),
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),
@@ -122,7 +170,9 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			removeProvider: async ({ id }) => (await ai.removeProvider(id), ok),
 			testProvider: ({ id }) => ai.testProvider(id),
 			setDefaultModel: async ({ model }) => (await ai.setDefaultModel(model), ok),
+			listCommands: ({ model, projectPath }) => ai.listCommands(model, projectPath),
 			openExternal: ({ url }) => (openExternal(url), ok),
+			titleBarDoubleClick: () => (titleBarDoubleClick(), ok),
 			pickExportFolder: async () =>
 				(
 					await Utils.openFileDialog({
@@ -159,6 +209,36 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 		messages: {},
 	},
 });
+
+// WKWebView only gets ⌘C, ⌘V, ⌘Z and the other text shortcuts through these menu roles
+ApplicationMenu.setApplicationMenu([
+	{
+		label: "Rabisco",
+		submenu: [{ role: "hide" }, { role: "hideOthers" }, { role: "showAll" }, { type: "divider" }, { role: "quit" }],
+	},
+	{
+		label: "Edit",
+		submenu: [
+			{ role: "undo" },
+			{ role: "redo" },
+			{ type: "divider" },
+			{ role: "cut" },
+			{ role: "copy" },
+			{ role: "paste" },
+			{ role: "selectAll" },
+		],
+	},
+	{
+		label: "Window",
+		submenu: [
+			{ role: "minimize" },
+			{ role: "zoom" },
+			{ role: "toggleFullScreen" },
+			{ type: "divider" },
+			{ role: "close" },
+		],
+	},
+]);
 
 const mainWindow = new BrowserWindow({
 	title: "Rabisco",

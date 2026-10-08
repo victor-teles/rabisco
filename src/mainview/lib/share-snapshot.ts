@@ -1,7 +1,9 @@
+import { projectAssets } from "@/lib/render/assets";
 import { compileCache } from "@/lib/render/compile";
 import { collectGraph } from "@/lib/render/graph";
 import { screenStyles } from "@/lib/render/styles";
-import { designThemeCss } from "@/lib/render/theme";
+import { themeCss } from "@/lib/render/theme";
+import type { DesignTokens } from "../../shared/context/tokens";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
 import type { Frame, ProjectFiles } from "../../shared/types";
 
@@ -10,6 +12,8 @@ export async function buildShareSnapshot(input: {
 	name: string;
 	frames: Frame[];
 	files: ProjectFiles;
+	/** The applied tokens, so the link looks like the canvas */
+	theme: DesignTokens;
 	start?: string;
 }): Promise<ShareSnapshot> {
 	const { files } = input;
@@ -30,8 +34,9 @@ export async function buildShareSnapshot(input: {
 	}
 
 	const start = screens.some((screen) => screen.file === input.start) ? input.start! : screens[0]!.file;
+	const assets = await projectAssets.dataUrls();
 
-	return {
+	const snapshot: ShareSnapshot = {
 		version: 1,
 		name: input.name,
 		createdAt: new Date().toISOString(),
@@ -39,6 +44,10 @@ export async function buildShareSnapshot(input: {
 		screens,
 		modules,
 		css: screenStyles.css,
-		theme: designThemeCss(files),
+		theme: themeCss(input.theme),
 	};
+
+	if (Object.keys(assets).length) snapshot.assets = assets;
+
+	return snapshot;
 }

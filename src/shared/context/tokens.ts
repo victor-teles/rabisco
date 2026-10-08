@@ -204,3 +204,21 @@ export function tokensToCss(tokens: DesignTokens): string {
 		block(".dark", valid(tokens.dark))
 	);
 }
+
+const NO_TOKENS: DesignTokens = { light: {}, dark: {} };
+
+/** The valid tokens of DESIGN.md, the way screens apply them */
+export function designTokensOf(markdown: string | undefined): DesignTokens {
+	if (!markdown) return NO_TOKENS;
+	const { light, dark } = parseDesignTokens(markdown);
+
+	return { light, dark };
+}
+
+/** Tokens added, changed or removed; a light and a dark value count apart */
+export function changedTokenCount(from: DesignTokens, to: DesignTokens): number {
+	const count = (a: Record<string, string>, b: Record<string, string>) =>
+		[...new Set([...Object.keys(a), ...Object.keys(b)])].filter((name) => a[name] !== b[name]).length;
+
+	return count(from.light, to.light) + count(from.dark, to.dark);
+}

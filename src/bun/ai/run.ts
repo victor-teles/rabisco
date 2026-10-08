@@ -13,6 +13,7 @@ import {
 } from "../../shared/ai/contract";
 import { componentSignatures } from "../../shared/components/usages";
 import { contextBody } from "../../shared/context/body";
+import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocus } from "../../shared/ai/focus";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
@@ -228,6 +229,64 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 	return { changes, reply: first.reply.trim(), problems: dedupeProblems(settled.problems), notes, usage, attempts };
 }
 
+export type ThemeResult = { theme: AppliedTheme; reply: string; usage?: Usage };
+
+/** Only DESIGN.md goes in: no files, components or history. `undefined` when it has no content. */
+export function buildThemeRequest(params: {
+	id: string;
+	model: string;
+	device: Device;
+	design: string | undefined;
+}): GenerationRequest | undefined {
+	if (!contextBody(params.design)) return undefined;
+
+	return {
+		id: params.id,
+		task: "theme",
+		model: params.model,
+		prompt: "",
+		device: params.device,
+		context: { design: params.design },
+		files: [],
+	};
+}
+
+/** One attempt; invalid tokens are dropped, and files the provider wrote are ignored (DESIGN.md stays as it is). */
+export async function runThemeReading(options: {
+	provider: Provider;
+	request: GenerationRequest;
+	signal: AbortSignal;
+	onEvent: (event: GenerationEvent) => void;
+}): Promise<ThemeResult> {
+	const { provider, request, signal, onEvent } = options;
+
+	if (signal.aborted) throw abortedError();
+	const attempt = await collect(provider, request, signal, onEvent);
+
+	if (attempt.error)
+		throw new GenerationError(attempt.error.code, attempt.error.message, attempt.error.retryable, attempt.error.fix);
+
+	// Agents sometimes write the block to a file instead of replying with it
+	const candidates = [attempt.reply, ...attempt.written.values()];
+	const parsed = candidates.map(parseThemeReply).find(hasTokens);
+
+	if (!parsed) {
+		throw new GenerationError(
+			"invalid_output",
+			"The model didn't return any theme tokens Rabisco can use.",
+			true,
+			"Try again, or add a ## Tokens section to DESIGN.md.",
+		);
+	}
+
+	const theme: AppliedTheme = { light: parsed.light, dark: parsed.dark };
+	const source = designSourceOf(request.context.design);
+
+	if (source) theme.source = source;
+
+	return { theme, reply: attempt.reply.trim(), usage: attempt.usage };
+}
+
 export function dedupeProblems(problems: Problem[]) {
 	const seen = new Set<string>();
 
@@ -291,7 +350,7 @@ function buildRepairRequest(
 
 export type BuildRequestParams = {
 	id: string;
-	task: Exclude<GenerationTask, "repair">;
+	task: Exclude<GenerationTask, "repair" | "theme">;
 	prompt: string;
 	device: Device;
 	/** Model id inside the provider, not the `ModelRef` */

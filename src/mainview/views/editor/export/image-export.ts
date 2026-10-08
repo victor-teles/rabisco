@@ -1,7 +1,10 @@
 import { toast } from "sonner";
 import { FrameHost, runtimeUrl, type Snapshot } from "@/lib/render/frame-host";
+import { OFFSTAGE_FRAME_STYLE, offstage } from "@/lib/render/offstage";
 import type { SnapshotRaster } from "@/lib/render/protocol";
+import { themeCss } from "@/lib/render/theme";
 import { api, isDesktop } from "@/lib/rpc";
+import type { DesignTokens } from "../../../../shared/context/tokens";
 import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/export/flow";
 import { createPdf, jpegSize } from "../../../../shared/export/pdf";
 import { sceneToSvg } from "../../../../shared/export/scene";
@@ -25,30 +28,27 @@ type Failure = { frame: Frame; message: string };
 
 const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
 
-/** The frame stays inside the viewport (invisible), since browsers throttle offscreen cross-origin frames */
-async function renderScreen(frame: Frame, files: ProjectFiles, raster?: SnapshotRaster): Promise<Snapshot> {
+/** Renders in an `offstage()` frame */
+async function renderScreen(
+	frame: Frame,
+	files: ProjectFiles,
+	theme: DesignTokens,
+	raster?: SnapshotRaster,
+): Promise<Snapshot> {
 	const iframe = document.createElement("iframe");
 	iframe.sandbox.add("allow-scripts");
 	iframe.title = `Export ${frame.file}`;
 	iframe.tabIndex = -1;
 	iframe.setAttribute("aria-hidden", "true");
-	Object.assign(iframe.style, {
-		position: "fixed",
-		left: "0",
-		top: "0",
-		width: `${frame.width}px`,
-		height: `${frame.height}px`,
-		border: "0",
-		opacity: "0",
-		pointerEvents: "none",
-		zIndex: "-1",
-	});
+	iframe.style.cssText = OFFSTAGE_FRAME_STYLE;
+	iframe.style.width = `${frame.width}px`;
+	iframe.style.height = `${frame.height}px`;
 	const host = new FrameHost(iframe);
 
 	try {
 		iframe.src = runtimeUrl();
-		document.body.appendChild(iframe);
-		host.update(frame.file, files);
+		offstage().appendChild(iframe);
+		host.update(frame.file, files, themeCss(theme));
 		await host.whenRendered();
 		let height = frame.height;
 
@@ -71,6 +71,7 @@ async function renderScreen(frame: Frame, files: ProjectFiles, raster?: Snapshot
 async function renderAll(
 	frames: Frame[],
 	files: ProjectFiles,
+	theme: DesignTokens,
 	raster: SnapshotRaster | undefined,
 	onProgress: (done: number) => void,
 ) {
@@ -84,7 +85,7 @@ async function renderAll(
 			const frame = frames[index]!;
 
 			try {
-				results[index] = { frame, snapshot: await renderScreen(frame, files, raster) };
+				results[index] = { frame, snapshot: await renderScreen(frame, files, theme, raster) };
 			} catch (error) {
 				results[index] = { frame, message: error instanceof Error ? error.message : String(error) };
 			}
@@ -146,10 +147,20 @@ function failureDescription(failed: Failure[]) {
 	return `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""} didn't render: ${failed[0]!.message}`;
 }
 
-export type ImageExportInput = { projectName: string; frames: Frame[]; selected: Frame[]; files: ProjectFiles };
+export type ImageExportInput = {
+	projectName: string;
+	frames: Frame[];
+	selected: Frame[];
+	files: ProjectFiles;
+	/** The applied tokens, so images match the canvas */
+	theme: DesignTokens;
+};
 
 /** Without a selection, every screen except alternates */
-export async function exportImages(format: "png" | "svg", { projectName, frames, selected, files }: ImageExportInput) {
+export async function exportImages(
+	format: "png" | "svg",
+	{ projectName, frames, selected, files, theme }: ImageExportInput,
+) {
 	const targets = imageTargets(frames, selected, files);
 
 	if (!targets.length) return void toast("No screens to export");
@@ -162,7 +173,7 @@ export async function exportImages(format: "png" | "svg", { projectName, frames,
 	try {
 		const raster = format === "png" ? ({ type: "image/png", scale: SCALE } as const) : undefined;
 
-		const { rendered, failed } = await renderAll(targets, files, raster, (done) => {
+		const { rendered, failed } = await renderAll(targets, files, theme, raster, (done) => {
 			if (targets.length > 1) toast.loading(`Rendering screens… ${done} of ${targets.length}`, { id });
 		});
 
@@ -189,9 +200,12 @@ export async function exportImages(format: "png" | "svg", { projectName, frames,
 	}
 }
 
-/** Flow order: prototype links breadth-first from the first screen on the canvas */
-export async function exportFlowPdf({ projectName, frames, files }: Omit<ImageExportInput, "selected">) {
-	const screens = imageTargets(frames, [], files);
+/** Flow order: prototype links breadth-first from the first screen on the canvas. `only` limits it to those screens */
+export async function exportFlowPdf(
+	{ projectName, frames, files, theme }: Omit<ImageExportInput, "selected">,
+	only: Frame[] = [],
+) {
+	const screens = imageTargets(frames, only, files);
 
 	if (!screens.length) return void toast("No screens to export");
 	const byFile = new Map(screens.map((frame) => [frame.file, frame]));
@@ -210,6 +224,7 @@ export async function exportFlowPdf({ projectName, frames, files }: Omit<ImageEx
 		const { rendered, failed } = await renderAll(
 			ordered,
 			files,
+			theme,
 			{ type: "image/jpeg", scale: SCALE, quality: JPEG_QUALITY },
 			(done) => toast.loading(`Rendering screens… ${done} of ${ordered.length}`, { id }),
 		);
@@ -234,12 +249,28 @@ export async function exportFlowPdf({ projectName, frames, files }: Omit<ImageEx
 		});
 
 		const pdf = createPdf(flowDocument({ title: projectName, screens: flow, files }));
-		const name = `${exportSlug(projectName)}-flow.pdf`;
+		const name = only.length === 1 ? imageFileNames([only[0]!.file], "pdf")[0]! : `${exportSlug(projectName)}-flow.pdf`;
 		await write(dir, [{ path: name, content: base64OfBytes(pdf), encoding: "base64" }], name);
 
 		if (failed.length) toast.warning(`Exported ${name}`, { id, description: failureDescription(failed) });
 		else toast.success(`Exported ${name}`, { id, description: `${flow.length} screens in flow order` });
 	} catch (error) {
 		toast.error("PDF export failed", { id, description: error instanceof Error ? error.message : String(error) });
+	}
+}
+
+/** The PNG is a promise so WebKit keeps the click's user activation while the screen renders */
+export async function copyImage(frame: Frame, files: ProjectFiles, theme: DesignTokens) {
+	const id = toast.loading(`Rendering ${nameOf(frame)}…`);
+
+	const png = renderScreen(frame, files, theme, { type: "image/png", scale: SCALE }).then(
+		(snapshot) => new Blob([bytesOf(snapshot.raster!.dataUrl)], { type: "image/png" }),
+	);
+
+	try {
+		await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+		toast.success(`Copied ${nameOf(frame)} as PNG`, { id });
+	} catch (error) {
+		toast.error("Couldn't copy the image", { id, description: error instanceof Error ? error.message : String(error) });
 	}
 }

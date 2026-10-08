@@ -201,7 +201,9 @@ export async function* runTextGeneration(
 	}
 
 	const changed = parser.written.length + parser.deleted.length;
-	const textReply = request.task === "edit" && parser.hasMessage && !parser.truncated.length;
+
+	const textReply =
+		(request.task === "edit" || request.task === "theme") && parser.hasMessage && !parser.truncated.length;
 
 	if (!changed && !textReply) {
 		const message =

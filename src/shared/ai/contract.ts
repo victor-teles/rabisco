@@ -33,7 +33,20 @@ export interface Provider {
 
 	/** Must stop promptly on abort and end the stream with exactly one `done` or `error` event. */
 	generate(request: GenerationRequest, signal: AbortSignal): AsyncIterable<GenerationEvent>;
+
+	/** The user's and the project's own commands for this tool, run as `/name args` from the chat */
+	listCommands?(projectPath: string): Promise<ProviderCommand[]>;
+	/** The prompt `/name args` stands for, or `null` when there is no such command */
+	expandCommand?(projectPath: string, name: string, args: string): Promise<string | null>;
 }
+
+export type ProviderCommand = {
+	/** Without the slash; nested folders join with `:` (`git:commit`) */
+	name: string;
+	description: string;
+	argumentHint?: string;
+	source: "user" | "project";
+};
 
 export type GenerationTask =
 	| "create"
@@ -41,7 +54,9 @@ export type GenerationTask =
 	/** Fix files that failed validation; `request.problems` lists the errors */
 	| "repair"
 	/** Write PRODUCT.md or DESIGN.md (the one path in `targets`) */
-	| "context";
+	| "context"
+	/** Read the theme tokens from `context.design`; the reply holds them, and no file is written (decision 0009) */
+	| "theme";
 
 export type ProjectFile = {
 	/** Project-relative, forward slashes */

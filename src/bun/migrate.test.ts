@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { componentName, legacyHtmlToTsx, migrateLegacyProjects, splitHtmlDocument } from "./migrate";
 import { loadProject } from "./project-folder";
@@ -96,6 +96,6 @@ describe("migrateLegacyProjects", () => {
 		const json = readFileSync(join(entry!.path, "rabisco.json"), "utf-8");
 		expect(json).not.toContain("<div");
 		expect(json).toContain('\t"frames"');
-		expect(existsSync(join(entry!.path, "chat.jsonl"))).toBe(true);
+		expect(readdirSync(join(entry!.path, "chats"))).toHaveLength(1);
 	});
 });

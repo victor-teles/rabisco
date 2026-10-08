@@ -1,4 +1,5 @@
-// Style controls edit unprefixed Tailwind classes only (`md:`, `hover:`… stay as written); a computed className is read-only.
+// Style controls edit the classes of one state (`hover:`, `md:`…, or none for Default); the others stay as written.
+// A computed className is read-only.
 
 import { useRef, useState } from "react";
 import {
@@ -16,6 +17,7 @@ import {
 	X,
 	type LucideIcon,
 } from "lucide-react";
+import { InspectorSection } from "@/components/app/inspector-section";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -29,8 +31,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SCREEN_THEME_CSS } from "@/lib/render/theme";
+import { commonValue, editEach, restyle, retoken, sharedClasses } from "@/lib/element-selection";
 import { cn } from "@/lib/utils";
-import { findElement, parseJsx } from "../../../shared/jsx";
+import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import {
 	BORDER_WIDTH_SCALE,
 	classNameOf,
@@ -40,6 +43,8 @@ import {
 	FONT_WEIGHT_SCALE,
 	getBox,
 	getStyle,
+	GRID_COLUMNS_SCALE,
+	INSET_SCALE,
 	LETTER_SPACING_SCALE,
 	LINE_HEIGHT_SCALE,
 	MARGIN_SCALE,
@@ -58,6 +63,8 @@ import {
 	SPACING_SCALE,
 	splitModifier,
 	THEME_COLORS,
+	usedVariants,
+	Z_INDEX_SCALE,
 	type BoxGroup,
 	type Scale,
 	type ScaleOption,
@@ -68,12 +75,17 @@ export type ElementStyleProps = {
 	source: string;
 	/** Start offset in `source` */
 	start: number;
+	/** The other selected elements: the controls show what they share, and an edit writes to all of them */
+	extras?: readonly number[];
 	disabled?: boolean;
 	/** `step` coalesces a typing burst into one undo step */
 	onChange: (nextSource: string, step?: string) => void;
 	onFieldFocus?: () => void;
 	/** Seals the current typing burst as one undo step */
 	onFieldBlur?: () => void;
+	/** `""` for Default, `hover`, `md`…: the prefix the controls read and write */
+	variant: string;
+	onVariantChange: (variant: string) => void;
 };
 
 const REPLACED = new Set([
@@ -122,6 +134,49 @@ const ALIGN_OPTIONS: ScaleOption[] = ["start", "center", "end", "stretch", "base
 	value,
 	label: value,
 }));
+
+const SELF_OPTIONS: ScaleOption[] = ["auto", "start", "center", "end", "stretch", "baseline"].map((value) => ({
+	value,
+	label: value,
+}));
+
+const POSITION_OPTIONS: ScaleOption[] = ["static", "relative", "absolute", "fixed", "sticky"].map((value) => ({
+	value,
+	label: value,
+}));
+
+const OVERFLOW_OPTIONS: ScaleOption[] = ["visible", "hidden", "clip", "scroll", "auto"].map((value) => ({
+	value,
+	label: value,
+}));
+
+const FLEX_OPTIONS: ScaleOption[] = [
+	{ value: "1", label: "Fill", hint: "flex-1" },
+	{ value: "auto", label: "Auto", hint: "flex-auto" },
+	{ value: "initial", label: "Initial", hint: "flex-initial" },
+	{ value: "none", label: "None", hint: "flex-none" },
+];
+
+/** The theme defines these three (DESIGN.md tokens `font-sans`, `font-serif`, `font-mono`) */
+const FONT_FAMILY_OPTIONS: ScaleOption[] = [
+	{ value: "sans", label: "Sans" },
+	{ value: "serif", label: "Serif" },
+	{ value: "mono", label: "Mono" },
+];
+
+/** Value `""` is Default; the rest are Tailwind variants */
+const STATES: { value: string; label: string; hint?: string }[] = [
+	{ value: "", label: "Default" },
+	{ value: "hover", label: "Hover" },
+	{ value: "focus", label: "Focus" },
+	{ value: "dark", label: "Dark" },
+];
+
+const BREAKPOINTS: { value: string; label: string; hint?: string }[] = [
+	{ value: "sm", label: "sm", hint: "≥ 640px" },
+	{ value: "md", label: "md", hint: "≥ 768px" },
+	{ value: "lg", label: "lg", hint: "≥ 1024px" },
+];
 
 const BORDER_STYLE_OPTIONS: ScaleOption[] = ["solid", "dashed", "dotted", "double", "none"].map((value) => ({
 	value,
@@ -173,33 +228,65 @@ const GAP_AXES: Part[] = [
 ];
 
 type Edit = {
-	/** `field` set for typing (coalesced per focus) */
-	apply: (classes: string, field?: string) => void;
+	/** Runs on each selected element's classes. `field` set for typing (coalesced per focus) */
+	apply: (change: (classes: string) => string, field?: string) => void;
+	/** Each selected element's classes; one entry for a single element */
+	all: readonly string[];
+	variant: string;
 	onFocus: () => void;
 	onBlur: () => void;
 	disabled?: boolean;
 };
 
-export function ElementStyle({ source, start, disabled, onChange, onFieldFocus, onFieldBlur }: ElementStyleProps) {
+export function ElementStyle({
+	source,
+	start,
+	extras = NO_EXTRAS,
+	disabled,
+	onChange,
+	onFieldFocus,
+	onFieldBlur,
+	variant,
+	onVariantChange,
+}: ElementStyleProps) {
 	const burst = useRef(0);
-	const element = findElement(parseJsx(source), start);
+	const tree = parseJsx(source);
+	const element = findElement(tree, start);
 
 	if (!element || element.name === null) return null;
 	const info = classNameOf(source, element);
 	const tag = element.intrinsic ? element.name : null;
 
+	// Computed classNames are left out of a multi-element edit
+	const all = [
+		info.classes,
+		...extras.flatMap((extra) => {
+			const other = findElement(tree, extra);
+			const otherInfo = other && other.name !== null ? classNameOf(source, other) : null;
+
+			return otherInfo?.editable ? [otherInfo.classes] : [];
+		}),
+	];
+
+	const skipped = extras.length + 1 - all.length;
+	const backgroundMixed = commonValue(all.map((own) => getStyle(own, "backgroundColor", variant))) === undefined;
+
 	const edit: Edit = {
-		apply: (classes, field) => {
-			const next = setClassName(source, start, classes);
+		apply: (change, field) => {
+			const next = extras.length
+				? editEach(source, [start, ...extras], restyle(change)).source
+				: setClassName(source, start, change(info.classes));
 
 			if (next !== null && next !== source)
 				onChange(next, field ? `style:${start}:${field}:${burst.current}` : undefined);
 		},
+		all,
 		onFocus: () => {
 			burst.current += 1;
 			onFieldFocus?.();
 		},
 		onBlur: () => onFieldBlur?.(),
+		variant,
 		disabled,
 	};
 
@@ -220,23 +307,36 @@ export function ElementStyle({ source, start, disabled, onChange, onFieldFocus, 
 		);
 	}
 
-	const classes = info.classes;
+	const classes = extras.length ? sharedClasses(all) : info.classes;
 	const replaced = tag !== null && REPLACED.has(tag);
 	const hasLayout = !replaced && !(tag !== null && FORM_FIELDS.has(tag));
 	const hasText = !replaced;
+	const parentLayout = layoutOf(source, element.parent);
 
 	return (
 		<div className="flex flex-col gap-4 border-b p-4" key={start}>
+			<StateSwitch classes={classes} value={variant} disabled={disabled} onChange={onVariantChange} />
+			{skipped ? (
+				<p className="-mt-2 text-xs text-subtle-foreground">
+					{skipped === 1 ? "One element computes its classes" : `${skipped} elements compute their classes`}, so edits
+					leave it out.
+				</p>
+			) : null}
 			{hasLayout ? <LayoutSection classes={classes} edit={edit} /> : null}
-			<SpacingSection classes={classes} edit={edit} />
+			{parentLayout ? <ItemSection classes={classes} edit={edit} parent={parentLayout} /> : null}
+			<SpacingSection edit={edit} />
 			<SizeSection classes={classes} edit={edit} />
+			<PositionSection classes={classes} edit={edit} />
 			{hasText ? <TypographySection classes={classes} edit={edit} /> : null}
 			<Section title="Fill">
 				<ColorField
 					label="Background"
-					value={getStyle(classes, "backgroundColor")}
+					value={getStyle(classes, "backgroundColor", variant)}
+					mixed={backgroundMixed}
 					edit={edit}
-					onPick={(value, field) => edit.apply(setStyle(classes, "backgroundColor", value), field && `bg:${field}`)}
+					onPick={(value, field) =>
+						edit.apply((classes) => setStyle(classes, "backgroundColor", value, variant), field && `bg:${field}`)
+					}
 				/>
 			</Section>
 			<BorderSection classes={classes} edit={edit} />
@@ -244,7 +344,13 @@ export function ElementStyle({ source, start, disabled, onChange, onFieldFocus, 
 			<ClassesField
 				classes={classes}
 				edit={edit}
-				note={tag === null ? `Passed to ${element.name} as its className.` : null}
+				note={
+					extras.length
+						? "The classes every selected element has. Edits add and remove them on each."
+						: tag === null
+							? `Passed to ${element.name} as its className.`
+							: null
+				}
 			/>
 		</div>
 	);
@@ -252,15 +358,108 @@ export function ElementStyle({ source, start, disabled, onChange, onFieldFocus, 
 
 type SectionProps = { classes: string; edit: Edit };
 
-const styleWriter = (classes: string, edit: Edit, prop: SimpleProp) => (value: string | null, continuous: boolean) =>
-	edit.apply(setStyle(classes, prop, value), continuous ? prop : undefined);
+const NO_EXTRAS: readonly number[] = [];
+
+/** Never a class value: marks parts of one box that differ */
+const MIXED = "\u0000mixed";
+
+/** The selected elements differ in what `read` returns */
+const isMixed = (edit: Edit, read: (classes: string) => string | null) => commonValue(edit.all.map(read)) === undefined;
+
+const mixedStyle = (edit: Edit, prop: SimpleProp) => isMixed(edit, (own) => getStyle(own, prop, edit.variant));
+
+/** How the parent lays out its children; `unknown` for a component or computed classes */
+type ParentLayout = "flex" | "grid" | "unknown";
+
+function layoutOf(source: string, parent: JsxElement | null): ParentLayout | null {
+	if (!parent || parent.name === null) return null;
+
+	if (!parent.intrinsic) return "unknown";
+	const info = classNameOf(source, parent);
+
+	if (!info.editable) return "unknown";
+	const display = getStyle(info.classes, "display");
+
+	return display === "flex" || display === "inline-flex"
+		? "flex"
+		: display === "grid" || display === "inline-grid"
+			? "grid"
+			: null;
+}
+
+/** In a state, show what Default sets when the state doesn't: `md:` overrides only some classes */
+const effective = (classes: string, prop: SimpleProp, variant: string) =>
+	getStyle(classes, prop, variant) ?? (variant ? getStyle(classes, prop) : null);
+
+function StateSwitch({
+	classes,
+	value,
+	disabled,
+	onChange,
+}: {
+	classes: string;
+	value: string;
+	disabled?: boolean;
+	onChange: (variant: string) => void;
+}) {
+	const used = new Set(usedVariants(classes));
+	const current = [...STATES, ...BREAKPOINTS].find((state) => state.value === value);
+
+	const item = (state: { value: string; label: string; hint?: string }) => (
+		<DropdownMenuRadioItem key={state.value} value={state.value} className="text-[13px]">
+			{state.label}
+			<span className="ml-auto flex items-center gap-2 pl-3">
+				{state.hint ? <span className="text-xs text-subtle-foreground tabular-nums">{state.hint}</span> : null}
+				<span
+					className={cn("size-1.5 rounded-full bg-primary", (!state.value || !used.has(state.value)) && "invisible")}
+					aria-label={state.value && used.has(state.value) ? "Has classes" : undefined}
+				/>
+			</span>
+		</DropdownMenuRadioItem>
+	);
+
+	return (
+		<div className="-my-1 flex h-7 items-center justify-between gap-2">
+			<span className="text-xs text-muted-foreground">State</span>
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="ghost"
+						size="xs"
+						disabled={disabled}
+						aria-label="State to edit"
+						title="Edit the classes of a state or breakpoint (hover:, md:…)"
+						className={cn(
+							"-mr-1.5 h-7 gap-1 px-2 text-[13px] font-normal text-muted-foreground",
+							value && "bg-accent font-mono text-xs text-accent-foreground",
+						)}
+					>
+						{value ? `${value}:` : (current?.label ?? "Default")}
+						<ChevronDown className="size-3" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="min-w-44">
+					<DropdownMenuRadioGroup value={value} onValueChange={onChange}>
+						{STATES.map(item)}
+						<DropdownMenuSeparator />
+						{BREAKPOINTS.map(item)}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</div>
+	);
+}
+
+const styleWriter = (edit: Edit, prop: SimpleProp) => (value: string | null, continuous: boolean) =>
+	edit.apply((classes) => setStyle(classes, prop, value, edit.variant), continuous ? prop : undefined);
 
 function LayoutSection({ classes, edit }: SectionProps) {
-	const display = getStyle(classes, "display");
-	const flex = display === "flex" || display === "inline-flex";
-	const grid = display === "grid" || display === "inline-grid";
-	const direction = getStyle(classes, "flexDirection");
-	const wrap = getStyle(classes, "flexWrap");
+	const display = getStyle(classes, "display", edit.variant);
+	const shown = effective(classes, "display", edit.variant);
+	const flex = shown === "flex" || shown === "inline-flex";
+	const grid = shown === "grid" || shown === "inline-grid";
+	const direction = getStyle(classes, "flexDirection", edit.variant);
+	const wrap = getStyle(classes, "flexWrap", edit.variant);
 
 	return (
 		<Section title="Layout">
@@ -268,9 +467,10 @@ function LayoutSection({ classes, edit }: SectionProps) {
 				<SelectField
 					label="Display"
 					value={display}
+					mixed={mixedStyle(edit, "display")}
 					options={DISPLAY_OPTIONS}
 					edit={edit}
-					onChange={styleWriter(classes, edit, "display")}
+					onChange={styleWriter(edit, "display")}
 				/>
 			</Row>
 			{flex ? (
@@ -282,7 +482,9 @@ function LayoutSection({ classes, edit }: SectionProps) {
 							options={DIRECTION_OPTIONS}
 							disabled={edit.disabled}
 							onChange={(value) =>
-								edit.apply(setStyle(classes, "flexDirection", value === "row" || value === null ? null : value))
+								edit.apply((classes) =>
+									setStyle(classes, "flexDirection", value === "row" || value === null ? null : value, edit.variant),
+								)
 							}
 						/>
 						<IconToggle
@@ -290,7 +492,9 @@ function LayoutSection({ classes, edit }: SectionProps) {
 							label={wrap === "wrap" ? "Wrapping (flex-wrap)" : "Wrap (flex-wrap)"}
 							pressed={wrap === "wrap"}
 							disabled={edit.disabled}
-							onChange={(pressed) => edit.apply(setStyle(classes, "flexWrap", pressed ? "wrap" : null))}
+							onChange={(pressed) =>
+								edit.apply((classes) => setStyle(classes, "flexWrap", pressed ? "wrap" : null, edit.variant))
+							}
 						/>
 					</div>
 				</Row>
@@ -300,63 +504,184 @@ function LayoutSection({ classes, edit }: SectionProps) {
 					<Row label="Justify">
 						<SelectField
 							label="Justify content"
-							value={getStyle(classes, "justifyContent")}
+							value={getStyle(classes, "justifyContent", edit.variant)}
+							mixed={mixedStyle(edit, "justifyContent")}
 							options={JUSTIFY_OPTIONS}
 							edit={edit}
-							onChange={styleWriter(classes, edit, "justifyContent")}
+							onChange={styleWriter(edit, "justifyContent")}
 						/>
 					</Row>
 					<Row label="Align">
 						<SelectField
 							label="Align items"
-							value={getStyle(classes, "alignItems")}
+							value={getStyle(classes, "alignItems", edit.variant)}
+							mixed={mixedStyle(edit, "alignItems")}
 							options={ALIGN_OPTIONS}
 							edit={edit}
-							onChange={styleWriter(classes, edit, "alignItems")}
+							onChange={styleWriter(edit, "alignItems")}
 						/>
 					</Row>
-					<BoxField
-						title="Gap"
-						group="gap"
-						classes={classes}
-						scale={SPACING_SCALE}
-						linked={GAP_ALL}
-						split={GAP_AXES}
-						edit={edit}
-					/>
+					{grid ? (
+						<Row label="Columns">
+							<ScaleField
+								ariaLabel="Grid columns"
+								value={getStyle(classes, "gridColumns", edit.variant)}
+								mixed={mixedStyle(edit, "gridColumns")}
+								scale={GRID_COLUMNS_SCALE}
+								edit={edit}
+								onChange={styleWriter(edit, "gridColumns")}
+							/>
+						</Row>
+					) : null}
+					<BoxField title="Gap" group="gap" scale={SPACING_SCALE} linked={GAP_ALL} split={GAP_AXES} edit={edit} />
 				</>
 			) : null}
+			<Row label="Overflow">
+				<SelectField
+					label="Overflow"
+					value={getStyle(classes, "overflow", edit.variant)}
+					mixed={mixedStyle(edit, "overflow")}
+					options={OVERFLOW_OPTIONS}
+					placeholder="visible"
+					edit={edit}
+					onChange={styleWriter(edit, "overflow")}
+				/>
+			</Row>
 		</Section>
 	);
 }
 
-function SpacingSection({ classes, edit }: SectionProps) {
+/** How the element sits in its flex or grid parent */
+function ItemSection({ classes, edit, parent }: SectionProps & { parent: ParentLayout }) {
+	const grow = getStyle(classes, "flexGrow", edit.variant);
+	const shrink = getStyle(classes, "flexShrink", edit.variant);
+
+	return (
+		<Section title={parent === "grid" ? "Grid item" : "Flex item"}>
+			{parent !== "grid" ? (
+				<>
+					<Row label="Flex">
+						<SelectField
+							label="Flex"
+							value={getStyle(classes, "flex", edit.variant)}
+							mixed={mixedStyle(edit, "flex")}
+							options={FLEX_OPTIONS}
+							edit={edit}
+							onChange={styleWriter(edit, "flex")}
+						/>
+					</Row>
+					<Row label="Resize">
+						<ToggleGroup
+							type="multiple"
+							size="sm"
+							variant="outline"
+							value={[grow === "" ? "grow" : "", shrink === "0" ? "shrink" : ""].filter(Boolean)}
+							disabled={edit.disabled}
+							onValueChange={(next) => {
+								const grows = next.includes("grow");
+								const fixed = next.includes("shrink");
+
+								edit.apply((own) => {
+									const ownGrow = getStyle(own, "flexGrow", edit.variant);
+									const ownShrink = getStyle(own, "flexShrink", edit.variant);
+
+									const withGrow = setStyle(
+										own,
+										"flexGrow",
+										grows ? "" : ownGrow === "" ? null : ownGrow,
+										edit.variant,
+									);
+
+									return setStyle(
+										withGrow,
+										"flexShrink",
+										fixed ? "0" : ownShrink === "0" ? null : ownShrink,
+										edit.variant,
+									);
+								});
+							}}
+							aria-label="Grow and shrink"
+							className="w-full"
+						>
+							<ToggleGroupItem
+								value="grow"
+								title="Take the free space (grow)"
+								className="h-8 min-w-0 flex-1 px-1.5 text-xs"
+							>
+								Grow
+							</ToggleGroupItem>
+							<ToggleGroupItem
+								value="shrink"
+								title="Never shrink (shrink-0)"
+								className="h-8 min-w-0 flex-1 px-1.5 text-xs"
+							>
+								No shrink
+							</ToggleGroupItem>
+						</ToggleGroup>
+					</Row>
+				</>
+			) : null}
+			<Row label="Align self">
+				<SelectField
+					label="Align self"
+					value={getStyle(classes, "alignSelf", edit.variant)}
+					mixed={mixedStyle(edit, "alignSelf")}
+					options={SELF_OPTIONS}
+					placeholder="auto"
+					edit={edit}
+					onChange={styleWriter(edit, "alignSelf")}
+				/>
+			</Row>
+		</Section>
+	);
+}
+
+function PositionSection({ classes, edit }: SectionProps) {
+	const position = effective(classes, "position", edit.variant);
+	const placed = position !== null && position !== "static";
+
+	return (
+		<Section title="Position">
+			<Row label="Position">
+				<SelectField
+					label="Position"
+					value={getStyle(classes, "position", edit.variant)}
+					mixed={mixedStyle(edit, "position")}
+					options={POSITION_OPTIONS}
+					placeholder="static"
+					edit={edit}
+					onChange={styleWriter(edit, "position")}
+				/>
+			</Row>
+			{placed ? (
+				<BoxField title="Inset" group="inset" scale={INSET_SCALE} linked={ALL_SIDES} split={SIDES} edit={edit} />
+			) : null}
+			<Row label="Z-index">
+				<ScaleField
+					ariaLabel="Z-index"
+					value={getStyle(classes, "zIndex", edit.variant)}
+					mixed={mixedStyle(edit, "zIndex")}
+					scale={Z_INDEX_SCALE}
+					placeholder="auto"
+					edit={edit}
+					onChange={styleWriter(edit, "zIndex")}
+				/>
+			</Row>
+		</Section>
+	);
+}
+
+function SpacingSection({ edit }: Pick<SectionProps, "edit">) {
 	return (
 		<Section title="Spacing">
-			<BoxField
-				title="Padding"
-				group="padding"
-				classes={classes}
-				scale={SPACING_SCALE}
-				linked={AXES}
-				split={SIDES}
-				edit={edit}
-			/>
-			<BoxField
-				title="Margin"
-				group="margin"
-				classes={classes}
-				scale={MARGIN_SCALE}
-				linked={AXES}
-				split={SIDES}
-				edit={edit}
-			/>
+			<BoxField title="Padding" group="padding" scale={SPACING_SCALE} linked={AXES} split={SIDES} edit={edit} />
+			<BoxField title="Margin" group="margin" scale={MARGIN_SCALE} linked={AXES} split={SIDES} edit={edit} />
 		</Section>
 	);
 }
 
 function SizeSection({ classes, edit }: SectionProps) {
-	const size = getBox(classes, "size");
+	const size = getBox(classes, "size", edit.variant);
 
 	const limits: [SimpleProp, string][] = [
 		["minWidth", "Min W"],
@@ -365,11 +690,14 @@ function SizeSection({ classes, edit }: SectionProps) {
 		["maxHeight", "Max H"],
 	];
 
-	const anyLimit = limits.some(([prop]) => getStyle(classes, prop) !== null);
+	const anyLimit = limits.some(([prop]) => getStyle(classes, prop, edit.variant) !== null);
 	const [showLimits, setShowLimits] = useState(false);
 
 	const writeSize = (part: string) => (value: string | null, continuous: boolean) =>
-		edit.apply(setBoxParts(classes, "size", [part], value), continuous ? `size:${part}` : undefined);
+		edit.apply(
+			(classes) => setBoxParts(classes, "size", [part], value, edit.variant),
+			continuous ? `size:${part}` : undefined,
+		);
 
 	return (
 		<Section
@@ -394,6 +722,7 @@ function SizeSection({ classes, edit }: SectionProps) {
 					label="W"
 					ariaLabel="Width"
 					value={size.width ?? null}
+					mixed={isMixed(edit, (own) => getBox(own, "size", edit.variant).width ?? null)}
 					scale={SIZE_SCALE}
 					edit={edit}
 					onChange={writeSize("width")}
@@ -402,6 +731,7 @@ function SizeSection({ classes, edit }: SectionProps) {
 					label="H"
 					ariaLabel="Height"
 					value={size.height ?? null}
+					mixed={isMixed(edit, (own) => getBox(own, "size", edit.variant).height ?? null)}
 					scale={SIZE_SCALE}
 					edit={edit}
 					onChange={writeSize("height")}
@@ -412,10 +742,11 @@ function SizeSection({ classes, edit }: SectionProps) {
 								key={prop}
 								label={label}
 								ariaLabel={label}
-								value={getStyle(classes, prop)}
+								value={getStyle(classes, prop, edit.variant)}
+								mixed={mixedStyle(edit, prop)}
 								scale={MAX_SIZE_SCALE}
 								edit={edit}
-								onChange={styleWriter(classes, edit, prop)}
+								onChange={styleWriter(edit, prop)}
 							/>
 						))
 					: null}
@@ -424,23 +755,50 @@ function SizeSection({ classes, edit }: SectionProps) {
 	);
 }
 
+/** `text-sm/6` carries a line height: the size and its `/6` */
+function fontSizeOf(classes: string, variant: string) {
+	const fontSize = getStyle(classes, "fontSize", variant);
+
+	return fontSize === null ? [null, null] : splitModifier(fontSize);
+}
+
 function TypographySection({ classes, edit }: SectionProps) {
-	const fontSize = getStyle(classes, "fontSize");
-	// `text-sm/6` carries a line height: keep it when picking another size
-	const [sizeValue, lineModifier] = fontSize === null ? [null, null] : splitModifier(fontSize);
-	const align = getStyle(classes, "textAlign");
+	const [sizeValue, lineModifier] = fontSizeOf(classes, edit.variant);
+	const align = getStyle(classes, "textAlign", edit.variant);
 
 	return (
 		<Section title="Typography">
+			<Row label="Font">
+				<SelectField
+					label="Font family"
+					value={getStyle(classes, "fontFamily", edit.variant)}
+					mixed={mixedStyle(edit, "fontFamily")}
+					options={FONT_FAMILY_OPTIONS}
+					placeholder="Sans"
+					edit={edit}
+					onChange={styleWriter(edit, "fontFamily")}
+				/>
+			</Row>
 			<Row label="Size">
 				<ScaleField
 					ariaLabel="Font size"
 					value={sizeValue}
+					mixed={isMixed(edit, (own) => fontSizeOf(own, edit.variant)[0])}
 					scale={FONT_SIZE_SCALE}
 					edit={edit}
 					onChange={(value, continuous) =>
 						edit.apply(
-							setStyle(classes, "fontSize", value === null ? null : lineModifier ? `${value}/${lineModifier}` : value),
+							(own) => {
+								// Keep the element's line height when picking another size
+								const modifier = fontSizeOf(own, edit.variant)[1];
+
+								return setStyle(
+									own,
+									"fontSize",
+									value === null ? null : modifier ? `${value}/${modifier}` : value,
+									edit.variant,
+								);
+							},
 							continuous ? "fontSize" : undefined,
 						)
 					}
@@ -449,35 +807,42 @@ function TypographySection({ classes, edit }: SectionProps) {
 			<Row label="Weight">
 				<SelectField
 					label="Font weight"
-					value={getStyle(classes, "fontWeight")}
+					value={getStyle(classes, "fontWeight", edit.variant)}
+					mixed={mixedStyle(edit, "fontWeight")}
 					options={FONT_WEIGHT_SCALE.options}
 					edit={edit}
-					onChange={styleWriter(classes, edit, "fontWeight")}
+					onChange={styleWriter(edit, "fontWeight")}
 				/>
 			</Row>
 			<Row label="Line height">
 				<ScaleField
 					ariaLabel="Line height"
-					value={getStyle(classes, "lineHeight") ?? lineModifier}
+					value={getStyle(classes, "lineHeight", edit.variant) ?? lineModifier}
+					mixed={isMixed(edit, (own) => getStyle(own, "lineHeight", edit.variant) ?? fontSizeOf(own, edit.variant)[1])}
 					scale={LINE_HEIGHT_SCALE}
 					edit={edit}
-					onChange={(value, continuous) => {
-						// A `leading-*` class takes over from the size's `/6`
-						const next = setStyle(classes, "lineHeight", value);
+					onChange={(value, continuous) =>
 						edit.apply(
-							lineModifier ? setStyle(next, "fontSize", sizeValue) : next,
+							(own) => {
+								// A `leading-*` class takes over from the size's `/6`
+								const next = setStyle(own, "lineHeight", value, edit.variant);
+								const [size, modifier] = fontSizeOf(own, edit.variant);
+
+								return modifier ? setStyle(next, "fontSize", size, edit.variant) : next;
+							},
 							continuous ? "lineHeight" : undefined,
-						);
-					}}
+						)
+					}
 				/>
 			</Row>
 			<Row label="Tracking">
 				<ScaleField
 					ariaLabel="Letter spacing"
-					value={getStyle(classes, "letterSpacing")}
+					value={getStyle(classes, "letterSpacing", edit.variant)}
+					mixed={mixedStyle(edit, "letterSpacing")}
 					scale={LETTER_SPACING_SCALE}
 					edit={edit}
-					onChange={styleWriter(classes, edit, "letterSpacing")}
+					onChange={styleWriter(edit, "letterSpacing")}
 				/>
 			</Row>
 			<Row label="Align">
@@ -486,15 +851,18 @@ function TypographySection({ classes, edit }: SectionProps) {
 					value={align}
 					options={TEXT_ALIGN_OPTIONS}
 					disabled={edit.disabled}
-					onChange={(value) => edit.apply(setStyle(classes, "textAlign", value))}
+					onChange={(value) => edit.apply((classes) => setStyle(classes, "textAlign", value, edit.variant))}
 				/>
 			</Row>
 			<Row label="Color">
 				<ColorField
 					label="Text color"
-					value={getStyle(classes, "textColor")}
+					value={getStyle(classes, "textColor", edit.variant)}
+					mixed={mixedStyle(edit, "textColor")}
 					edit={edit}
-					onPick={(value, field) => edit.apply(setStyle(classes, "textColor", value), field && `text:${field}`)}
+					onPick={(value, field) =>
+						edit.apply((classes) => setStyle(classes, "textColor", value, edit.variant), field && `text:${field}`)
+					}
 				/>
 			</Row>
 		</Section>
@@ -502,15 +870,15 @@ function TypographySection({ classes, edit }: SectionProps) {
 }
 
 function BorderSection({ classes, edit }: SectionProps) {
-	const width = getBox(classes, "borderWidth");
-	const hasBorder = Object.values(width).some((value) => value !== null);
+	const width = getBox(classes, "borderWidth", edit.variant);
+	// A state can recolor a border that Default draws
+	const hasBorder = [width, getBox(classes, "borderWidth")].some((box) => Object.values(box).some((v) => v !== null));
 
 	return (
 		<Section title="Border">
 			<BoxField
 				title="Radius"
 				group="borderRadius"
-				classes={classes}
 				scale={RADIUS_SCALE}
 				linked={ALL_CORNERS}
 				split={CORNERS}
@@ -519,7 +887,6 @@ function BorderSection({ classes, edit }: SectionProps) {
 			<BoxField
 				title="Width"
 				group="borderWidth"
-				classes={classes}
 				scale={BORDER_WIDTH_SCALE}
 				linked={ALL_SIDES}
 				split={SIDES}
@@ -530,19 +897,26 @@ function BorderSection({ classes, edit }: SectionProps) {
 					<Row label="Color">
 						<ColorField
 							label="Border color"
-							value={getStyle(classes, "borderColor")}
+							value={getStyle(classes, "borderColor", edit.variant)}
+							mixed={mixedStyle(edit, "borderColor")}
 							edit={edit}
-							onPick={(value, field) => edit.apply(setStyle(classes, "borderColor", value), field && `border:${field}`)}
+							onPick={(value, field) =>
+								edit.apply(
+									(classes) => setStyle(classes, "borderColor", value, edit.variant),
+									field && `border:${field}`,
+								)
+							}
 						/>
 					</Row>
 					<Row label="Style">
 						<SelectField
 							label="Border style"
-							value={getStyle(classes, "borderStyle")}
+							value={getStyle(classes, "borderStyle", edit.variant)}
+							mixed={mixedStyle(edit, "borderStyle")}
 							options={BORDER_STYLE_OPTIONS}
 							placeholder="solid"
 							edit={edit}
-							onChange={styleWriter(classes, edit, "borderStyle")}
+							onChange={styleWriter(edit, "borderStyle")}
 						/>
 					</Row>
 				</>
@@ -557,20 +931,22 @@ function EffectsSection({ classes, edit }: SectionProps) {
 			<Row label="Opacity">
 				<ScaleField
 					ariaLabel="Opacity"
-					value={getStyle(classes, "opacity")}
+					value={getStyle(classes, "opacity", edit.variant)}
+					mixed={mixedStyle(edit, "opacity")}
 					scale={OPACITY_SCALE}
 					placeholder="100"
 					edit={edit}
-					onChange={styleWriter(classes, edit, "opacity")}
+					onChange={styleWriter(edit, "opacity")}
 				/>
 			</Row>
 			<Row label="Shadow">
 				<SelectField
 					label="Shadow"
-					value={getStyle(classes, "boxShadow")}
+					value={getStyle(classes, "boxShadow", edit.variant)}
+					mixed={mixedStyle(edit, "boxShadow")}
 					options={SHADOW_SCALE.options}
 					edit={edit}
-					onChange={styleWriter(classes, edit, "boxShadow")}
+					onChange={styleWriter(edit, "boxShadow")}
 				/>
 			</Row>
 		</Section>
@@ -599,7 +975,7 @@ function ClassesField({ classes, edit, note }: SectionProps & { note: string | n
 					// One line: a newline in a plain attribute would turn it into an expression
 					const next = event.target.value.replace(/[\r\n]+/g, " ");
 					setDraft(next);
-					edit.apply(next, "classes");
+					edit.apply((own) => retoken(own, text, next), "classes");
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" || event.key === "Escape") {
@@ -616,13 +992,9 @@ function ClassesField({ classes, edit, note }: SectionProps & { note: string | n
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
 	return (
-		<section className="flex flex-col gap-2">
-			<div className="flex h-5 items-center justify-between">
-				<h3 className="text-xs font-medium text-subtle-foreground">{title}</h3>
-				{action}
-			</div>
+		<InspectorSection title={title} action={action}>
 			{children}
-		</section>
+		</InspectorSection>
 	);
 }
 
@@ -639,19 +1011,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function BoxField({
 	title,
 	group,
-	classes,
 	scale,
 	linked,
 	split,
 	edit,
-}: SectionProps & { title: string; group: BoxGroup; scale: Scale; linked: Part[]; split: Part[] }) {
-	const box = getBox(classes, group);
+}: Pick<SectionProps, "edit"> & { title: string; group: BoxGroup; scale: Scale; linked: Part[]; split: Part[] }) {
+	const boxes = edit.all.map((own) => getBox(own, group, edit.variant));
 
-	const common = (parts: readonly string[]) => {
-		const values = parts.map((part) => box[part] ?? null);
+	/** `undefined` when the parts or the elements differ */
+	const common = (parts: readonly string[]) =>
+		commonValue(
+			boxes.map((box) => {
+				const values = parts.map((part) => box[part] ?? null);
 
-		return values.every((value) => value === values[0]) ? values[0]! : undefined;
-	};
+				// A value no box part has, so differing parts never match each other
+				return commonValue(values) ?? MIXED;
+			}),
+		);
 
 	const mixed = linked.some((part) => common(part.parts) === undefined);
 	const [splitChoice, setSplitChoice] = useState<boolean | null>(null);
@@ -660,7 +1036,7 @@ function BoxField({
 
 	const write = (part: Part) => (value: string | null, continuous: boolean) =>
 		edit.apply(
-			setBoxParts(classes, group, part.parts, value),
+			(classes) => setBoxParts(classes, group, part.parts, value, edit.variant),
 			continuous ? `${group}:${part.parts.join(",")}` : undefined,
 		);
 
@@ -690,8 +1066,8 @@ function BoxField({
 							key={part.label}
 							label={part.label}
 							ariaLabel={`${title} ${part.label || "all"}`.trim()}
-							value={value ?? null}
-							placeholder={value === undefined ? "Mixed" : "—"}
+							value={value === undefined || value === MIXED ? null : value}
+							mixed={value === undefined || value === MIXED}
 							scale={scale}
 							edit={edit}
 							onChange={write(part)}
@@ -708,6 +1084,7 @@ function ScaleField({
 	label,
 	ariaLabel,
 	value,
+	mixed = false,
 	scale,
 	placeholder = "—",
 	edit,
@@ -716,6 +1093,8 @@ function ScaleField({
 	label?: string;
 	ariaLabel: string;
 	value: string | null;
+	/** The selected elements differ: shows "Mixed" */
+	mixed?: boolean;
 	scale: Scale;
 	placeholder?: string;
 	edit: Edit;
@@ -751,7 +1130,7 @@ function ScaleField({
 			{label ? <span className="shrink-0 text-xs text-subtle-foreground">{label}</span> : null}
 			<input
 				value={draft ?? shown?.label ?? ""}
-				placeholder={placeholder}
+				placeholder={mixed ? "Mixed" : placeholder}
 				disabled={edit.disabled}
 				aria-label={ariaLabel}
 				aria-invalid={invalid || undefined}
@@ -845,6 +1224,7 @@ function ScaleMenuItems({
 function SelectField({
 	label,
 	value,
+	mixed = false,
 	options,
 	placeholder = "—",
 	edit,
@@ -852,13 +1232,14 @@ function SelectField({
 }: {
 	label: string;
 	value: string | null;
+	mixed?: boolean;
 	options: ScaleOption[];
 	placeholder?: string;
 	edit: Edit;
 	onChange: (value: string | null, continuous: boolean) => void;
 }) {
 	const option = options.find((o) => o.value === value);
-	const text = value === null ? placeholder : option ? option.label : value || "base";
+	const text = value === null ? (mixed ? "Mixed" : placeholder) : option ? option.label : value || "base";
 
 	return (
 		<DropdownMenu modal={false}>
@@ -1007,11 +1388,13 @@ function colorLabel(value: string) {
 function ColorField({
 	label,
 	value,
+	mixed = false,
 	edit,
 	onPick,
 }: {
 	label: string;
 	value: string | null;
+	mixed?: boolean;
 	edit: Edit;
 	onPick: (value: string | null, field?: string) => void;
 }) {
@@ -1032,7 +1415,7 @@ function ColorField({
 					>
 						<Swatch value={value} className="size-4" />
 						<span className={cn("truncate", value === null && "text-subtle-foreground")} title={value ?? undefined}>
-							{value === null ? "None" : colorLabel(value)}
+							{value === null ? (mixed ? "Mixed" : "None") : colorLabel(value)}
 						</span>
 					</button>
 				</PopoverTrigger>

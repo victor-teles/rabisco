@@ -1,7 +1,7 @@
 // Each edit returns `null` when the file does not parse or no element starts at the offset.
 
 import { isNumber } from "../guards";
-import { attrValue, indentAt, indentUnit, lineEnd, lineStart, reindent, startsLine } from "./text";
+import { attrValue, dedent, indentAt, indentUnit, lineEnd, lineStart, reindent, startsLine } from "./text";
 import { findElement, flatten, parseFile, type JsxElement } from "./tree";
 
 /** Value is the element's start offset in the original source. */
@@ -16,8 +16,39 @@ function elementIn(source: string, start: number): JsxElement | null {
 const splice = (source: string, from: number, to: number, text: string) =>
 	source.slice(0, from) + text + source.slice(to);
 
-/** As the last child; a self-closing parent gets a closing tag. */
-export function insertChild(source: string, parentStart: number, snippet: string): string | null {
+/** The children that render something, in source order: elements, non-empty expressions and visible text (trimmed). */
+export function childSlots(parent: JsxElement): { start: number; end: number }[] {
+	return parent.children.flatMap((child) => {
+		if (child.kind === "element") return [{ start: child.start, end: child.end }];
+
+		if (child.kind === "expression") return child.empty ? [] : [{ start: child.start, end: child.end }];
+
+		if (!child.value) return [];
+
+		// A lone space between inline elements renders, but has nothing to trim to
+		if (!child.raw.trim()) return [{ start: child.start, end: child.end }];
+
+		const lead = child.raw.length - child.raw.trimStart().length;
+		const trail = child.raw.length - child.raw.trimEnd().length;
+
+		return [{ start: child.start + lead, end: child.end - trail }];
+	});
+}
+
+/** `child` goes between `before` and `after` at `at`; `start` is where its first non-blank character lands. */
+function place(source: string, at: number, before: string, child: string, after: string) {
+	const lead = child.length - child.trimStart().length;
+
+	return { source: splice(source, at, at, before + child + after), start: at + before.length + lead };
+}
+
+/** Inserts `snippet` as child slot `index` of the element at `parentStart` (past the end appends; a self-closing parent gets a closing tag). `start` is the inserted element's offset in the result. */
+export function insertAt(
+	source: string,
+	parentStart: number,
+	index: number,
+	snippet: string,
+): { source: string; start: number } | null {
 	const parent = elementIn(source, parentStart);
 
 	if (!parent || !snippet.trim()) return null;
@@ -31,25 +62,44 @@ export function insertChild(source: string, parentStart: number, snippet: string
 		let from = slash;
 
 		while (from > parent.nameEnd && /\s/.test(source[from - 1]!)) from--;
+		const closing = `\n${parentIndent}</${parent.name ?? ""}>`;
 
-		return splice(source, from, parent.end, `>\n${child}\n${parentIndent}</${parent.name ?? ""}>`);
+		return place(splice(source, from, parent.end, ""), from, ">\n", child, closing);
+	}
+
+	const slot = childSlots(parent)[Math.max(0, index)];
+
+	if (slot) {
+		if (startsLine(source, slot.start)) {
+			// On its own line: the child goes on the line above, indented like it
+			const at = lineStart(source, slot.start);
+
+			return place(source, at, "", reindent(snippet, indentAt(source, slot.start), unit), "\n");
+		}
+
+		// Inline siblings (`<div><A /><B /></div>`, `Hi <b>there</b>`): stay inline when it fits on one line
+		if (!child.includes("\n")) return place(source, slot.start, "", child.trimStart(), "");
+
+		return place(source, slot.start, "\n", child, `\n${parentIndent}${unit}`);
 	}
 
 	const closing = parent.closingStart!;
 
 	if (startsLine(source, closing) && lineStart(source, closing) > parent.openingEnd) {
 		// Closing tag on its own line: the child goes on the line above it
-		const at = lineStart(source, closing);
-
-		return splice(source, at, at, `${child}\n`);
+		return place(source, lineStart(source, closing), "", child, "\n");
 	}
 
 	// `<p>Hi</p>`, `<div></div>`: break the closing tag onto its own line
 	const before = source.slice(parent.openingEnd, closing);
 	const trimmedEnd = before.trim() ? closing - (before.length - before.trimEnd().length) : parent.openingEnd;
 
-	return splice(source, trimmedEnd, closing, `\n${child}\n${parentIndent}`);
+	return place(splice(source, trimmedEnd, closing, ""), trimmedEnd, "\n", child, `\n${parentIndent}`);
 }
+
+/** As the last child; a self-closing parent gets a closing tag. */
+export const insertChild = (source: string, parentStart: number, snippet: string): string | null =>
+	insertAt(source, parentStart, Infinity, snippet)?.source ?? null;
 
 /** `true` writes a bare `name`; `false` and `null` remove it. */
 export function setAttribute(
@@ -171,6 +221,218 @@ export function removeElement(source: string, start: number): string | null {
 	}
 
 	return splice(source, from, to, "");
+}
+
+/** A copy goes right after the element, on a line of its own when the element has one. `start` is the copy's offset. */
+export function duplicateElement(source: string, start: number): { source: string; start: number } | null {
+	const element = elementIn(source, start);
+
+	// A root or an element inside `{…}` has no sibling slot to take the copy
+	if (!element?.parent || element.container) return null;
+	const gap = startsLine(source, element.start) ? `\n${indentAt(source, element.start)}` : "";
+	const copy = gap + source.slice(element.start, element.end);
+
+	return { source: splice(source, element.end, element.end, copy), start: element.end + gap.length };
+}
+
+/** On a line of its own the element moves one level in. `start` is the wrapper's offset, which was the element's. */
+export function wrapElement(
+	source: string,
+	start: number,
+	tag = "div",
+	className?: string,
+): { source: string; start: number } | null {
+	const element = elementIn(source, start);
+
+	if (!element) return null;
+	const text = source.slice(element.start, element.end);
+	const opening = className ? `<${tag} className=${attrValue(className)}>` : `<${tag}>`;
+
+	if (!startsLine(source, element.start)) {
+		return { source: splice(source, element.start, element.end, `${opening}${text}</${tag}>`), start: element.start };
+	}
+
+	const indent = indentAt(source, element.start);
+	const unit = indentUnit(source);
+	const inner = reindent(dedent(text, indent), indent + unit, unit);
+
+	return {
+		source: splice(source, element.start, element.end, `${opening}\n${inner}\n${indent}</${tag}>`),
+		start: element.start,
+	};
+}
+
+/** Figma's auto layout: a vertical flex stack */
+export const STACK_CLASSES = "flex flex-col gap-2";
+
+export const wrapInStack = (source: string, start: number) => wrapElement(source, start, "div", STACK_CLASSES);
+
+/** Lines after the first move from indent `from` to `to`; the first starts mid-line wherever it lands. */
+function rebase(text: string, from: string, to: string) {
+	if (from === to) return text;
+
+	return text
+		.split("\n")
+		.map((line, i) => (i > 0 && line.startsWith(from) ? to + line.slice(from.length) : line))
+		.join("\n");
+}
+
+const VOID_TAGS = new Set([
+	"area",
+	"base",
+	"br",
+	"col",
+	"embed",
+	"hr",
+	"img",
+	"input",
+	"link",
+	"meta",
+	"source",
+	"track",
+	"wbr",
+]);
+
+const isVoid = (element: JsxElement) => element.name !== null && VOID_TAGS.has(element.name);
+
+/** An element that is a plain child, the only kind that has sibling slots to move among */
+function movable(source: string, start: number) {
+	const element = elementIn(source, start);
+
+	return element?.parent && !element.container ? { element, parent: element.parent } : null;
+}
+
+/** Swaps the element with the previous (-1) or next (1) sibling that renders something. `null` at the edges. `start` is the element's new offset. */
+export function moveAmongSiblings(
+	source: string,
+	start: number,
+	delta: -1 | 1,
+): { source: string; start: number } | null {
+	const found = movable(source, start);
+
+	if (!found) return null;
+	// A lone space between inline siblings is a slot, but swapping with it moves nothing
+	const slots = childSlots(found.parent).filter((slot) => source.slice(slot.start, slot.end).trim());
+	const index = slots.findIndex((slot) => slot.start === found.element.start);
+	const other = slots[index + delta];
+
+	if (index < 0 || !other) return null;
+	const [a, b] = delta < 0 ? [other, slots[index]!] : [slots[index]!, other];
+	const indentA = indentAt(source, a.start);
+	const indentB = indentAt(source, b.start);
+	const intoA = rebase(source.slice(b.start, b.end), indentB, indentA);
+	const intoB = rebase(source.slice(a.start, a.end), indentA, indentB);
+	const between = source.slice(a.end, b.start);
+	const next = source.slice(0, a.start) + intoA + between + intoB + source.slice(b.end);
+
+	return { source: next, start: delta < 0 ? a.start : a.start + intoA.length + between.length };
+}
+
+/**
+ * Moves the element to child slot `index` of the element at `parentStart`. `index` counts the parent's slots
+ * before the move, the element's own included, as `dropTarget` and `dropPlacement` report them: in its own parent,
+ * its own index and the one after leave it where it is. `start` is the element's new offset.
+ * Refuses roots, elements inside `{…}`, void parents (`<img>`), and moving an element into itself.
+ */
+export function moveElement(
+	source: string,
+	start: number,
+	parentStart: number,
+	index: number,
+): { source: string; start: number } | null {
+	const found = movable(source, start);
+	const parent = elementIn(source, parentStart);
+
+	if (!found || !parent || isVoid(parent)) return null;
+	const { element } = found;
+
+	if (parent.start >= element.start && parent.start < element.end) return null;
+	const slots = childSlots(parent);
+	const at = Math.min(Math.max(0, index), slots.length);
+	// The slot of `parent` that holds the element, when `parent` is one of its ancestors
+	const holder = slots.findIndex((slot) => element.start >= slot.start && element.start < slot.end);
+
+	if (found.parent === parent && (at === holder || at === holder + 1)) return { source, start };
+	const before = holder < 0 ? parent.end <= element.start : at <= holder;
+	const code = dedent(source.slice(element.start, element.end), indentAt(source, element.start));
+	const inserted = insertAt(source, parent.start, at, code);
+
+	if (!inserted) return null;
+	const shift = before ? inserted.source.length - source.length : 0;
+	const next = removeElement(inserted.source, element.start + shift);
+
+	if (next === null || !parseFile(next).ok) return null;
+
+	return { source: next, start: before ? inserted.start : inserted.start - (inserted.source.length - next.length) };
+}
+
+/**
+ * Replaces the element with its children, one level out. Refused without children, and where the result must be one
+ * element (a root, or inside `{…}`) but the children aren't. `start` is the first unwrapped element's offset, or the
+ * parent's when only text was unwrapped.
+ */
+export function unwrapElement(source: string, start: number): { source: string; start: number } | null {
+	const element = elementIn(source, start);
+
+	if (!element) return null;
+	const slots = childSlots(element).filter((slot) => source.slice(slot.start, slot.end).trim());
+	const first = slots[0];
+	const last = slots[slots.length - 1];
+
+	if (!first || !last) return null;
+
+	const single =
+		slots.length === 1 && element.children.some((child) => child.kind === "element" && child.start === first.start);
+
+	if ((!element.parent || element.container) && !single) return null;
+	const indent = indentAt(source, element.start);
+	const from = startsLine(source, first.start) ? indentAt(source, first.start) : indent + indentUnit(source);
+	const text = rebase(source.slice(first.start, last.end), from, indent);
+	const next = splice(source, element.start, element.end, text);
+	const parsed = parseFile(next);
+
+	if (!parsed.ok) return null;
+
+	// The earliest start in the unwrapped text is its first top-level element
+	const starts = flatten(parsed).flatMap((inner) =>
+		inner.start >= element.start && inner.start < element.start + text.length ? [inner.start] : [],
+	);
+
+	const selected = starts.length ? Math.min(...starts) : element.parent?.start;
+
+	return selected === undefined ? null : { source: next, start: selected };
+}
+
+/** One or more elements, as copied: no screen module, nothing but JSX */
+export function isElementCode(text: string) {
+	const code = text.trim();
+
+	if (!code.startsWith("<") || /^\s*(?:import|export)\b/m.test(code)) return false;
+	const parsed = parseFile(`const pasted = <>\n${code}\n</>;`);
+
+	return parsed.ok && parsed.roots.length === 1 && parsed.roots[0]!.children.some((child) => child.kind === "element");
+}
+
+/**
+ * Pastes element code as Figma does: into a selected empty container (an intrinsic, non-void tag without children),
+ * else right after the selected element; a root or an element inside `{…}` takes it as its last child.
+ * `start` is the first pasted element's offset.
+ */
+export function pasteElement(source: string, start: number, code: string): { source: string; start: number } | null {
+	const element = elementIn(source, start);
+
+	if (!element || !isElementCode(code)) return null;
+	const empty = element.intrinsic && !isVoid(element) && !childSlots(element).length;
+	const found = movable(source, start);
+	let result: { source: string; start: number } | null;
+
+	if (found && !empty) {
+		const index = childSlots(found.parent).findIndex((slot) => slot.start === element.start);
+		result = insertAt(source, found.parent.start, index + 1, code);
+	} else if (isVoid(element)) return null;
+	else result = insertAt(source, element.start, Infinity, code);
+
+	return result && parseFile(result.source).ok ? result : null;
 }
 
 /** `screens/home.tsx:120` → `{ path, start }`; a bare offset (`120`) has no path. */

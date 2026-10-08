@@ -2,7 +2,6 @@ import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
 import * as ReactDOM from "react-dom";
 import * as ReactDOMClient from "react-dom/client";
-import * as Lucide from "lucide-react";
 import * as Cva from "class-variance-authority";
 import * as Clsx from "clsx";
 import * as TailwindMerge from "tailwind-merge";
@@ -25,13 +24,26 @@ import * as Textarea from "@/components/ui/textarea";
 import * as Toggle from "@/components/ui/toggle";
 import * as ToggleGroup from "@/components/ui/toggle-group";
 import * as Tooltip from "@/components/ui/tooltip";
+import { frameAssets } from "./assets";
+import { lucide } from "./icons";
+import { refresh } from "./refresh";
+
+type Jsx = typeof JsxRuntime.jsx;
+
+/** Screens write `src="/images/a.png"`; the frame loads the bytes the host posted (decision 0010) */
+const resolvingAssets =
+	(jsx: Jsx): Jsx =>
+	(type, props, key) =>
+		jsx(type, frameAssets.props(props), key);
+
+const jsxRuntime = { ...JsxRuntime, jsx: resolvingAssets(JsxRuntime.jsx), jsxs: resolvingAssets(JsxRuntime.jsxs) };
 
 export const externals = {
 	react: React,
-	"react/jsx-runtime": JsxRuntime,
+	"react/jsx-runtime": jsxRuntime,
 	"react-dom": ReactDOM,
 	"react-dom/client": ReactDOMClient,
-	"lucide-react": Lucide,
+	"lucide-react": lucide,
 	"class-variance-authority": Cva,
 	clsx: Clsx,
 	"tailwind-merge": TailwindMerge,
@@ -54,6 +66,8 @@ export const externals = {
 	"@/components/ui/toggle": Toggle,
 	"@/components/ui/toggle-group": ToggleGroup,
 	"@/components/ui/tooltip": Tooltip,
+	/** Used by the code `compileSource` appends; not for screens */
+	"rabisco:refresh": refresh,
 };
 
 export type ExternalSpecifier = keyof typeof externals;

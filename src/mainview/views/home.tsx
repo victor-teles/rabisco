@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+	ArrowDownUp,
 	FolderOpen,
 	FolderSearch,
 	FolderX,
@@ -8,6 +9,7 @@ import {
 	MoreHorizontal,
 	Palette,
 	Plus,
+	Search,
 	Settings,
 	Trash2,
 	X,
@@ -29,9 +31,13 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DesignComposer } from "@/components/app/design-composer";
@@ -43,9 +49,11 @@ import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
 import { openSettings } from "@/hooks/use-providers";
 import { useVariations } from "@/hooks/use-variations";
+import { arrangeRecents, isRecentsSort, RECENTS_SORTS, type RecentsSort } from "@/lib/recents";
 import { api, isDesktop } from "@/lib/rpc";
+import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { Device, ProjectSummary } from "../../shared/types";
+import type { Device, ProjectSummary, ScreenCover, ScreenSource } from "../../shared/types";
 
 const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
 	{
@@ -72,6 +80,18 @@ const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
 
 type Section = "home" | "projects";
 
+const SORT_KEY = "rabisco:recents-sort";
+
+function storedSort(): RecentsSort {
+	try {
+		const stored = localStorage.getItem(SORT_KEY);
+
+		return isRecentsSort(stored) ? stored : "opened";
+	} catch {
+		return "opened";
+	}
+}
+
 export type StartDesign = (input: { prompt: string; device: Device; files?: File[]; variations?: number }) => void;
 
 type HomeProps = {
@@ -88,7 +108,11 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
 	const [section, setSection] = useState<Section>("home");
+	const [query, setQuery] = useState("");
+	const [sort, setSort] = useState<RecentsSort>(storedSort);
 	const heroRef = useRef<HTMLElement>(null);
+	const searchRef = useRef<HTMLInputElement>(null);
+	const shown = useMemo(() => (projects ? arrangeRecents(projects, query, sort) : null), [projects, query, sort]);
 
 	useEffect(() => {
 		api.listRecents({}).then(setProjects, (error) => {
@@ -96,6 +120,33 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 			toast.error("Couldn't load recent projects", { description: String(error) });
 		});
 	}, []);
+
+	// ⌘F searches the recents, as it finds layers in Figma
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.code !== "KeyF") return;
+
+			if (!searchRef.current) return;
+			event.preventDefault();
+			searchRef.current.focus();
+			searchRef.current.select();
+		};
+
+		window.addEventListener("keydown", onKeyDown);
+
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, []);
+
+	const changeSort = (value: string) => {
+		if (!isRecentsSort(value)) return;
+		setSort(value);
+
+		try {
+			localStorage.setItem(SORT_KEY, value);
+		} catch {
+			// Private mode: the choice lasts for this session
+		}
+	};
 
 	const forget = (path: string) => setProjects((current) => current?.filter((p) => p.path !== path) ?? null);
 
@@ -205,11 +256,52 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								) : (
 									<h2 className="text-sm font-medium">Recent designs</h2>
 								)}
-								<div className="flex items-center gap-3">
+								<div className="flex items-center gap-2">
 									{projects?.length ? (
-										<span className="text-xs text-subtle-foreground tabular-nums">
-											{projects.length} {projects.length === 1 ? "project" : "projects"}
-										</span>
+										<>
+											<span className="mr-1 text-xs text-subtle-foreground tabular-nums">
+												{projects.length} {projects.length === 1 ? "project" : "projects"}
+											</span>
+											<div className="relative">
+												<Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-subtle-foreground" />
+												<Input
+													ref={searchRef}
+													type="search"
+													value={query}
+													onChange={(event) => setQuery(event.target.value)}
+													onKeyDown={(event) => {
+														if (event.key === "Escape" && query) {
+															event.preventDefault();
+															setQuery("");
+														}
+													}}
+													placeholder="Search"
+													aria-label="Search projects"
+													title="Search projects (⌘F)"
+													className="h-7 w-44 pl-7 text-[13px] md:text-[13px]"
+												/>
+											</div>
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<Button variant="ghost" size="xs" className="text-muted-foreground">
+														<ArrowDownUp />
+														{RECENTS_SORTS.find((option) => option.value === sort)?.label}
+													</Button>
+												</DropdownMenuTrigger>
+												<DropdownMenuContent align="end" className="w-40">
+													<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+														Sort by
+													</DropdownMenuLabel>
+													<DropdownMenuRadioGroup value={sort} onValueChange={changeSort}>
+														{RECENTS_SORTS.map((option) => (
+															<DropdownMenuRadioItem key={option.value} value={option.value}>
+																{option.label}
+															</DropdownMenuRadioItem>
+														))}
+													</DropdownMenuRadioGroup>
+												</DropdownMenuContent>
+											</DropdownMenu>
+										</>
 									) : null}
 									<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={openFolder}>
 										<FolderOpen />
@@ -218,13 +310,17 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								</div>
 							</div>
 
-							{projects === null ? null : projects.length === 0 ? (
+							{projects === null || shown === null ? null : projects.length === 0 ? (
 								<div className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-subtle-foreground">
 									Your designs will show up here. You can also open any folder as a project.
 								</div>
+							) : shown.length === 0 ? (
+								<div className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-subtle-foreground">
+									No projects match “{query.trim()}”.
+								</div>
 							) : (
 								<div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-									{projects.map((project) => (
+									{shown.map((project) => (
 										<ProjectCard
 											key={project.path}
 											project={project}
@@ -356,11 +452,7 @@ function ProjectCard({
 									Folder not found
 								</span>
 							) : project.cover ? (
-								<ScreenPreview
-									source={project.cover}
-									maxWidth={project.cover.device === "mobile" ? 110 : 200}
-									maxHeight={150}
-								/>
+								<LazyCover project={project} cover={project.cover} />
 							) : (
 								<span className="text-xs text-subtle-foreground">Empty canvas</span>
 							)}
@@ -370,7 +462,7 @@ function ProjectCard({
 							<div className="mt-0.5 text-xs text-subtle-foreground">
 								{project.missing
 									? "Moved or deleted"
-									: `${project.screenCount} ${project.screenCount === 1 ? "screen" : "screens"} · ${timeAgo(project.updatedAt)}`}
+									: `${project.screenCount} ${project.screenCount === 1 ? "screen" : "screens"} · ${formatWhen(project.updatedAt)}`}
 							</div>
 						</div>
 					</button>
@@ -417,15 +509,59 @@ function ProjectCard({
 	);
 }
 
-function timeAgo(iso: string) {
-	const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-	const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+/** Loaded covers by project, so scrolling back doesn't read the files again. */
+const covers = new Map<string, Promise<ScreenSource | null>>();
 
-	if (seconds < 60) return "just now";
+const loadCover = (project: ProjectSummary) => {
+	const key = `${project.path}\0${project.updatedAt}`;
+	let cover = covers.get(key);
 
-	if (seconds < 3600) return format.format(-Math.round(seconds / 60), "minute");
+	if (!cover) {
+		cover = api.loadCover({ path: project.path }).catch(() => null);
+		covers.set(key, cover);
+	}
 
-	if (seconds < 86400) return format.format(-Math.round(seconds / 3600), "hour");
+	return cover;
+};
 
-	return format.format(-Math.round(seconds / 86400), "day");
+/** Reads the cover's files and mounts its frame only while the card is near the viewport. */
+function LazyCover({ project, cover }: { project: ProjectSummary; cover: ScreenCover }) {
+	const ref = useRef<HTMLDivElement>(null);
+	const [near, setNear] = useState(false);
+	const [source, setSource] = useState<ScreenSource | null>(null);
+	const maxWidth = cover.device === "mobile" ? 110 : 200;
+	const scale = Math.min(maxWidth / cover.width, 150 / cover.height);
+
+	useEffect(() => {
+		const observer = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
+			rootMargin: "300px",
+		});
+
+		observer.observe(ref.current!);
+
+		return () => observer.disconnect();
+	}, []);
+
+	useEffect(() => {
+		if (!near) return;
+		let live = true;
+		void loadCover(project).then((loaded) => {
+			if (live) setSource(loaded);
+		});
+
+		return () => void (live = false);
+	}, [near, project]);
+
+	return (
+		<div ref={ref}>
+			{near && source ? (
+				<ScreenPreview source={source} maxWidth={maxWidth} maxHeight={150} />
+			) : (
+				<div
+					className="rounded-md bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_4px_12px_-4px_rgb(0_0_0/0.16)]"
+					style={{ width: cover.width * scale, height: cover.height * scale }}
+				/>
+			)}
+		</div>
+	);
 }

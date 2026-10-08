@@ -5,7 +5,7 @@ import { join } from "path";
 import type { GenerationEvent, GenerationRequest } from "../../../shared/ai/contract";
 import type { ProviderConfig } from "../../../shared/ai/settings";
 import { tempDir } from "../../test-utils";
-import { createCodexProvider } from "./codex";
+import { codexArgs, createCodexProvider } from "./codex";
 import { fakeSpawn } from "./fake-cli";
 
 const HOME = "export default function Home() { return <main>Blue</main>; }\n";
@@ -141,6 +141,13 @@ describe("Codex provider", () => {
 		expect(args).toContain('approval_policy="never"');
 		expect(args.slice(-3)).toEqual(["--model", "gpt-5.5", "-"]);
 		expect(calls[0]!.stdin).toContain("Make home blue");
+	});
+
+	test("passes attached images with --image, one flag each", () => {
+		expect(codexArgs("", "/stage", [".rabisco/attachments/1-a.png"]).slice(-2)).toEqual([
+			"--image=/stage/.rabisco/attachments/1-a.png",
+			"-",
+		]);
 	});
 
 	test("turn.failed maps to an error", async () => {

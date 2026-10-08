@@ -1,15 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { designTokensOf } from "../../../shared/context/tokens";
+import { refresh } from "../../runtime/refresh";
 import { ModuleRegistry, RenderError } from "../../runtime/registry";
 import { excerptOf, locationFromStack } from "../../runtime/errors";
 import { extractCandidates } from "./candidates";
-import { CompileCache, compileSource } from "./compile";
+import { CompileCache, compileSource, iconsFromSource } from "./compile";
 import { collectGraph, withDependents } from "./graph";
 import type { ModulePayload } from "./protocol";
 import { extractRequires, joinPath, resolveRelative } from "./resolve";
 import { createCompiler, TailwindBuilder } from "./tailwind";
-import { designThemeCss } from "./theme";
+import { themeCss } from "./theme";
 
 const SCREEN = `import { Button } from "@/components/ui/button";
 import { Card } from "../components/stat-card";
@@ -309,12 +311,81 @@ describe("tailwind", () => {
 		expect(builder.css).toContain("font-family: var(--font-mono)");
 
 		const design = "# Design\n\n## Tokens\n\n- primary: #2563eb\n- font-sans: Inter, sans-serif\n";
-		const theme = designThemeCss({ "DESIGN.md": design });
+		const tokens = designTokensOf(design);
+		const theme = themeCss(tokens);
 		expect(theme).toContain("--primary: #2563eb;");
 		expect(theme).toContain("--font-sans: Inter, sans-serif;");
-		// Unlayered, so it beats the theme layer; cached by content
+		// Unlayered, so it beats the theme layer
 		expect(theme).not.toContain("@layer");
-		expect(designThemeCss({ "DESIGN.md": design, "screens/a.tsx": "" })).toBe(theme);
-		expect(designThemeCss({})).toBe("");
+		expect(themeCss(tokens)).toBe(theme);
+		expect(themeCss(designTokensOf(undefined))).toBe("");
+	});
+});
+
+describe("icons", () => {
+	test("named and namespace imports from lucide-react", () => {
+		const source = `import { House, Plus as Add, type LucideIcon } from "lucide-react";
+import * as Icons from "lucide-react";
+import { Button } from "@/components/ui/button";
+export default () => <Icons.Star />;
+`;
+
+		expect(iconsFromSource(source).sort()).toEqual(["House", "Plus", "Star"]);
+		expect(iconsFromSource(`import type { LucideIcon } from "lucide-react";`)).toEqual([]);
+	});
+});
+
+describe("refresh", () => {
+	const externals = {
+		react: { useState: () => [0] },
+		"react/jsx-runtime": { jsx: () => null },
+		"rabisco:refresh": refresh,
+	};
+
+	const load = (registry: ModuleRegistry<unknown>, source: string, reset = false) => {
+		const compiled = compileSource("screens/r.tsx", source);
+		registry.apply({ "screens/r.tsx": { source, code: compiled.code! } }, reset);
+
+		return registry.load("screens/r.tsx");
+	};
+
+	test("components keep their identity across versions and call the latest code", () => {
+		const registry = new ModuleRegistry<unknown>(externals);
+
+		const first = load(
+			registry,
+			`export function Card() { return "a"; }\nexport default function Screen() { return Card(); }\n`,
+			true,
+		);
+
+		const second = load(
+			registry,
+			`export function Card() { return "b"; }\nexport default function Screen() { return Card(); }\n`,
+		);
+
+		expect(second.default).toBe(first.default);
+		const screen = second.default;
+
+		if (!(screen instanceof Function)) throw new Error("No default export");
+		expect(screen()).toBe("b");
+	});
+
+	test("changing the hooks gives a new component, so React remounts it", () => {
+		const registry = new ModuleRegistry<unknown>(externals);
+		const first = load(registry, `export default function Screen() { return "a"; }\n`, true);
+
+		const second = load(
+			registry,
+			`import { useState } from "react";\nexport default function Screen() { const [n] = useState(0); return n; }\n`,
+		);
+
+		expect(second.default).not.toBe(first.default);
+	});
+
+	test("arrow function exports are stable too", () => {
+		const registry = new ModuleRegistry<unknown>(externals);
+		const first = load(registry, `export const Screen = () => "a";\nexport default Screen;\n`, true);
+		const second = load(registry, `export const Screen = () => "b";\nexport default Screen;\n`);
+		expect(second.default).toBe(first.default);
 	});
 });

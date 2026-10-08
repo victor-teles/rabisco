@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { ChevronDown, Monitor, Settings2, Smartphone, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,10 +22,17 @@ import {
 } from "@/components/ui/uai/prompt-composer";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
+import type { ChatCommand } from "@/lib/chat-commands";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
 import type { Device } from "../../../shared/types";
 import { MAX_VARIATIONS } from "../../../shared/variations";
+
+/** The image types every provider takes */
+const PROMPT_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+const isPromptImage = (file: File) => PROMPT_IMAGE_TYPES.includes(file.type);
 
 export type DesignComposerProps = {
 	value?: string;
@@ -48,6 +55,10 @@ export type DesignComposerProps = {
 	variationsHint?: string;
 	inlineOptions?: boolean;
 	className?: string;
+	/** Typing `/` lists them */
+	commands?: readonly ChatCommand[];
+	/** A command picked from the list; `false` keeps the prompt */
+	onRunCommand?: (command: ChatCommand) => boolean | void;
 };
 
 export function DesignComposer({
@@ -67,7 +78,15 @@ export function DesignComposer({
 	variationsHint,
 	inlineOptions = true,
 	className,
+	commands,
+	onRunCommand,
 }: DesignComposerProps) {
+	const slashKeys = useRef<SlashKeyHandler | null>(null);
+
+	const setSlashKeys = useCallback((handler: SlashKeyHandler | null) => {
+		slashKeys.current = handler;
+	}, []);
+
 	return (
 		<PromptComposer
 			variant={variant}
@@ -77,16 +96,20 @@ export function DesignComposer({
 			defaultValue={defaultValue}
 			defaultFiles={defaultFiles}
 			onSubmit={(prompt, files) => onSubmit(prompt, files)}
+			acceptFile={isPromptImage}
 			className={className}
 		>
 			<PromptComposerAdd>
 				<PromptComposerFileItem
 					label="Add reference images"
-					description="Screenshots, sketches, moodboards"
-					accept="image/*"
+					description="Or paste or drop them here"
+					accept={PROMPT_IMAGE_TYPES.join(",")}
 				/>
 			</PromptComposerAdd>
-			<PromptComposerInput placeholder={placeholder} />
+			{commands?.length && onRunCommand ? (
+				<SlashMenu commands={commands} onKeys={setSlashKeys} onRun={onRunCommand} />
+			) : null}
+			<PromptComposerInput placeholder={placeholder} onKeyDown={(event) => slashKeys.current?.(event)} />
 			<PromptComposerActions>
 				{inlineOptions ? (
 					<>

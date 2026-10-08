@@ -27,6 +27,21 @@ export const COMPONENTS_VIEW_KEYS = "⌥2";
 
 export const COMPONENTS_VIEW_CODE = "Digit2";
 
+/** Figma's Layers panel: ⌥1. Matched on `event.code` (`Digit1`) since ⌥ changes `event.key` on macOS */
+export const SCREENS_VIEW_KEYS = "⌥1";
+
+export const SCREENS_VIEW_CODE = "Digit1";
+
+/** Figma's minimize UI, for the chat and screens panel */
+export const SIDE_PANEL_KEYS = "⇧⌘\\";
+
+export const SIDE_PANEL_CODE = "Backslash";
+
+/** Figma has none; ChatGPT and Claude use ⇧⌘O */
+export const NEW_CHAT_KEYS = "⇧⌘O";
+
+export const NEW_CHAT_CODE = "KeyO";
+
 export const MAKE_COMPONENT_KEYS = "⌥⌘K";
 
 /** ⌥⌘K (⌃⌥K off macOS), matched on `event.code` since ⌥ changes `event.key` */
@@ -72,6 +87,11 @@ export const focusOwnsKey = (event: KeyboardEvent) =>
 
 /** Keys the focused structure tree consumes, so they never reach the editor's global handler (nudge, delete screen). */
 export const treeOwnsKey = (key: string) => key.startsWith("Arrow") || key === "Backspace" || key === "Delete";
+
+/** ⌥N, matched on `event.code` since ⌥ changes `event.key` on macOS */
+export const NEW_SCREEN_KEYS = "⌥N";
+
+export const NEW_SCREEN_CODE = "KeyN";
 
 export const PLAY_KEYS = "⌥⌘↵";
 

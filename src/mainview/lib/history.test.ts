@@ -223,3 +223,64 @@ describe("comments in the history", () => {
 		expect(h.present.comments).toEqual([]);
 	});
 });
+
+describe("applied theme in the history", () => {
+	const applied = { light: { primary: "#111" }, dark: {} };
+
+	test("recipes that leave the theme out keep it; applying is one undo step", () => {
+		const present = { ...snap({ "DESIGN.md": "## Tokens\n- primary: #222" }), theme: applied };
+		const edited = nextSnapshot(present, { files: { "DESIGN.md": "## Tokens\n- primary: #333" }, frames: [] });
+		expect(edited.theme).toBe(applied);
+
+		let h = createHistory(present);
+		const next = { light: { primary: "#222" }, dark: {} };
+		h = commit(h, nextSnapshot(h.present, { ...h.present, theme: next }));
+		expect(h.present.theme).toBe(next);
+		expect(h.present.files).toBe(present.files);
+		h = undo(h);
+		expect(h.present.theme).toBe(applied);
+	});
+
+	test("external DESIGN.md edits don't change the applied theme", () => {
+		const present = { ...snap({ "DESIGN.md": "## Tokens\n- primary: #111" }), theme: applied };
+		const h = rebase(createHistory(present), [{ path: "DESIGN.md", content: "## Tokens\n- primary: #999" }]);
+		expect(h.present.files["DESIGN.md"]).toContain("#999");
+		expect(h.present.theme).toBe(applied);
+	});
+});
+
+describe("project name and device", () => {
+	test("recipes that leave them out keep the present ones", () => {
+		const present: Snapshot = { ...snap({}), name: "Habits", device: "mobile" };
+		const next = nextSnapshot(present, { files: { a: "1" }, frames: [] });
+		expect(next.name).toBe("Habits");
+		expect(next.device).toBe("mobile");
+	});
+
+	test("renaming is one undo step per typing burst", () => {
+		let h = createHistory({ ...snap({}), name: "Untitled" });
+
+		for (const name of ["H", "Ha", "Habits"])
+			h = commit(h, nextSnapshot(h.present, { ...h.present, name }), { coalesce: "project-name" });
+		h = seal(h);
+		expect(h.past.length).toBe(1);
+		expect(undo(h).present.name).toBe("Untitled");
+	});
+
+	test("a device change undoes and redoes", () => {
+		let h = createHistory({ ...snap({}), device: "mobile" });
+		h = commit(h, nextSnapshot(h.present, { ...h.present, device: "desktop" }));
+		h = undo(h);
+		expect(h.present.device).toBe("mobile");
+		expect(redo(h).present.device).toBe("desktop");
+	});
+
+	test("external file changes keep them", () => {
+		const h = rebase(createHistory({ ...snap({ a: "1" }), name: "Habits", device: "desktop" }), [
+			{ path: "a", content: "2" },
+		]);
+
+		expect(h.present.name).toBe("Habits");
+		expect(h.present.device).toBe("desktop");
+	});
+});

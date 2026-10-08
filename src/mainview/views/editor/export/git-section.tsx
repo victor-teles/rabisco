@@ -10,6 +10,16 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -30,18 +40,22 @@ export function GitSection({
 	projectName,
 	onBeforeSync,
 	onPulled,
+	hasUndoHistory = false,
 }: {
 	projectPath: string;
 	projectName: string;
 	onBeforeSync: () => Promise<void>;
 	/** `rabisco.json` isn't watched: the editor reads it again when a sync brought in commits */
 	onPulled: () => Promise<void>;
+	/** Bringing in commits reloads the project, which starts the undo history again */
+	hasUndoHistory?: boolean;
 }) {
 	const [status, setStatus] = useState<GitStatus | null>(null);
 	const [busy, setBusy] = useState<Busy>("load");
 	const [failure, setFailure] = useState<Failure | null>(null);
 	const [editingRemote, setEditingRemote] = useState(false);
 	const [remoteUrl, setRemoteUrl] = useState("");
+	const [confirmingSync, setConfirmingSync] = useState(false);
 
 	const fetchStatus = useCallback(
 		(): Promise<GitStatus> =>
@@ -182,6 +196,12 @@ export function GitSection({
 
 	const { branch, remote, changes, ahead, behind, lastCommit, unfinished, prefix, root } = status;
 	const canSync = busy === null && !unfinished && branch !== null && (remote !== null || changes > 0);
+
+	const requestSync = () => {
+		if (hasUndoHistory && remote && behind > 0) setConfirmingSync(true);
+		else void sync();
+	};
+
 	const showRemoteField = !remote || editingRemote;
 
 	return (
@@ -276,7 +296,7 @@ export function GitSection({
 			{failure ? <FailureNote failure={failure} /> : null}
 
 			<div className="flex items-center gap-2">
-				<Button size="sm" onClick={sync} disabled={!canSync}>
+				<Button size="sm" onClick={requestSync} disabled={!canSync}>
 					{busy === "sync" ? <LoaderCircle className="motion-safe:animate-spin" /> : <RefreshCw />}
 					{remote ? "Sync" : "Commit changes"}
 				</Button>
@@ -291,6 +311,24 @@ export function GitSection({
 					? "Sync commits this project, brings in new commits from the remote, then pushes. It never overwrites the remote."
 					: "Commits this project's files with a message that lists what changed."}
 			</p>
+
+			<AlertDialog open={confirmingSync} onOpenChange={setConfirmingSync}>
+				<AlertDialogContent size="sm">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-base">Sync and clear undo history?</AlertDialogTitle>
+						<AlertDialogDescription className="text-[13px]">
+							Bringing in {plural(behind, "commit")} reloads the project from disk. Edits made before the sync can no
+							longer be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+						<AlertDialogAction size="sm" onClick={() => void sync()}>
+							Sync
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

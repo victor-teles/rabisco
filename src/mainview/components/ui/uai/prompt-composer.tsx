@@ -5,7 +5,9 @@ import { ArrowUp, Check, ChevronDown, FileText, LoaderCircle, Paperclip, Plus, X
 import {
 	type ComponentProps,
 	createContext,
+	useCallback,
 	type Dispatch,
+	type DragEvent,
 	type FormEvent,
 	type KeyboardEvent,
 	type ReactNode,
@@ -51,6 +53,8 @@ export type PromptComposerProps = Omit<ComponentProps<"form">, "onSubmit" | "onC
 	onSubmit?: (prompt: string, files: File[]) => void | boolean | Promise<void | boolean>;
 	/** Images to start with; read once, like `defaultValue` */
 	defaultFiles?: File[];
+	/** Files pasted or dropped onto the composer that it takes; without it, pasting and dropping files is off */
+	acceptFile?: (file: File) => boolean;
 };
 
 type Attachment = { id: string; file: File };
@@ -124,7 +128,7 @@ type PromptComposerContextValue = {
 
 const PromptComposerContext = createContext<PromptComposerContextValue | null>(null);
 
-function usePromptComposer(name: string) {
+export function usePromptComposer(name: string) {
 	const context = useContext(PromptComposerContext);
 
 	if (!context) throw new Error(`${name} must be used within PromptComposer`);
@@ -173,6 +177,7 @@ export function PromptComposer({
 	onValueChange,
 	onSubmit,
 	defaultFiles,
+	acceptFile,
 	className,
 	children,
 	...props
@@ -185,6 +190,7 @@ export function PromptComposer({
 
 	const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 	const [expanded, setExpanded] = useState(false);
+	const [dropping, setDropping] = useState(false);
 	const attachmentId = useRef(0);
 	const inputId = useId();
 	const controlsRef = useRef<HTMLDivElement>(null);
@@ -233,6 +239,12 @@ export function PromptComposer({
 		setOpenMenu(null);
 	};
 
+	const accepted = (files: FileList | null | undefined) =>
+		acceptFile && !locked ? Array.from(files ?? []).filter(acceptFile) : [];
+
+	const hasFiles = (event: DragEvent<HTMLFormElement>) =>
+		Boolean(acceptFile) && !locked && event.dataTransfer.types.includes("Files");
+
 	const context: PromptComposerContextValue = {
 		prompt,
 		setPrompt,
@@ -276,6 +288,34 @@ export function PromptComposer({
 				aria-disabled={disabled || undefined}
 				{...props}
 				onSubmit={submit}
+				onPaste={(event) => {
+					const files = accepted(event.clipboardData.files);
+
+					if (!files.length) return;
+					event.preventDefault();
+					context.addFiles(files);
+				}}
+				onDragOver={(event) => {
+					if (!hasFiles(event)) return;
+					event.preventDefault();
+					event.dataTransfer.dropEffect = "copy";
+					setDropping(true);
+				}}
+				onDragLeave={(event) => {
+					if (!event.currentTarget.contains(event.relatedTarget instanceof Node ? event.relatedTarget : null))
+						setDropping(false);
+				}}
+				onDrop={(event) => {
+					setDropping(false);
+
+					if (!hasFiles(event)) return;
+					event.preventDefault();
+					event.stopPropagation();
+					const files = accepted(event.dataTransfer.files);
+
+					if (files.length) context.addFiles(files);
+					context.inputRef.current?.focus();
+				}}
 			>
 				<div
 					data-slot="prompt-composer-card"
@@ -285,6 +325,7 @@ export function PromptComposer({
 							open: expanded || attachments.length > 0,
 							invalid,
 						}),
+						dropping && "border-ring bg-accent/40",
 					)}
 				>
 					<span
@@ -305,7 +346,7 @@ export function PromptComposer({
 										chrome.chipClass,
 									)}
 								>
-									<FileText className="size-3" aria-hidden="true" />
+									<FileIcon file={item.file} />
 									<span className="max-w-36 truncate text-card-foreground">{item.file.name}</span>
 									<Button
 										type="button"
@@ -338,6 +379,27 @@ export function PromptComposer({
 				</div>
 			</form>
 		</PromptComposerContext.Provider>
+	);
+}
+
+/** A thumbnail for images, so a pasted screenshot is recognisable */
+function FileIcon({ file }: { file: File }) {
+	// The URL lives as long as the image element
+	const preview = useCallback(
+		(image: HTMLImageElement | null) => {
+			if (!image) return;
+			const url = URL.createObjectURL(file);
+			image.src = url;
+
+			return () => URL.revokeObjectURL(url);
+		},
+		[file],
+	);
+
+	return file.type.startsWith("image/") ? (
+		<img ref={preview} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
+	) : (
+		<FileText className="size-3" aria-hidden="true" />
 	);
 }
 

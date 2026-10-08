@@ -113,7 +113,7 @@ describe("FrameHost: components", () => {
 			[hostB, "screens/b.tsx"],
 		] as const) {
 			host.receive({ type: "ready" });
-			host.update(entry, PROJECT);
+			host.update(entry, PROJECT, "");
 		}
 
 		expect(Object.keys(modulesMessages(a.posted)[0]!.modules).sort()).toEqual([
@@ -122,8 +122,8 @@ describe("FrameHost: components", () => {
 		]);
 
 		const edited = { ...PROJECT, "components/stat-card.tsx": CARD.replace("p-4", "p-6") };
-		hostA.update("screens/a.tsx", edited);
-		hostB.update("screens/b.tsx", edited);
+		hostA.update("screens/a.tsx", edited, "");
+		hostB.update("screens/b.tsx", edited, "");
 
 		for (const { posted } of [a, b]) {
 			const last = modulesMessages(posted).at(-1)!;
@@ -132,10 +132,30 @@ describe("FrameHost: components", () => {
 
 		// A screen-only edit doesn't touch the other screen's frame
 		const before = b.posted.length;
-		hostB.update("screens/b.tsx", { ...edited, "screens/a.tsx": screen("A2") });
+		hostB.update("screens/b.tsx", { ...edited, "screens/a.tsx": screen("A2") }, "");
 		expect(b.posted.length).toBe(before);
 		hostA.dispose();
 		hostB.dispose();
+	});
+});
+
+describe("FrameHost: theme", () => {
+	test("renders with the theme it's given, not DESIGN.md, and posts only the theme when it changes", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		const applied = ":root:not(.dark) {\n\t--primary: red;\n}\n";
+		host.update("screens/a.tsx", PROJECT, applied);
+		expect(lastPosted(posted, "modules").theme).toBe(applied);
+
+		const before = posted.length;
+		host.update("screens/a.tsx", { ...PROJECT, "DESIGN.md": "## Tokens\n- primary: blue\n" }, applied);
+		expect(posted.length).toBe(before);
+
+		const next = ":root:not(.dark) {\n\t--primary: blue;\n}\n";
+		host.update("screens/a.tsx", PROJECT, next);
+		expect(posted.slice(before)).toEqual([{ type: "theme", css: next }]);
+		host.dispose();
 	});
 });
 
@@ -157,7 +177,7 @@ describe("hit testing", () => {
 		const host = new FrameHost(frame);
 		expect(await host.hitTest(10, 10)).toBeNull();
 		host.receive({ type: "ready" });
-		host.update("screens/a.tsx", PROJECT);
+		host.update("screens/a.tsx", PROJECT, "");
 		const pending = host.hitTest(12, 34);
 		const request = lastPosted(posted, "hit-test");
 		expect(request).toMatchObject({ type: "hit-test", x: 12, y: 34 });
@@ -187,6 +207,88 @@ describe("hit testing", () => {
 		expect(isFrameMessage({ type: "hit", hit })).toBe(false);
 	});
 
+	const dropLayout = {
+		start: 40,
+		version: "v",
+		box: { x: 0, y: 0, width: 300, height: 200 },
+		display: "flex",
+		flexDirection: "row",
+		flexWrap: "nowrap",
+		gridAutoFlow: "row",
+		gridColumns: 0,
+		direction: "ltr",
+		children: [
+			{ start: 60, box: { x: 0, y: 0, width: 100, height: 200 } },
+			{ start: 90, box: { x: 100, y: 0, width: 100, height: 200 } },
+		],
+	};
+
+	test("dropLayout asks the frame and resolves with the layout of the requested element", async () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		expect(await host.dropLayout(40, "v", 5, 6)).toBeNull();
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "");
+		const pending = host.dropLayout(40, "v", 5, 6);
+		const request = lastPosted(posted, "drop-layout");
+		expect(request).toMatchObject({ type: "drop-layout", start: 40, version: "v", x: 5, y: 6 });
+		host.receive({ type: "drop-layout", id: request.id + 100, layout: { ...dropLayout, display: "grid" } });
+		host.receive({ type: "drop-layout", id: request.id, layout: dropLayout });
+		expect(await pending).toEqual(dropLayout);
+
+		const other = host.dropLayout(40, "v", 5, 6);
+		const second = lastPosted(posted, "drop-layout");
+		host.receive({ type: "drop-layout", id: second.id, layout: { ...dropLayout, start: 41 } });
+		expect(await other).toBeNull();
+
+		const unrendered = host.dropLayout(40, "v", 5, 6);
+		host.receive({ type: "drop-layout", id: lastPosted(posted, "drop-layout").id, layout: null });
+		expect(await unrendered).toBeNull();
+		host.dispose();
+	});
+
+	test("elementBoxes asks the frame for one element's boxes", async () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		expect(await host.elementBoxes(40, "v")).toBeNull();
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "");
+		const pending = host.elementBoxes(40, "v");
+		const request = lastPosted(posted, "element-boxes");
+		expect(request).toMatchObject({ type: "element-boxes", start: 40, version: "v" });
+		const box = { x: 1, y: 2, width: 3, height: 4 };
+		host.receive({ type: "element-boxes", id: request.id, boxes: [box] });
+		expect(await pending).toEqual([box]);
+		expect(isFrameMessage({ type: "element-boxes", id: 1, boxes: [{ x: 1 }] })).toBe(false);
+		expect(isFrameMessage({ type: "element-boxes", id: 1, boxes: null })).toBe(true);
+		host.dispose();
+	});
+
+	test("dropLayout resolves null when the frame doesn't answer or the host is disposed", async () => {
+		const host = new FrameHost(fakeFrame().frame);
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "");
+		expect(await host.dropLayout(40, "v", 0, 0)).toBeNull();
+		const pending = host.dropLayout(40, "v", 0, 0);
+		host.dispose();
+		expect(await pending).toBeNull();
+	});
+
+	test("malformed drop layouts never reach the host", () => {
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: dropLayout })).toBe(true);
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: null })).toBe(true);
+		expect(isFrameMessage({ type: "drop-layout", layout: dropLayout })).toBe(false);
+		expect(isFrameMessage({ type: "drop-layout", id: 1 })).toBe(false);
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: { ...dropLayout, box: { x: 1 } } })).toBe(false);
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: { ...dropLayout, display: 3 } })).toBe(false);
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: { ...dropLayout, gridColumns: "2" } })).toBe(false);
+
+		const children = [{ start: "60", box: dropLayout.box }];
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: { ...dropLayout, children } })).toBe(false);
+		const { direction: _, ...withoutDirection } = dropLayout;
+		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: withoutDirection })).toBe(false);
+	});
+
 	test("track sends the element once ready, and only current boxes come back", () => {
 		const { frame, posted } = fakeFrame();
 		const host = new FrameHost(frame);
@@ -200,12 +302,51 @@ describe("hit testing", () => {
 		host.receive({ type: "boxes", start: 40, version: "v1", boxes: [box] });
 		host.receive({ type: "boxes", start: 40, version: "v0", boxes: [box] });
 		expect(isFrameMessage({ type: "boxes", start: 40, version: "v1", boxes: [{ x: 1 }] })).toBe(false);
-		expect(seen).toEqual([{ start: 40, version: "v1", boxes: [box] }]);
+		expect(seen).toEqual([{ start: 40, version: "v1", boxes: [box], spacing: null, layout: null }]);
+		const spacing = { padding: [box], gaps: [] };
+
+		const layout = {
+			padding: { top: 16, right: 16, bottom: 16, left: 16 },
+			gap: { row: 0, column: 8 },
+			flow: "row" as const,
+			parent: null,
+		};
+
+		host.receive({ type: "boxes", start: 40, version: "v1", boxes: [box], spacing, layout });
+		expect(seen.at(-1)).toEqual({ start: 40, version: "v1", boxes: [box], spacing, layout });
+		expect(isFrameMessage({ type: "boxes", start: 40, version: "v1", boxes: [box], spacing: { padding: [] } })).toBe(
+			false,
+		);
+		expect(
+			isFrameMessage({ type: "boxes", start: 40, version: "v1", boxes: [box], layout: { ...layout, flow: "x" } }),
+		).toBe(false);
+		expect(
+			isFrameMessage({
+				type: "boxes",
+				start: 40,
+				version: "v1",
+				boxes: [box],
+				layout: { ...layout, padding: { top: 1 } },
+			}),
+		).toBe(false);
 		const count = posted.length;
 		host.track(40, "v1");
 		expect(posted.length).toBe(count);
 		host.track(null, "v1");
 		expect(posted.at(-1)).toEqual({ type: "track", start: null, version: "v1" });
+		host.dispose();
+	});
+
+	test("previewStyle posts once ready and restores with null", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.previewStyle(40, "v1", { width: "256px" });
+		expect(posted).toEqual([]);
+		host.receive({ type: "ready" });
+		host.previewStyle(40, "v1", { width: "256px" });
+		expect(posted.at(-1)).toEqual({ type: "preview-style", start: 40, version: "v1", style: { width: "256px" } });
+		host.previewStyle(40, "v1", null);
+		expect(posted.at(-1)).toEqual({ type: "preview-style", start: 40, version: "v1", style: null });
 		host.dispose();
 	});
 
@@ -261,6 +402,34 @@ describe("play mode", () => {
 		posted.length = 0;
 		host.receive({ type: "ready" });
 		expect(posted).toEqual([]);
+		host.dispose();
+	});
+
+	test("setPaused is sent once ready, and again after the frame reloads", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.setPaused(true);
+		expect(posted).toEqual([]);
+		host.receive({ type: "ready" });
+		expect(posted).toEqual([{ type: "pause", on: true }]);
+		posted.length = 0;
+		host.receive({ type: "ready" });
+		expect(posted).toEqual([{ type: "pause", on: true }]);
+		host.setPaused(false);
+		expect(posted.at(-1)).toEqual({ type: "pause", on: false });
+		host.dispose();
+	});
+
+	test("modules carry their lucide imports", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		host.update(
+			"screens/a.tsx",
+			{ "screens/a.tsx": `import { House, Plus as Add } from "lucide-react";\nexport default () => <House />;\n` },
+			"",
+		);
+		expect(lastPosted(posted, "modules").modules["screens/a.tsx"]?.icons).toEqual(["House", "Plus"]);
 		host.dispose();
 	});
 
@@ -341,5 +510,43 @@ describe("FrameHost: image export", () => {
 		host.dispose();
 		expect(await measuring).toBeNull();
 		await expect(snapshotting).rejects.toThrow();
+	});
+});
+
+const { projectAssets } = await import("./assets");
+
+describe("FrameHost: project images", () => {
+	test("posts images before the first modules, then only changes", () => {
+		projectAssets.reset({ "/images/a.png": btoa("a") });
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.update("screens/a.tsx", PROJECT, "");
+		expect(posted).toEqual([]);
+
+		host.receive({ type: "ready" });
+		expect(posted.map((message) => message.type)).toEqual(["assets", "modules"]);
+		const first = lastPosted(posted, "assets");
+		expect(first.assets["/images/a.png"]).toBe(projectAssets.get("/images/a.png")!);
+
+		host.update("screens/a.tsx", { ...PROJECT }, "");
+		expect(posted.filter((message) => message.type === "assets")).toHaveLength(1);
+
+		projectAssets.apply([
+			{ src: "/images/a.png", data: null },
+			{ src: "/b.svg", data: btoa("<svg/>") },
+		]);
+		expect(lastPosted(posted, "assets").assets).toEqual({
+			"/images/a.png": null,
+			"/b.svg": projectAssets.get("/b.svg")!,
+		});
+
+		// A reloaded frame starts empty
+		host.receive({ type: "ready" });
+		expect(Object.keys(lastPosted(posted, "assets").assets)).toEqual(["/b.svg"]);
+
+		host.dispose();
+		projectAssets.apply([{ src: "/c.png", data: btoa("c") }]);
+		expect(Object.keys(lastPosted(posted, "assets").assets)).toEqual(["/b.svg"]);
+		projectAssets.reset({});
 	});
 });

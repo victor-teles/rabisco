@@ -1,5 +1,6 @@
-// Only classes without variants (`md:`, `hover:`…) are read or replaced; every other class keeps its text
-// and place. A new class takes the place of the one it replaces, or goes at the end.
+// Style reads and writes work on one variant at a time: `""` for the base classes, `hover` or `md` for
+// `hover:…` or `md:…`. Classes of other variants keep their text and place. A new class takes the place of the
+// one it replaces, or goes at the end.
 
 import { twMerge } from "tailwind-merge";
 import { setAttribute } from "../jsx/transforms";
@@ -663,7 +664,9 @@ export type Scale = {
 		| "radius"
 		| "borderWidth"
 		| "opacity"
-		| "shadow";
+		| "shadow"
+		| "zIndex"
+		| "gridColumns";
 	options: ScaleOption[];
 	negative?: boolean;
 };
@@ -854,6 +857,35 @@ export const SHADOW_SCALE: Scale = {
 	],
 };
 
+export const INSET_SCALE: Scale = {
+	kind: "spacing",
+	negative: true,
+	options: [
+		{ value: "auto", label: "auto" },
+		{ value: "full", label: "full", hint: "100%" },
+		...FRACTIONS.map((f) => ({ value: f, label: f })),
+		...spacingOptions(),
+	],
+};
+
+export const Z_INDEX_SCALE: Scale = {
+	kind: "zIndex",
+	negative: true,
+	options: [
+		{ value: "auto", label: "auto" },
+		...[0, 10, 20, 30, 40, 50].map((n) => ({ value: String(n), label: String(n) })),
+	],
+};
+
+export const GRID_COLUMNS_SCALE: Scale = {
+	kind: "gridColumns",
+	options: [
+		...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ value: String(n), label: String(n) })),
+		{ value: "none", label: "none" },
+		{ value: "subgrid", label: "subgrid" },
+	],
+};
+
 /** Spaces become `_`, as Tailwind expects */
 const arbitrary = (text: string) => `[${text.trim().replace(/\s+/g, "_")}]`;
 
@@ -886,7 +918,7 @@ export function parseScaleInput(input: string, scale: Scale): string | null {
 
 	if (named) return named.value;
 
-	if (scale.kind === "size" && /^\d+\/\d+$/.test(text)) return text;
+	if (/^\d+\/\d+$/.test(text) && scale.options.some((o) => FRACTIONS.includes(o.value))) return text;
 	const number = /^\d*\.?\d+$/.test(text) ? Number(text) : null;
 	const px = /^(\d*\.?\d+)px$/i.exec(text);
 
@@ -934,6 +966,14 @@ export function parseScaleInput(input: string, scale: Scale): string | null {
 
 			if (/^\d*\.?\d+$/.test(text) && Number(text) <= 100)
 				return Number(text) % 1 === 0 ? String(Number(text)) : `[${Number(text) / 100}]`;
+
+			return null;
+		case "zIndex":
+		case "gridColumns":
+			if (number !== null && number % 1 === 0 && (scale.kind === "zIndex" || number > 0))
+				return scale.options.some((o) => o.value === String(number)) || scale.kind === "gridColumns"
+					? String(number)
+					: `[${number}]`;
 
 			return null;
 		case "letterSpacing":
@@ -1037,10 +1077,18 @@ export type SimpleProp =
 	| "borderStyle"
 	| "opacity"
 	| "boxShadow"
-	| "shadowColor";
+	| "shadowColor"
+	| "position"
+	| "zIndex"
+	| "overflow"
+	| "gridColumns"
+	| "flex"
+	| "flexGrow"
+	| "flexShrink"
+	| "alignSelf";
 
 /** Written by several classes that cover parts of a box: `p`, `px`, `pt`… */
-export type BoxGroup = "gap" | "padding" | "margin" | "size" | "borderWidth" | "borderRadius";
+export type BoxGroup = "gap" | "padding" | "margin" | "size" | "borderWidth" | "borderRadius" | "inset";
 
 /** By part (`top`, `tl`, `width`…); `null` when unset */
 export type Box = Record<string, string | null>;
@@ -1071,6 +1119,20 @@ const sideAliases = (base: string, sep: string): Alias[] => [
 export const BOXES: Record<BoxGroup, BoxSpec> = {
 	padding: { parts: SIDES, aliases: sideAliases("p", "") },
 	margin: { parts: SIDES, aliases: sideAliases("m", "") },
+	inset: {
+		parts: SIDES,
+		aliases: [
+			{ name: "inset", parts: SIDES },
+			{ name: "inset-x", parts: ["left", "right"] },
+			{ name: "inset-y", parts: ["top", "bottom"] },
+			{ name: "top", parts: ["top"] },
+			{ name: "right", parts: ["right"] },
+			{ name: "bottom", parts: ["bottom"] },
+			{ name: "left", parts: ["left"] },
+			{ name: "start", parts: ["left"], readOnly: true },
+			{ name: "end", parts: ["right"], readOnly: true },
+		],
+	},
 	borderWidth: { parts: SIDES, aliases: sideAliases("border", "-") },
 	gap: {
 		parts: ["x", "y"],
@@ -1135,6 +1197,24 @@ const FLEX_DIRECTION = new Set(["row", "row-reverse", "col", "col-reverse"]);
 
 const FLEX_WRAP = new Set(["wrap", "wrap-reverse", "nowrap"]);
 
+const POSITION = new Set(["static", "relative", "absolute", "fixed", "sticky"]);
+
+const OVERFLOW = new Set(["auto", "hidden", "clip", "visible", "scroll"]);
+
+const FLEX = new Set(["1", "auto", "initial", "none"]);
+
+const SELF = new Set([
+	"auto",
+	"start",
+	"end",
+	"center",
+	"stretch",
+	"baseline",
+	"baseline-last",
+	"center-safe",
+	"end-safe",
+]);
+
 const JUSTIFY = new Set([
 	"start",
 	"end",
@@ -1168,6 +1248,18 @@ const MARGIN = /^(mx|my|mt|mr|mb|ml|ms|me|m)-(.+)$/;
 
 const GAP = /^(gap-x|gap-y|gap)-(.+)$/;
 
+const INSET = /^(inset-x|inset-y|inset|top|right|bottom|left|start|end)-(.+)$/;
+
+/** Not `inset-shadow-sm` or `inset-ring-2` */
+const INSET_VALUE = /^(?:auto|full|px|\d*\.?\d+|\d+\/\d+|\[.+\]|\(.+\))$/;
+
+const Z_VALUE = /^(?:auto|\d+|\[.+\]|\(.+\))$/;
+
+const GRID_COLUMNS_VALUE = /^(?:\d+|none|subgrid|\[.+\]|\(.+\))$/;
+
+/** `grow`, `grow-0`, `flex-grow-0` (v3), `grow-[2]` */
+const GROW_VALUE = /^(?:\d+|\[.+\]|\(.+\))$/;
+
 const SIZE = /^(size|w|h)-(.+)$/;
 
 const MIN_MAX = /^(min-w|max-w|min-h|max-h)-(.+)$/;
@@ -1186,7 +1278,7 @@ const MIN_MAX_PROP = new Map<string, SimpleProp>([
 const isBorderWidth = (value: string) =>
 	/^\d+$/.test(value) || arbitraryType(value) === "length" || arbitraryType(value) === "number";
 
-/** `null` for variants or a utility the model doesn't cover */
+/** `null` for variants or a utility the model doesn't cover; `getStyle` and `setStyle` take a variant */
 export function classifyClass(raw: string): ClassHit | null {
 	const parsed = parseClass(raw);
 
@@ -1202,6 +1294,22 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 	if (!negative) {
 		if (DISPLAY.has(u)) return hit("display", "", u);
 
+		if (POSITION.has(u)) return hit("position", "", u);
+
+		if (u.startsWith("overflow-") && OVERFLOW.has(u.slice(9))) return hit("overflow", "overflow", u.slice(9));
+
+		if (u.startsWith("flex-") && FLEX.has(u.slice(5))) return hit("flex", "flex", u.slice(5));
+
+		if (u.startsWith("self-") && SELF.has(u.slice(5))) return hit("alignSelf", "self", u.slice(5));
+
+		const grow = /^(?:flex-)?(grow|shrink)(?:-(.+))?$/.exec(u);
+
+		if (grow && (grow[2] === undefined || GROW_VALUE.test(grow[2])))
+			return hit(grow[1] === "grow" ? "flexGrow" : "flexShrink", grow[1]!, grow[2] ?? "");
+
+		if (u.startsWith("grid-cols-") && GRID_COLUMNS_VALUE.test(u.slice(10)))
+			return hit("gridColumns", "grid-cols", u.slice(10));
+
 		if (u.startsWith("flex-") && FLEX_DIRECTION.has(u.slice(5))) return hit("flexDirection", "flex", u.slice(5));
 
 		if (u.startsWith("flex-") && FLEX_WRAP.has(u.slice(5))) return hit("flexWrap", "flex", u.slice(5));
@@ -1216,6 +1324,10 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 	if ((match = MARGIN.exec(u))) return hit("margin", match[1]!, match[2]!);
 
 	if ((match = /^tracking-(.+)$/.exec(u))) return hit("letterSpacing", "tracking", match[1]!);
+
+	if ((match = INSET.exec(u)) && INSET_VALUE.test(match[2]!)) return hit("inset", match[1]!, match[2]!);
+
+	if ((match = /^z-(.+)$/.exec(u)) && Z_VALUE.test(match[1]!)) return hit("zIndex", "z", match[1]!);
 
 	// Everything below takes no negative
 	if (negative) return null;
@@ -1304,14 +1416,18 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 	return null;
 }
 
+/** `""` for the base classes, `hover`, `md:hover`… */
+export const variantOf = (parsed: ParsedClass) => parsed.variants.join(":");
+
+/** `hit` is set only for classes of `variant` */
 type Token = { text: string; start: number; end: number; parsed: ParsedClass; hit: ClassHit | null };
 
-function tokenize(classes: string): Token[] {
+function tokenize(classes: string, variant: string): Token[] {
 	const tokens: Token[] = [];
 
 	for (const match of classes.matchAll(/\S+/g)) {
 		const parsed = parseClass(match[0]);
-		const hit = parsed.variants.length ? null : classifyUtility(parsed.utility, parsed.negative);
+		const hit = variantOf(parsed) === variant ? classifyUtility(parsed.utility, parsed.negative) : null;
 		tokens.push({ text: match[0], start: match.index!, end: match.index! + match[0].length, parsed, hit });
 	}
 
@@ -1319,14 +1435,19 @@ function tokenize(classes: string): Token[] {
 }
 
 /** Carries over the `!` of the class it replaces */
-function formatClass(name: string, value: string, like?: ParsedClass): string {
+function formatClass(name: string, value: string, like?: ParsedClass, variant = ""): string {
 	const negative = value.startsWith("-");
 	const body = negative ? value.slice(1) : value;
-	const utility = `${negative ? "-" : ""}${name}${name && body ? "-" : ""}${body}`;
+	let utility = `${negative ? "-" : ""}${name}${name && body ? "-" : ""}${body}`;
 
-	if (!like?.important) return utility;
+	if (like?.important) utility = like.importantLast ? `${utility}!` : `!${utility}`;
 
-	return like.importantLast ? `${utility}!` : `!${utility}`;
+	return variant ? `${variant}:${utility}` : utility;
+}
+
+/** The variants used in `classes`, in order of first use; `""` when a base class is there */
+export function usedVariants(classes: string): string[] {
+	return [...new Set(splitClasses(classes).map((cls) => variantOf(parseClass(cls))))];
 }
 
 /** `insert` goes in place of token `at` (or at the end); whitespace between kept classes stays as written. */
@@ -1350,11 +1471,11 @@ function rewrite(classes: string, tokens: Token[], drop: Set<number>, at: number
 	return out + classes.slice(tokens[tokens.length - 1]!.end);
 }
 
-/** Unrecognized classes that `added` overrides per tailwind-merge (`bg-brand` vs `bg-red-500`) */
-function conflicting(tokens: Token[], added: string[]): number[] {
+/** Unrecognized classes of `variant` that `added` overrides per tailwind-merge (`bg-brand` vs `bg-red-500`) */
+function conflicting(tokens: Token[], added: string[], variant: string): number[] {
 	const found: number[] = [];
 	tokens.forEach((token, i) => {
-		if (token.hit || token.parsed.variants.length) return;
+		if (token.hit || variantOf(token.parsed) !== variant) return;
 
 		for (const cls of added) {
 			if (twMerge(`${token.text} ${cls}`) === cls) {
@@ -1370,11 +1491,11 @@ function conflicting(tokens: Token[], added: string[]): number[] {
 
 export const splitClasses = (classes: string) => classes.split(/\s+/).filter(Boolean);
 
-/** The last unprefixed class that sets it wins */
-export function getStyle(classes: string, prop: SimpleProp): string | null {
+/** The last class of `variant` that sets it wins */
+export function getStyle(classes: string, prop: SimpleProp, variant = ""): string | null {
 	let value: string | null = null;
 
-	for (const token of tokenize(classes)) if (token.hit?.prop === prop) value = token.hit.value;
+	for (const token of tokenize(classes, variant)) if (token.hit?.prop === prop) value = token.hit.value;
 
 	return value;
 }
@@ -1402,14 +1523,23 @@ const SIMPLE_PREFIX: Record<SimpleProp, string> = {
 	opacity: "opacity",
 	boxShadow: "shadow",
 	shadowColor: "shadow",
+	position: "",
+	zIndex: "z",
+	overflow: "overflow",
+	gridColumns: "grid-cols",
+	flex: "flex",
+	flexGrow: "grow",
+	flexShrink: "shrink",
+	alignSelf: "self",
 };
 
 /** `("backgroundColor", "primary/50")` → `bg-primary/50` */
-export const styleClass = (prop: SimpleProp, value: string) => formatClass(SIMPLE_PREFIX[prop], value);
+export const styleClass = (prop: SimpleProp, value: string, variant = "") =>
+	formatClass(SIMPLE_PREFIX[prop], value, undefined, variant);
 
-/** Replaces the first unprefixed class that set it and drops the others; variant classes stay. */
-export function setStyle(classes: string, prop: SimpleProp, value: string | null): string {
-	const tokens = tokenize(classes);
+/** Replaces the first class of `variant` that set it and drops the others; classes of other variants stay. */
+export function setStyle(classes: string, prop: SimpleProp, value: string | null, variant = ""): string {
+	const tokens = tokenize(classes, variant);
 	const matches = tokens.flatMap((token, i) => (token.hit?.prop === prop ? [i] : []));
 
 	if (value === null) {
@@ -1419,22 +1549,22 @@ export function setStyle(classes: string, prop: SimpleProp, value: string | null
 	}
 
 	const first = matches[0];
-	const cls = formatClass(SIMPLE_PREFIX[prop], value, first === undefined ? undefined : tokens[first]!.parsed);
+	const cls = formatClass(SIMPLE_PREFIX[prop], value, first === undefined ? undefined : tokens[first]!.parsed, variant);
 
 	if (matches.length === 1 && tokens[first!]!.text === cls) return classes;
-	const drop = new Set([...matches, ...conflicting(tokens, [cls])]);
+	const drop = new Set([...matches, ...conflicting(tokens, [cls], variant)]);
 	const at = first ?? [...drop].sort((a, b) => a - b)[0] ?? null;
 
 	return rewrite(classes, tokens, drop, at, [cls]);
 }
 
 /** Most specific wins (`pt-2` over `py-4` over `p-6`), then the last one */
-export function getBox(classes: string, group: BoxGroup): Box {
+export function getBox(classes: string, group: BoxGroup, variant = ""): Box {
 	const spec = BOXES[group];
 	const box: Box = Object.fromEntries(spec.parts.map((part) => [part, null]));
 	const rank: Record<string, number> = {};
 
-	for (const token of tokenize(classes)) {
+	for (const token of tokenize(classes, variant)) {
 		if (token.hit?.prop !== group) continue;
 		const alias = spec.aliases.find((a) => a.name === token.hit!.name);
 
@@ -1451,7 +1581,7 @@ export function getBox(classes: string, group: BoxGroup): Box {
 }
 
 /** Shortest form: `p-4`, `px-4 py-2`, or one per side */
-export function boxClasses(group: BoxGroup, box: Box): string[] {
+export function boxClasses(group: BoxGroup, box: Box, variant = "", like?: ParsedClass): string[] {
 	const spec = BOXES[group];
 	const remaining = new Set(spec.parts.filter((part) => box[part] !== null && box[part] !== undefined));
 	const writable = spec.aliases.filter((alias) => !alias.readOnly);
@@ -1468,35 +1598,41 @@ export function boxClasses(group: BoxGroup, box: Box): string[] {
 		for (const part of alias.parts) remaining.delete(part);
 	}
 
-	return writable.filter((alias) => chosen.has(alias)).map((alias) => formatClass(alias.name, box[alias.parts[0]!]!));
+	return writable
+		.filter((alias) => chosen.has(alias))
+		.map((alias) => formatClass(alias.name, box[alias.parts[0]!]!, like, variant));
 }
 
 const sameBox = (a: Box, b: Box, parts: readonly string[]) =>
 	parts.every((part) => (a[part] ?? null) === (b[part] ?? null));
 
 /** Parts missing from `box` count as unset; unchanged values leave `classes` as is. */
-export function setBox(classes: string, group: BoxGroup, box: Box): string {
+export function setBox(classes: string, group: BoxGroup, box: Box, variant = ""): string {
 	const spec = BOXES[group];
 
-	if (sameBox(getBox(classes, group), box, spec.parts)) return classes;
-	const tokens = tokenize(classes);
+	if (sameBox(getBox(classes, group, variant), box, spec.parts)) return classes;
+	const tokens = tokenize(classes, variant);
 	const matches = tokens.flatMap((token, i) => (token.hit?.prop === group ? [i] : []));
 	const first = matches[0];
 	const like = first === undefined ? undefined : tokens[first]!.parsed;
-	const added = boxClasses(group, box).map((cls) => (like?.important ? formatClassLike(cls, like) : cls));
-	const drop = new Set([...matches, ...conflicting(tokens, added)]);
+	const added = boxClasses(group, box, variant, like);
+	const drop = new Set([...matches, ...conflicting(tokens, added, variant)]);
 	const at = first ?? [...drop].sort((a, b) => a - b)[0] ?? null;
 
 	return rewrite(classes, tokens, drop, at, added);
 }
 
-const formatClassLike = (cls: string, like: ParsedClass) => (like.importantLast ? `${cls}!` : `!${cls}`);
-
 /** e.g. `["left", "right"]` for padding X */
-export function setBoxParts(classes: string, group: BoxGroup, parts: readonly string[], value: string | null): string {
-	const box = getBox(classes, group);
+export function setBoxParts(
+	classes: string,
+	group: BoxGroup,
+	parts: readonly string[],
+	value: string | null,
+	variant = "",
+): string {
+	const box = getBox(classes, group, variant);
 
 	for (const part of parts) box[part] = value;
 
-	return setBox(classes, group, box);
+	return setBox(classes, group, box, variant);
 }

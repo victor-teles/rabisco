@@ -17,9 +17,13 @@ import {
 	type LineMapper,
 } from "../cli";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
+import { join } from "path";
+import { stagedAttachments } from "../attachments";
 import { userPrompt } from "../prompt";
 import { runInStaging } from "../staging";
 import type { CliProviderOptions } from "./claude-code";
+import { commandMethods } from "../command-template";
+import { codexCommands } from "../commands";
 
 /** Used when `codex debug models` isn't available. */
 export const CODEX_MODELS: ProviderModel[] = [{ id: "gpt-5.5", label: "GPT-5.5" }];
@@ -116,8 +120,8 @@ function parseCodexCatalog(stdout: string): ProviderModel[] {
 	});
 }
 
-/** The prompt goes on stdin (`-`). */
-export function codexArgs(model: string, dir: string) {
+/** The prompt goes on stdin (`-`). `images` are paths in `dir`; `--image=` keeps each flag to one value. */
+export function codexArgs(model: string, dir: string, images: string[] = []) {
 	return [
 		"exec",
 		"--json",
@@ -130,6 +134,7 @@ export function codexArgs(model: string, dir: string) {
 		"--cd",
 		dir,
 		...(model ? ["--model", model] : []),
+		...images.map((path) => `--image=${join(dir, path)}`),
 		"-",
 	];
 }
@@ -143,7 +148,8 @@ export function createCodexProvider(options: CliProviderOptions): Provider {
 		id: options.config.id,
 		kind: "cli",
 		label: options.config.label || "Codex CLI",
-		capabilities: { streaming: true, images: false, agentic: true, maxContextTokens: 200_000 },
+		capabilities: { streaming: true, images: true, agentic: true, maxContextTokens: 200_000 },
+		...commandMethods(codexCommands),
 
 		async health() {
 			const bin = binary();
@@ -200,7 +206,14 @@ export function createCodexProvider(options: CliProviderOptions): Provider {
 						{
 							type: "codex",
 							spawn,
-							cmd: [bin, ...codexArgs(model, dir)],
+							cmd: [
+								bin,
+								...codexArgs(
+									model,
+									dir,
+									stagedAttachments(request).map((staged) => staged.path),
+								),
+							],
 							cwd: dir,
 							env: cliEnv(bin),
 							stdin: userPrompt(request, "agent"),

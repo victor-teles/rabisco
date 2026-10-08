@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { projectNameFromPath, reconcileFrames, summarizeProject } from "../shared/project";
-import type { ProjectSummary } from "../shared/types";
-import { isDirectory, readCanvas, readProjectFiles } from "./project-folder";
+import { coverFor, isComponentFile, projectNameFromPath, reconcileFrames, summarizeProject } from "../shared/project";
+import type { ProjectSummary, ScreenSource } from "../shared/types";
+import { isDirectory, listProjectFiles, readCanvas, readProjectFiles } from "./project-folder";
 
 export type RecentEntry = { path: string; openedAt: string };
 
@@ -43,19 +43,21 @@ export function missingSummary(entry: RecentEntry): ProjectSummary {
 	};
 }
 
-/** Read-only, so listing never touches projects. */
+function canvasOf(path: string) {
+	try {
+		return readCanvas(path);
+	} catch {
+		return null;
+	}
+}
+
+/** Read-only, and reads only `rabisco.json` and the folder listing: covers load with `readCover`. */
 export function summarizeFolder(entry: RecentEntry): ProjectSummary {
 	const missing = missingSummary(entry);
 
 	if (!isDirectory(entry.path)) return missing;
-	const files = readProjectFiles(entry.path);
-	let canvas;
-
-	try {
-		canvas = readCanvas(entry.path);
-	} catch {
-		canvas = null;
-	}
+	const files = listProjectFiles(entry.path);
+	const canvas = canvasOf(entry.path);
 
 	if (!canvas) {
 		const screenCount = Object.keys(files).filter((f) => f.startsWith("screens/")).length;
@@ -64,4 +66,19 @@ export function summarizeFolder(entry: RecentEntry): ProjectSummary {
 	}
 
 	return summarizeProject(entry.path, reconcileFrames(canvas, files), files);
+}
+
+/** The cover screen with the components and DESIGN.md it may need; `null` without one. */
+export function readCover(path: string): ScreenSource | null {
+	if (!isDirectory(path)) return null;
+	const canvas = canvasOf(path);
+
+	if (!canvas) return null;
+	const reconciled = reconcileFrames(canvas, listProjectFiles(path));
+	const frame = reconciled.frames[0];
+
+	if (!frame) return null;
+	const files = readProjectFiles(path, (file) => file === frame.file || file === "DESIGN.md" || isComponentFile(file));
+
+	return coverFor(reconciled, files);
 }

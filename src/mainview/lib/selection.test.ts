@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Frame } from "../../shared/types";
-import { marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "./selection";
+import { contextSelection, marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "./selection";
 import { tokenizeLines } from "./highlight";
 
 const frame = (file: string, x: number): Frame => ({
@@ -35,6 +35,14 @@ describe("selection", () => {
 	test("sameSelection", () => {
 		expect(sameSelection(["a", "b"], ["a", "b"])).toBe(true);
 		expect(sameSelection(["a"], ["b"])).toBe(false);
+	});
+
+	test("right-click acts on the selection holding the screen, else on the screen alone", () => {
+		const selection = ["a", "c"];
+		expect(contextSelection(selection, "c")).toBe(selection);
+		expect(contextSelection(selection, "b")).toEqual(["b"]);
+		expect(contextSelection([], "a")).toEqual(["a"]);
+		expect(contextSelection(["components/card.tsx"], "a")).toEqual(["a"]);
 	});
 });
 

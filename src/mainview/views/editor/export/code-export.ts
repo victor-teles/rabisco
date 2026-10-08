@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { projectAssets } from "@/lib/render/assets";
 import { api } from "@/lib/rpc";
 import { UI_SOURCES } from "@/lib/ui-sources";
 import { codeToCopy, localDependencies } from "../../../../shared/export/code";
@@ -45,7 +46,9 @@ export async function exportViteProject(context: ExportContext) {
 			name: context.projectName,
 			frames: context.frames,
 			files: context.files,
+			theme: context.theme,
 			uiSources: UI_SOURCES,
+			assets: await projectAssets.base64(),
 		});
 
 		const parent = await api.pickExportFolder({});

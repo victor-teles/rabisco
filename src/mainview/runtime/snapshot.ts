@@ -16,6 +16,7 @@ import {
 	type SceneOp,
 } from "../../shared/export/scene";
 import { LINK_TO_ATTRIBUTE } from "../lib/render/protocol";
+import { frameAssets } from "./assets";
 import { boxOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect";
 
 const SKIPPED = new Set(["script", "style", "link", "meta", "template", "noscript", "head", "title"]);
@@ -137,9 +138,11 @@ function loadImage(url: string): Promise<Loaded | null> {
 	if (!promise) {
 		promise = (async () => {
 			try {
+				const asset = frameAssets.blob(url);
+
 				const src = url.startsWith("data:")
 					? url
-					: await asDataUrl(await (await fetch(url, { mode: "cors", credentials: "omit" })).blob());
+					: await asDataUrl(asset ?? (await (await fetch(url, { mode: "cors", credentials: "omit" })).blob()));
 
 				const image = new Image();
 				image.src = src;

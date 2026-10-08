@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
 	AlignCenterHorizontal,
 	AlignCenterVertical,
@@ -12,13 +12,13 @@ import {
 	ChevronDown,
 	Columns2,
 	Copy,
-	Monitor,
 	Shuffle,
-	Smartphone,
 	Trash2,
 	type LucideIcon,
 } from "lucide-react";
 import { DeviceToggle, VariationsPicker } from "@/components/app/design-composer";
+import { ResizeHandle, usePanelSize } from "@/components/app/resize-handle";
+import { InspectorSection } from "@/components/app/inspector-section";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -65,6 +65,9 @@ type InspectorProps = {
 	onTabChange: (tab: InspectorTab) => void;
 	/** `additive` with ⇧ */
 	onSelect: (file: string, additive: boolean) => void;
+	/** The screen whose name field takes focus */
+	renaming: string | null;
+	onRenamed: () => void;
 	/** `step` groups edits of one field focus into a single undo step */
 	onChange: (file: string, patch: FramePatch, step?: string) => void;
 	/** Seals the current burst of edits as one undo step */
@@ -85,6 +88,8 @@ type InspectorProps = {
 	codePanel: React.ReactNode;
 	/** Top of the Design tab */
 	propsPanel?: React.ReactNode;
+	/** The selected screen's element tree, above the element's props so they don't push it around */
+	layersPanel?: React.ReactNode;
 	componentsBadge?: number;
 };
 
@@ -102,19 +107,20 @@ const DISTRIBUTE_ICONS: Record<Axis, LucideIcon> = {
 	vertical: AlignVerticalSpaceAround,
 };
 
-export function Inspector(props: InspectorProps) {
-	const { frames, selection, tab, onTabChange, onSelect } = props;
+/** One width for every tab, so switching tabs doesn't move the canvas */
+const WIDTH = { key: "rabisco:inspector-width", initial: 360, min: 272, max: 720 };
+
+export const Inspector = memo(function Inspector(props: InspectorProps) {
+	const { frames, selection, tab, onTabChange } = props;
 	const selectedSet = new Set(selection);
 	const selected = frames.filter((frame) => selectedSet.has(frame.file));
 	const single = selected.length === 1 ? selected[0]! : null;
+	const size = usePanelSize(WIDTH);
+	const empty = !props.layersPanel && !props.propsPanel && selected.length === 0;
 
 	return (
-		<aside
-			className={cn(
-				"flex shrink-0 flex-col border-l bg-background transition-[width] duration-150",
-				tab === "design" ? "w-72" : "w-[440px]",
-			)}
-		>
+		<aside className="relative flex shrink-0 flex-col border-l bg-background" style={{ width: size.width }}>
+			<ResizeHandle edge="left" label="Resize the inspector" panel={size} />
 			<Tabs
 				value={tab}
 				onValueChange={(value) => {
@@ -127,44 +133,30 @@ export function Inspector(props: InspectorProps) {
 						<TabsTrigger value="design" className="px-2 text-[13px]">
 							Design
 						</TabsTrigger>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<TabsTrigger value="code" className="px-2 text-[13px]">
-									Code
-								</TabsTrigger>
-							</TooltipTrigger>
-							<TooltipContent side="bottom">
-								Code view <Kbd>{CODE_VIEW_KEYS}</Kbd>
-							</TooltipContent>
-						</Tooltip>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<TabsTrigger value="context" className="px-2 text-[13px]">
-									Context
-								</TabsTrigger>
-							</TooltipTrigger>
-							<TooltipContent side="bottom">
-								PRODUCT.md and DESIGN.md <Kbd>{CONTEXT_VIEW_KEYS}</Kbd>
-							</TooltipContent>
-						</Tooltip>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<TabsTrigger value="components" className="gap-1 px-2 text-[13px]">
-									Components
-									{props.componentsBadge ? (
-										<span
-											className="min-w-4 rounded-full bg-primary/12 px-1 text-[11px] leading-4 font-medium text-primary tabular-nums"
-											aria-label={`${props.componentsBadge} new ${props.componentsBadge === 1 ? "suggestion" : "suggestions"}`}
-										>
-											{props.componentsBadge}
-										</span>
-									) : null}
-								</TabsTrigger>
-							</TooltipTrigger>
-							<TooltipContent side="bottom">
-								Project components and the library <Kbd>{COMPONENTS_VIEW_KEYS}</Kbd>
-							</TooltipContent>
-						</Tooltip>
+						{/* Tooltips go inside the triggers: a tooltip's `data-state` on a trigger would hide the active tab */}
+						<TabsTrigger value="code" className="px-2 text-[13px]">
+							<TabTooltip label="Code view" keys={CODE_VIEW_KEYS}>
+								Code
+							</TabTooltip>
+						</TabsTrigger>
+						<TabsTrigger value="context" className="px-2 text-[13px]">
+							<TabTooltip label="PRODUCT.md and DESIGN.md" keys={CONTEXT_VIEW_KEYS}>
+								Context
+							</TabTooltip>
+						</TabsTrigger>
+						<TabsTrigger value="components" className="gap-1 px-2 text-[13px]">
+							<TabTooltip label="Project components and the library" keys={COMPONENTS_VIEW_KEYS}>
+								Components
+							</TabTooltip>
+							{props.componentsBadge ? (
+								<span
+									className="min-w-4 rounded-full bg-primary/12 px-1 text-[11px] leading-4 font-medium text-primary tabular-nums"
+									aria-label={`${props.componentsBadge} new ${props.componentsBadge === 1 ? "suggestion" : "suggestions"}`}
+								>
+									{props.componentsBadge}
+								</span>
+							) : null}
+						</TabsTrigger>
 					</TabsList>
 				</div>
 			</Tabs>
@@ -178,56 +170,56 @@ export function Inspector(props: InspectorProps) {
 			) : (
 				// One scroll for the whole tab, so long props lists never push the screens away
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{props.layersPanel}
 					{props.propsPanel}
 					{single ? <FrameDetails frame={single} {...props} /> : null}
 					{selected.length > 1 ? <MultiDetails count={selected.length} {...props} /> : null}
-
-					<div className={cn("flex flex-col", selected.length > 0 && "border-t")}>
-						<div className="px-4 pt-4 pb-2 text-xs font-medium text-subtle-foreground">Screens</div>
-						<div className="flex flex-col gap-0.5 px-2 pb-3">
-							{frames.length === 0 ? (
-								<p className="px-2 text-[13px] text-subtle-foreground">No screens yet.</p>
-							) : (
-								frames.map((frame) => {
-									const Icon = frame.device === "mobile" ? Smartphone : Monitor;
-
-									return (
-										<button
-											key={frame.file}
-											type="button"
-											title={frame.file}
-											onClick={(event) => onSelect(frame.file, event.shiftKey)}
-											className={cn(
-												"flex h-8 shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-												selectedSet.has(frame.file) && "bg-accent font-medium text-accent-foreground",
-											)}
-										>
-											<Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
-											<span className="truncate">{frame.name}</span>
-										</button>
-									);
-								})
-							)}
-						</div>
-					</div>
+					{empty ? (
+						<p className="px-4 py-5 text-[13px] text-subtle-foreground">
+							Select a screen to see its frame, variations and layers.
+						</p>
+					) : null}
 				</div>
 			)}
 		</aside>
 	);
+});
+
+function TabTooltip({ label, keys, children }: { label: string; keys: string; children: React.ReactNode }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span>{children}</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">
+				{label} <Kbd>{keys}</Kbd>
+			</TooltipContent>
+		</Tooltip>
+	);
 }
 
 function FrameDetails(props: InspectorProps & { frame: Frame }) {
-	const { frame, onChange, onEndStep, onDuplicate, onDelete } = props;
+	const { frame, onChange, onEndStep, onDuplicate, onDelete, renaming, onRenamed } = props;
 	const field = useFieldSteps(frame.file);
+	const nameRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (renaming !== frame.file) return;
+		nameRef.current?.focus();
+		nameRef.current?.select();
+		onRenamed();
+	}, [renaming, frame.file, onRenamed]);
 
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<Section title="Screen">
 				<input
+					ref={nameRef}
 					value={frame.name}
 					onFocus={field.begin}
 					onBlur={onEndStep}
 					onChange={(event) => onChange(frame.file, { name: event.target.value }, field.key("name"))}
+					onKeyDown={(event) => (event.key === "Enter" || event.key === "Escape") && event.currentTarget.blur()}
 					className="h-8 w-full min-w-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none focus:border-ring"
 					aria-label="Screen name"
 				/>
@@ -300,10 +292,10 @@ function Variations({
 	return (
 		<>
 			<Separator />
-			<section className="flex flex-col gap-2">
-				<div className="flex h-5 items-center justify-between">
-					<h3 className="text-xs font-medium text-subtle-foreground">Variations</h3>
-					{group ? (
+			<InspectorSection
+				title="Variations"
+				action={
+					group ? (
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
@@ -320,9 +312,9 @@ function Variations({
 								Compare side by side <Kbd>{COMPARE_KEYS}</Kbd>
 							</TooltipContent>
 						</Tooltip>
-					) : null}
-				</div>
-
+					) : null
+				}
+			>
 				{group ? (
 					<div className="flex flex-col gap-0.5">
 						{group.files.map((file) => {
@@ -431,7 +423,7 @@ function Variations({
 					</div>
 				) : null}
 				{busy && busyReason ? <p className="text-xs text-subtle-foreground">{busyReason}</p> : null}
-			</section>
+			</InspectorSection>
 		</>
 	);
 }
@@ -562,12 +554,7 @@ function useFieldSteps(file: string) {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-	return (
-		<section className="flex flex-col gap-2">
-			<h3 className="text-xs font-medium text-subtle-foreground">{title}</h3>
-			{children}
-		</section>
-	);
+	return <InspectorSection title={title}>{children}</InspectorSection>;
 }
 
 /** Tolerates partial text ("-", "") while typing and only reports valid numbers */

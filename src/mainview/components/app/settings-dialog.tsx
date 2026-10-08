@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ExternalLink, KeyRound, LoaderCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,6 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { useAutoResolve } from "@/hooks/use-auto-resolve";
 import { closeSettings, loadProviders, removeStatus, upsertStatus, useProviders } from "@/hooks/use-providers";
 import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
@@ -92,6 +105,7 @@ export function SettingsDialog() {
 							))
 						)}
 					</div>
+					<CommentSettings />
 				</ScrollArea>
 
 				<div className="flex items-center gap-2 border-t px-6 py-3">
@@ -137,6 +151,24 @@ export function SettingsDialog() {
 				</div>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function CommentSettings() {
+	const [autoResolve, setAutoResolve] = useAutoResolve();
+
+	return (
+		<div className="border-t px-6 py-4">
+			<label className="flex items-start justify-between gap-6">
+				<span className="flex flex-col gap-0.5">
+					<span className="text-sm font-medium">Resolve comments the AI works on</span>
+					<span className="text-[13px] text-muted-foreground">
+						When a prompt sent from a comment changes the design, its comment is resolved. Undo reopens it.
+					</span>
+				</span>
+				<Switch className="mt-0.5" checked={autoResolve} onCheckedChange={setAutoResolve} />
+			</label>
+		</div>
 	);
 }
 
@@ -379,10 +411,30 @@ function ProviderCard({
 							{config.enabled ? "Disable" : "Enable"}
 						</Button>
 						<div className="flex-1" />
-						<Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={remove}>
-							<Trash2 />
-							Remove
-						</Button>
+						<AlertDialog>
+							<AlertDialogTrigger asChild>
+								<Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+									<Trash2 />
+									Remove
+								</Button>
+							</AlertDialogTrigger>
+							<AlertDialogContent size="sm">
+								<AlertDialogHeader>
+									<AlertDialogTitle className="text-base">Remove {config.label}?</AlertDialogTitle>
+									<AlertDialogDescription className="text-[13px]">
+										{config.hasKey
+											? "Rabisco forgets this provider and deletes its API key from your keychain."
+											: "Rabisco forgets this provider. You can add it again later."}
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+									<AlertDialogAction variant="destructive" size="sm" onClick={remove}>
+										Remove
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
 					</div>
 				</div>
 			</CollapsibleContent>

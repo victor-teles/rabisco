@@ -17,6 +17,8 @@ export default {
 		// See bench/compile/README.md
 		"bench:compile":
 			"cd bench/compile && bun prepare.ts && bunx --bun vite build && hutch electrobun prepare && hutch electrobun dev",
+		// See bench/perf/README.md
+		"bench:perf": "bun bench/perf/perf.ts",
 		build: "hutch electrobun prepare && hutch run ui:build && hutch electrobun build --env=stable",
 		"build:canary": "hutch electrobun prepare && hutch run ui:build && hutch electrobun build --env=canary",
 	},

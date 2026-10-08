@@ -3,7 +3,7 @@ import * as Lucide from "lucide-react";
 import React, { createElement, type FunctionComponent, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transform } from "sucrase";
-import { generateMockScreens } from "./mock-generator";
+import { generateMockScreens, mockThemeTokens } from "./mock-generator";
 import { FRAME_GAP, FRAME_SIZE, isComponentFile, isScreenFile } from "./project";
 import type { ProjectFiles } from "./types";
 import { compileTsx } from "../bun/test-utils";
@@ -136,5 +136,63 @@ describe("mock generator", () => {
 		expect(accentOf("same prompt")).toBe(accentOf("same prompt"));
 		const accents = new Set(["a", "b", "c", "d", "e", "f", "g", "h"].map(accentOf));
 		expect(accents.size).toBeGreaterThan(1);
+	});
+});
+
+describe("mockThemeTokens", () => {
+	const COINBASE = `## Overview
+
+The single brand voltage is **Coinbase Blue** (\`{colors.primary}\` — #0052ff), plus a deep near-black editorial canvas (\`{colors.surface-dark}\` — #0a0b0d).
+
+### Brand & Accent
+- **Coinbase Blue** (\`{colors.primary}\` — #0052ff): The single brand color.
+- **Coinbase Blue Active** (\`{colors.primary-active}\` — #003ecc): Press-state darken.
+- **Coinbase Blue Disabled** (\`{colors.primary-disabled}\` — #a8b8cc): Faded-blue tint.
+
+### Surface
+- **Canvas** (\`{colors.canvas}\` — #ffffff): The default page floor.
+- **Surface Soft** (\`{colors.surface-soft}\` — #f7f7f7): Subtle alternating band surface.
+- **Surface Dark** (\`{colors.surface-dark}\` — #0a0b0d): Deep near-black canvas.
+
+### Hairlines
+- **Hairline** (\`{colors.hairline}\` — #dee1e6): Default 1px divider on white surfaces.
+
+### Text
+- **Ink** (\`{colors.ink}\` — #0a0b0d): Display headings, primary nav.
+- **Muted** (\`{colors.muted}\` — #7c828a): Sub-titles, breadcrumbs.
+- **On Primary** (\`{colors.on-primary}\` — #ffffff): White text on Coinbase Blue CTAs.
+- **On Dark** (\`{colors.on-dark}\` — #ffffff): White text on dark heroes.
+
+| Token | Value | Use |
+|---|---|---|
+| \`{rounded.sm}\` | 8px | Compact rows |
+| \`{rounded.md}\` | 12px | Form inputs |
+| \`{rounded.lg}\` | 16px | Mid-size cards |
+| \`{rounded.pill}\` | 100px | All CTA buttons |
+
+- **CoinbaseSans → Inter** at weight 400/600. Fallback: Roboto. Substitute: Inter.
+- **CoinbaseMono → JetBrains Mono** or **Geist Mono**.
+`;
+
+	test("maps colors named near role words, skipping states and dark sections", () => {
+		expect(mockThemeTokens(COINBASE)).toEqual({
+			light: {
+				primary: "#0052ff",
+				background: "#ffffff",
+				muted: "#f7f7f7",
+				border: "#dee1e6",
+				foreground: "#0a0b0d",
+				"muted-foreground": "#7c828a",
+				"primary-foreground": "#ffffff",
+				radius: "12px",
+				"font-sans": '"Inter", system-ui, sans-serif',
+				"font-mono": '"JetBrains Mono", ui-monospace, monospace',
+			},
+			dark: {},
+		});
+	});
+
+	test("finds nothing in a document without colors", () => {
+		expect(mockThemeTokens("## Voice\n\nCalm and direct.")).toEqual({ light: {}, dark: {} });
 	});
 });

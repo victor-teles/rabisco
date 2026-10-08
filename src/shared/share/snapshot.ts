@@ -1,4 +1,5 @@
 // Built in the webview, where TSX compiles and Tailwind builds; the main process only checks and serves it.
+import { assetKey } from "../assets";
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
 import { isScreenFile, screenNameFromPath } from "../project";
@@ -23,6 +24,8 @@ export type ShareSnapshot = {
 	css: string;
 	/** DESIGN.md token overrides, loaded after `css` */
 	theme: string;
+	/** The project's `public/` images as `data:` URLs, by the `src` screens write (decision 0010) */
+	assets?: Record<string, string>;
 };
 
 /** The same prebuilt runtime the canvas uses */
@@ -62,6 +65,14 @@ function assertScreens(screens: readonly Json[], modules: JsonObject): asserts s
 	}
 }
 
+function assertAssets(assets: Json): asserts assets is Record<string, string> {
+	if (!isJsonObject(assets)) throw new Error("Snapshot assets aren't a map");
+
+	for (const [src, url] of Object.entries(assets))
+		if (!assetKey(src) || !isString(url) || !url.startsWith("data:image/"))
+			throw new Error(`Snapshot asset ${src} isn't an image`);
+}
+
 function assertShareSnapshot(value: Json | undefined): asserts value is ShareSnapshot {
 	if (!isJsonObject(value) || value.version !== 1) throw new Error("Not a share snapshot");
 	const { name, createdAt, start, screens, modules, css, theme } = value;
@@ -75,6 +86,8 @@ function assertShareSnapshot(value: Json | undefined): asserts value is ShareSna
 	assertScreens(screens, modules);
 
 	for (const [path, module] of Object.entries(modules)) assertModule(path, module);
+
+	if (value.assets !== undefined) assertAssets(value.assets);
 
 	if (!screens.some((screen) => screen.file === start))
 		throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);

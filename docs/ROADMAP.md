@@ -35,8 +35,8 @@ Replace HTML strings with TSX components, and store each project as a folder of 
     DESIGN.md
     screens/welcome.tsx
     components/button.tsx
-    chat.jsonl          # conversation history
-    attachments/        # images attached to prompts, referenced from chat.jsonl
+    chats/<id>.jsonl    # one file per chat session (decision 0012)
+    attachments/        # images attached to prompts, referenced from the chats
   ```
 - ✅ Open any folder as a project, and keep a list of recent folders on Home
 - ✅ Watch the folder so that edits made in an external editor appear on the canvas
@@ -106,10 +106,12 @@ _Principle: Context is a file_
 - ✅ Templates for both files when a project starts (`src/shared/context/templates.ts`)
 - ✅ "Write my DESIGN.md": a `context` generation task infers the tokens and rules from the existing screens
 - ✅ "Write my PRODUCT.md": a four-question interview in the chat, then a `context` generation (or the answers assembled directly when no provider is set)
-- ✅ Map DESIGN.md tokens (`## Tokens`, `- primary: oklch(…)`, `### Dark`) to the theme variables. Frames get the overrides as a second stylesheet, so a token change re-themes every screen with no Tailwind rebuild (`src/shared/context/tokens.ts`)
+- ✅ Map DESIGN.md tokens to the theme variables. Frames get the overrides as a second stylesheet, so new tokens re-theme every screen with no Tailwind rebuild (`src/shared/context/tokens.ts`). An optional `## Tokens` section (`- primary: oklch(…)`, `### Dark`) is used as it is, with no AI
+- ✅ Any DESIGN.md format themes the screens ([0009](./decisions/0009-theme-read-from-design-md.md)). Without valid tokens in a Tokens section, a `theme` generation task reads them from the whole file (prose, tables, `{colors.primary}` references) and maps them onto the shadcn names. It replies with a token block, checked with `validateToken`, and never writes DESIGN.md (`src/shared/context/theme.ts`, `runThemeReading`)
+- ✅ Ask before re-theming. Screens render with the applied theme, stored as `theme` in `rabisco.json` with the `source` (a hash of DESIGN.md's content) it came from. When DESIGN.md's tokens differ, the bar over the canvas offers "Apply to screens". When DESIGN.md changed and has no tokens, it offers "Update theme" (progress and Stop in the bar, or "Open Settings" with no provider), then shows the changed colors with Undo. Each is one undo step; "Not now" waits for the next change. Readings are cached by source. Exports and the share link use the applied theme. A project without `theme` takes DESIGN.md's tokens as applied
 - ✅ Import the files from an existing repository (root, `docs/`, `design/`, `.github/`…)
 
-**Remaining:** in the running app, check import from a repository (folder picker, replace dialog), the `context` task with real providers (API, Claude Code, Ollama), and that a token change re-themes open frames in WKWebView.
+**Remaining:** in the running app, check import from a repository (folder picker, replace dialog), the `context` and `theme` tasks with real providers (API, Claude Code, Ollama), and that applying new tokens re-themes open frames in WKWebView.
 
 **Done when** changing the primary color or the voice in the files changes the next generation, with no extra prompt.
 
@@ -159,7 +161,7 @@ _Principle: UX first (direct manipulation over prompts)_
 - ✅ Edit text inline: double-click (or Enter) edits the text inside the frame, with the screen's own fonts; Enter keeps it as one undo step, Esc cancels (`runtime/text-edit.ts`)
 - ✅ Inspector for the selected element: layout, spacing, size, type, fill, border and effects, read from and written back to its Tailwind classes; only classes without a variant change (`src/shared/tailwind/classes.ts`, `element-style.tsx`)
 - ✅ Point and prompt: with an element selected, a prompt changes only that element. The request carries its snippet and lines, and the reply notes changes made outside it (`src/shared/ai/focus.ts`, `src/bun/ai/focus-guard.ts`)
-- ✅ Comments and pins on the canvas (C): pinned to a screen or the canvas, threads with replies, resolve, drag to move, undoable, saved in `rabisco.json`. "Ask AI" sends a comment as a prompt for the element under its pin
+- ✅ Comments and pins on the canvas (C): pinned to a screen or the canvas, threads with replies, resolve, drag to move, undoable, saved in `rabisco.json`. "Send to chat" puts a comment in the composer, targeting the element under its pin. "Send comments to chat" (screen menu, command palette) puts all of a screen's open comments there as one list. Both add to what is already typed, so you can review before sending. When the AI changes the design for a prompt sent from comments, those comments are resolved in the same undo step, with a toast to reopen them. AI providers settings can turn this off. Resolving fades the pin out instead of removing it at once
 - ✅ Prototype links between screens, plus a play mode ([0007](./decisions/0007-prototype-links-in-source.md)): "Link to" in the inspector writes `data-link-to` in the TSX, connectors on the canvas, and play mode (⌥⌘↵) runs the screens interactively with back and forward
 
 **Remaining:** check in the running app (WKWebView) that hit tests through the fiber tree, text editing in a frame (focus, caret, Enter/Esc) and play mode clicks behave as in Chrome. Run point and prompt with real providers and see how often the guard fires. Connectors start at the frame edge, not at the linked element.
@@ -203,10 +205,10 @@ Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase c
 
 **Checks in the running app (WKWebView)**
 
-- ⬜ A generated screen is written to disk and renders; an edit in VS Code updates the canvas (Phase 1)
-- ⬜ Confirm the RPC round-trip floor fix ([0005](./decisions/0005-rpc-round-trip-floor.md))
-- ⬜ Hit tests through the fiber tree, text editing (focus, caret, Enter/Esc), play mode clicks, drag and drop from the Components panel, the editable code view
-- ⬜ Context import (folder picker, replace dialog), and a DESIGN.md token change re-themes open frames
+- ✅ A generated screen is written to disk and renders; an edit in VS Code updates the canvas (Phase 1)
+- ✅ Confirm the RPC round-trip floor fix ([0005](./decisions/0005-rpc-round-trip-floor.md))
+- ✅ Hit tests through the fiber tree, text editing (focus, caret, Enter/Esc), play mode clicks, drag and drop from the Components panel, the editable code view
+- 🚧 Context import (folder picker, replace dialog), and applying changed DESIGN.md tokens re-themes open frames. The reported "tokens don't re-theme" case was a DESIGN.md with no `## Tokens` section, so it set no tokens. A Tokens section is no longer needed: "Update theme" reads the theme from any DESIGN.md with AI ([0009](./decisions/0009-theme-read-from-design-md.md)); checked in the browser with the mock provider and a pasted Coinbase-style file. Recheck in the app with a real provider. Paste didn't work in the context editor: WKWebView gets ⌘C/⌘V/⌘Z only through native Edit menu roles, so the app now sets an application menu (`src/bun/index.ts`). Recheck paste
 - ⬜ PNG, SVG and PDF export; the Share popover (clipboard, open link); the share link from another device
 
 **Real providers**
@@ -224,7 +226,7 @@ Phases 1–7 are built but checked mostly in Chrome and unit tests. This phase c
 
 ---
 
-## Phase 9: Performance and snappy interactions ⬜
+## Phase 9: Performance and snappy interactions 🚧
 
 _Principle: UX first (fast feedback)_
 
@@ -232,75 +234,91 @@ Today every wheel, pan and drag event re-renders the whole editor, every screen 
 
 **Targets** (measured in the packaged app on a 30-screen project)
 
-- Pan and zoom hold 120 fps (ProMotion), with no React render of the editor per event
-- Dragging a frame or a pin holds 120 fps and is one history commit
+- Pan and zoom hold 60 fps, with no React render of the editor per event. WKWebView caps page rendering near 60 Hz by default (WebKit's "Prefer page rendering updates near 60fps"), even on ProMotion displays, and Electrobun doesn't expose the setting. 120 fps needs a native change
+- Dragging a frame or a pin holds 60 fps and is one history commit
 - A keystroke in the code view or a style field shows in the frame within 50 ms
 - Opening a project shows the first frames within 500 ms, with one Tailwind build
 
 **Canvas**
 
-- ⬜ Keep the viewport out of React state: write the transform to the DOM in requestAnimationFrame, and update the zoom readout lazily
-- ⬜ Pass zoom to counter-scaled chrome (labels, outlines, link connectors) as a `--zoom` CSS variable, so frames stay memoized while zooming
-- ⬜ Draw the dot grid on its own layer; add `will-change: transform` during a gesture; cheaper frame shadows
-- ⬜ Frame, pin and field drags update a transient layer and commit once on pointerup (`use-project.ts` `change()` runs per pointermove today)
-- ⬜ Memoize the editor panels (chat, inspector, code view lines) and stabilize inline props (`exportContext`, `overlay`, zoom handlers)
+- ✅ Keep the viewport out of React state: write the transform to the DOM in requestAnimationFrame, and update the zoom readout lazily
+- ✅ Pass zoom to counter-scaled chrome (labels, outlines, link connectors) as a `--zoom` CSS variable, so frames stay memoized while zooming
+- ✅ Draw the dot grid on its own layer; add `will-change: transform` during a gesture; cheaper frame shadows
+- ✅ Frame, pin and field drags update a transient layer and commit once on pointerup (`use-project.ts` `change()` runs per pointermove today)
+- ✅ Memoize the editor panels (chat, inspector, code view lines) and stabilize inline props (`exportContext`, `overlay`, zoom handlers)
 
 **Frames**
 
-- ⬜ Mount only frames in or near the viewport. Others show a cached snapshot (`runtime/snapshot.ts`), and so do frames at low zoom
-- ⬜ Shrink the frame runtime: load lucide icons on demand instead of `import * as Lucide`
-- ⬜ Reconcile on update instead of remounting the screen (`<Boundary key={version}>`), so state, scroll and images survive an edit
-- ⬜ Lazy-mount the recent project covers on Home; stop reading every recent project's files in Cottontail to list them
+- ✅ Mount only frames in or near the viewport. Others show a cached snapshot (`runtime/snapshot.ts`), and so do frames at low zoom
+- ✅ Shrink the frame runtime: load lucide icons on demand instead of `import * as Lucide`
+- ✅ Reconcile on update instead of remounting the screen (`<Boundary key={version}>`), so state, scroll and images survive an edit
+- ✅ Lazy-mount the recent project covers on Home; stop reading every recent project's files in Cottontail to list them
 
 **Edit pipeline**
 
-- ⬜ Batch Tailwind `add()` per frame and build once after the first sync on open (it's O(N²) full-CSS broadcasts today). Skip candidates that can't be classes
-- ⬜ Debounce disk writes, the duplicate scan and component catalog while typing; the frame still updates on every keystroke
-- ⬜ Hover: return only the innermost box, skip `setHover` when the element didn't change
-- ⬜ Pause `MutationObserver`/`ResizeObserver` work in unmounted or offscreen frames
+- ✅ Batch Tailwind `add()` per frame and build once after the first sync on open (it's O(N²) full-CSS broadcasts today). Skip candidates that can't be classes
+- ✅ Debounce disk writes, the duplicate scan and component catalog while typing; the frame still updates on every keystroke
+- ✅ Hover: return only the innermost box, skip `setHover` when the element didn't change
+- ✅ Pause `MutationObserver`/`ResizeObserver` work in unmounted or offscreen frames
+
+**Remaining**
+
+- 🚧 Measure the targets in the packaged app on a 30-screen project (a dev-only "Show FPS" item is in the canvas right-click menu). First pass with 33 screens: 60 fps most of the time, but 34–45 fps while a marquee selects screens, because every selection change re-rendered the editor. Selecting also mounted a live iframe for every selected screen, so a marquee at fit zoom (below 25%, all snapshots) loaded up to 33 frames; now only a single selected screen near the view goes live. The marquee keeps its selection on the canvas and sends it to the editor once on release, and the chat history, screens list and title bar buttons no longer re-render on a selection change. Recheck; still to measure: pan, zoom and drags, 50 ms keystroke to frame, 500 ms to first frames. `bun bench/perf/perf.ts` (`hutch run bench:perf`) guards what can be measured outside the app; see `bench/perf/README.md`
+- ⬜ Check in WKWebView: the swap between a live frame and its snapshot, observer pausing offscreen, lazy covers on Home, `--zoom` counter-scaling of labels, outlines and link arrows
+- ⬜ A ⌘-click or double-click on a frame that is not live (mostly below 25% zoom) selects it but can miss the element while its iframe loads. "Send to chat" on a comment on a frame that is not live targets the whole screen
+- ⬜ Edits keep state only for top-level `function` components and capitalized or default function exports; `const Foo = () =>` components used in their own file still remount
 
 **Done when** the targets above hold, with a small benchmark in `bench/` that guards them.
 
 ---
 
-## Phase 10: Drop with a placement preview ⬜
+## Phase 10: Drop with a placement preview 🚧
 
 _Principle: UX first (direct manipulation over prompts)_
 
 Dragging a component only highlights the whole screen, and the drop always appends to the nearest container. You should see exactly where it lands before you let go.
 
-- ⬜ Hit-test on dragover (throttled to one in flight, like hover), not only on drop
-- ⬜ The frame reports the target container's box, its direct children's boxes with their source starts, and its layout (`display`, `flex-direction`, grid flow)
-- ⬜ An insertion line between siblings along the main axis, a highlight on the target container, and its name as a label. Empty containers show a filled drop zone
-- ⬜ `insertAt(source, parent, index)` in `shared/jsx/transforms.ts`, so the drop lands where the line shows. `dropParent` returns the container it picked, so the preview and the result always agree
-- ⬜ Accept more containers: component usages that take `children` (`<Card>`, `<CardContent>`), lists and buttons. A clear "can't drop here" state for `.map` and conditional children
-- ⬜ Select the inserted element after the drop; Esc cancels a drag
-- ⬜ Reuse the same indicator to move an existing element (Phase 12)
+- ✅ Hit-test on dragover (throttled to one in flight, like hover), not only on drop
+- ✅ The frame reports the target container's box, its direct children's boxes with their source starts, and its layout (`display`, `flex-direction`, grid flow): the `drop-layout` message, cached per container for the drag
+- ✅ An insertion line between siblings along the main axis (rows, columns, reversed and RTL flex, wrapping flex and grids), a highlight on the target container, and its name as a label. Empty containers show a filled drop zone (`lib/drop-placement.ts`)
+- ✅ `insertAt(source, parent, index)` in `shared/jsx/transforms.ts`, so the drop lands where the line shows. `dropTarget` picks the container for both the preview and the drop, so they always agree
+- ✅ Accept more containers: component usages written with children (`<Card>`, `<CardContent>`), lists, buttons and labels. `.map` and conditional children pass the drop to the container holding the expression; a screen that failed to render shows "Can't drop here"
+- ✅ Select the inserted element after the drop; Esc cancels a drag and clears the preview
+- ✅ Reuse the same indicator to move an existing element (Phase 12)
+
+**Remaining**
+
+- ⬜ Check in WKWebView: the preview while dragging (line, label, empty drop zone), "Can't drop here" on a broken screen, Esc mid-drag, and dropping a button between two specific cards
 
 **Done when** a user can drop a button between two specific cards, and it lands there on the first try.
 
 ---
 
-## Phase 11: Context menus ⬜
+## Phase 11: Context menus 🚧
 
 _Principle: UX first (keyboard first, mouse friendly)_
 
 There's no right-click anywhere. Every action exists already, but it's spread across the inspector, shortcuts and the title bar.
 
-- ⬜ Add the shadcn `ContextMenu` primitive, and one action registry (label, shortcut, enabled, run) shared by menus, shortcuts and a command palette
-- ⬜ **Screen:** rename, duplicate, delete, copy code, copy as PNG, export, vary this, compare, pick, play from here, link to and zoom to selection
-- ⬜ **Multiple screens:** align, distribute, duplicate, delete, export
-- ⬜ **Element:** edit text, select parent and children, duplicate, delete, wrap in a div, make component, ask AI about it, copy code, go to source
-- ⬜ **Canvas:** paste, new blank screen, add comment, zoom to fit, select all
-- ⬜ **Screens list and structure tree:** the same menus as the canvas
-- ⬜ Right-click selects what's under the pointer first, as in Figma. Menu items show their shortcut
-- ⬜ ⌘K command palette backed by the same registry, and a shortcut sheet (`?`)
+- ✅ The shadcn `ContextMenu` primitive, and one action registry (label, shortcut, enabled, run) shared by menus, shortcuts and the command palette (`lib/actions.ts`). The editor's key handler dispatches through it; `ActionMenuItems` renders menus from action ids
+- ✅ **Screen:** rename (⌘R), duplicate, delete, copy (⌘C), copy code, copy as PNG, export, vary this, compare, pick, play from here and zoom to selection
+- ✅ **Multiple screens:** align, distribute, duplicate, delete, export (the same menu, with what doesn't apply greyed)
+- ✅ **Element:** edit text, select parent (⇧↵) and first child, duplicate (⌘D), delete, wrap in a div (⌥⌘G), make component (⌥⌘K), ask AI about it, copy code, go to source (`duplicateElement`, `wrapElement` in `shared/jsx/transforms.ts`)
+- ✅ **Canvas:** paste (⌘V: copied screens, or TSX from the clipboard as a new screen, centered under the pointer), new blank screen and add comment at the pointer, zoom to fit, select all
+- ✅ **Screens list and structure tree:** the screen and element menus
+- ✅ Right-click selects what's under the pointer first, as in Figma: a screen, or an element inside the selected screen (⌘ + right-click anywhere). Menu items show their shortcut
+- ✅ ⌘K command palette (the uai `command-menu` block) backed by the same registry, and a shortcut sheet (`?`)
+- ⬜ **Screen:** link to. Links are a per-element attribute (decision 0007), so this belongs on the element menu
+
+**Remaining**
+
+- ⬜ Check in WKWebView: element menu after the async hit-test, focus after Rename, Ask AI and Make component from a menu, the clipboard prompt on ⌘V, and that ⌘R doesn't reload
 
 **Done when** every screen and element action can be found with a right-click, and shows its shortcut.
 
 ---
 
-## Phase 12: Element editing ⬜
+## Phase 12: Element editing 🚧
 
 _Principle: Direct manipulation over prompts_
 
@@ -308,31 +326,41 @@ You can select one element, edit its text and change its classes. Next: move, re
 
 **Selection**
 
-- ⬜ Layers panel in the Design tab (the Code tab's structure tree, made reusable), with hover sync to the canvas
-- ⬜ Breadcrumb of ancestors above the inspector; Enter / ⇧Enter to select children and parent, Tab between siblings
-- ⬜ ⇧-click selects several elements; shared style edits apply to all of them
-- ⬜ Hover label with size; the selection shows padding and gap overlays
+- ✅ Layers panel in the Design tab (the Code tab's structure tree, now `structure-tree.tsx`), with hover sync to the canvas both ways (`lib/element-hover.ts`)
+- ✅ Breadcrumb of ancestors above the inspector; ↵ selects the first child (or edits text on an element without children), ⇧↵ the parent, ⇥ / ⇧⇥ the next and previous sibling (`lib/element-nav.ts`)
+- ✅ ⇧-click on the canvas and ⇧/⌘-click in Layers select several elements in one screen. The style panel shows shared values or "Mixed", and an edit applies to all in one undo step (`lib/element-selection.ts`). Delete, duplicate, copy and wrap (adjacent siblings) work on all of them
+- ✅ Hover label with name and size; the selection shows its size, padding and gap overlays (`lib/render/spacing.ts`)
 
 **Manipulation**
 
-- ⬜ Drag an element to reorder it within its parent or move it to another container, with the Phase 10 indicator (`moveElement` transform)
-- ⬜ Arrow keys reorder an element among its siblings
-- ⬜ Resize handles that write `w-*` / `h-*` (snapped to the spacing scale, `fill`/`hug` like Figma's auto layout), and drag handles for padding and gap
-- ⬜ Duplicate (⌘D), copy and paste (between screens too), wrap in a div or flex stack (⌥⌘G), unwrap
+- ✅ Drag an element to reorder it within its parent or move it to another container, with the Phase 10 indicator (`moveElement` transform, `lib/element-move.ts`)
+- ✅ Arrow keys reorder an element among its siblings (`moveAmongSiblings`)
+- ✅ Drag an item a `.map` renders to reorder it among its siblings: Rabisco moves its entry in the array literal (`const items = […]` or `[…].map`), as one undo step (`shared/jsx/lists.ts`)
+- ✅ Resize handles that write `w-*` / `h-*` (snapped to the spacing scale, Fixed / Hug / Fill from the size pill, double-click a handle to hug), and drag handles for padding (⌥ all sides, ⇧ opposite sides) and gap. Drags preview inline in the frame and commit one undo step (`lib/resize.ts`)
+- ✅ Duplicate (⌘D), cut, copy and paste (⌘X, ⌘C, ⌘V, between screens too, imports follow), wrap in a div (⌥⌘G) or flex stack (⇧A), unwrap (⇧⌘G)
 
 **Properties**
 
-- ⬜ Add an attribute; an image picker for `src` that copies the file into the project; a link field with a screen picker for `href`
-- ⬜ Icon picker for lucide icons
-- ⬜ Missing style controls: position and inset, z-index, overflow, grid columns, flex grow and self-alignment, font family
-- ⬜ States and breakpoints: edit `hover:`, `focus:`, `dark:` and `md:` classes through a state switch in the inspector
-- ⬜ Collapsible inspector sections
+- ✅ Add an attribute; an image picker for `src` that copies the file into `public/images/` (decision 0010 pushes project images to frames and exports); a link field with a screen picker for `href`
+- ✅ Icon picker for lucide icons (`shared/jsx/icons.ts`)
+- ✅ Missing style controls: position and inset, z-index, overflow, grid columns, flex grow and self-alignment, font family
+- ✅ States and breakpoints: a State switch in the inspector edits `hover:`, `focus:`, `dark:`, `sm:`, `md:` and `lg:` classes
+- ✅ Collapsible inspector sections
+
+**Remaining**
+
+- ⬜ Check in WKWebView: element drag, resize and padding/gap handles, ⇧-click multi-select, Layers hover sync, Tab between siblings, ⌘C/⌘V of elements (clipboard prompt), and picked images on the canvas
+- ⬜ Move an element to another screen by dragging
+- ⬜ Handles follow the State switch (they write base classes only), and work with several elements selected
+- ⬜ Arrow keys follow the parent's main axis (↑/← always move earlier)
+- ⬜ Renaming a screen updates `href="#/…"` as it does `data-link-to`
+- ⬜ Images in `srcSet`, `<source>` and `new Image()` are not rewritten to project images
 
 **Done when** a user can build a simple card from components with the mouse only, and the TSX reads like a developer wrote it.
 
 ---
 
-## Phase 13: UX polish ⬜
+## Phase 13: UX polish 🚧
 
 _Principle: UX first_
 
@@ -340,36 +368,83 @@ Findings from the audit of the current editor, by impact.
 
 **Canvas**
 
-- ⬜ New blank screen (toolbar, context menu, ⌥N), with device presets (phone, tablet, desktop, custom)
-- ⬜ Resize frames with handles, and more device presets
-- ⬜ Snapping and smart guides when moving frames
-- ⬜ Rename a screen by double-clicking its label
-- ⬜ A marker and a "Fix" action on screens that still fail to render after the automatic repair
-- ⬜ Tooltips with shortcuts on the zoom controls; a minimap for large projects
+- ✅ New blank screen (toolbar, context menu, ⌥N), with device presets (phone, tablet, desktop, custom)
+- ✅ Resize frames with handles, and more device presets
+- ✅ Snapping and smart guides when moving frames
+- ✅ Rename a screen by double-clicking its label
+- ✅ A marker and a "Fix" action on screens that still fail to render after the automatic repair
+- ✅ Tooltips with shortcuts on the zoom controls; a minimap for large projects
 
 **Screens list**
 
-- ⬜ Move it out from under the inspector into its own panel or tab, with thumbnails, inline rename, reorder and search
+- ✅ Move it out from under the inspector into its own panel or tab, with thumbnails, inline rename, reorder and search
 
 **Chat**
 
-- ⬜ Paste and drop images into the composer, and keep them in the history
-- ⬜ Edit and resend a prompt, copy and regenerate a reply, markdown in replies
-- ⬜ Resizable and collapsible chat panel; a stable inspector width across tabs
+- ✅ Paste and drop images into the composer, and keep them in the history
+- ✅ Edit and resend a prompt, copy and regenerate a reply, markdown in replies
+- ✅ Resizable and collapsible chat panel; a stable inspector width across tabs
+- ✅ Chat sessions ([0012](./decisions/0012-chat-sessions-and-provider-commands.md)): New chat (⇧⌘O, `/new`) and a searchable history in the panel header. Each chat is `chats/<id>.jsonl`; older projects' `chat.jsonl` moves there. A generation gets its own chat's history, and CLI agents now get it too
+- ✅ `/` commands in the composer: Rabisco's (`/new`, `/product-md`, `/design-md`, `/vary`, `/compare`, `/play`) and the active CLI's own command files (Claude Code, Codex, Gemini CLI), expanded by Rabisco
+- ✅ Files a generation writes show as uai tool calls with a live line count; open one to read the code so far
+- ✅ The chat follows new messages only while you're at the bottom, and scrolls only itself
+- ✅ Double-click the title bar to zoom the window, as the macOS setting says
+- ⬜ Check in WKWebView: the `/` menu's keys in the composer, ⇧⌘O from the composer, deleting a chat to the Trash, and a real Claude Code command run
+
+**Fixed**
+
+- ✅ The whole editor could scroll up out of the window, so the title bar disappeared (some projects only). Hidden render frames (snapshots, image export) take a screen's full size, so a tall screen made the page taller than the window, and a focus or `scrollIntoView` scrolled it. They now render in a clipped layer, and the page itself never scrolls
 
 **First run and Home**
 
-- ⬜ First-run onboarding: pick a provider (with a detected CLI preselected), or start without one
-- ⬜ Search and sort recents, real dates after a week
-- ⬜ Follow the system theme until the user picks one
+- ✅ First-run onboarding: pick a provider (with a detected CLI preselected), or start without one
+- ✅ Search and sort recents, real dates after a week
+- ✅ Follow the system theme until the user picks one
 
 **Safety and feedback**
 
-- ⬜ A toast with "Undo" after deleting screens; confirm removing a provider
-- ⬜ Undo for the project name and device; warn before a reload from disk clears the history
-- ⬜ A comments list, with resolved threads
+- ✅ A toast with "Undo" after deleting screens; confirm removing a provider
+- ✅ Undo for the project name and device; warn before a reload from disk clears the history
+- ✅ A comments list, with resolved threads
 
 **Done when** a new user can go from install to an edited, shared screen without reading the README.
+
+---
+
+## Phase 14: Design system and tokens ⬜
+
+_Principles: Context is a file · Component based by default_
+
+DESIGN.md's `## Tokens` stays the one source of truth ([0009](./decisions/0009-theme-read-from-design-md.md)). DTCG and Figma JSON are for import and export only. Custom tokens use Tailwind v4 namespaces, so the name is the class. This needs a decision record: the compiler gets the token names, frames get the values.
+
+**MVP**
+
+- ⬜ Custom tokens in DESIGN.md: `color-brand` (`bg-brand`), `radius-card` (`rounded-card`), `font-display`, `text-display: 3rem/1.1`, `spacing` and `spacing-*`, with light and dark values (`src/shared/context/tokens.ts`)
+- ⬜ Names go into the screen compiler's `@theme`, values stay in the theme stylesheet: a value edit rebuilds nothing, a new name resets the compiler once (`lib/render/tailwind.ts`, `styles.ts`)
+- ⬜ Edit tokens in the Context panel (name, light and dark value, add a token), each edit one undo step that writes DESIGN.md and the applied theme together
+- ⬜ The inspector's color field lists the project's tokens with the applied theme's swatches (today it shows the default theme's)
+- ⬜ Prompts list the project's tokens; exports map custom names in `index.css`
+
+**Later**
+
+- ⬜ A design system view: tokens by category, rename with usages rewritten, delete with a usage count, shadows and font weights
+- ⬜ Find raw values that match a token ("12 raw colors in 4 screens") and replace them in one step; detach a token back to a value
+- ⬜ Import tokens from DTCG / Figma Variables JSON, pasted shadcn CSS or a tweakcn link; export `tokens.json`, `tokens.css` and a Tailwind theme
+- ⬜ More modes than light and dark, with a preview switch on frames
+
+**Done when** adding a brand color in the Context panel makes `bg-brand` work in every screen, the inspector and the next generation, and survives export.
+
+---
+
+## Phase 15: More of the uai kit ⬜
+
+From a review of the uai catalog against the editor (`tool-call`, now used in the chat, was the first).
+
+- ⬜ `response-status` for the chat's failure and stopped states, keeping Open Settings and Install as actions
+- ⬜ `empty-state` in the chat, comments list, components panel and context panel, which hand-write their own
+- ⬜ `attachment` for images in chat messages, and `citation` for "Followed DESIGN.md · PRODUCT.md"
+- ⬜ `run-summary` at the end of a generation: screens changed, problems left, Undo
+- ⬜ Expose uai blocks to generated screens (`runtime/externals.ts` and the component library): AI-app blocks (message, prompt-composer, thinking), SaaS blocks (metric-card, status-banner, step-indicator, search-field) and form blocks. Check them under project themes and the frame sandbox first
 
 ---
 

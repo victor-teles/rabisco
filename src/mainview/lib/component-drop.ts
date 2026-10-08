@@ -1,7 +1,7 @@
 import type { ComponentExport } from "../../shared/components/api";
 import type { LibraryImport, LibraryItem } from "../../shared/components/library";
 import { sampleProps, type PreviewValue } from "../../shared/components/preview";
-import { addImport, componentSpecifier, findElement, insertChild, type JsxElement } from "../../shared/jsx";
+import { addImport, childSlots, componentSpecifier, findElement, insertAt, type JsxElement } from "../../shared/jsx";
 import { attrValue, childText } from "../../shared/jsx/text";
 import { isNumber, isString } from "../../shared/guards";
 import { TokenType as tt } from "sucrase/dist/esm/parser/tokenizer/types";
@@ -101,7 +101,7 @@ export function componentInsertion(path: string, component: ComponentExport): In
 
 export const libraryInsertion = (item: LibraryItem): Insertion => ({ snippet: item.snippet, imports: item.imports });
 
-/** Text, inline, list, table and SVG elements pass the drop to their parent. */
+/** Text, inline, table and SVG elements pass the drop to their parent. */
 const CONTAINERS = new Set([
 	"div",
 	"section",
@@ -113,6 +113,8 @@ const CONTAINERS = new Set([
 	"article",
 	"form",
 	"fieldset",
+	"ul",
+	"ol",
 	"li",
 	"dd",
 	"td",
@@ -121,9 +123,19 @@ const CONTAINERS = new Set([
 	"details",
 	"dialog",
 	"body",
+	"button",
+	"label",
 ]);
 
-const isContainer = (element: JsxElement) => element.intrinsic && element.name !== null && CONTAINERS.has(element.name);
+const isIntrinsicContainer = (element: JsxElement) =>
+	element.intrinsic && element.name !== null && CONTAINERS.has(element.name);
+
+const isFragment = (name: string) => name === "Fragment" || name.endsWith(".Fragment");
+
+/** Component usages count when written with children (`<Card>…</Card>`); `<StatCard />` doesn't take them. */
+const isContainer = (element: JsxElement) =>
+	isIntrinsicContainer(element) ||
+	(!element.intrinsic && element.name !== null && !element.selfClosing && !isFragment(element.name));
 
 function matching(tokens: Token[], i: number): number {
 	const open = tokens[i]!.type === tt.parenL ? [tt.parenL] : [tt.braceL, tt.dollarBraceL];
@@ -262,12 +274,10 @@ const isInside = (element: JsxElement, ancestor: JsxElement) => {
 };
 
 /** Skips elements inside expressions (`.map`, `{open && …}`), where an insert would repeat or hide the drop. */
-export function dropParent(source: string, start: number): number | null {
-	const parsed = parseFile(source);
-	const root = renderedRoot(parsed);
-	const hit = root ? findElement(parsed, start) : null;
+function containerOf(parsed: ParsedFile, root: JsxElement, start: number): JsxElement | null {
+	const hit = findElement(parsed, start);
 
-	if (!root || !hit || !isInside(hit, root)) return null;
+	if (!hit || !isInside(hit, root)) return null;
 	let target: JsxElement | null = hit;
 
 	for (let node: JsxElement | null = hit; node && node !== root; node = node.parent)
@@ -275,27 +285,37 @@ export function dropParent(source: string, start: number): number | null {
 
 	while (target && !isContainer(target)) target = target.parent;
 
-	return target?.start ?? null;
+	return target;
 }
 
-export function screenRoot(source: string): number | null {
-	const root = renderedRoot(parseFile(source));
+export function dropParent(source: string, start: number): number | null {
+	const parsed = parseFile(source);
+	const root = renderedRoot(parsed);
 
-	if (!root) return null;
+	return (root && containerOf(parsed, root, start)?.start) ?? null;
+}
 
-	if (root.name === null || isContainer(root)) return root.start;
+/** Prefers an intrinsic container over a component root like `<Layout>`. */
+function rootContainer(root: JsxElement): JsxElement | null {
+	if (root.name === null || isIntrinsicContainer(root)) return root;
 	const queue: JsxElement[] = [root];
 
 	while (queue.length) {
 		for (const child of queue.shift()!.children) {
 			if (child.kind !== "element") continue;
 
-			if (isContainer(child)) return child.start;
+			if (isIntrinsicContainer(child)) return child;
 			queue.push(child);
 		}
 	}
 
-	return root.selfClosing && !root.intrinsic ? null : root.start;
+	return root.selfClosing && !root.intrinsic ? null : root;
+}
+
+export function screenRoot(source: string): number | null {
+	const root = renderedRoot(parseFile(source));
+
+	return (root && rootContainer(root)?.start) ?? null;
 }
 
 /** `null` when the frame rendered another version of `file`, whose offsets would point at the wrong elements. */
@@ -303,20 +323,41 @@ export function hitStarts(hit: FrameHit | null, file: string, source: string): n
 	return hit && hit.path === file && hit.version === sourceVersion(source) ? hit.starts : null;
 }
 
-/** `at` is innermost-first; the first start that accepts a drop wins, else the screen root. */
-export function insertDrop(source: string, at: number | readonly number[] | null, insertion: Insertion): string | null {
-	const candidates = at === null ? [] : [at].flat();
-	let parent: number | null = null;
+/** A container that accepts the drop. `slots` are its renderable children in source order (see `insertAt`), with their source ranges. */
+export type DropTarget = { parent: number; name: string; slots: { start: number; end: number }[] };
 
-	for (const start of candidates) if ((parent = dropParent(source, start)) !== null) break;
-	parent ??= screenRoot(source);
+/** `starts` innermost-first (from a hit test, already version-checked); the first start that accepts a drop wins, else the screen root. `null` when nothing can take the drop (parse error, no rendered root). */
+export function dropTarget(source: string, starts: readonly number[] | null): DropTarget | null {
+	const parsed = parseFile(source);
+	const root = renderedRoot(parsed);
 
-	if (parent === null) return null;
-	let next = insertChild(source, parent, insertion.snippet);
+	if (!root) return null;
+	let parent: JsxElement | null = null;
 
-	if (next === null) return null;
+	for (const start of starts ?? []) if ((parent = containerOf(parsed, root, start))) break;
+	parent ??= rootContainer(root);
+
+	return parent && { parent: parent.start, name: parent.name ?? "Fragment", slots: childSlots(parent) };
+}
+
+/** Slot index of the target's child holding `start` (an element start, or anywhere inside a slot's range, e.g. an element rendered by `.map`); -1 when none. */
+export const slotOf = (target: DropTarget, start: number) =>
+	target.slots.findIndex((slot) => start >= slot.start && start < slot.end);
+
+/** Inserts at slot `index` of `parent` and adds the imports. `start` is the inserted element's offset in the final source (after imports were added). */
+export function insertDrop(
+	source: string,
+	parent: number,
+	index: number,
+	insertion: Insertion,
+): { source: string; start: number } | null {
+	const inserted = insertAt(source, parent, index, insertion.snippet);
+
+	if (!inserted) return null;
+	let next = inserted.source;
 
 	for (const { from, names } of insertion.imports) next = addImport(next, from, names);
 
-	return next;
+	// Imports only go above the screen's JSX, so they shift it by what they added
+	return { source: next, start: inserted.start + next.length - inserted.source.length };
 }

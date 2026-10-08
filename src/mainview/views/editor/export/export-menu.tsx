@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,6 +9,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { DesignTokens } from "../../../../shared/context/tokens";
 import type { Frame, ProjectFiles } from "../../../../shared/types";
 import { copyCode, exportViteProject, hasLocalImports } from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
@@ -17,6 +19,8 @@ export type ExportContext = {
 	projectName: string;
 	frames: Frame[];
 	files: ProjectFiles;
+	/** The applied DESIGN.md tokens; exports look like the canvas */
+	theme: DesignTokens;
 	/** In canvas order */
 	selected: Frame[];
 	selectedComponent: string | null;
@@ -24,9 +28,11 @@ export type ExportContext = {
 	flushCanvas: () => Promise<void>;
 	/** A git pull may have replaced them */
 	reloadFromDisk: () => Promise<void>;
+	/** A reload from disk would clear it */
+	hasUndoHistory?: boolean;
 };
 
-export function ExportMenu(props: ExportContext) {
+export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 	const { frames } = props;
 
 	return (
@@ -60,4 +66,4 @@ export function ExportMenu(props: ExportContext) {
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
-}
+});
