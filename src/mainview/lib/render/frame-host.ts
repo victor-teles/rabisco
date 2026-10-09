@@ -13,6 +13,7 @@ import {
 	type FrameMessage,
 	type HostMessage,
 	type ModulePayload,
+	type OrderPreview,
 	type SnapshotRaster,
 } from "./protocol";
 import type { ElementLayout, Spacing } from "./spacing";
@@ -229,6 +230,11 @@ export class FrameHost {
 	/** Inline styles on the element while a handle drags; `null` restores them. The next render restores them too */
 	previewStyle(start: number, version: string, style: Record<string, string> | null) {
 		if (this.#ready) this.#post({ type: "preview-style", start, version, style });
+	}
+
+	/** Shifts the instances of a dragged list item; `null` slides them back. The next render clears it too */
+	previewOrder(start: number, version: string, preview: OrderPreview | null) {
+		if (this.#ready) this.#post({ type: "preview-order", start, version, preview });
 	}
 
 	/** Resolves with the new text, `null` if cancelled, or `undefined` if the frame refused. */

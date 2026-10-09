@@ -1,4 +1,4 @@
-import { Component, useEffect, type ComponentType, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
 	heightReporter,
@@ -15,6 +15,7 @@ import { externals } from "./externals";
 import { preloadIcons } from "./icons";
 import { boxesOf, boxOf, dropLayoutOf, instancesOf, layoutOf, locatedAt, spacingOf } from "./inspect";
 import { createPlay } from "./play";
+import { clearOrder, previewOrder } from "./reorder";
 import { rasterize } from "./raster";
 import { ModuleRegistry, RenderError } from "./registry";
 import { captureScene, contentHeight } from "./snapshot";
@@ -216,6 +217,9 @@ class Boundary extends Component<{ version: number; children: ReactNode }, { fai
 
 /** Reports the commit only after the screen's own effects have run. */
 function Rendered({ source, version, children }: { source: string; version: number; children: ReactNode }) {
+	// Before paint: the committed DOM already shows the new order, and a frame with both would jump
+	useLayoutEffect(() => clearOrder(false), [source, version]);
+
 	useEffect(() => {
 		renderedVersion = source;
 		// The committed classes take over from a handle's preview
@@ -344,6 +348,10 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			clearPreview();
 			scheduleMeasure();
 		} else if (entry && message.version === renderedVersion) previewStyle(message.start, message.style);
+	} else if (message?.type === "preview-order") {
+		if (message.preview === null) clearOrder(true);
+		else if (entry && message.version === renderedVersion)
+			previewOrder(instancesOf(rootElement, locationOf(entry, message.start)), message.preview);
 	} else if (message?.type === "edit-text") {
 		textEdit?.finish(true);
 		const { start, version: editVersion } = message;

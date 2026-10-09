@@ -1,5 +1,5 @@
 // Mirrors `src/mainview/runtime/externals.ts` (importing it would pull React DOM into the main process);
-// a test keeps them in sync.
+// a test keeps them in sync. `uai/<name>` are uai blocks, imported as `@/components/ui/uai/<name>` like their path.
 const MODULE_EXPORTS = {
 	avatar: ["Avatar", "AvatarImage", "AvatarFallback", "AvatarBadge", "AvatarGroup", "AvatarGroupCount"],
 	badge: ["Badge", "badgeVariants"],
@@ -37,6 +37,7 @@ const MODULE_EXPORTS = {
 	],
 	input: ["Input"],
 	kbd: ["Kbd", "KbdGroup"],
+	label: ["Label"],
 	popover: [
 		"Popover",
 		"PopoverTrigger",
@@ -54,6 +55,74 @@ const MODULE_EXPORTS = {
 	toggle: ["Toggle", "toggleVariants"],
 	"toggle-group": ["ToggleGroup", "ToggleGroupItem"],
 	tooltip: ["Tooltip", "TooltipTrigger", "TooltipContent", "TooltipProvider"],
+	"uai/form-error-summary": [
+		"FormErrorSummary",
+		"FormErrorSummaryTitle",
+		"FormErrorSummaryList",
+		"FormErrorSummaryLink",
+	],
+	"uai/form-field": [
+		"FormField",
+		"FormFieldLabel",
+		"FormFieldInput",
+		"FormFieldTextarea",
+		"FormFieldDescription",
+		"FormFieldError",
+		"FormFieldCount",
+	],
+	"uai/message": [
+		"Message",
+		"MessageAvatar",
+		"MessageBody",
+		"MessageHeader",
+		"MessageAuthor",
+		"MessageTime",
+		"MessageContent",
+		"MessageActions",
+		"MessageAction",
+		"MessageCopy",
+	],
+	"uai/metric-card": [
+		"MetricCard",
+		"MetricCardLabel",
+		"MetricCardValue",
+		"MetricCardTrend",
+		"MetricCardComparison",
+		"MetricCardDescription",
+		"MetricCardHeader",
+	],
+	"uai/prompt-composer": [
+		"PromptComposer",
+		"PromptComposerAdd",
+		"PromptComposerAddItem",
+		"PromptComposerFileItem",
+		"PromptComposerInput",
+		"PromptComposerActions",
+		"PromptComposerModelSelect",
+		"PromptComposerSubmit",
+	],
+	"uai/search-field": [
+		"SearchField",
+		"SearchFieldLabel",
+		"SearchFieldControl",
+		"SearchFieldInput",
+		"SearchFieldClear",
+		"SearchFieldMessage",
+		"SearchFieldRecent",
+		"SearchFieldRecentItem",
+	],
+	"uai/status-banner": [
+		"StatusBanner",
+		"StatusBannerIcon",
+		"StatusBannerContent",
+		"StatusBannerTitle",
+		"StatusBannerDescription",
+		"StatusBannerActions",
+		"StatusBannerAction",
+		"StatusBannerDismiss",
+	],
+	"uai/step-indicator": ["StepIndicator", "StepIndicatorStep", "StepIndicatorTitle", "StepIndicatorDescription"],
+	"uai/thinking": ["Thinking", "ThinkingTrigger", "ThinkingContent", "ThinkingActivity"],
 } satisfies Record<string, readonly string[]>;
 
 export type UiModule = keyof typeof MODULE_EXPORTS;

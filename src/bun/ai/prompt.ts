@@ -5,9 +5,10 @@ import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
 import { stagedAttachments } from "./attachments";
+import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 9;
+export const PROMPT_VERSION = 11;
 
 export type PromptMode = "text" | "agent";
 
@@ -17,6 +18,17 @@ const uiModuleList = () =>
 	Object.entries(UI_MODULES)
 		.map(([name, exports]) => `- @/components/ui/${name}: ${exports.join(", ")}`)
 		.join("\n");
+
+/** Only the props a mockup needs; the parts' names say the rest */
+const UI_BLOCK_HINTS = `- MetricCard (variant card | plain | compact) > MetricCardHeader > MetricCardLabel + MetricCardTrend direction="up" | "down" | "flat"; then MetricCardValue, MetricCardComparison, MetricCardDescription.
+- StatusBanner tone="info" | "success" | "warning" | "error" (variant card | tinted | bar) > StatusBannerIcon, StatusBannerContent > StatusBannerTitle + StatusBannerDescription, StatusBannerActions > StatusBannerAction, StatusBannerDismiss.
+- StepIndicator (variant horizontal | vertical | compact) > StepIndicatorStep status="complete" | "current" | "upcoming" | "blocked" | "error" > StepIndicatorTitle + StepIndicatorDescription.
+- SearchField (defaultValue, status idle | loading | empty | error) > SearchFieldLabel, SearchFieldControl > SearchFieldInput + SearchFieldClear, SearchFieldMessage, SearchFieldRecent > SearchFieldRecentItem value="…".
+- FormField (defaultValue, required, invalid, maxLength; variant outlined | filled | compact) > FormFieldLabel, FormFieldInput or FormFieldTextarea, FormFieldDescription, FormFieldError, FormFieldCount. The value goes on FormField, not the input.
+- FormErrorSummary > FormErrorSummaryTitle, FormErrorSummaryList > FormErrorSummaryLink fieldId="<input id>".
+- Message from="user" | "assistant" (variant bubble | plain | compact) > MessageAvatar, MessageBody > MessageHeader > MessageAuthor + MessageTime; MessageContent; MessageActions > MessageCopy, MessageAction label="…".
+- PromptComposer (defaultValue, busy) > PromptComposerAdd > PromptComposerAddItem; PromptComposerInput placeholder="…", PromptComposerActions > PromptComposerModelSelect models={[{ id, label }]} + PromptComposerSubmit.
+- Thinking status="thinking" | "complete" | "error" > ThinkingTrigger duration="12s", ThinkingContent > ThinkingActivity type="progress" | "search" query="…" | "file" path="…" | "tool" tool="…".`;
 
 const frameOf = (request: GenerationRequest) => {
 	const { width, height } = FRAME_SIZE[request.device];
@@ -29,7 +41,7 @@ const ROLE = `You are the design engine of Rabisco, a design canvas. You design 
 const DESIGN_RULES = `# Design
 - Follow DESIGN.md when the project has one; it overrides the defaults below. Stay consistent with the project's existing screens.
 - Use the shadcn theme tokens for neutral surfaces and text: bg-background, text-foreground, bg-muted, text-muted-foreground, bg-card, border, bg-primary, text-primary-foreground, ring. Add one accent color with Tailwind's palette when the brief calls for it.
-- Anything DESIGN.md defines as a token is used through its theme class, never a hard-coded palette color: bg-primary / text-primary-foreground for the primary color, bg-secondary, bg-accent, bg-muted, text-muted-foreground, bg-card, border, ring, text-destructive, rounded-lg / rounded-md / rounded-sm for the radius, font-sans. A token change then re-themes every screen.
+- Anything DESIGN.md defines as a token is used through its theme class, never a hard-coded palette color: bg-primary / text-primary-foreground for the primary color, bg-secondary, bg-accent, bg-muted, text-muted-foreground, bg-card, border, ring, text-destructive, rounded-lg / rounded-md / rounded-sm for the radius, font-sans, and the custom classes under "# Theme tokens" in the request. A token change then re-themes every screen.
 - Clear hierarchy, generous and consistent spacing (4px grid), real typographic scale, aligned edges. Prefer fewer, well-composed elements over clutter.
 - Realistic, specific content: plausible names, numbers, dates and copy that fit the product. Never lorem ipsum, never "Item 1".
 - No network images. Use lucide-react icons, AvatarFallback initials, gradients or solid shapes instead.
@@ -53,7 +65,11 @@ const FILE_RULES_TEXT = (request: GenerationRequest) => `# Files
 - Build components from the UI modules below (Button, Card, Badge…) rather than raw elements with copied classes.
 
 # Available UI modules
-${uiModuleList()}`;
+${uiModuleList()}
+
+# UI blocks
+The @/components/ui/uai modules are composed blocks: the parts go inside the root part, which sets the variant and state. Prefer a block over rebuilding the same UI from primitives.
+${UI_BLOCK_HINTS}`;
 
 const TASKS = `# Tasks
 - create: design new screens for the request (usually 1–3; the key screens of the flow unless the request says how many). New paths must not overwrite existing files.
@@ -96,8 +112,9 @@ The Tokens section is read by Rabisco and becomes the theme every screen renders
 - primary: oklch(0.7 0.15 264)
 
 Rules for the Tokens section:
-- One \`- name: value\` per line. Names: background, foreground, card, card-foreground, popover, popover-foreground, primary, primary-foreground, secondary, secondary-foreground, muted, muted-foreground, accent, accent-foreground, destructive, success, warning, border, input, ring, chart-1 to chart-5, radius, font-sans, font-serif, font-mono. No other names.
-- Colors are hex, rgb(), hsl() or oklch(). radius is a length. Fonts are font stacks.
+- One \`- name: value\` per line. Names: background, foreground, card, card-foreground, popover, popover-foreground, primary, primary-foreground, secondary, secondary-foreground, muted, muted-foreground, accent, accent-foreground, destructive, success, warning, border, input, ring, chart-1 to chart-5, radius, spacing, font-sans, font-serif, font-mono.
+- Custom tokens name their Tailwind class: color-brand (bg-brand), radius-card (rounded-card), font-display, text-display: 3rem/1.1 (font size and line height), spacing-gutter (p-gutter). Add one only for a value the design repeats and the built-in names don't cover. No other names.
+- Colors are hex, rgb(), hsl() or oklch(). radius and spacing are lengths. Fonts are font stacks.
 - Only list tokens the design actually sets; the rest keep their defaults. The "### Dark" sub-section holds dark-theme values and may be left out.`;
 
 const PRODUCT_MD_FORMAT = `# PRODUCT.md format
@@ -329,6 +346,11 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 	const components = componentsText(request, mode);
 
 	if (components) parts.push(components);
+
+	const tokens =
+		request.task === "context" || request.task === "theme" || !request.theme ? null : themeTokensText(request.theme);
+
+	if (tokens) parts.push(tokens);
 
 	const attachments = attachmentsText(request, mode);
 

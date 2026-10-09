@@ -49,7 +49,7 @@ import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { sourceVersion } from "@/lib/render/protocol";
-import { themeCss } from "@/lib/render/theme";
+import { themeCss } from "@/lib/render/styles";
 import { reorderFrames } from "@/lib/screen-list";
 import { contextSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { cn } from "@/lib/utils";
@@ -64,6 +64,7 @@ import {
 	type ThemeUpdate,
 	type TokenChange,
 } from "../../../shared/context/theme";
+import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { designTokensOf } from "../../../shared/context/tokens";
 import { LINK_ATTRIBUTE } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
@@ -263,6 +264,8 @@ export function EditorView({
 		stop,
 		retry,
 		regenerate,
+		lastRun,
+		undoRun,
 	} = useGeneration({
 		projectPath,
 		stateRef,
@@ -275,6 +278,15 @@ export function EditorView({
 		onResolved,
 		undo,
 	});
+
+	const generating = generation !== null;
+	const latestStep = project?.history.present;
+
+	/** Offered on a run's summary while its result is still the latest undo step */
+	const undoableRun = useMemo(
+		() => (lastRun && !generating && latestStep === lastRun.step ? { id: lastRun.messageId, run: undoRun } : null),
+		[lastRun, generating, latestStep, undoRun],
+	);
 
 	const openContext = useCallback((file: ContextFileName) => {
 		setContextFile(file);
@@ -619,6 +631,21 @@ export function EditorView({
 				const design = snapshot.files["DESIGN.md"];
 
 				return { ...snapshot, theme: withSource(designTokensOf(design), designSourceOf(design)) };
+			}),
+		[change],
+	);
+
+	/** One undo step that writes DESIGN.md and applies it, so no "Apply to screens" prompt follows */
+	const editDesignToken = useCallback(
+		(edit: TokenEdit) =>
+			change((snapshot) => {
+				const design = applyTokenEdit(seedDesignTokens(snapshot.files["DESIGN.md"] ?? "", snapshot.theme), edit);
+
+				return {
+					...snapshot,
+					files: { ...snapshot.files, "DESIGN.md": design },
+					theme: withSource(designTokensOf(design), designSourceOf(design)),
+				};
 			}),
 		[change],
 	);
@@ -1480,6 +1507,7 @@ export function EditorView({
 					onOpenComponent={selectComponent}
 					frames={frames}
 					projectPath={projectPath}
+					tokens={appliedTokens}
 				/>
 				<LinkControl
 					files={files}
@@ -1490,7 +1518,19 @@ export function EditorView({
 				/>
 			</>
 		),
-		[files, codeFile, codeSource, structure, endStep, selectComponent, frames, projectPath, changeLink, selectAncestor],
+		[
+			files,
+			codeFile,
+			codeSource,
+			structure,
+			endStep,
+			selectComponent,
+			frames,
+			projectPath,
+			appliedTokens,
+			changeLink,
+			selectAncestor,
+		],
 	);
 
 	const componentsPanel = useMemo(
@@ -1529,6 +1569,7 @@ export function EditorView({
 				file={contextFile}
 				onFileChange={setContextFile}
 				onEdit={editContext}
+				onEditToken={editDesignToken}
 				onReplace={replaceContext}
 				onEndStep={endStep}
 				onUndo={undo}
@@ -1545,6 +1586,7 @@ export function EditorView({
 			files,
 			contextFile,
 			editContext,
+			editDesignToken,
 			replaceContext,
 			endStep,
 			undo,
@@ -1658,6 +1700,7 @@ export function EditorView({
 								onStop={stop}
 								onRetry={retry}
 								onRegenerate={regenerate}
+								undoableRun={undoableRun}
 								onDismissFailure={onDismissFailure}
 								selectedScreenName={
 									interview ? undefined : selected.length === 1 ? selected[0]!.name : selectedComponent?.name

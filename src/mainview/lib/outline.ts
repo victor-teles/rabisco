@@ -116,7 +116,7 @@ export function componentRef(
 	const found = imports.get(local);
 
 	if (!found || name.includes(".")) return { source: "other", module: found?.module ?? null, exportName: name };
-	const ui = /^@\/components\/ui\/([a-z0-9-]+)$/.exec(found.module);
+	const ui = /^@\/components\/ui\/((?:uai\/)?[a-z0-9-]+)$/.exec(found.module);
 
 	if (ui) return { source: "ui", module: ui[1]!, exportName: found.imported };
 	const resolved = `${resolveModule(path, found.module)}.tsx`;

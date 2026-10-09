@@ -536,6 +536,25 @@ describe("buildGenerationRequest", () => {
 		expect(buildGenerationRequest({ ...params, projectFiles: { "screens/home.tsx": "x" } }).components).toBeUndefined();
 	});
 
+	test("the theme is the applied one, else DESIGN.md's tokens, and context tasks get none", () => {
+		const base: BuildRequestParams = {
+			id: "r",
+			task: "create",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: { "DESIGN.md": "## Tokens\n\n- color-brand: #e11d48\n" },
+		};
+
+		expect(buildGenerationRequest(base).theme).toEqual({ light: { "color-brand": "#e11d48" }, dark: {} });
+
+		const applied = { light: { "color-brand": "#2563eb" }, dark: {} };
+		expect(buildGenerationRequest({ ...base, theme: applied }).theme).toEqual(applied);
+		expect(buildGenerationRequest({ ...base, theme: { light: {}, dark: {} } }).theme).toBeUndefined();
+		expect(buildGenerationRequest({ ...base, projectFiles: {} }).theme).toBeUndefined();
+		expect(buildGenerationRequest({ ...base, task: "context", targets: ["DESIGN.md"] }).theme).toBeUndefined();
+	});
+
 	test("contextTargetOf is only set for the context task", () => {
 		expect(contextTargetOf({ ...request, targets: ["DESIGN.md"] })).toBeUndefined();
 		expect(contextTargetOf({ ...request, task: "context", targets: ["screens/a.tsx"] })).toBeUndefined();

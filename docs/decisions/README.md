@@ -16,3 +16,5 @@ Architecture decision records. Each one states the context, the decision, the ev
 | [0010](./0010-project-images-pushed-to-frames.md)        | Project images in `public/` are pushed to frames as bytes; the frame points `src` and `url()` at them                | accepted |
 | [0011](./0011-image-attachments-reach-every-provider.md) | Image attachments reach every provider; CLI and SDK agents get them as files in their staging directory              | accepted |
 | [0012](./0012-chat-sessions-and-provider-commands.md)    | Chat sessions are files in `chats/`; provider commands are read and expanded by Rabisco                              | accepted |
+| [0013](./0013-custom-tokens-names-in-the-compiler.md)    | Custom tokens use Tailwind namespaces; the compiler gets the names in `@theme reference`, frames get the values      | accepted |
+| [0014](./0014-uai-blocks-in-screens.md)                  | Screens can import uai blocks as `@/components/ui/uai/<name>`; the screen theme carries their extra tokens           | accepted |

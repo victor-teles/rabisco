@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { designTokensOf } from "../../../shared/context/tokens";
+import { designTokensOf, tokensToCss } from "../../../shared/context/tokens";
 import { refresh } from "../../runtime/refresh";
 import { ModuleRegistry, RenderError } from "../../runtime/registry";
 import { excerptOf, locationFromStack } from "../../runtime/errors";
@@ -11,7 +11,6 @@ import { collectGraph, withDependents } from "./graph";
 import type { ModulePayload } from "./protocol";
 import { extractRequires, joinPath, resolveRelative } from "./resolve";
 import { createCompiler, TailwindBuilder } from "./tailwind";
-import { themeCss } from "./theme";
 
 const SCREEN = `import { Button } from "@/components/ui/button";
 import { Card } from "../components/stat-card";
@@ -312,13 +311,34 @@ describe("tailwind", () => {
 
 		const design = "# Design\n\n## Tokens\n\n- primary: #2563eb\n- font-sans: Inter, sans-serif\n";
 		const tokens = designTokensOf(design);
-		const theme = themeCss(tokens);
+		const theme = tokensToCss(tokens);
 		expect(theme).toContain("--primary: #2563eb;");
 		expect(theme).toContain("--font-sans: Inter, sans-serif;");
 		// Unlayered, so it beats the theme layer
 		expect(theme).not.toContain("@layer");
-		expect(themeCss(tokens)).toBe(theme);
-		expect(themeCss(designTokensOf(undefined))).toBe("");
+		expect(tokensToCss(designTokensOf(undefined))).toBe("");
+	});
+
+	test("custom token names build classes that read the theme stylesheet's values", async () => {
+		const names = new Set<string>();
+		const candidates = ["bg-brand", "bg-brand/50", "rounded-card", "font-display", "text-display", "p-gutter"];
+		const builder = new TailwindBuilder(() => createCompiler(stylesheets, names), candidates);
+		await builder.whenReady();
+		expect(builder.css).not.toContain(".bg-brand");
+
+		for (const name of ["color-brand", "radius-card", "font-display", "text-display", "spacing-gutter"])
+			names.add(name);
+		builder.restart();
+		await builder.whenReady();
+		expect(builder.css).toContain("background-color: var(--color-brand, currentcolor)");
+		expect(builder.css).toContain("color-mix(in oklab, var(--color-brand, currentcolor) 50%, transparent)");
+		expect(builder.css).toContain("border-radius: var(--radius-card, 0)");
+		expect(builder.css).toContain("font-family: var(--font-display, inherit)");
+		expect(builder.css).toContain("font-size: var(--text-display, 1rem)");
+		expect(builder.css).toContain("var(--text-display--line-height, normal)");
+		expect(builder.css).toContain("padding: var(--spacing-gutter, 0)");
+		// Values come only from the theme stylesheet
+		expect(builder.css).not.toMatch(/--color-brand:/);
 	});
 });
 

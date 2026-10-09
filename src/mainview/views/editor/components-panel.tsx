@@ -5,6 +5,14 @@ import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+	EmptyState,
+	EmptyStateContent,
+	EmptyStateDescription,
+	EmptyStateHeader,
+	EmptyStateMedia,
+	EmptyStateTitle,
+} from "@/components/ui/uai/empty-state";
 import { COMPONENT_MIME, componentDrag, type DragItem } from "@/lib/component-drop";
 import { cn } from "@/lib/utils";
 import type { ComponentExport } from "../../../shared/components/api";
@@ -197,13 +205,13 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 
 						<PanelSection title="Project" count={entries.length ? shown.length : undefined}>
 							{entries.length === 0 ? (
-								<p className="text-[13px] text-subtle-foreground">
-									No components yet. Rabisco creates them as it generates screens, or select repeated structure and use{" "}
-									<span className="text-muted-foreground">Make component</span>.
+								<PanelEmpty icon={<Component />} title="No components yet">
+									Rabisco creates them as it generates screens, or select repeated structure and use{" "}
+									<span className="text-foreground">Make component</span>.
 									{suggestions.length ? " The suggestions above are a good start." : ""}
-								</p>
+								</PanelEmpty>
 							) : shown.length === 0 ? (
-								<p className="text-[13px] text-subtle-foreground">No project components match “{query}”.</p>
+								<PanelEmpty title={`No project components match “${query}”.`} />
 							) : (
 								<div className="grid grid-cols-2 gap-x-2 gap-y-3">
 									{shown.map((entry) => (
@@ -221,7 +229,7 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 
 						<PanelSection title="Library" count={library.length}>
 							{library.length === 0 ? (
-								<p className="text-[13px] text-subtle-foreground">No library components match “{query}”.</p>
+								<PanelEmpty title={`No library components match “${query}”.`} />
 							) : (
 								<div className="grid grid-cols-2 gap-x-2 gap-y-3">
 									{library.map((item) => (
@@ -234,6 +242,20 @@ export function ComponentsPanel(props: ComponentsPanelProps) {
 				)}
 			</div>
 		</div>
+	);
+}
+
+function PanelEmpty({ icon, title, children }: { icon?: React.ReactNode; title: string; children?: React.ReactNode }) {
+	return (
+		<EmptyState variant="compact">
+			{icon ? <EmptyStateMedia>{icon}</EmptyStateMedia> : null}
+			<EmptyStateContent>
+				<EmptyStateHeader>
+					<EmptyStateTitle>{title}</EmptyStateTitle>
+					{children ? <EmptyStateDescription>{children}</EmptyStateDescription> : null}
+				</EmptyStateHeader>
+			</EmptyStateContent>
+		</EmptyState>
 	);
 }
 
@@ -426,7 +448,7 @@ function ComponentDetail({
 			</div>
 
 			{component.exports.length === 0 ? (
-				<p className="text-[13px] text-subtle-foreground">This file exports no components Rabisco can preview.</p>
+				<PanelEmpty title="This file exports no components Rabisco can preview." />
 			) : (
 				component.exports.map((exp) => (
 					<ExportPreview key={exp.name} path={component.path} component={exp} systemFiles={systemFiles} />
@@ -436,7 +458,7 @@ function ComponentDetail({
 			<section className="flex flex-col gap-2">
 				<h3 className="text-xs font-medium text-subtle-foreground">Used by</h3>
 				{component.usedBy.length === 0 ? (
-					<p className="text-[13px] text-subtle-foreground">No screen uses it yet. Drag it onto a screen to add it.</p>
+					<PanelEmpty title="No screen uses it yet">Drag it onto a screen to add it.</PanelEmpty>
 				) : (
 					<div className="-mx-2 flex flex-col gap-0.5">
 						{component.usedBy.map((file) => {

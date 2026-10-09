@@ -6,6 +6,14 @@ import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+	EmptyState,
+	EmptyStateContent,
+	EmptyStateDescription,
+	EmptyStateHeader,
+	EmptyStateMedia,
+	EmptyStateTitle,
+} from "@/components/ui/uai/empty-state";
 import type { CommentsController } from "@/hooks/use-comments";
 import type { Rect } from "@/lib/align";
 import { commentThreads, threadView, type CommentThread } from "@/lib/comment-threads";
@@ -90,15 +98,31 @@ export const CommentsList = memo(function CommentsList({
 				</div>
 				<ScrollArea className="max-h-[min(60vh,28rem)]">
 					{comments.length === 0 ? (
-						<p className="px-3 py-6 text-center text-muted-foreground">
-							No comments yet. Press <Kbd>C</Kbd> and click a screen to add one.
-						</p>
+						<EmptyState variant="plain">
+							<EmptyStateMedia>
+								<MessagesSquare />
+							</EmptyStateMedia>
+							<EmptyStateContent>
+								<EmptyStateHeader>
+									<EmptyStateTitle>No comments yet</EmptyStateTitle>
+									<EmptyStateDescription>
+										Press <Kbd>C</Kbd> and click a screen to add one.
+									</EmptyStateDescription>
+								</EmptyStateHeader>
+							</EmptyStateContent>
+						</EmptyState>
 					) : (
 						<div className="flex flex-col p-1">
 							{threads.open.length ? (
 								threads.open.map((thread) => <ThreadRow key={thread.comment.id} thread={thread} onJump={jump} />)
 							) : (
-								<p className="px-2 py-3 text-muted-foreground">Every thread is resolved.</p>
+								<EmptyState variant="compact">
+									<EmptyStateContent>
+										<EmptyStateHeader>
+											<EmptyStateTitle>Every thread is resolved.</EmptyStateTitle>
+										</EmptyStateHeader>
+									</EmptyStateContent>
+								</EmptyState>
 							)}
 							{threads.resolved.length ? (
 								<Collapsible className="mt-1 border-t pt-1">

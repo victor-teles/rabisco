@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { FileText, FolderInput, MessageSquareText, MoreHorizontal, Wand2 } from "lucide-react";
+import { Check, FileText, FolderInput, MessageSquareText, MoreHorizontal, Plus, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,13 +17,42 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+	EmptyState,
+	EmptyStateAction,
+	EmptyStateActions,
+	EmptyStateContent,
+	EmptyStateDescription,
+	EmptyStateHeader,
+	EmptyStateMedia,
+	EmptyStateNote,
+	EmptyStateTitle,
+} from "@/components/ui/uai/empty-state";
 import { api, isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { contextBody } from "../../../shared/context/body";
 import { CONTEXT_TEMPLATES } from "../../../shared/context/templates";
-import { COLOR_TOKENS, parseDesignTokens, TOKEN_NAMES } from "../../../shared/context/tokens";
+import {
+	normalizeTokenName,
+	parseTokenForm,
+	renameError,
+	type TokenEdit,
+	type TokenForm,
+	type TokenFormErrors,
+	type TokenMode,
+} from "../../../shared/context/token-edit";
+import {
+	isCustomToken,
+	orderedTokenNames,
+	parseDesignTokens,
+	tokenClass,
+	tokenKind,
+	validateToken,
+	type DesignTokens,
+} from "../../../shared/context/tokens";
 import type { ContextFileName, ProjectFiles } from "../../../shared/types";
 
 export const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
@@ -41,6 +70,8 @@ export type ContextPanelProps = {
 	/** Several files as one undo step (templates, imports) */
 	onReplace: (files: Partial<Record<ContextFileName, string>>) => void;
 	onEndStep: () => void;
+	/** One undo step that writes DESIGN.md and applies its tokens to the screens */
+	onEditToken: (edit: TokenEdit) => void;
 	onUndo: () => void;
 	onRedo: () => void;
 	/** `null` before the first generation */
@@ -60,7 +91,7 @@ const DESCRIPTION: Record<ContextFileName, string> = {
 
 /** Text comes straight from the project files, so external edits show up live */
 export function ContextPanel(props: ContextPanelProps) {
-	const { files, file, onFileChange, onEdit, onReplace, onEndStep, onUndo, onRedo, lastUsed } = props;
+	const { files, file, onFileChange, onEdit, onReplace, onEndStep, onEditToken, onUndo, onRedo, lastUsed } = props;
 	const source = files[file];
 	const textarea = useRef<HTMLTextAreaElement>(null);
 	const focusId = useRef(0);
@@ -141,8 +172,9 @@ export function ContextPanel(props: ContextPanelProps) {
 				<>
 					<UsageLine file={file} source={source} lastUsed={lastUsed} />
 					{file === "DESIGN.md" ? (
-						<TokenSummary
+						<TokenEditor
 							markdown={source}
+							onEditToken={onEditToken}
 							onJumpToLine={(line) => {
 								const element = textarea.current;
 
@@ -277,26 +309,33 @@ function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
 	const ai = aiAction(props);
 
 	return (
-		<div className="flex flex-col gap-4 p-4">
-			<div>
-				<p className="text-[13px] font-medium">No {file} yet</p>
-				<p className="mt-1 text-[13px]/5 text-muted-foreground">{DESCRIPTION[file]} Every generation follows it.</p>
-			</div>
-			<div className="flex flex-col items-start gap-2">
-				<Button size="sm" onClick={() => onReplace({ [file]: CONTEXT_TEMPLATES[file] })}>
+		<div className="p-4">
+			<EmptyState variant="compact">
+				<EmptyStateMedia>
 					<FileText />
-					Start from template
-				</Button>
-				<Button variant="outline" size="sm" disabled={ai.disabled} onClick={ai.run}>
-					<ai.icon />
-					{ai.label}
-				</Button>
-				{ai.hint ? <p className="-mt-1 text-xs text-subtle-foreground">{ai.hint}</p> : null}
-				<Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={onImport}>
-					<FolderInput />
-					Import from a repository…
-				</Button>
-			</div>
+				</EmptyStateMedia>
+				<EmptyStateContent>
+					<EmptyStateHeader>
+						<EmptyStateTitle>No {file} yet</EmptyStateTitle>
+						<EmptyStateDescription>{DESCRIPTION[file]} Every generation follows it.</EmptyStateDescription>
+					</EmptyStateHeader>
+					<EmptyStateActions>
+						<EmptyStateAction onClick={() => onReplace({ [file]: CONTEXT_TEMPLATES[file] })}>
+							<FileText />
+							Start from template
+						</EmptyStateAction>
+						<EmptyStateAction emphasis="secondary" disabled={ai.disabled} onClick={ai.run}>
+							<ai.icon />
+							{ai.label}
+						</EmptyStateAction>
+						<EmptyStateAction emphasis="secondary" onClick={onImport}>
+							<FolderInput />
+							Import from a repository…
+						</EmptyStateAction>
+					</EmptyStateActions>
+					{ai.hint ? <EmptyStateNote>{ai.hint}</EmptyStateNote> : null}
+				</EmptyStateContent>
+			</EmptyState>
 		</div>
 	);
 }
@@ -333,63 +372,103 @@ function UsageLine({
 	);
 }
 
-function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLine: (line: number) => void }) {
-	const tokens = useMemo(() => parseDesignTokens(markdown), [markdown]);
+const ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.5rem] items-start gap-1";
+
+const FIELD =
+	"h-6 rounded-[5px] border-transparent bg-transparent px-1.5 font-mono text-[11px] shadow-none hover:border-input focus-visible:border-ring focus-visible:ring-0 md:text-[11px] dark:bg-transparent";
+
+const TOKEN_MODES: TokenMode[] = ["light", "dark"];
+
+const isBuiltInColor = (name: string) => tokenKind(name) === "color" && !isCustomToken(name);
+
+/** What a screen uses when the mode has no value */
+function fallbackLabel(name: string, mode: TokenMode) {
+	if (isBuiltInColor(name)) return "Theme";
+
+	return mode === "dark" ? "Same" : "None";
+}
+
+function TokenEditor({
+	markdown,
+	onEditToken,
+	onJumpToLine,
+}: {
+	markdown: string;
+	onEditToken: (edit: TokenEdit) => void;
+	onJumpToLine: (line: number) => void;
+}) {
+	const parsed = useMemo(() => parseDesignTokens(markdown), [markdown]);
 	const hasContent = useMemo(() => contextBody(markdown) !== undefined, [markdown]);
-	const colorNames = new Set<string>(COLOR_TOKENS);
-
-	const entries = TOKEN_NAMES.filter((name) => name in tokens.light).map(
-		(name) => [name, tokens.light[name]!] as const,
-	);
-
-	const colors = entries.filter(([name]) => colorNames.has(name));
-	const others = entries.filter(([name]) => !colorNames.has(name));
-	const darkCount = Object.keys(tokens.dark).length;
-
-	if (!entries.length && !darkCount && !tokens.invalid.length) {
-		// Any format works: the theme is read with AI, on request (decision 0009)
-		return hasContent ? (
-			<p className="shrink-0 border-b px-4 pt-2 pb-3 text-xs/4 text-pretty text-muted-foreground">
-				Rabisco reads the theme from this file with AI and asks before it re-themes the screens. A{" "}
-				<span className="font-mono">## Tokens</span> section, if there is one, is used as it is.
-			</p>
-		) : null;
-	}
+	const [adding, setAdding] = useState(false);
+	const tokens = { light: parsed.light, dark: parsed.dark };
+	const names = orderedTokenNames(tokens.light, tokens.dark);
 
 	return (
-		<div className="flex shrink-0 flex-col gap-2 border-b px-4 pt-2 pb-3">
-			{colors.length ? (
-				<div className="flex flex-wrap items-center gap-1" aria-label="Color tokens">
-					{colors.map(([name, value]) => (
-						<Tooltip key={name}>
-							<TooltipTrigger asChild>
-								<span
-									className="size-4 rounded-[4px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]"
-									style={{ background: value }}
-									aria-label={`${name}: ${value}`}
-									role="img"
-								/>
-							</TooltipTrigger>
-							<TooltipContent side="bottom" className="font-mono text-[11px]">
-								{name}: {value}
-							</TooltipContent>
-						</Tooltip>
-					))}
-					{darkCount ? <span className="ml-1 text-[11px] text-subtle-foreground">+ {darkCount} dark</span> : null}
+		<div className="flex max-h-80 shrink-0 flex-col border-b pb-2">
+			<div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4">
+				<span className="text-xs font-medium text-muted-foreground">Tokens</span>
+				{names.length ? <span className="text-[11px] text-subtle-foreground tabular-nums">{names.length}</span> : null}
+				<div className="flex-1" />
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label="Add token"
+							aria-pressed={adding}
+							onClick={() => setAdding((open) => !open)}
+						>
+							<Plus />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">Add token</TooltipContent>
+				</Tooltip>
+			</div>
+
+			{names.length || adding ? (
+				<div
+					className={cn(ROW, "shrink-0 px-2 pb-0.5 text-[10px] font-medium text-subtle-foreground uppercase")}
+					aria-hidden
+				>
+					<span className="px-1.5">Name</span>
+					<span className="px-1.5">Light</span>
+					<span className="px-1.5">Dark</span>
 				</div>
 			) : null}
-			{others.length ? (
-				<div className="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
-					{others.map(([name, value]) => (
-						<span key={name} className="truncate" title={`${name}: ${value}`}>
-							<span className="text-subtle-foreground">{name}</span> {value}
-						</span>
-					))}
+
+			<div className="flex min-h-0 flex-col overflow-y-auto px-2" aria-label="Design tokens" role="list">
+				{names.map((name) => (
+					<TokenRow key={name} name={name} tokens={tokens} onEditToken={onEditToken} />
+				))}
+				{adding ? (
+					<AddTokenForm
+						tokens={tokens}
+						onAdd={(edit) => {
+							onEditToken(edit);
+							setAdding(false);
+						}}
+						onClose={() => setAdding(false)}
+					/>
+				) : null}
+			</div>
+
+			{!names.length && !adding && hasContent ? (
+				// Any format works: the theme is read with AI, on request (decision 0009)
+				<div className="px-4 pt-1">
+					<EmptyState variant="compact" aria-label="No tokens">
+						<EmptyStateContent>
+							<EmptyStateDescription>
+								Rabisco reads the theme from this file with AI and asks before it re-themes the screens. A{" "}
+								<span className="font-mono">## Tokens</span> section, if there is one, is used as it is.
+							</EmptyStateDescription>
+						</EmptyStateContent>
+					</EmptyState>
 				</div>
 			) : null}
-			{tokens.invalid.length ? (
-				<ul className="flex flex-col gap-0.5" aria-label="Tokens that were ignored">
-					{tokens.invalid.map((token) => (
+
+			{parsed.invalid.length ? (
+				<ul className="flex shrink-0 flex-col gap-0.5 px-4 pt-2" aria-label="Tokens that were ignored">
+					{parsed.invalid.map((token) => (
 						<li key={`${token.line}:${token.name}`}>
 							<button
 								type="button"
@@ -405,5 +484,257 @@ function TokenSummary({ markdown, onJumpToLine }: { markdown: string; onJumpToLi
 				</ul>
 			) : null}
 		</div>
+	);
+}
+
+function TokenRow({
+	name,
+	tokens,
+	onEditToken,
+}: {
+	name: string;
+	tokens: DesignTokens;
+	onEditToken: (edit: TokenEdit) => void;
+}) {
+	const [error, setError] = useState<string | null>(null);
+	const utilityClass = tokenClass(name);
+	const color = tokenKind(name) === "color";
+
+	const renameTo = (raw: string) => {
+		const to = normalizeTokenName(raw);
+
+		if (!to) return "Name the token, or remove it";
+
+		const reason = renameError(tokens, name, to);
+
+		if (!reason && to !== name) onEditToken({ kind: "rename", from: name, to });
+
+		return reason;
+	};
+
+	const setValue = (mode: TokenMode) => (value: string) => {
+		const reason = value ? validateToken(name, value) : null;
+
+		if (!reason) onEditToken({ kind: "set", name, mode, value: value || null });
+
+		return reason;
+	};
+
+	return (
+		<div role="listitem" className="group flex flex-col py-px">
+			<div className={ROW}>
+				<div className="flex min-w-0 flex-col">
+					<TokenField
+						label={`${name} name`}
+						value={name}
+						invalid={error !== null}
+						onCommit={renameTo}
+						onError={setError}
+					/>
+					{utilityClass ? (
+						<span className="truncate px-1.5 pb-0.5 font-mono text-[10px] text-subtle-foreground">{utilityClass}</span>
+					) : null}
+				</div>
+				{TOKEN_MODES.map((mode) => (
+					<TokenField
+						key={mode}
+						label={`${name} ${mode} value`}
+						value={tokens[mode][name] ?? ""}
+						placeholder={fallbackLabel(name, mode)}
+						swatch={color}
+						invalid={error !== null}
+						onCommit={setValue(mode)}
+						onError={setError}
+					/>
+				))}
+				<Button
+					variant="ghost"
+					size="icon-xs"
+					aria-label={`Remove ${name}`}
+					title={`Remove ${name}`}
+					className="text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+					onClick={() => onEditToken({ kind: "remove", name })}
+				>
+					<X />
+				</Button>
+			</div>
+			{error ? <p className="px-1.5 pb-1 text-[11px]/4 text-pretty text-destructive">{error}</p> : null}
+		</div>
+	);
+}
+
+/** Enter or blur commits, Esc puts the value back. `onCommit` writes the value, or returns why it can't. */
+function TokenField({
+	label,
+	value,
+	placeholder,
+	swatch = false,
+	invalid,
+	onCommit,
+	onError,
+}: {
+	label: string;
+	value: string;
+	placeholder?: string;
+	swatch?: boolean;
+	invalid: boolean;
+	onCommit: (next: string) => string | null;
+	onError: (reason: string | null) => void;
+}) {
+	const [draft, setDraft] = useState(value);
+	const [shown, setShown] = useState(value);
+	const cancelled = useRef(false);
+
+	// DESIGN.md changed under the field (undo, the text editor): show the new value
+	if (shown !== value) {
+		setShown(value);
+		setDraft(value);
+	}
+
+	const commit = () => {
+		const next = draft.trim();
+
+		if (next === value) {
+			setDraft(value);
+			onError(null);
+
+			return;
+		}
+
+		const reason = onCommit(next);
+
+		if (!reason) setDraft(value);
+		onError(reason);
+	};
+
+	return (
+		<div className="relative min-w-0">
+			{swatch && value ? (
+				<span
+					aria-hidden
+					className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 rounded-[3px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]"
+					style={{ background: value }}
+				/>
+			) : null}
+			<Input
+				value={draft}
+				placeholder={placeholder}
+				aria-label={label}
+				aria-invalid={invalid && draft !== value ? true : undefined}
+				title={draft || placeholder}
+				spellCheck={false}
+				autoComplete="off"
+				className={cn(FIELD, swatch && value && "pl-6", "placeholder:text-subtle-foreground")}
+				onChange={(event) => setDraft(event.target.value)}
+				onBlur={() => {
+					if (cancelled.current) cancelled.current = false;
+					else commit();
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						commit();
+					} else if (event.key === "Escape") {
+						event.preventDefault();
+						cancelled.current = true;
+						setDraft(value);
+						onError(null);
+						event.currentTarget.blur();
+					}
+				}}
+			/>
+		</div>
+	);
+}
+
+const EMPTY_FORM: TokenForm = { name: "", light: "", dark: "" };
+
+/** Enter adds, Esc closes */
+function AddTokenForm({
+	tokens,
+	onAdd,
+	onClose,
+}: {
+	tokens: DesignTokens;
+	onAdd: (edit: TokenEdit) => void;
+	onClose: () => void;
+}) {
+	const [form, setForm] = useState<TokenForm>(EMPTY_FORM);
+	const [errors, setErrors] = useState<TokenFormErrors>({});
+	const name = normalizeTokenName(form.name);
+	const color = tokenKind(name) === "color";
+	const messages = [errors.name, errors.light, errors.dark].filter((message) => message !== undefined);
+
+	const submit = () => {
+		const parsed = parseTokenForm(form, tokens);
+
+		if (parsed.edit) onAdd(parsed.edit);
+		else setErrors(parsed.errors);
+	};
+
+	const field = (key: keyof TokenForm, placeholder: string) => {
+		const value = form[key].trim();
+		const showSwatch = key !== "name" && color && value !== "" && validateToken(name, value) === null;
+
+		return (
+			<div className="relative min-w-0">
+				{showSwatch ? (
+					<span
+						aria-hidden
+						className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 rounded-[3px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]"
+						style={{ background: value }}
+					/>
+				) : null}
+				<Input
+					value={form[key]}
+					placeholder={placeholder}
+					aria-label={`New token ${key === "name" ? "name" : `${key} value`}`}
+					aria-invalid={errors[key] ? true : undefined}
+					autoFocus={key === "name"}
+					spellCheck={false}
+					autoComplete="off"
+					className={cn(FIELD, "border-input placeholder:text-subtle-foreground", showSwatch && "pl-6")}
+					onChange={(event) => {
+						setForm({ ...form, [key]: event.target.value });
+						setErrors({ ...errors, [key]: undefined });
+					}}
+				/>
+			</div>
+		);
+	};
+
+	return (
+		<form
+			role="listitem"
+			aria-label="Add token"
+			className="flex flex-col py-1"
+			onSubmit={(event) => {
+				event.preventDefault();
+				submit();
+			}}
+			onKeyDown={(event) => {
+				if (event.key === "Escape") {
+					event.preventDefault();
+					onClose();
+				}
+			}}
+		>
+			<div className={ROW}>
+				{field("name", "color-brand")}
+				{field("light", "Light")}
+				{field("dark", "Dark")}
+				<Button type="submit" variant="ghost" size="icon-xs" aria-label="Add token" title="Add token (Enter)">
+					<Check />
+				</Button>
+			</div>
+			{name && !errors.name && tokenClass(name) ? (
+				<span className="px-1.5 pt-0.5 font-mono text-[10px] text-subtle-foreground">{tokenClass(name)}</span>
+			) : null}
+			{messages.map((message) => (
+				<p key={message} className="px-1.5 pt-0.5 text-[11px]/4 text-pretty text-destructive">
+					{message}
+				</p>
+			))}
+		</form>
 	);
 }

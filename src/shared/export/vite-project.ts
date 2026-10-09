@@ -2,7 +2,7 @@
 
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import { assetKey, PUBLIC_DIR, type ProjectAssets } from "../assets";
-import { tokensToCss, type DesignTokens } from "../context/tokens";
+import { customTokenNames, tokenThemeCss, tokensToCss, type DesignTokens } from "../context/tokens";
 import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
 import type { ExportFile, Frame, ProjectFiles } from "../types";
@@ -15,7 +15,7 @@ export type ViteProjectInput = {
 	files: ProjectFiles;
 	/** The tokens applied to the screens, which may lag behind DESIGN.md */
 	theme: DesignTokens;
-	/** By module name (`button` for `@/components/ui/button`) */
+	/** By module name (`button` for `@/components/ui/button`, `uai/message` for `@/components/ui/uai/message`) */
 	uiSources: Record<string, string>;
 	includeAlternates?: boolean;
 	/** The project's `public/` images; Vite serves them at `/`, where screens point */
@@ -53,6 +53,9 @@ const DEV_VERSIONS = {
 };
 
 const UI_PREFIX = "@/components/ui/";
+
+/** The uai blocks import their own copy of `cn` */
+const UAI_UTILS = "@/lib/uai-utils";
 
 const UTILS = `import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -303,10 +306,12 @@ export default function App() {
 
 function indexCss(theme: DesignTokens) {
 	const tokens = tokensToCss(theme);
+	const custom = tokenThemeCss(customTokenNames(theme));
 
 	return [
 		`@import "tailwindcss";\n@import "tw-animate-css";\n`,
 		`/* The screen theme: shadcn tokens with neutral colors */\n${SCREEN_THEME_CSS.trim()}\n`,
+		custom && `/* The custom DESIGN.md tokens, so bg-brand and rounded-card exist; values are set below */\n${custom}`,
 		`/* Screens fill the window, like a frame on the canvas */\nhtml,\nbody,\n#root {\n\theight: 100%;\n}\n`,
 		tokens && `/* The DESIGN.md tokens applied to the screens: they override the theme above */\n${tokens}`,
 	]
@@ -334,12 +339,12 @@ npm run dev
 
 - \`src/screens/\`: one file per screen. \`src/App.tsx\` shows them in canvas order, starting with the first.
 - \`src/components/\`: the project's components${components.length ? "" : " (none yet)"}.
-- \`src/components/ui/\`: the [shadcn/ui](https://ui.shadcn.com) components the screens use.
+- \`src/components/ui/\`: the [shadcn/ui](https://ui.shadcn.com) components the screens use, and the [uai](https://uaiblocks.vercel.app) blocks in \`uai/\`.
 - \`src/index.css\`: Tailwind, the theme tokens and the \`DESIGN.md\` tokens applied on the canvas.
 ${images ? `- \`public/\`: the images the screens show. Vite serves them at \`/\`, so \`/images/logo.png\` is \`public/images/logo.png\`.\n` : ""}- \`PRODUCT.md\` and \`DESIGN.md\`: the product and design context, when the project has them.
 
 Screens: ${screens.length ? `\n\n${list(screens.map((file) => `src/${file}`))}` : "none"}
-${ui.length ? `\nshadcn/ui components: ${ui.map((name) => `\`${name}\``).join(", ")}\n` : ""}
+${ui.length ? `\nUI components: ${ui.map((name) => `\`${name}\``).join(", ")}\n` : ""}
 ## Prototype links
 
 Elements with \`data-link-to="screens/settings.tsx"\` open that screen when clicked, and \`data-link-to="back"\` goes back. \`src/App.tsx\` handles them with a small hash router (\`#/settings\`). Replace it with your app's router when you wire the screens to real data.
@@ -393,6 +398,9 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 		...ui.map((module) => ({ path: `src/components/ui/${module}.tsx`, content: input.uiSources[module]! })),
 		...projectFiles.map((file) => ({ path: `src/${file}`, content: files[file]! })),
 	];
+
+	if (uiSources.some((source) => importSpecifiers(source).includes(UAI_UTILS)))
+		out.push({ path: "src/lib/uai-utils.ts", content: UTILS });
 
 	for (const context of ["PRODUCT.md", "DESIGN.md"])
 		if (files[context]?.trim()) out.push({ path: context, content: files[context]! });

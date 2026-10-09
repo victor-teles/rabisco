@@ -37,7 +37,7 @@ describe("validateFiles", () => {
 
 	test("ui module list matches the frame runtime", () => {
 		const source = readFileSync(join(import.meta.dir, "../../mainview/runtime/externals.ts"), "utf-8");
-		const runtime = [...source.matchAll(/^\s*"@\/components\/ui\/([a-z0-9-]+)":/gm)].map((m) => m[1]).sort();
+		const runtime = [...source.matchAll(/^\s*"@\/components\/ui\/((?:uai\/)?[a-z0-9-]+)":/gm)].map((m) => m[1]).sort();
 		expect(Object.keys(UI_MODULES).sort()).toEqual(runtime);
 	});
 
@@ -110,6 +110,18 @@ describe("validateFiles", () => {
 
 			expect(problems).toHaveLength(1);
 			expect(problems[0]!.message).toContain("not available");
+		});
+		test("allows the uai blocks screens can use, not the editor's", () => {
+			const block = screen(`import { MetricCard } from "@/components/ui/uai/metric-card";\nvoid MetricCard;`);
+			expect(one("screens/a.tsx", block)).toEqual([]);
+
+			const editor = one(
+				"screens/a.tsx",
+				screen(`import { ToolCall } from "@/components/ui/uai/tool-call";\nvoid ToolCall;`),
+			);
+
+			expect(editor).toHaveLength(1);
+			expect(editor[0]!.message).toContain("not available");
 		});
 		test("rejects unused imports of unknown modules too", () => {
 			expect(one("screens/a.tsx", screen(`import { x } from "lodash";`))).toHaveLength(1);

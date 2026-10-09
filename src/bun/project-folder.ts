@@ -10,6 +10,7 @@ import {
 	writeFileSync,
 } from "fs";
 import { dirname, join } from "path";
+import { parseChangeSummary } from "../shared/change-summary";
 import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
 import { CONTEXT_TEMPLATES } from "../shared/context/templates";
 import type { AppliedTheme } from "../shared/context/theme";
@@ -221,6 +222,10 @@ export function parseChat(text: string, readAttachment?: (path: string) => strin
 			if (!isChatMessage(value)) continue;
 			const message: ChatMessage = { ...value };
 			delete message.attachments;
+			delete message.summary;
+			const summary = parseChangeSummary(objectOr(value).summary);
+
+			if (summary) message.summary = summary;
 
 			const images = readAttachment
 				? arrayOr(objectOr(value).attachments).flatMap((ref) => loadAttachment(ref, readAttachment))

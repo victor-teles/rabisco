@@ -21,6 +21,7 @@ import { elementHover, type ElementHover } from "@/lib/element-hover";
 import {
 	draggedElement,
 	draggedEntry,
+	entryOrder,
 	entryPlacement,
 	moveTarget,
 	type DraggedElement,
@@ -388,6 +389,9 @@ export function Canvas({
 		entry: DraggedEntry | null;
 		box: Box;
 	} | null>(null);
+
+	/** Frame-local, how far a dragged list item has followed the pointer */
+	const entryOffset = useRef<Point | null>(null);
 
 	/** Where the selected element renders, for a press that drags it */
 	const selectedBoxes = useRef<{ file: string; start: number; boxes: Box[] } | null>(null);
@@ -885,6 +889,20 @@ export function Canvas({
 		return { file, spot: { parent: entry.parent, index: to, from, version, name, box: layout.box, line } };
 	};
 
+	/** The siblings of a dragged list item make room in the frame itself, so the screen doesn't render mid-drag */
+	const shiftEntries = (settle = false) => {
+		const moving = movingElement.current;
+
+		if (!moving?.entry) return;
+		const { preview } = dropping.current;
+		const spot = preview?.file === moving.file ? preview.spot : null;
+		const from = spot?.from ?? 0;
+		const to = spot?.from == null ? from : spot.index;
+		const order = entryOrder(moving.entry.count, from, to);
+		const offset = settle ? null : entryOffset.current;
+		hostFor(moving.file)?.previewOrder(moving.entry.start, moving.version, { order, box: moving.box, offset });
+	};
+
 	/** One probe in flight, like `updateHover` */
 	const updateDrop = (clientX: number, clientY: number) => {
 		const state = dropping.current;
@@ -903,6 +921,7 @@ export function Canvas({
 				if (generation !== state.generation) continue;
 				state.preview = next;
 				setDropPreview((current) => (sameDrop(current, next) ? current : next));
+				shiftEntries();
 			}
 
 			state.busy = false;
@@ -1045,18 +1064,25 @@ export function Canvas({
 		state.generation++;
 
 		void probeDrop(clientX, clientY).then((preview) => {
+			const spot = preview?.file === drag.file ? preview.spot : null;
+			const reorders = spot?.from != null && spot.from !== spot.index;
+
+			// The items stay in their new slots until the render that applies the move
+			if (drag.entry && reorders) {
+				state.preview = preview;
+				shiftEntries(true);
+			} else if (drag.entry) hostFor(drag.file)?.previewOrder(drag.entry.start, drag.version, null);
 			movingElement.current = null;
+			entryOffset.current = null;
 			state.holding = false;
 			clearDrop();
-			const spot = preview?.file === drag.file ? preview.spot : null;
 			const element = { file: drag.file, start: drag.start };
 
 			if (!spot) return;
 
 			if (spot.from === null)
 				onMoveElement?.(element, { parent: spot.parent, index: spot.index, version: spot.version });
-			else if (spot.from !== spot.index)
-				onMoveEntry?.(element, { from: spot.from, to: spot.index, version: spot.version });
+			else if (reorders) onMoveEntry?.(element, { from: spot.from, to: spot.index, version: spot.version });
 		});
 	};
 
@@ -1070,7 +1096,11 @@ export function Canvas({
 			if (event.key !== "Escape") return;
 			event.preventDefault();
 			event.stopPropagation();
+			const moving = movingElement.current;
+
+			if (moving?.entry) hostFor(moving.file)?.previewOrder(moving.entry.start, moving.version, null);
 			movingElement.current = null;
+			entryOffset.current = null;
 			clearDrop();
 			setDrag(null);
 		};
@@ -1078,7 +1108,7 @@ export function Canvas({
 		window.addEventListener("keydown", onKey, true);
 
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [draggingElement, clearDrop]);
+	}, [draggingElement, clearDrop, hostFor]);
 
 	const zoomOf = useCallback(() => view.get().zoom, [view]);
 
@@ -1291,6 +1321,12 @@ export function Canvas({
 
 			// The ghost follows the pointer without a render
 			if (ghostRef.current) ghostRef.current.style.transform = `translate(${dx / zoom}px, ${dy / zoom}px)`;
+
+			if (drag.entry) {
+				entryOffset.current = { x: dx / zoom, y: dy / zoom };
+				shiftEntries();
+			}
+
 			updateDrop(event.clientX, event.clientY);
 		} else if (drag.kind === "frames") {
 			const dx = event.clientX - drag.startX;
@@ -2163,7 +2199,9 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 			</div>
 		);
 	const box = clip(spot.box, frame);
-	const { line } = spot;
+	// The items show the new order themselves
+	const line = spot.from === null ? spot.line : null;
+	const solid = !!line || spot.from !== null;
 	const vertical = !!line && line.width < line.height;
 
 	// A line has no thickness: clip it as if it had two pixels, centered
@@ -2177,13 +2215,13 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 		>
 			{box ? (
 				<div
-					className={cn("absolute", line ? "bg-primary/5" : "bg-primary/15")}
+					className={cn("absolute", solid ? "bg-primary/5" : "bg-primary/15")}
 					style={{
 						left: box.x,
 						top: box.y,
 						width: box.width,
 						height: box.height,
-						outline: `calc(1.5px * var(--unzoom)) ${line ? "solid" : "dashed"} var(--primary)`,
+						outline: `calc(1.5px * var(--unzoom)) ${solid ? "solid" : "dashed"} var(--primary)`,
 					}}
 				>
 					<div

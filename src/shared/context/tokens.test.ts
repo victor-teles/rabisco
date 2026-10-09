@@ -2,11 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { DESIGN_TEMPLATE } from "./templates";
 import {
 	changedTokenCount,
+	customTokenNames,
 	designTokensOf,
 	parseDesignTokens,
+	setDesignToken,
 	TOKEN_NAMES,
+	tokenClass,
+	tokenThemeCss,
 	tokensToCss,
+	tokenUtility,
 	validateToken,
+	validateTokenName,
 } from "./tokens";
 
 const DESIGN = `# Design
@@ -154,7 +160,7 @@ describe("validateToken", () => {
 	});
 
 	test("every token name has a kind", () => {
-		expect(TOKEN_NAMES).toHaveLength(29);
+		expect(TOKEN_NAMES).toHaveLength(30);
 		expect(validateToken("chart-5", "#000")).toBeNull();
 		expect(validateToken("font-serif", "serif")).toBeNull();
 	});
@@ -238,5 +244,158 @@ describe("applied tokens", () => {
 		expect(changedTokenCount(from, { light: { primary: "#111", radius: "1rem" }, dark: { primary: "#222" } })).toBe(0);
 		expect(changedTokenCount(from, { light: { primary: "#999", ring: "red" }, dark: { primary: "#222" } })).toBe(3);
 		expect(changedTokenCount(from, { light: {}, dark: {} })).toBe(3);
+	});
+});
+
+describe("custom tokens", () => {
+	const CUSTOM = `## Tokens
+
+- color-brand: #e11d48
+- radius-card: 1.25rem
+- font-display: "Fraunces", serif
+- text-display: 3rem/1.1
+- text-caption: 0.75rem
+- spacing: 0.3rem
+- spacing-gutter: 24px
+
+### Dark
+
+- color-brand: #fb7185
+`;
+
+	test("are read with the namespace that makes the class", () => {
+		const tokens = parseDesignTokens(CUSTOM);
+		expect(tokens.invalid).toEqual([]);
+		expect(tokens.light["color-brand"]).toBe("#e11d48");
+		expect(tokens.dark).toEqual({ "color-brand": "#fb7185" });
+		expect(customTokenNames(tokens)).toEqual([
+			"color-brand",
+			"font-display",
+			"radius-card",
+			"spacing-gutter",
+			"text-caption",
+			"text-display",
+		]);
+		expect(tokenUtility("color-brand")).toBe("brand");
+		expect(tokenUtility("primary")).toBe("primary");
+	});
+
+	test("values are checked for their kind; built-in names can't be shadowed", () => {
+		expect(validateToken("color-brand", "url(x)")).not.toBeNull();
+		expect(validateToken("radius-card", "big")).not.toBeNull();
+		expect(validateToken("text-display", "3rem/1.1;}")).not.toBeNull();
+		expect(validateToken("text-display", "48px/56px")).toBeNull();
+		expect(validateToken("font-display", '"Inter";')).not.toBeNull();
+		expect(validateToken("color-primary", "#fff")).toContain("primary");
+		expect(validateToken("radius-lg", "1rem")).not.toBeNull();
+		expect(validateToken("shadow-card", "0 1px red")).not.toBeNull();
+		expect(validateToken("color-Brand", "#fff")).not.toBeNull();
+		expect(validateToken("color-", "#fff")).not.toBeNull();
+	});
+
+	test("CSS: custom light values apply in both modes, text splits its line height", () => {
+		expect(tokensToCss(designTokensOf(CUSTOM))).toBe(
+			":root {\n" +
+				"\t--color-brand: #e11d48;\n" +
+				"\t--radius-card: 1.25rem;\n" +
+				'\t--font-display: "Fraunces", serif;\n' +
+				"\t--text-display: 3rem;\n" +
+				"\t--text-display--line-height: 1.1;\n" +
+				"\t--text-caption: 0.75rem;\n" +
+				"\t--spacing: 0.3rem;\n" +
+				"\t--spacing-gutter: 24px;\n" +
+				"}\n" +
+				".dark {\n" +
+				"\t--color-brand: #fb7185;\n" +
+				"}\n",
+		);
+	});
+
+	test("the compiler gets names with fallbacks, not values", () => {
+		expect(tokenThemeCss(["color-brand", "text-display", "primary", "spacing", "nope"])).toBe(
+			"@theme reference {\n" +
+				"\t--color-brand: currentcolor;\n" +
+				"\t--text-display: 1rem;\n" +
+				"\t--text-display--line-height: normal;\n" +
+				"}\n",
+		);
+		expect(tokenThemeCss([])).toBe("");
+	});
+});
+
+describe("setDesignToken", () => {
+	const DOC =
+		"# Design\n\n## Tokens\n\n- primary: #111\n* `radius`: 1rem\n\n### Dark\n\n- primary: #eee\n\n## Typography\n\nText\n";
+
+	test("changes a value in place, keeping the bullet", () => {
+		expect(setDesignToken(DOC, "radius", "light", "0.5rem")).toBe(DOC.replace("* `radius`: 1rem", "* radius: 0.5rem"));
+		expect(setDesignToken(DOC, "primary", "dark", "#fff")).toBe(DOC.replace("- primary: #eee", "- primary: #fff"));
+	});
+
+	test("adds after the mode's last entry", () => {
+		const light = setDesignToken(DOC, "color-brand", "light", "#e11d48");
+		expect(light).toBe(DOC.replace("* `radius`: 1rem\n", "* `radius`: 1rem\n- color-brand: #e11d48\n"));
+
+		const dark = setDesignToken(DOC, "color-brand", "dark", "#fb7185");
+		expect(dark).toBe(DOC.replace("- primary: #eee\n", "- primary: #eee\n- color-brand: #fb7185\n"));
+		expect(designTokensOf(dark).dark).toEqual({ primary: "#eee", "color-brand": "#fb7185" });
+	});
+
+	test("removes every line of the name in that mode only", () => {
+		const doc = setDesignToken(DOC, "primary", "light", null);
+		expect(designTokensOf(doc)).toEqual({ light: { radius: "1rem" }, dark: { primary: "#eee" } });
+	});
+
+	test("adds a Dark sub-heading at the end of the section", () => {
+		const doc = "## Tokens\n\n- primary: #111\n\n## Typography\n";
+		const next = setDesignToken(doc, "primary", "dark", "#eee");
+		expect(next).toBe("## Tokens\n\n- primary: #111\n\n### Dark\n\n- primary: #eee\n\n## Typography\n");
+		expect(designTokensOf(next)).toEqual({ light: { primary: "#111" }, dark: { primary: "#eee" } });
+	});
+
+	test("adds a Tokens section when there is none", () => {
+		expect(setDesignToken("# Design\n\nProse.\n", "color-brand", "light", "#e11d48")).toBe(
+			"# Design\n\nProse.\n\n## Tokens\n\n- color-brand: #e11d48\n",
+		);
+		expect(designTokensOf(setDesignToken("", "primary", "dark", "#000"))).toEqual({
+			light: {},
+			dark: { primary: "#000" },
+		});
+	});
+
+	test("an empty section and the template's commented tokens", () => {
+		const empty = setDesignToken("## Tokens\n\n## Next\n", "ring", "light", "#000");
+		expect(empty).toBe("## Tokens\n\n- ring: #000\n\n## Next\n");
+
+		const template = setDesignToken(DESIGN_TEMPLATE, "color-brand", "light", "#e11d48");
+		expect(designTokensOf(template)).toEqual({ light: { "color-brand": "#e11d48" }, dark: {} });
+		expect(designTokensOf(setDesignToken(template, "color-brand", "dark", "#fb7185")).dark).toEqual({
+			"color-brand": "#fb7185",
+		});
+	});
+});
+
+describe("tokenClass", () => {
+	test("maps a custom token to the class it makes", () => {
+		expect(tokenClass("color-brand")).toBe("bg-brand");
+		expect(tokenClass("radius-card")).toBe("rounded-card");
+		expect(tokenClass("font-display")).toBe("font-display");
+		expect(tokenClass("text-display")).toBe("text-display");
+		expect(tokenClass("spacing-gutter")).toBe("p-gutter");
+	});
+
+	test("is null for built-in and unknown names", () => {
+		expect(tokenClass("primary")).toBeNull();
+		expect(tokenClass("font-sans")).toBeNull();
+		expect(tokenClass("brand")).toBeNull();
+	});
+});
+
+describe("validateTokenName", () => {
+	test("checks the name alone", () => {
+		expect(validateTokenName("color-brand")).toBeNull();
+		expect(validateTokenName("radius")).toBeNull();
+		expect(validateTokenName("brand")).toContain("Unknown token name");
+		expect(validateTokenName("radius-lg")).toContain("Built in");
 	});
 });

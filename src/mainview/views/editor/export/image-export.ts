@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { FrameHost, runtimeUrl, type Snapshot } from "@/lib/render/frame-host";
 import { OFFSTAGE_FRAME_STYLE, offstage } from "@/lib/render/offstage";
 import type { SnapshotRaster } from "@/lib/render/protocol";
-import { themeCss } from "@/lib/render/theme";
+import { themeCss } from "@/lib/render/styles";
 import { api, isDesktop } from "@/lib/rpc";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/export/flow";

@@ -39,7 +39,9 @@ screens. Tokens listed here are used as they are, without AI: remove the comment
 the lines you want to use.
 Colors: background, foreground, card, popover, primary, secondary, muted, accent (each with a
 -foreground pair), destructive, success, warning, border, input, ring, chart-1 to chart-5.
-Also radius, font-sans, font-serif and font-mono. Values under "### Dark" apply in dark mode.
+Also radius, spacing (the base step), font-sans, font-serif and font-mono. Custom tokens name their
+class: color-brand (bg-brand), radius-card (rounded-card), font-display, text-display: 3rem/1.1,
+spacing-gutter (p-gutter). Values under "### Dark" apply in dark mode.
 
 - primary: oklch(0.55 0.2 264)
 - primary-foreground: #ffffff

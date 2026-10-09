@@ -68,6 +68,16 @@ describe("buildOutline", () => {
 		expect(main.component).toBeNull();
 	});
 
+	test("uai blocks are ui components too", () => {
+		const source = `import { MetricCard } from "@/components/ui/uai/metric-card";\nexport default function A() {\n\treturn <MetricCard />;\n}\n`;
+
+		expect(buildOutline("screens/a.tsx", source).roots[0]!.component).toEqual({
+			source: "ui",
+			module: "uai/metric-card",
+			exportName: "MetricCard",
+		});
+	});
+
 	test("reports files that don't parse", () => {
 		const broken = buildOutline("screens/a.tsx", "export default function A() { return <div>; }");
 		expect(broken.ok).toBe(false);

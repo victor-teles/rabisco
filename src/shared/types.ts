@@ -1,5 +1,6 @@
 import type { Attachment, ElementFocus, GenerationEvent, Problem, ProviderErrorCode, Usage } from "./ai/contract";
 import type { ProjectAssets } from "./assets";
+import type { ChangeSummary } from "./change-summary";
 import type { ChatSummary } from "./chats";
 import type { AppliedTheme } from "./context/theme";
 import type { DesignTokens } from "./context/tokens";
@@ -76,6 +77,8 @@ export type ChatMessage = {
 	context?: ContextFileName[];
 	/** User prompts: the images sent with them. On disk they live in `attachments/`. */
 	attachments?: Attachment[];
+	/** Assistant replies to a generation that changed files or left problems. Missing in older chats */
+	summary?: ChangeSummary;
 };
 
 /** A folder; its absolute path is its id. */

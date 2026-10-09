@@ -17,7 +17,7 @@ import {
 	snapshotKey,
 	subscribeSnapshots,
 } from "@/lib/render/snapshots";
-import { themeCss } from "@/lib/render/theme";
+import { themeCss } from "@/lib/render/styles";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
 /** CSS of the project's applied tokens; every frame below renders with it */

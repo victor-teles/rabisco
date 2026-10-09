@@ -3,6 +3,7 @@
 // one it replaces, or goes at the end.
 
 import { twMerge } from "tailwind-merge";
+import { isCustomToken, tokenKind, tokenUtility } from "../context/tokens";
 import { setAttribute } from "../jsx/transforms";
 import { findElement, parseFile, type JsxElement } from "../jsx/tree";
 
@@ -590,6 +591,28 @@ const EXTRA_HUES = ["mauve", "olive", "mist", "taupe"];
 
 const COLOR_WORDS = new Set<string>([...THEME_COLORS, ...EXTRA_THEME_COLORS, ...SPECIAL_COLORS]);
 
+/** The open project's custom colors and font sizes by utility: `color-brand` makes `bg-brand` a color (decision 0013) */
+const customColors = new Set<string>();
+
+const customFontSizes = new Set<string>();
+
+/**
+ * The open project's custom token names (`color-brand`, `text-display`), so the parse knows `bg-brand` is a color and
+ * `text-display` a font size. Other kinds need nothing: `rounded-card` and `font-display` read without them.
+ */
+export function setCustomTokens(names: Iterable<string>) {
+	customColors.clear();
+	customFontSizes.clear();
+
+	for (const name of names) {
+		if (!isCustomToken(name)) continue;
+		const kind = tokenKind(name);
+
+		if (kind === "color") customColors.add(tokenUtility(name));
+		else if (kind === "text") customFontSizes.add(tokenUtility(name));
+	}
+}
+
 const PALETTE_COLOR = new RegExp(
 	`^(?:${[...Object.keys(PALETTE), ...EXTRA_HUES].join("|")})-(?:${PALETTE_SHADES.join("|")})$`,
 );
@@ -644,7 +667,7 @@ export function isColorValue(value: string): boolean {
 
 	if (modifier !== null && !OPACITY_MODIFIER.test(modifier)) return false;
 
-	if (COLOR_WORDS.has(base) || PALETTE_COLOR.test(base)) return true;
+	if (COLOR_WORDS.has(base) || customColors.has(base) || PALETTE_COLOR.test(base)) return true;
 	const type = arbitraryType(base);
 
 	return type === "color" || type === "var";
@@ -1020,13 +1043,15 @@ export function parseColorInput(input: string): string | null {
 	return null;
 }
 
-/** For a swatch; opacity modifiers resolve through `color-mix`. */
+/** For a swatch; opacity modifiers resolve through `color-mix`. `token` gets `primary` or a custom `color-brand`. */
 export function colorCss(value: string, token: (name: string) => string = (name) => `var(--${name})`): string | null {
 	if (!isColorValue(value)) return null;
 	const [base, modifier] = splitModifier(value);
 	let css: string | null;
 
-	if (base === "inherit") css = null;
+	// A custom token can reuse a palette name, and then the project's value is what renders
+	if (customColors.has(base)) css = token(`color-${base}`);
+	else if (base === "inherit") css = null;
 	else if (base === "current") css = "currentColor";
 	else if (base === "black") css = "#000";
 	else if (base === "white") css = "#fff";
@@ -1365,7 +1390,10 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 		if (TEXT_ALIGN.has(value)) return hit("textAlign", "text", value);
 		const [base, modifier] = splitModifier(value);
 
-		if (FONT_SIZE_NAMES.has(base) && (modifier === null || /^(?:\d*\.?\d+|\[.+\]|[a-z]+)$/.test(modifier)))
+		if (
+			(FONT_SIZE_NAMES.has(base) || customFontSizes.has(base)) &&
+			(modifier === null || /^(?:\d*\.?\d+|\[.+\]|[a-z]+)$/.test(modifier))
+		)
 			return hit("fontSize", "text", value);
 		const type = arbitraryType(base);
 

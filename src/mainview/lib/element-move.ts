@@ -66,3 +66,13 @@ export function entryPlacement(
 
 	return { from, to: index > from ? index - 1 : index, line };
 }
+
+/** Entry indexes in their new order, entry `from` moved to `to` */
+export function entryOrder(count: number, from: number, to: number) {
+	const order = Array.from({ length: count }, (_, i) => i);
+	const [moved] = order.splice(from, 1);
+
+	if (moved !== undefined) order.splice(to, 0, moved);
+
+	return order;
+}

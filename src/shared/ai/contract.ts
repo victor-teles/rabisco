@@ -1,5 +1,6 @@
 // Decision record: docs/decisions/0003-ai-provider-contract.md
 
+import type { DesignTokens } from "../context/tokens";
 import type { Device } from "../types";
 
 export type ProviderKind = "cli" | "sdk" | "api";
@@ -114,6 +115,9 @@ export type GenerationRequest = {
 
 	/** Built from all project files, so the catalog is complete even when sources don't fit in `files`. */
 	components?: ComponentSignature[];
+
+	/** The applied theme screens render with; the prompt lists its token classes. Missing when it sets nothing. */
+	theme?: DesignTokens;
 
 	targets?: string[];
 

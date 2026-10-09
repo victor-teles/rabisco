@@ -15,6 +15,7 @@ import * as Dialog from "@/components/ui/dialog";
 import * as DropdownMenu from "@/components/ui/dropdown-menu";
 import * as Input from "@/components/ui/input";
 import * as Kbd from "@/components/ui/kbd";
+import * as Label from "@/components/ui/label";
 import * as Popover from "@/components/ui/popover";
 import * as Progress from "@/components/ui/progress";
 import * as ScrollArea from "@/components/ui/scroll-area";
@@ -24,6 +25,15 @@ import * as Textarea from "@/components/ui/textarea";
 import * as Toggle from "@/components/ui/toggle";
 import * as ToggleGroup from "@/components/ui/toggle-group";
 import * as Tooltip from "@/components/ui/tooltip";
+import * as FormErrorSummary from "@/components/ui/uai/form-error-summary";
+import * as FormField from "@/components/ui/uai/form-field";
+import * as Message from "@/components/ui/uai/message";
+import * as MetricCard from "@/components/ui/uai/metric-card";
+import * as PromptComposer from "@/components/ui/uai/prompt-composer";
+import * as SearchField from "@/components/ui/uai/search-field";
+import * as StatusBanner from "@/components/ui/uai/status-banner";
+import * as StepIndicator from "@/components/ui/uai/step-indicator";
+import * as Thinking from "@/components/ui/uai/thinking";
 import { frameAssets } from "./assets";
 import { lucide } from "./icons";
 import { refresh } from "./refresh";
@@ -57,6 +67,7 @@ export const externals = {
 	"@/components/ui/dropdown-menu": DropdownMenu,
 	"@/components/ui/input": Input,
 	"@/components/ui/kbd": Kbd,
+	"@/components/ui/label": Label,
 	"@/components/ui/popover": Popover,
 	"@/components/ui/progress": Progress,
 	"@/components/ui/scroll-area": ScrollArea,
@@ -66,6 +77,15 @@ export const externals = {
 	"@/components/ui/toggle": Toggle,
 	"@/components/ui/toggle-group": ToggleGroup,
 	"@/components/ui/tooltip": Tooltip,
+	"@/components/ui/uai/form-error-summary": FormErrorSummary,
+	"@/components/ui/uai/form-field": FormField,
+	"@/components/ui/uai/message": Message,
+	"@/components/ui/uai/metric-card": MetricCard,
+	"@/components/ui/uai/prompt-composer": PromptComposer,
+	"@/components/ui/uai/search-field": SearchField,
+	"@/components/ui/uai/status-banner": StatusBanner,
+	"@/components/ui/uai/step-indicator": StepIndicator,
+	"@/components/ui/uai/thinking": Thinking,
 	/** Used by the code `compileSource` appends; not for screens */
 	"rabisco:refresh": refresh,
 };

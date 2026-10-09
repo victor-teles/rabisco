@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import type { AssetChange } from "../shared/assets";
+import type { ChangeSummary } from "../shared/change-summary";
 import type { FileChange } from "../shared/types";
 import {
 	appendChat,
@@ -200,6 +201,19 @@ describe("project files", () => {
 			{ name: "a.png", mediaType: "image/png", data: "AA==" },
 		]);
 		expect(parseChat(line("attachments/gone.png"), () => null)[0]!.attachments).toBeUndefined();
+	});
+
+	test("a reply's change summary loads back; a malformed one is dropped", () => {
+		const summary: ChangeSummary = {
+			files: [{ path: "screens/home.tsx", change: "added", additions: 1, deletions: 0 }],
+			problems: 0,
+		};
+
+		const line = (json: string) => `{"id":"m","role":"assistant","content":"Done","createdAt":"t","summary":${json}}`;
+
+		expect(parseChat(line(JSON.stringify(summary)))[0]!.summary).toEqual(summary);
+		expect(parseChat(line('"3 screens"'))[0]!.summary).toBeUndefined();
+		expect(parseChat('{"id":"m","role":"assistant","content":"Done","createdAt":"t"}')[0]!.summary).toBeUndefined();
 	});
 
 	test("new project folders get a free name", () => {

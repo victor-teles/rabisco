@@ -4,8 +4,8 @@ import { contextBody } from "./body";
 import {
 	changedTokenCount,
 	designTokensOf,
+	orderedTokenNames,
 	parseDesignTokens,
-	TOKEN_NAMES,
 	type DesignTokens,
 	type ParsedDesignTokens,
 } from "./tokens";
@@ -75,10 +75,10 @@ export function parseThemeReply(reply: string): ParsedDesignTokens {
 
 export type TokenChange = { name: string; dark: boolean; value: string | undefined };
 
-/** In `TOKEN_NAMES` order, light first; `value` is the new one, `undefined` when removed */
+/** In token order (`orderedTokenNames`), light first; `value` is the new one, `undefined` when removed */
 export function tokenChanges(from: DesignTokens, to: DesignTokens): TokenChange[] {
 	const diff = (a: Record<string, string>, b: Record<string, string>, dark: boolean) =>
-		TOKEN_NAMES.filter((name) => a[name] !== b[name]).map((name) => ({ name, dark, value: b[name] }));
+		orderedTokenNames(a, b).flatMap((name) => (a[name] === b[name] ? [] : [{ name, dark, value: b[name] }]));
 
 	return [...diff(from.light, to.light, false), ...diff(from.dark, to.dark, true)];
 }
@@ -86,7 +86,7 @@ export function tokenChanges(from: DesignTokens, to: DesignTokens): TokenChange[
 /** The `## Tokens` block `parseThemeReply` reads */
 export function tokenBlock(tokens: DesignTokens): string {
 	const lines = (values: Record<string, string>) =>
-		TOKEN_NAMES.filter((name) => name in values).map((name) => `- ${name}: ${values[name]}`);
+		orderedTokenNames(values).map((name) => `- ${name}: ${values[name]}`);
 
 	const dark = lines(tokens.dark);
 

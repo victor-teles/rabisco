@@ -4,7 +4,7 @@ import type { GenerateParams, GenerateResult, GenerationEventMessage, ProjectFil
 import type { ProviderCommand, ScreenMeta, Usage } from "../../shared/ai/contract";
 import { isAlternate } from "../../shared/variations";
 import { clampVariations, combineVariations, createVariantRenamer, variationsNote } from "../../shared/ai/variants";
-import { chatPath, parseChat, readFileIfExists, readProjectFiles } from "../project-folder";
+import { chatPath, parseChat, readCanvas, readFileIfExists, readProjectFiles } from "../project-folder";
 import type { SecretStore } from "./keychain";
 import { ProviderRegistry, type ProviderDeps, type RegistryOptions } from "./providers";
 import { varyPrompt } from "./prompt";
@@ -270,6 +270,7 @@ export function createAiService(options: AiServiceOptions) {
 					focus: vary ? undefined : params.focus,
 					attachments: params.attachments,
 					history: history.slice(-HISTORY_TURNS),
+					theme: readCanvas(params.projectPath)?.theme,
 				});
 
 				if (params.task === "repair") Object.assign(request, { task: "repair", problems: params.problems ?? [] });

@@ -12,6 +12,7 @@ import type {
 	ScreenMeta,
 } from "../../shared/ai/contract";
 import { focusNote, focusOf } from "../../shared/ai/focus";
+import { changeSummaryOf } from "../../shared/change-summary";
 import type { AppliedTheme } from "../../shared/context/theme";
 import { draftLayout, mixNote, mixPrompt, variantLabel, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
 import { renderCheckOf, renderRepairOf, type RenderCheck } from "@/lib/render-check";
@@ -199,6 +200,8 @@ export function useGeneration({
 	/** The undo step the last request's result made */
 	const lastResult = useRef<Snapshot | null>(null);
 	const [regenerable, setRegenerable] = useState(false);
+	/** The reply whose result is an undo step, so its summary can offer Undo while that step is still the latest */
+	const [lastRun, setLastRun] = useState<{ messageId: string; step: Snapshot } | null>(null);
 
 	// Events arrive per token; batch them into one render per frame
 	useEffect(
@@ -317,6 +320,8 @@ export function useGeneration({
 						)
 					: [];
 
+				let step: Snapshot | null = null;
+
 				if (result.changes.length) {
 					change(
 						(snapshot) => {
@@ -330,7 +335,9 @@ export function useGeneration({
 						placed.length ? { select: placed.map((frame) => frame.file) } : undefined,
 					);
 
-					if (!options.repair) lastResult.current = stateRef.current?.history.present ?? null;
+					step = stateRef.current?.history.present ?? null;
+
+					if (!options.repair) lastResult.current = step;
 				}
 
 				const reply = result.reply.trim() || summarize(result.changes);
@@ -339,7 +346,12 @@ export function useGeneration({
 					? `\n\nI couldn't make ${[...new Set(result.problems.map((p) => p.path))].join(", ")} valid, so I left ${result.problems.length === 1 ? "it" : "them"} out:\n${result.problems.map((p) => `• ${p.path}${p.line ? `:${p.line}` : ""}: ${p.message}`).join("\n")}`
 					: "";
 
-				addMessages([{ ...message("assistant", reply + leftOut), context: result.context ?? [] }]);
+				const done: ChatMessage = { ...message("assistant", reply + leftOut), context: result.context ?? [] };
+				const summary = changeSummaryOf(latest.files, result.changes, result.problems);
+
+				if (summary) done.summary = summary;
+				addMessages([done]);
+				setLastRun(step && summary?.files.length ? { messageId: done.id, step } : null);
 
 				if (placed.length) onPlaced(placed);
 
@@ -558,6 +570,11 @@ export function useGeneration({
 		void run(request.prompt, request.options);
 	}, [ready, stateRef, undo, run]);
 
+	/** One undo step, and only while the run's result is still the latest one */
+	const undoRun = useCallback(() => {
+		if (lastRun && stateRef.current?.history.present === lastRun.step) undo?.();
+	}, [lastRun, stateRef, undo]);
+
 	useEffect(() => () => stop(), [stop]);
 
 	const writing = generation?.writing;
@@ -597,6 +614,8 @@ export function useGeneration({
 		stop,
 		retry,
 		regenerate: regenerable ? regenerate : null,
+		lastRun,
+		undoRun,
 	};
 }
 

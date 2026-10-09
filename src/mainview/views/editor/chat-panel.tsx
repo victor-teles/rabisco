@@ -1,9 +1,32 @@
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, Crosshair, MessageSquareText, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
+import { Crosshair, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, X } from "lucide-react";
 import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
 import { Markdown } from "@/components/app/markdown";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+	Attachment as AttachmentCard,
+	AttachmentDetails,
+	AttachmentName,
+	AttachmentThumbnail,
+} from "@/components/ui/uai/attachment";
+import {
+	Citation,
+	CitationExcerpt,
+	CitationPopover,
+	CitationTitle,
+	CitationTrigger,
+} from "@/components/ui/uai/citation";
+import {
+	EmptyState,
+	EmptyStateAction,
+	EmptyStateActions,
+	EmptyStateContent,
+	EmptyStateDescription,
+	EmptyStateHeader,
+	EmptyStateMedia,
+	EmptyStateTitle,
+} from "@/components/ui/uai/empty-state";
 import {
 	Message,
 	MessageAction,
@@ -13,6 +36,14 @@ import {
 	MessageContent,
 	MessageCopy,
 } from "@/components/ui/uai/message";
+import {
+	ResponseStatus,
+	ResponseStatusActions,
+	ResponseStatusDetail,
+	ResponseStatusIndicator,
+	ResponseStatusLabel,
+	ResponseStatusRetry,
+} from "@/components/ui/uai/response-status";
 import { Thinking, ThinkingActivity, ThinkingContent, ThinkingTrigger } from "@/components/ui/uai/thinking";
 import {
 	ToolCall,
@@ -33,6 +64,7 @@ import { api } from "@/lib/rpc";
 import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
+import { ChangeSummaryCard } from "./change-summary";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
 function WrittenFile({ path, file }: { path: string; file: WritingFile }) {
@@ -69,6 +101,8 @@ export type ComposerInsert = { key: number; text: string };
 type ChatPanelProps = {
 	messages: ChatMessage[];
 	generation: Generation | null;
+	/** Takes back the generation of reply `id`; `null` once that is no longer the latest undo step */
+	undoableRun?: { id: string; run: () => void } | null;
 	failure: GenerationFailure | null;
 	device: Device;
 	onDeviceChange: (device: Device) => void;
@@ -132,6 +166,7 @@ export const ChatPanel = memo(function ChatPanel({
 	onStop,
 	onRetry,
 	onRegenerate,
+	undoableRun = null,
 	onDismissFailure,
 	selectedScreenName,
 	editingCount,
@@ -251,19 +286,25 @@ export const ChatPanel = memo(function ChatPanel({
 			<ScrollArea ref={scrollRef} className="min-h-0 flex-1">
 				<div className="flex flex-col gap-5 px-4 py-5">
 					{messages.length === 0 && !generation ? (
-						<div className="flex flex-col items-center px-4 pt-16 text-center">
-							<span className="grid size-10 place-items-center rounded-xl bg-[color-mix(in_oklab,var(--primary)_14%,var(--card))] text-primary">
-								<Sparkles className="size-5" strokeWidth={1.8} />
-							</span>
-							<p className="mt-4 text-sm font-medium">Start with a description</p>
-							<p className="mt-1 text-[13px]/5 text-muted-foreground">
-								Tell Rabisco what you're building and who it's for. You can refine each screen afterwards.
-							</p>
-							<Button variant="ghost" size="sm" className="mt-3 text-muted-foreground" onClick={onStartInterview}>
-								<MessageSquareText />
-								Or start with PRODUCT.md
-							</Button>
-						</div>
+						<EmptyState variant="plain" className="pt-16">
+							<EmptyStateMedia>
+								<Sparkles />
+							</EmptyStateMedia>
+							<EmptyStateContent>
+								<EmptyStateHeader>
+									<EmptyStateTitle>Start with a description</EmptyStateTitle>
+									<EmptyStateDescription>
+										Tell Rabisco what you're building and who it's for. You can refine each screen afterwards.
+									</EmptyStateDescription>
+								</EmptyStateHeader>
+								<EmptyStateActions>
+									<EmptyStateAction emphasis="secondary" onClick={onStartInterview}>
+										<MessageSquareText />
+										Or start with PRODUCT.md
+									</EmptyStateAction>
+								</EmptyStateActions>
+							</EmptyStateContent>
+						</EmptyState>
 					) : null}
 
 					<MessageList
@@ -271,6 +312,8 @@ export const ChatPanel = memo(function ChatPanel({
 						onOpenContext={onOpenContext}
 						onEdit={generation ? null : edit}
 						regenerate={regenerate ? { id: lastReply, run: regenerate } : null}
+						lastReply={lastReply}
+						undoableRun={undoableRun}
 					/>
 
 					{generation ? (
@@ -413,34 +456,43 @@ function AttachedImages({ images }: { images: Attachment[] }) {
 	return (
 		<div className="flex flex-wrap justify-end gap-1.5">
 			{images.map((image, index) => (
-				<img
-					key={index}
-					src={`data:${image.mediaType};base64,${image.data}`}
-					alt={image.name}
-					title={image.name}
-					className="size-16 rounded-lg border object-cover"
-				/>
+				<AttachmentCard key={index} variant="card" mimeType={image.mediaType} className="w-32">
+					<AttachmentThumbnail src={`data:${image.mediaType};base64,${image.data}`} alt={image.name} className="h-20" />
+					<AttachmentDetails>
+						<AttachmentName title={image.name}>{image.name}</AttachmentName>
+					</AttachmentDetails>
+				</AttachmentCard>
 			))}
 		</div>
 	);
 }
 
+const CONTEXT_PURPOSE: Record<ContextFileName, string> = {
+	"PRODUCT.md": "What you're building, who it's for and how it should feel.",
+	"DESIGN.md": "The tokens, type and component rules screens follow.",
+};
+
 function ContextLine({ files, onOpen }: { files: ContextFileName[]; onOpen: (file: ContextFileName) => void }) {
 	return (
 		<p className="text-xs text-subtle-foreground">
 			Followed{" "}
-			{files.map((file, index) => (
-				<Fragment key={file}>
-					{index > 0 ? " · " : null}
-					<button
-						type="button"
-						onClick={() => onOpen(file)}
-						className="rounded-sm font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-						title={`Open ${file}`}
+			{files.map((file) => (
+				<Citation key={file} variant="chip">
+					<CitationTrigger
+						onClick={(event) => {
+							// Opening the file is the action; the preview already shows on hover and focus
+							event.preventDefault();
+							onOpen(file);
+						}}
 					>
 						{file}
-					</button>
-				</Fragment>
+					</CitationTrigger>
+					{/* Above the line: under the latest reply there is no room below */}
+					<CitationPopover className="top-auto bottom-[calc(100%+8px)] w-56 origin-bottom-left">
+						<CitationTitle className="pt-2">{file}</CitationTitle>
+						<CitationExcerpt>{CONTEXT_PURPOSE[file]} Click to open it.</CitationExcerpt>
+					</CitationPopover>
+				</Citation>
 			))}
 		</p>
 	);
@@ -537,45 +589,54 @@ function FailureCard({
 	const type = settings.providers.find((p) => p.id === failure.providerId)?.type;
 	const providerType = PROVIDER_TYPES.find((t) => t.type === type);
 	const settingsFix = failure.code === "not_authenticated" || failure.code === "not_installed";
+	const action = "h-7 rounded-full px-3 text-[12.5px]";
 
 	return (
-		<div
-			role="alert"
-			className="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-[13px]"
+		<ResponseStatus
+			variant="bar"
+			status={failure.code === "aborted" ? "stopped" : "failed"}
+			className="items-start py-2.5"
 		>
-			<div className="flex items-start gap-2">
-				<AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-				<div className="min-w-0 flex-1">
-					<p className="font-medium">{FAILURE_TITLE[failure.code]}</p>
-					<p className="mt-0.5 [overflow-wrap:anywhere] text-muted-foreground">{failure.message}</p>
-					{failure.fix ? <p className="mt-1.5">{failure.fix}</p> : null}
-				</div>
-				<Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={onDismiss} className="-mt-0.5 -mr-1">
-					<X />
-				</Button>
+			<ResponseStatusIndicator />
+			<div className="grid min-w-0 flex-1 gap-0.5">
+				<ResponseStatusLabel>{FAILURE_TITLE[failure.code]}</ResponseStatusLabel>
+				<ResponseStatusDetail className="[overflow-wrap:anywhere]">{failure.message}</ResponseStatusDetail>
+				{failure.fix ? (
+					<ResponseStatusDetail className="text-muted-foreground">{failure.fix}</ResponseStatusDetail>
+				) : null}
 			</div>
-			<div className="flex flex-wrap gap-1.5 pl-6">
+			<Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={onDismiss}>
+				<X />
+			</Button>
+			<ResponseStatusActions className="ml-0 basis-full flex-wrap gap-1.5 pl-7">
 				{failure.retryable ? (
-					<Button size="xs" onClick={onRetry}>
+					<ResponseStatusRetry onClick={onRetry}>
+						<RotateCw className="size-3" aria-hidden="true" />
 						Try again
-					</Button>
+					</ResponseStatusRetry>
 				) : null}
 				{settingsFix || !failure.retryable ? (
 					<Button
-						size="xs"
-						variant={failure.retryable ? "outline" : "default"}
+						size="sm"
+						variant={failure.retryable ? "secondary" : "default"}
+						className={action}
 						onClick={() => openSettings(failure.providerId ?? null)}
 					>
 						Open settings
 					</Button>
 				) : null}
 				{failure.code === "not_installed" && providerType?.helpUrl ? (
-					<Button size="xs" variant="outline" onClick={() => void api.openExternal({ url: providerType.helpUrl! })}>
+					<Button
+						size="sm"
+						variant="secondary"
+						className={action}
+						onClick={() => void api.openExternal({ url: providerType.helpUrl! })}
+					>
 						Install {providerType.label}
 					</Button>
 				) : null}
-			</div>
-		</div>
+			</ResponseStatusActions>
+		</ResponseStatus>
 	);
 }
 
@@ -585,6 +646,8 @@ const MessageList = memo(function MessageList({
 	onOpenContext,
 	onEdit,
 	regenerate,
+	lastReply,
+	undoableRun,
 }: {
 	messages: ChatMessage[];
 	onOpenContext: ChatPanelProps["onOpenContext"];
@@ -592,34 +655,46 @@ const MessageList = memo(function MessageList({
 	onEdit: ((message: ChatMessage) => void) | null;
 	/** Offered on the latest reply only */
 	regenerate: { id: string | undefined; run: () => void } | null;
+	/** Only the latest reply shows its summary, so the history stays a conversation */
+	lastReply: string | undefined;
+	undoableRun: { id: string; run: () => void } | null;
 }) {
 	return messages.map((message) => {
 		const assistant = message.role === "assistant";
+		const summary = message.id === lastReply ? message.summary : undefined;
 
 		return (
-			<Message key={message.id} from={message.role} variant="bubble" className="group/message">
-				{assistant ? <MessageAvatar /> : null}
-				<MessageBody>
-					{message.attachments?.length ? <AttachedImages images={message.attachments} /> : null}
-					<MessageContent className={assistant ? undefined : "whitespace-pre-wrap"}>
-						{assistant ? <Markdown source={message.content} /> : message.content}
-					</MessageContent>
-					{assistant && message.context?.length ? <ContextLine files={message.context} onOpen={onOpenContext} /> : null}
-					<MessageActions className="opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
-						<MessageCopy text={message.content} />
-						{!assistant && onEdit ? (
-							<MessageAction label="Edit and resend" onClick={() => onEdit(message)}>
-								<Pencil />
-							</MessageAction>
+			<Fragment key={message.id}>
+				<Message from={message.role} variant="bubble" className="group/message">
+					{assistant ? <MessageAvatar /> : null}
+					<MessageBody>
+						{message.attachments?.length ? <AttachedImages images={message.attachments} /> : null}
+						<MessageContent className={assistant ? undefined : "whitespace-pre-wrap"}>
+							{assistant ? <Markdown source={message.content} /> : message.content}
+						</MessageContent>
+						{assistant && message.context?.length ? (
+							<ContextLine files={message.context} onOpen={onOpenContext} />
 						) : null}
-						{assistant && regenerate && regenerate.id === message.id ? (
-							<MessageAction label="Regenerate" onClick={regenerate.run}>
-								<RotateCcw />
-							</MessageAction>
-						) : null}
-					</MessageActions>
-				</MessageBody>
-			</Message>
+						<MessageActions className="opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
+							<MessageCopy text={message.content} />
+							{!assistant && onEdit ? (
+								<MessageAction label="Edit and resend" onClick={() => onEdit(message)}>
+									<Pencil />
+								</MessageAction>
+							) : null}
+							{assistant && regenerate && regenerate.id === message.id ? (
+								<MessageAction label="Regenerate" onClick={regenerate.run}>
+									<RotateCcw />
+								</MessageAction>
+							) : null}
+						</MessageActions>
+					</MessageBody>
+				</Message>
+				{/* Full width: the file tree needs the room the bubble's indent would take */}
+				{summary ? (
+					<ChangeSummaryCard summary={summary} onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined} />
+				) : null}
+			</Fragment>
 		);
 	});
 });

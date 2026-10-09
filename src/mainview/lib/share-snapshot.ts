@@ -1,8 +1,7 @@
 import { projectAssets } from "@/lib/render/assets";
 import { compileCache } from "@/lib/render/compile";
 import { collectGraph } from "@/lib/render/graph";
-import { screenStyles } from "@/lib/render/styles";
-import { themeCss } from "@/lib/render/theme";
+import { screenStyles, themeCss } from "@/lib/render/styles";
 import type { DesignTokens } from "../../shared/context/tokens";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
 import type { Frame, ProjectFiles } from "../../shared/types";
@@ -20,6 +19,8 @@ export async function buildShareSnapshot(input: {
 	const screens = shareScreens(input.frames, files);
 
 	if (screens.length === 0) throw new Error("There are no screens to share yet");
+	// First: a new custom token name restarts the compiler
+	const theme = themeCss(input.theme);
 	await screenStyles.whenReady();
 	const modules: Record<string, ShareModule> = {};
 
@@ -44,7 +45,7 @@ export async function buildShareSnapshot(input: {
 		screens,
 		modules,
 		css: screenStyles.css,
-		theme: themeCss(input.theme),
+		theme,
 	};
 
 	if (Object.keys(assets).length) snapshot.assets = assets;

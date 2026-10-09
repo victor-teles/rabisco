@@ -21,7 +21,7 @@ const request = (overrides: Partial<GenerationRequest> = {}): GenerationRequest 
 describe("UI_MODULES", () => {
 	test("matches the modules the frame runtime provides", () => {
 		const source = readFileSync(join(root, "runtime/externals.ts"), "utf8");
-		const runtime = [...source.matchAll(/^\t"@\/components\/ui\/([a-z0-9-]+)":/gm)].map((m) => m[1]!);
+		const runtime = [...source.matchAll(/^\t"@\/components\/ui\/((?:uai\/)?[a-z0-9-]+)":/gm)].map((m) => m[1]!);
 		expect(Object.keys(UI_MODULES).sort()).toEqual(runtime.sort());
 	});
 
@@ -30,10 +30,13 @@ describe("UI_MODULES", () => {
 			const source = readFileSync(join(root, `components/ui/${name}.tsx`), "utf8");
 			const block = /^export \{([^}]*)\}/m.exec(source)?.[1] ?? "";
 
-			const actual = block
-				.split(",")
-				.map((s) => s.trim())
-				.filter(Boolean);
+			// uai blocks export their parts one by one; their hooks and constants are left out
+			const actual = name.startsWith("uai/")
+				? [...source.matchAll(/^export function ([A-Z]\w*)/gm)].map((m) => m[1]!)
+				: block
+						.split(",")
+						.map((s) => s.trim())
+						.filter(Boolean);
 
 			expect([...exports].sort()).toEqual(actual.sort());
 		}
@@ -54,6 +57,23 @@ describe("UI_MODULES", () => {
 			"switch",
 		]);
 	});
+
+	test("every uai block is either in the runtime or deliberately left out", () => {
+		const files = readdirSync(join(root, "components/ui/uai"))
+			.filter((f) => f.endsWith(".tsx"))
+			.map((f) => `uai/${f.replace(/\.tsx$/, "")}`);
+
+		// Editor chrome, not screen UI yet
+		expect(files.filter((f) => !(f in UI_MODULES)).sort()).toEqual([
+			"uai/attachment",
+			"uai/citation",
+			"uai/command-menu",
+			"uai/empty-state",
+			"uai/response-status",
+			"uai/run-summary",
+			"uai/tool-call",
+		]);
+	});
 });
 
 describe("systemPrompt", () => {
@@ -64,6 +84,9 @@ describe("systemPrompt", () => {
 		expect(prompt).toContain('device="mobile"');
 		expect(prompt).toContain("390×844");
 		expect(prompt).toContain("@/components/ui/dropdown-menu: DropdownMenu");
+		expect(prompt).toContain("@/components/ui/uai/metric-card: MetricCard");
+		expect(prompt).toContain("@/components/ui/uai/status-banner: StatusBanner");
+		expect(prompt).toContain('StatusBanner tone="info"');
 		expect(prompt).toContain("export default function");
 		expect(prompt).not.toContain("current directory");
 	});
@@ -268,6 +291,44 @@ describe("userPrompt", () => {
 		expect(varyPrompt("bolder")).toContain("Direction: bolder.");
 		expect(varyPrompt("  ")).toContain("Direction: a distinct alternative.");
 		expect(varyPrompt("")).toContain("Keep its purpose and content");
+	});
+
+	describe("theme tokens", () => {
+		const theme = { light: { primary: "#0052ff", "color-brand": "#e11d48" }, dark: {} };
+
+		test("screen tasks list the theme's token classes after the components, in both modes", () => {
+			for (const task of ["create", "edit", "repair"] as const) {
+				for (const mode of ["text", "agent"] as const) {
+					const prompt = userPrompt(request({ task, targets: ["screens/a.tsx"], theme }), mode);
+
+					expect(prompt).toContain("# Theme tokens");
+					expect(prompt).toContain("- bg-brand / text-brand / border-brand (color-brand: #e11d48)");
+					expect(prompt).toContain("- Set by this project: primary: #0052ff");
+					expect(prompt.indexOf("# Theme tokens")).toBeLessThan(prompt.indexOf("Task: "));
+				}
+			}
+		});
+
+		test("variations keep the list", () => {
+			const prompt = userPrompt(request({ theme, variation: { index: 1, count: 3 } }), "text");
+
+			expect(prompt).toContain("# Theme tokens");
+		});
+
+		test("left out without a theme, and for context and theme tasks", () => {
+			expect(userPrompt(request(), "text")).not.toContain("# Theme tokens");
+			expect(userPrompt(request({ theme: { light: {}, dark: {} } }), "text")).not.toContain("# Theme tokens");
+			expect(userPrompt(request({ task: "context", targets: ["DESIGN.md"], theme }), "text")).not.toContain(
+				"# Theme tokens",
+			);
+			expect(userPrompt(request({ task: "theme", context: { design: "x" }, theme }), "text")).not.toContain(
+				"# Theme tokens",
+			);
+		});
+
+		test("the design rules point to the list", () => {
+			expect(systemPrompt(request(), "text")).toContain('the custom classes under "# Theme tokens"');
+		});
 	});
 
 	describe("project components", () => {

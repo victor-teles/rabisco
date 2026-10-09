@@ -13,6 +13,7 @@ import {
 } from "../../shared/ai/contract";
 import { componentSignatures } from "../../shared/components/usages";
 import { contextBody } from "../../shared/context/body";
+import { designTokensOf, type DesignTokens } from "../../shared/context/tokens";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocus } from "../../shared/ai/focus";
 import { isComponentFile, isScreenFile } from "../../shared/project";
@@ -364,6 +365,8 @@ export type BuildRequestParams = {
 	focus?: ElementFocus;
 	attachments?: Attachment[];
 	history?: GenerationRequest["history"];
+	/** The applied theme (rabisco.json); DESIGN.md's tokens when missing */
+	theme?: DesignTokens;
 	/** Characters, context + files */
 	maxChars?: number;
 	/** Default 2; every screen that fits when writing DESIGN.md */
@@ -445,6 +448,10 @@ export function buildGenerationRequest(params: BuildRequestParams): GenerationRe
 	const catalog = contextTarget ? [] : componentSignatures(files);
 
 	if (catalog.length) request.components = catalog;
+
+	const theme = params.theme ?? designTokensOf(files["DESIGN.md"]);
+
+	if (!contextTarget && hasTokens(theme)) request.theme = { light: theme.light, dark: theme.dark };
 
 	if (targets.length) request.targets = targets;
 

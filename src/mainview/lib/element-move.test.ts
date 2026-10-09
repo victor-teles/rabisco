@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { moveElement } from "../../shared/jsx";
-import { draggedElement, draggedEntry, entryPlacement, moveTarget } from "./element-move";
+import { draggedElement, draggedEntry, entryOrder, entryPlacement, moveTarget } from "./element-move";
 import type { DropLayout } from "./render/protocol";
 
 const SCREEN = `export default function Home() {
@@ -114,4 +114,10 @@ export default function Nav() {
 
 		expect(entryPlacement(fewer, entry, box(100), { x: 10, y: 25 })).toBeNull();
 	});
+});
+
+test("entryOrder moves one index", () => {
+	expect(entryOrder(4, 0, 3)).toEqual([1, 2, 3, 0]);
+	expect(entryOrder(4, 3, 1)).toEqual([0, 3, 1, 2]);
+	expect(entryOrder(3, 1, 1)).toEqual([0, 1, 2]);
 });

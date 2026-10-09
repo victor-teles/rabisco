@@ -33,6 +33,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SCREEN_THEME_CSS } from "@/lib/render/theme";
 import { commonValue, editEach, restyle, retoken, sharedClasses } from "@/lib/element-selection";
 import { cn } from "@/lib/utils";
+import {
+	customTokenNames,
+	tokenKind,
+	tokenUtility,
+	type DesignTokens,
+	type TokenKind,
+} from "../../../shared/context/tokens";
 import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import {
 	BORDER_WIDTH_SCALE,
@@ -57,6 +64,7 @@ import {
 	RADIUS_SCALE,
 	setBoxParts,
 	setClassName,
+	setCustomTokens,
 	setStyle,
 	SHADOW_SCALE,
 	SIZE_SCALE,
@@ -86,6 +94,8 @@ export type ElementStyleProps = {
 	/** `""` for Default, `hover`, `md`…: the prefix the controls read and write */
 	variant: string;
 	onVariantChange: (variant: string) => void;
+	/** The applied theme: its swatches color the pickers and its custom tokens join them */
+	tokens?: DesignTokens;
 };
 
 const REPLACED = new Set([
@@ -236,6 +246,7 @@ type Edit = {
 	onFocus: () => void;
 	onBlur: () => void;
 	disabled?: boolean;
+	tokens: DesignTokens;
 };
 
 export function ElementStyle({
@@ -248,8 +259,11 @@ export function ElementStyle({
 	onFieldBlur,
 	variant,
 	onVariantChange,
+	tokens = NO_TOKENS,
 }: ElementStyleProps) {
 	const burst = useRef(0);
+
+	registerTokens(tokens);
 	const tree = parseJsx(source);
 	const element = findElement(tree, start);
 
@@ -288,6 +302,7 @@ export function ElementStyle({
 		onBlur: () => onFieldBlur?.(),
 		variant,
 		disabled,
+		tokens,
 	};
 
 	if (!info.editable) {
@@ -359,6 +374,41 @@ export function ElementStyle({
 type SectionProps = { classes: string; edit: Edit };
 
 const NO_EXTRAS: readonly number[] = [];
+
+const NO_TOKENS: DesignTokens = { light: {}, dark: {} };
+
+let registered: DesignTokens | null = null;
+
+/** The class parse needs the custom names to read `bg-brand` and `text-display`; one project is open at a time */
+function registerTokens(tokens: DesignTokens) {
+	if (tokens === registered) return;
+	registered = tokens;
+	setCustomTokens(customTokenNames(tokens));
+}
+
+/** The custom tokens of one kind as options after the built-in ones: `radius-card` is `card` (`rounded-card`) */
+function tokenOptions(tokens: DesignTokens, kind: TokenKind): ScaleOption[] {
+	return customTokenNames(tokens).flatMap((name) => {
+		if (tokenKind(name) !== kind) return [];
+		const value = tokens.light[name] ?? tokens.dark[name] ?? "";
+		const utility = tokenUtility(name);
+
+		// The first family of a stack, the size without its line height
+		const hint =
+			kind === "font"
+				? value.split(",")[0]!.replace(/["']/g, "").trim()
+				: kind === "text"
+					? value.split("/")[0]!.trim()
+					: value;
+
+		return [{ value: utility, label: utility, hint: hint || undefined }];
+	});
+}
+
+const withTokens = (scale: Scale, tokens: DesignTokens, kind: TokenKind): Scale => ({
+	...scale,
+	options: [...scale.options, ...tokenOptions(tokens, kind)],
+});
 
 /** Never a class value: marks parts of one box that differ */
 const MIXED = "\u0000mixed";
@@ -773,7 +823,7 @@ function TypographySection({ classes, edit }: SectionProps) {
 					label="Font family"
 					value={getStyle(classes, "fontFamily", edit.variant)}
 					mixed={mixedStyle(edit, "fontFamily")}
-					options={FONT_FAMILY_OPTIONS}
+					options={[...FONT_FAMILY_OPTIONS, ...tokenOptions(edit.tokens, "font")]}
 					placeholder="Sans"
 					edit={edit}
 					onChange={styleWriter(edit, "fontFamily")}
@@ -784,7 +834,7 @@ function TypographySection({ classes, edit }: SectionProps) {
 					ariaLabel="Font size"
 					value={sizeValue}
 					mixed={isMixed(edit, (own) => fontSizeOf(own, edit.variant)[0])}
-					scale={FONT_SIZE_SCALE}
+					scale={withTokens(FONT_SIZE_SCALE, edit.tokens, "text")}
 					edit={edit}
 					onChange={(value, continuous) =>
 						edit.apply(
@@ -879,7 +929,7 @@ function BorderSection({ classes, edit }: SectionProps) {
 			<BoxField
 				title="Radius"
 				group="borderRadius"
-				scale={RADIUS_SCALE}
+				scale={withTokens(RADIUS_SCALE, edit.tokens, "radius")}
 				linked={ALL_CORNERS}
 				split={CORNERS}
 				edit={edit}
@@ -1342,27 +1392,55 @@ function IconToggle({
 	);
 }
 
-let themeColors: Map<string, string> | null = null;
+let defaultTheme: Map<string, string> | null = null;
 
-/** In the screens' default (light) theme */
-function tokenColor(name: string): string {
-	if (!themeColors) {
-		themeColors = new Map();
-		const root = /:root\s*\{([^}]*)\}/.exec(SCREEN_THEME_CSS)?.[1] ?? "";
+/** The screens' default light theme: the `:root` values and the `@theme` colors that point at them */
+function defaultVariables() {
+	if (!defaultTheme) {
+		defaultTheme = new Map();
 
-		for (const match of root.matchAll(/--([\w-]+):\s*([^;]+);/g)) themeColors.set(match[1]!, match[2]!.trim());
+		for (const block of [/@theme inline\s*\{([^}]*)\}/, /:root\s*\{([^}]*)\}/]) {
+			const body = block.exec(SCREEN_THEME_CSS)?.[1] ?? "";
+
+			for (const match of body.matchAll(/--([\w-]+):\s*([^;]+);/g)) defaultTheme.set(match[1]!, match[2]!.trim());
+		}
 	}
 
-	return themeColors.get(name) ?? `var(--${name})`;
+	return defaultTheme;
 }
 
-const swatchCss = (value: string) => colorCss(value, tokenColor);
+type SwatchCss = (value: string) => string | null;
+
+const swatchCache = new WeakMap<DesignTokens, SwatchCss>();
+
+/**
+ * Swatches in the applied theme's light values, then the default theme's. A custom token with only a dark value
+ * shows that. `var(--primary)` references resolve, so a token pointing at another shows its color.
+ */
+function swatchesOf(tokens: DesignTokens): SwatchCss {
+	const cached = swatchCache.get(tokens);
+
+	if (cached) return cached;
+	const defaults = defaultVariables();
+
+	const variable = (name: string, depth = 0): string => {
+		const value = tokens.light[name] ?? defaults.get(name) ?? tokens.dark[name];
+
+		if (value === undefined) return `var(--${name})`;
+		const ref = /^var\(--([\w-]+)\)$/.exec(value)?.[1];
+
+		return ref && depth < 8 ? variable(ref, depth + 1) : value;
+	};
+
+	const swatch: SwatchCss = (value) => colorCss(value, variable);
+	swatchCache.set(tokens, swatch);
+
+	return swatch;
+}
 
 const CHECKERBOARD = "repeating-conic-gradient(#d4d4d8 0 25%, #fff 0 50%) 0 0 / 8px 8px";
 
-function Swatch({ value, className }: { value: string | null; className?: string }) {
-	const css = value === null ? null : swatchCss(value);
-
+function Swatch({ css, className }: { css: string | null; className?: string }) {
 	return (
 		<span
 			className={cn(
@@ -1399,6 +1477,8 @@ function ColorField({
 	onPick: (value: string | null, field?: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const swatch = swatchesOf(edit.tokens);
+	const custom = tokenOptions(edit.tokens, "color");
 	const [base, modifier] = value === null ? [null, null] : splitModifier(value);
 	const withOpacity = (next: string) => (modifier === null ? next : `${next}/${modifier}`);
 	const pick = (next: string) => onPick(withOpacity(next));
@@ -1413,7 +1493,7 @@ function ColorField({
 						aria-label={label}
 						className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border bg-transparent px-2 text-left text-[13px] outline-none hover:bg-accent/50 focus-visible:border-ring disabled:opacity-50 data-[state=open]:border-ring"
 					>
-						<Swatch value={value} className="size-4" />
+						<Swatch css={value === null ? null : swatch(value)} className="size-4" />
 						<span className={cn("truncate", value === null && "text-subtle-foreground")} title={value ?? undefined}>
 							{value === null ? (mixed ? "Mixed" : "None") : colorLabel(value)}
 						</span>
@@ -1426,6 +1506,7 @@ function ColorField({
 								<ColorCell
 									key={token}
 									value={token}
+									css={swatch(token)}
 									selected={base === token}
 									onPick={pick}
 									className="aspect-square"
@@ -1433,6 +1514,28 @@ function ColorField({
 							))}
 						</div>
 					</ColorGroup>
+					{custom.length ? (
+						<ColorGroup title="Project">
+							<div className="grid max-h-28 grid-cols-2 gap-1 overflow-y-auto">
+								{custom.map((token) => (
+									<button
+										key={token.value}
+										type="button"
+										title={`${token.value}: ${token.hint ?? "no value"}`}
+										aria-pressed={base === token.value}
+										onClick={() => pick(token.value)}
+										className={cn(
+											"flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+											base === token.value && "bg-accent text-accent-foreground",
+										)}
+									>
+										<Swatch css={swatch(token.value)} className="size-4" />
+										<span className="truncate">{token.label}</span>
+									</button>
+								))}
+							</div>
+						</ColorGroup>
+					) : null}
 					<ColorGroup title="Palette">
 						<div className="flex max-h-44 flex-col gap-px overflow-y-auto rounded-sm">
 							{Object.keys(PALETTE).map((hue) => (
@@ -1441,6 +1544,7 @@ function ColorField({
 										<ColorCell
 											key={shade}
 											value={`${hue}-${shade}`}
+											css={swatch(`${hue}-${shade}`)}
 											selected={base === `${hue}-${shade}`}
 											onPick={pick}
 											className="h-4 rounded-[2px]"
@@ -1451,7 +1555,14 @@ function ColorField({
 						</div>
 						<div className="flex gap-1">
 							{["black", "white", "transparent", "current"].map((keyword) => (
-								<ColorCell key={keyword} value={keyword} selected={base === keyword} onPick={pick} className="size-5" />
+								<ColorCell
+									key={keyword}
+									value={keyword}
+									css={swatch(keyword)}
+									selected={base === keyword}
+									onPick={pick}
+									className="size-5"
+								/>
 							))}
 						</div>
 					</ColorGroup>
@@ -1486,11 +1597,13 @@ function ColorGroup({ title, children }: { title: string; children: React.ReactN
 
 function ColorCell({
 	value,
+	css,
 	selected,
 	onPick,
 	className,
 }: {
 	value: string;
+	css: string | null;
 	selected: boolean;
 	onPick: (value: string) => void;
 	className?: string;
@@ -1509,7 +1622,7 @@ function ColorCell({
 			)}
 			style={{ background: CHECKERBOARD }}
 		>
-			<span className="absolute inset-0" style={{ background: swatchCss(value) ?? undefined }} />
+			<span className="absolute inset-0" style={{ background: css ?? undefined }} />
 		</button>
 	);
 }

@@ -1,5 +1,3 @@
-import { tokensToCss, type DesignTokens } from "../../../shared/context/tokens";
-
 export const SCREEN_THEME_CSS = `
 @custom-variant dark (&:is(.dark *));
 
@@ -20,12 +18,14 @@ export const SCREEN_THEME_CSS = `
 	--color-secondary-foreground: var(--secondary-foreground);
 	--color-muted: var(--muted);
 	--color-muted-foreground: var(--muted-foreground);
+	--color-subtle-foreground: var(--subtle-foreground);
 	--color-accent: var(--accent);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-destructive: var(--destructive);
 	--color-success: var(--success);
 	--color-warning: var(--warning);
 	--color-border: var(--border);
+	--color-border-strong: var(--border-strong);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
 	--color-chart-1: var(--chart-1);
@@ -33,6 +33,91 @@ export const SCREEN_THEME_CSS = `
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+}
+
+/* The motion the uai blocks use */
+@theme {
+	--ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+	--animate-shimmer: shimmer 2s linear infinite;
+	--animate-skeleton-shimmer: skeleton-shimmer 1.6s ease-in-out infinite;
+	--animate-indeterminate: indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+	--animate-ring-pulse: ring-pulse 1.8s ease-out infinite;
+	--animate-grow-x: grow-x 480ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+	--animate-grow-y: grow-y 480ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+	--animate-shake: shake 260ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+	@keyframes shimmer {
+		from {
+			background-position: 100% 0;
+		}
+		to {
+			background-position: -100% 0;
+		}
+	}
+	@keyframes skeleton-shimmer {
+		from {
+			background-position: 150% 0;
+		}
+		to {
+			background-position: -50% 0;
+		}
+	}
+	@keyframes indeterminate {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(290%);
+		}
+	}
+	@keyframes ring-pulse {
+		0% {
+			box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+		}
+		70%,
+		100% {
+			box-shadow: 0 0 0 5px transparent;
+		}
+	}
+	@keyframes grow-x {
+		from {
+			transform: scaleX(0);
+		}
+	}
+	@keyframes grow-y {
+		from {
+			transform: scaleY(0);
+		}
+	}
+	@keyframes shake {
+		20%,
+		60% {
+			translate: -4px 0;
+		}
+		40%,
+		80% {
+			translate: 4px 0;
+		}
+	}
+}
+
+@utility shimmer-text {
+	background-image: linear-gradient(
+		90deg,
+		var(--subtle-foreground) 0%,
+		var(--subtle-foreground) 35%,
+		var(--foreground) 50%,
+		var(--subtle-foreground) 65%,
+		var(--subtle-foreground) 100%
+	);
+	background-size: 200% 100%;
+	background-clip: text;
+	color: transparent;
+	animation: var(--animate-shimmer);
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
+		background: none;
+		color: var(--foreground);
+	}
 }
 
 :root {
@@ -62,6 +147,9 @@ export const SCREEN_THEME_CSS = `
 	--chart-3: oklch(0.398 0.07 227.392);
 	--chart-4: oklch(0.828 0.189 84.429);
 	--chart-5: oklch(0.769 0.188 70.08);
+	/* DESIGN.md has no tokens for these, so they follow the ones it has */
+	--subtle-foreground: color-mix(in oklab, var(--muted-foreground) 75%, var(--background));
+	--border-strong: color-mix(in oklab, var(--border), var(--foreground) 14%);
 }
 
 .dark {
@@ -90,6 +178,9 @@ export const SCREEN_THEME_CSS = `
 	--chart-3: oklch(0.769 0.188 70.08);
 	--chart-4: oklch(0.627 0.265 303.9);
 	--chart-5: oklch(0.645 0.246 16.439);
+	/* DESIGN.md has no tokens for these, so they follow the ones it has */
+	--subtle-foreground: color-mix(in oklab, var(--muted-foreground) 75%, var(--background));
+	--border-strong: color-mix(in oklab, var(--border), var(--foreground) 14%);
 }
 
 @layer base {
@@ -101,14 +192,3 @@ export const SCREEN_THEME_CSS = `
 	}
 }
 `;
-
-const themeCache = new WeakMap<DesignTokens, string>();
-
-/** Loaded after the shared Tailwind stylesheet so the applied tokens re-theme screens without a rebuild. */
-export function themeCss(tokens: DesignTokens): string {
-	let css = themeCache.get(tokens);
-
-	if (css === undefined) themeCache.set(tokens, (css = tokensToCss(tokens)));
-
-	return css;
-}

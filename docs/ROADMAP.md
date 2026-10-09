@@ -335,7 +335,7 @@ You can select one element, edit its text and change its classes. Next: move, re
 
 - ✅ Drag an element to reorder it within its parent or move it to another container, with the Phase 10 indicator (`moveElement` transform, `lib/element-move.ts`)
 - ✅ Arrow keys reorder an element among its siblings (`moveAmongSiblings`)
-- ✅ Drag an item a `.map` renders to reorder it among its siblings: Rabisco moves its entry in the array literal (`const items = […]` or `[…].map`), as one undo step (`shared/jsx/lists.ts`)
+- ✅ Drag an item a `.map` renders to reorder it among its siblings: Rabisco moves its entry in the array literal (`const items = […]` or `[…].map`), as one undo step (`shared/jsx/lists.ts`). The siblings slide aside live with transforms in the frame, so the screen doesn't render mid-drag (`runtime/reorder.ts`)
 - ✅ Resize handles that write `w-*` / `h-*` (snapped to the spacing scale, Fixed / Hug / Fill from the size pill, double-click a handle to hug), and drag handles for padding (⌥ all sides, ⇧ opposite sides) and gap. Drags preview inline in the frame and commit one undo step (`lib/resize.ts`)
 - ✅ Duplicate (⌘D), cut, copy and paste (⌘X, ⌘C, ⌘V, between screens too, imports follow), wrap in a div (⌥⌘G) or flex stack (⇧A), unwrap (⇧⌘G)
 
@@ -411,19 +411,21 @@ Findings from the audit of the current editor, by impact.
 
 ---
 
-## Phase 14: Design system and tokens ⬜
+## Phase 14: Design system and tokens 🚧
 
 _Principles: Context is a file · Component based by default_
 
-DESIGN.md's `## Tokens` stays the one source of truth ([0009](./decisions/0009-theme-read-from-design-md.md)). DTCG and Figma JSON are for import and export only. Custom tokens use Tailwind v4 namespaces, so the name is the class. This needs a decision record: the compiler gets the token names, frames get the values.
+DESIGN.md's `## Tokens` stays the one source of truth ([0009](./decisions/0009-theme-read-from-design-md.md)). DTCG and Figma JSON are for import and export only. Custom tokens use Tailwind v4 namespaces, so the name is the class. The compiler gets the token names, frames get the values ([0013](./decisions/0013-custom-tokens-names-in-the-compiler.md)).
 
 **MVP**
 
-- ⬜ Custom tokens in DESIGN.md: `color-brand` (`bg-brand`), `radius-card` (`rounded-card`), `font-display`, `text-display: 3rem/1.1`, `spacing` and `spacing-*`, with light and dark values (`src/shared/context/tokens.ts`)
-- ⬜ Names go into the screen compiler's `@theme`, values stay in the theme stylesheet: a value edit rebuilds nothing, a new name resets the compiler once (`lib/render/tailwind.ts`, `styles.ts`)
-- ⬜ Edit tokens in the Context panel (name, light and dark value, add a token), each edit one undo step that writes DESIGN.md and the applied theme together
-- ⬜ The inspector's color field lists the project's tokens with the applied theme's swatches (today it shows the default theme's)
-- ⬜ Prompts list the project's tokens; exports map custom names in `index.css`
+- ✅ Custom tokens in DESIGN.md: `color-brand` (`bg-brand`), `radius-card` (`rounded-card`), `font-display`, `text-display: 3rem/1.1`, `spacing` and `spacing-*`, with light and dark values. Each kind has its own value whitelist; names that shadow built-ins are invalid (`src/shared/context/tokens.ts`)
+- ✅ Names go into the screen compiler as `@theme reference`, values stay in the theme stylesheet: a value edit rebuilds nothing, a new name restarts the compiler once (`lib/render/tailwind.ts`, `styles.ts`)
+- ✅ Edit tokens in the Context panel: name, light and dark value, add, rename and remove. Each edit is one undo step that writes DESIGN.md and the applied theme together. A theme read with AI is written into DESIGN.md before the first edit, so it isn't lost (`src/shared/context/token-edit.ts`)
+- ✅ The inspector's color field lists the project's tokens with the applied theme's swatches
+- ✅ Prompts list the project's tokens and the classes they make (`src/bun/ai/theme-tokens.ts`); exports map custom names in `index.css`
+
+**Remaining:** check in the running app (WKWebView) that adding a token restarts the compiler and re-styles open frames, and that the token editor's keys (Enter, Esc, blur) behave. Run a generation with real providers and see whether it uses the custom classes.
 
 **Later**
 
@@ -436,15 +438,17 @@ DESIGN.md's `## Tokens` stays the one source of truth ([0009](./decisions/0009-t
 
 ---
 
-## Phase 15: More of the uai kit ⬜
+## Phase 15: More of the uai kit 🚧
 
 From a review of the uai catalog against the editor (`tool-call`, now used in the chat, was the first).
 
-- ⬜ `response-status` for the chat's failure and stopped states, keeping Open Settings and Install as actions
-- ⬜ `empty-state` in the chat, comments list, components panel and context panel, which hand-write their own
-- ⬜ `attachment` for images in chat messages, and `citation` for "Followed DESIGN.md · PRODUCT.md"
-- ⬜ `run-summary` at the end of a generation: screens changed, problems left, Undo
-- ⬜ Expose uai blocks to generated screens (`runtime/externals.ts` and the component library): AI-app blocks (message, prompt-composer, thinking), SaaS blocks (metric-card, status-banner, step-indicator, search-field) and form blocks. Check them under project themes and the frame sandbox first
+- ✅ `response-status` for the chat's failure states, keeping Try again, Open settings and Install as actions
+- ✅ `empty-state` in the chat, comments list, components panel and context panel
+- ✅ `attachment` for images in chat messages, and `citation` for "Followed DESIGN.md · PRODUCT.md"
+- ✅ A change summary at the end of a generation, full width in the chat: a file tree with added and removed lines, problems left, Undo, and the diff with `@pierre/diffs` (`src/shared/change-summary.ts`, `views/editor/change-summary.tsx`)
+- ✅ Expose uai blocks to generated screens as `@/components/ui/uai/<name>`: message, prompt-composer, thinking, metric-card, status-banner, step-indicator, search-field, form-field and form-error-summary, plus the `label` primitive. Their classes seed the screen compiler, and exports ship their sources ([0014](./decisions/0014-uai-blocks-in-screens.md))
+
+**Remaining:** check in the running app (WKWebView) how the new chat cards and popovers fit a narrow panel, and how the blocks look under a DESIGN.md theme and in dark mode. Check that snapshots don't catch entry animations half-drawn. Pressing Stop still writes a "Stopped" chat message instead of the stopped status.
 
 ---
 

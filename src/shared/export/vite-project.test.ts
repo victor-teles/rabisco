@@ -7,8 +7,9 @@ import { packageName, viteProject, type ViteProjectInput } from "./vite-project"
 
 const UI_DIR = join(import.meta.dir, "../../mainview/components/ui");
 
+// Keyed like `UI_SOURCES`: `button`, `uai/search-field`
 const uiSources = Object.fromEntries(
-	readdirSync(UI_DIR)
+	readdirSync(UI_DIR, { recursive: true, encoding: "utf8" })
 		.filter((file) => file.endsWith(".tsx"))
 		.map((file) => [file.replace(/\.tsx$/, ""), readFileSync(join(UI_DIR, file), "utf8")]),
 );
@@ -117,6 +118,34 @@ describe("vite project", () => {
 			"src/components/ui/toggle.tsx",
 		]);
 		expect(out["src/components/ui/button.tsx"]).toBe(uiSources.button!);
+		expect(out["src/lib/uai-utils.ts"]).toBeUndefined();
+	});
+
+	test("ships the uai blocks used, with the primitives they import and their `cn`", () => {
+		const search = `import { SearchField, SearchFieldControl, SearchFieldInput } from "@/components/ui/uai/search-field";
+
+export default function Search() {
+	return <SearchField><SearchFieldControl><SearchFieldInput /></SearchFieldControl></SearchField>;
+}
+`;
+
+		const project = viteProject({ ...input, files: { "screens/search.tsx": search }, frames: [] });
+		const blockOut = byPath(project);
+
+		const ui = Object.keys(blockOut)
+			.filter((path) => path.startsWith("src/components/ui/"))
+			.sort();
+
+		expect(ui).toEqual([
+			"src/components/ui/button.tsx",
+			"src/components/ui/input.tsx",
+			"src/components/ui/label.tsx",
+			"src/components/ui/uai/search-field.tsx",
+		]);
+		expect(blockOut["src/components/ui/uai/search-field.tsx"]).toBe(uiSources["uai/search-field"]!);
+		expect(blockOut["src/lib/uai-utils.ts"]).toContain("export function cn(");
+		expect(blockOut["README.md"]).toContain("`uai/search-field`");
+		expect(project.warnings).toEqual([]);
 	});
 
 	test("package.json lists the packages the files import", () => {
@@ -143,6 +172,15 @@ describe("vite project", () => {
 		expect(css).toContain(":root:not(.dark) {\n\t--primary: #2563eb;");
 		expect(css).toContain(":root {\n\t--radius: 0.75rem;");
 		expect(css.indexOf("--primary: #2563eb")).toBeGreaterThan(css.indexOf(SCREEN_THEME_CSS.trim()));
+		expect(css).not.toContain("@theme reference");
+	});
+
+	test("custom tokens get their names in the theme and their values after it", () => {
+		const theme = { light: { "color-brand": "#e11d48" }, dark: { "color-brand": "#fb7185" } };
+		const css = byPath(viteProject({ ...input, theme }))["src/index.css"]!;
+		expect(css).toContain("@theme reference {\n\t--color-brand: currentcolor;\n}");
+		expect(css).toContain(":root {\n\t--color-brand: #e11d48;");
+		expect(css).toContain(".dark {\n\t--color-brand: #fb7185;");
 	});
 
 	test("the app lists screens in canvas order and follows links", () => {

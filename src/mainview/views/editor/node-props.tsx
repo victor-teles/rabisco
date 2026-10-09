@@ -11,6 +11,7 @@ import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import { iconAt, swapIcon } from "../../../shared/jsx/icons";
 import { isComponentFile } from "../../../shared/project";
 import { linkHrefToScreen } from "../../../shared/prototype/links";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 import { ElementStyle } from "./element-style";
 import { IconPicker } from "./icon-picker";
@@ -27,6 +28,8 @@ type NodePropsProps = {
 	frames?: Frame[];
 	/** Where a picked image is copied; without it `src` has no picker */
 	projectPath?: string;
+	/** The applied theme, for the style pickers */
+	tokens?: DesignTokens;
 };
 
 /** `src` on an `img`, or `src`/`image` on a component */
@@ -47,6 +50,7 @@ export const NodeProps = memo(function NodeProps({
 	onOpenComponent,
 	frames,
 	projectPath,
+	tokens,
 }: NodePropsProps) {
 	const { node, nodes } = structure;
 
@@ -58,6 +62,7 @@ export const NodeProps = memo(function NodeProps({
 				starts={nodes.map((n) => n.start)}
 				structure={structure}
 				onEndStep={onEndStep}
+				tokens={tokens}
 			/>
 		);
 	}
@@ -73,6 +78,7 @@ export const NodeProps = memo(function NodeProps({
 				onOpenComponent={onOpenComponent}
 				frames={frames}
 				projectPath={projectPath}
+				tokens={tokens}
 			/>
 		);
 	}
@@ -92,6 +98,7 @@ function ElementProps({
 	onOpenComponent,
 	frames = [],
 	projectPath,
+	tokens,
 }: Omit<NodePropsProps, "file"> & { file: string; start: number }) {
 	const source = files[file]!;
 	const element = findElement(parseJsx(source), start);
@@ -250,6 +257,7 @@ function ElementProps({
 					onFieldBlur={onEndStep}
 					variant={variant}
 					onVariantChange={setVariant}
+					tokens={tokens}
 				/>
 			)}
 		</>
@@ -263,12 +271,14 @@ function SeveralElements({
 	starts,
 	structure,
 	onEndStep,
+	tokens,
 }: {
 	source: string;
 	file: string;
 	starts: number[];
 	structure: Structure;
 	onEndStep: () => void;
+	tokens?: DesignTokens;
 }) {
 	const [variant, setVariant] = useState("");
 	const tree = parseJsx(source);
@@ -300,6 +310,7 @@ function SeveralElements({
 					onFieldBlur={onEndStep}
 					variant={variant}
 					onVariantChange={setVariant}
+					tokens={tokens}
 				/>
 			)}
 		</>

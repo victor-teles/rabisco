@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { parseJsx } from "../jsx/tree";
 import {
 	BORDER_WIDTH_SCALE,
@@ -25,6 +25,7 @@ import {
 	setBox,
 	setBoxParts,
 	setClassName,
+	setCustomTokens,
 	setStyle,
 	SIZE_SCALE,
 	SPACING_SCALE,
@@ -723,5 +724,50 @@ describe("values", () => {
 		expect(colorCss("(--brand)")).toBe("var(--brand)");
 		expect(colorCss("inherit")).toBeNull();
 		expect(colorCss("lg")).toBeNull();
+	});
+});
+
+describe("custom tokens", () => {
+	afterEach(() => setCustomTokens([]));
+
+	test("are unknown until the project defines them", () => {
+		expect(classifyClass("bg-brand")).toBeNull();
+		expect(classifyClass("text-display")).toBeNull();
+	});
+
+	test("a color token makes its utility a color", () => {
+		setCustomTokens(["color-brand", "color-brand-soft", "radius-panel"]);
+		expect(isColorValue("brand")).toBe(true);
+		expect(isColorValue("brand-soft/50")).toBe(true);
+		expect(isColorValue("panel")).toBe(false);
+		expect(classifyClass("bg-brand")).toEqual({ prop: "backgroundColor", name: "bg", value: "brand" });
+		expect(classifyClass("text-brand/50")).toEqual({ prop: "textColor", name: "text", value: "brand/50" });
+		expect(classifyClass("border-brand")).toEqual({ prop: "borderColor", name: "border", value: "brand" });
+		expect(setStyle("p-4 bg-brand", "backgroundColor", "primary")).toBe("p-4 bg-primary");
+		expect(setStyle("p-4 bg-primary", "backgroundColor", "brand")).toBe("p-4 bg-brand");
+	});
+
+	test("a text token makes its utility a font size", () => {
+		setCustomTokens(["text-display", "color-brand"]);
+		expect(classifyClass("text-display")).toEqual({ prop: "fontSize", name: "text", value: "display" });
+		expect(getStyle("text-display text-brand", "fontSize")).toBe("display");
+		expect(getStyle("text-display text-brand", "textColor")).toBe("brand");
+		expect(setStyle("text-sm", "fontSize", "display")).toBe("text-display");
+	});
+
+	test("the swatch reads the token's variable", () => {
+		setCustomTokens(["color-brand", "color-red-500"]);
+		expect(colorCss("brand")).toBe("var(--color-brand)");
+		expect(colorCss("brand/50", (name) => (name === "color-brand" ? "#f00" : ""))).toBe(
+			"color-mix(in oklab, #f00 50%, transparent)",
+		);
+		expect(colorCss("red-500")).toBe("var(--color-red-500)");
+	});
+
+	test("ignores built-in and unknown names, and replaces the previous set", () => {
+		setCustomTokens(["primary", "brand", "color-brand"]);
+		setCustomTokens(["color-accent-2"]);
+		expect(isColorValue("brand")).toBe(false);
+		expect(isColorValue("accent-2")).toBe(true);
 	});
 });

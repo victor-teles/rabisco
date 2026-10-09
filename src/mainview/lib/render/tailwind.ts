@@ -1,18 +1,20 @@
 import { compile } from "tailwindcss";
+import { tokenThemeCss } from "../../../shared/context/tokens";
 import { SCREEN_THEME_CSS } from "./theme";
 
 type Compiler = { build(candidates: string[]): string };
 
 export type StylesheetSources = Record<string, string>;
 
-export function screenInput(stylesheets: StylesheetSources) {
+/** `tokenNames` are the custom DESIGN.md tokens; their values come with the theme stylesheet (decision 0013) */
+export function screenInput(stylesheets: StylesheetSources, tokenNames: Iterable<string> = []) {
 	const imports = Object.keys(stylesheets).map((id) => `@import "${id}";`);
 
-	return `${imports.join("\n")}\n${SCREEN_THEME_CSS}`;
+	return `${imports.join("\n")}\n${SCREEN_THEME_CSS}\n${tokenThemeCss(tokenNames)}`;
 }
 
-export function createCompiler(stylesheets: StylesheetSources): Promise<Compiler> {
-	return compile(screenInput(stylesheets), {
+export function createCompiler(stylesheets: StylesheetSources, tokenNames: Iterable<string> = []): Promise<Compiler> {
+	return compile(screenInput(stylesheets, tokenNames), {
 		base: "/",
 		loadStylesheet: async (id, base) => {
 			const content = stylesheets[id];
@@ -64,6 +66,11 @@ export class TailwindBuilder {
 
 	whenReady() {
 		return this.#ready;
+	}
+
+	/** A fresh compiler for the same candidates, after its input changed */
+	restart() {
+		this.reset(this.#known);
 	}
 
 	/** Tailwind's compiler keeps every candidate it has built, so a reset needs a fresh one. `extra` joins the first build. */

@@ -39,6 +39,8 @@ export type HostMessage =
 	| { type: "track"; start: number | null; version: string }
 	/** Inline styles on every instance of the element at `start` while a handle drags; `null` (or the next render) restores them */
 	| { type: "preview-style"; start: number; version: string; style: Record<string, string> | null }
+	/** Shifts the instances of a dragged list item until the next render; `null` slides them back */
+	| { type: "preview-order"; start: number; version: string; preview: OrderPreview | null }
 	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
 	| { type: "edit-text"; start: number; version: string; text: string; x?: number; y?: number }
 	| { type: "end-edit"; commit: boolean }
@@ -121,6 +123,12 @@ export type DropLayout = {
 	direction: string;
 	children: { start: number; box: Box }[];
 };
+
+/**
+ * Slot `i` shows instance `order[i]`. The instance nearest `box` (frame-local) is the dragged one: it follows `offset`,
+ * or settles into its slot when `offset` is `null`.
+ */
+export type OrderPreview = { order: number[]; box: Box; offset: { x: number; y: number } | null };
 
 /** `starts` are innermost-first offsets into the entry source at `version`, which may be older than the file. */
 export type FrameHit = {
