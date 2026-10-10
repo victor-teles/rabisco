@@ -1,5 +1,13 @@
 // Reads React fibers because components may not forward `data-rabisco-loc` to the DOM.
-import { LINK_TO_ATTRIBUTE, LOC_ATTRIBUTE, locationOf, type Box, type DropLayout } from "../lib/render/protocol";
+import {
+	LINK_MODE_ATTRIBUTE,
+	LINK_TO_ATTRIBUTE,
+	LINK_TRANSITION_ATTRIBUTE,
+	LOC_ATTRIBUTE,
+	locationOf,
+	type Box,
+	type DropLayout,
+} from "../lib/render/protocol";
 import {
 	gapRects,
 	insetBox,
@@ -10,7 +18,12 @@ import {
 	type Spacing,
 } from "../lib/render/spacing";
 
-type FiberProps = { [LOC_ATTRIBUTE]?: unknown; [LINK_TO_ATTRIBUTE]?: unknown };
+type FiberProps = {
+	[LOC_ATTRIBUTE]?: unknown;
+	[LINK_TO_ATTRIBUTE]?: unknown;
+	[LINK_TRANSITION_ATTRIBUTE]?: unknown;
+	[LINK_MODE_ATTRIBUTE]?: unknown;
+};
 
 export type Fiber = {
 	memoizedProps: FiberProps | null;

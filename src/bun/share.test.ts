@@ -3,7 +3,24 @@ import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeTarget } from "../shared/prototype/links";
 import { assertSnapshot, shareScreens, type ShareSnapshot } from "../shared/share/snapshot";
-import { inlineRuntime, NORMALIZE_TARGET_JS, SNAPSHOT_GLOBAL, viewerFiles } from "../shared/share/viewer";
+import {
+	overlayRect,
+	parseOverlayMode,
+	parseTransition,
+	type OverlayMode,
+	type Rect,
+	type Size,
+} from "../shared/prototype/transitions";
+import {
+	inlineRuntime,
+	LINK_OPTIONS_JS,
+	motionTables,
+	NORMALIZE_TARGET_JS,
+	overlayMotionKey,
+	screenMotionKey,
+	SNAPSHOT_GLOBAL,
+	viewerFiles,
+} from "../shared/share/viewer";
 import { createShareService, readScreenRuntime } from "./share";
 import { tempDir } from "./test-utils";
 
@@ -62,12 +79,62 @@ describe("viewerFiles", () => {
 		}
 	});
 
+	test("the viewer reads transitions, overlay modes and overlay sizes like the app", () => {
+		type ViewerLinkOptions = {
+			parseTransition: (value: string | undefined) => string | null;
+			parseOverlayMode: (value: string | undefined) => string | null;
+			overlayRect: (mode: OverlayMode, screen: Size, overlay: Size) => Rect;
+		};
+
+		// SAFETY: LINK_OPTIONS_JS declares these three functions with these signatures
+		const viewer = new Function(
+			`${LINK_OPTIONS_JS}; return { parseTransition, parseOverlayMode, overlayRect };`,
+		)() as ViewerLinkOptions;
+
+		for (const value of [
+			undefined,
+			"",
+			"slide",
+			" Push ",
+			"DISSOLVE",
+			"instant",
+			"fade",
+			"overlay",
+			"Modal",
+			"sheet ",
+		]) {
+			expect(viewer.parseTransition(value)).toBe(parseTransition(value));
+			expect(viewer.parseOverlayMode(value)).toBe(parseOverlayMode(value));
+		}
+
+		const screen = { width: 390, height: 844 };
+
+		for (const overlay of [
+			{ width: 320, height: 400 },
+			{ width: 1440, height: 1024 },
+		]) {
+			expect(viewer.overlayRect("overlay", screen, overlay)).toEqual(overlayRect("overlay", screen, overlay));
+			expect(viewer.overlayRect("sheet", screen, overlay)).toEqual(overlayRect("sheet", screen, overlay));
+		}
+	});
+
+	test("the viewer's motion tables cover every transition and overlay", () => {
+		const { screens, overlays } = motionTables();
+		expect(screens[screenMotionKey("instant", "forward", false)]).toBeNull();
+		expect(screens[screenMotionKey("push", "back", false)]?.top).toBe("outgoing");
+		expect(screens[screenMotionKey("push", "back", true)]?.outgoing).toEqual([]);
+		expect(overlays[overlayMotionKey("sheet", "", true, false)]?.panel[0]).toEqual({ transform: "translateY(100%)" });
+		expect(overlays[overlayMotionKey("overlay", "instant", true, false)]).toBeNull();
+		const viewer = viewerFiles(snapshot(), runtime).find((file) => file.path === "viewer.js")!;
+		expect(viewer.content).toContain(JSON.stringify(motionTables()));
+	});
+
 	test("images travel in the snapshot and reach the frame before the modules", () => {
 		const withImages = { ...snapshot(), assets: { "/images/logo.png": "data:image/png;base64,bG9nbw==" } };
 		const files = Object.fromEntries(viewerFiles(withImages, runtime).map((file) => [file.path, file.content]));
 		expect(files["snapshot.js"]).toContain('"/images/logo.png":"data:image/png;base64,bG9nbw=="');
 		expect(files["viewer.js"]).toContain(
-			'if (data.assets) post({ type: "assets", assets: data.assets, reset: true });',
+			'if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });',
 		);
 		expect(assertSnapshot(withImages)).toEqual(withImages);
 		expect(() => assertSnapshot({ ...snapshot(), assets: { "/images/a.png": "https://x.test/a.png" } })).toThrow(

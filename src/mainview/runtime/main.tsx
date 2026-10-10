@@ -16,6 +16,7 @@ import { externals } from "./externals";
 import { preloadIcons } from "./icons";
 import { boxesOf, boxOf, dropLayoutOf, instancesOf, layoutOf, locatedAt, spacingOf } from "./inspect";
 import { createPlay } from "./play";
+import { colorAt } from "./pick-color";
 import { clearOrder, previewOrder } from "./reorder";
 import { rasterize } from "./raster";
 import { ModuleRegistry, RenderError } from "./registry";
@@ -410,6 +411,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				post({ type: "lint", id, error: error instanceof Error ? error.message : String(error) });
 			}
 		})();
+	} else if (message?.type === "pick-color") {
+		post({ type: "picked-color", id: message.id, color: entry ? colorAt(message.x, message.y) : null });
 	} else if (message?.type === "play") {
 		play.set(message.on === true);
 	} else if (message?.type === "pause") {

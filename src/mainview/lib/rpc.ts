@@ -312,6 +312,15 @@ function createBrowserApi(): RabiscoApi {
 		async gitSync() {
 			return { ok: false, error: DESKTOP_ONLY } as const;
 		},
+		async gitCheckpoints() {
+			return [];
+		},
+		async gitCheckpoint() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async gitReadCheckpoint() {
+			throw new Error(DESKTOP_ONLY);
+		},
 		...generator,
 	};
 }

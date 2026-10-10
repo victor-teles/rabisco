@@ -3,6 +3,7 @@ import type { ChangeOptions, ProjectSession } from "@/lib/project-session";
 import { renderCheckOf, renderRepairOf, type RenderCheck } from "@/lib/render-check";
 import type { RabiscoApi } from "@/lib/rpc";
 import { draftLayout, variantLabel } from "@/lib/variations";
+import { aiVersion } from "@/lib/versions";
 import type { DesignCheckInput, ScreenCheck } from "@/views/editor/design-check";
 import type {
 	Attachment,
@@ -454,6 +455,12 @@ export function createGenerationController(session: ProjectSession, env: Control
 			lastResult = step;
 			cancelScheduled();
 			live = null;
+
+			if (summary?.files.length) {
+				const changed = summary.files.map((file) => file.path);
+				session.addVersion(aiVersion(done.id, polishing.prompt, step, changed, new Date()));
+			}
+
 			set({ generation: null, lastRun: summary?.files.length ? { messageId: done.id, step } : null });
 		}
 	}
@@ -606,6 +613,12 @@ export function createGenerationController(session: ProjectSession, env: Control
 			} else {
 				if (summary) done.summary = summary;
 				session.addMessages([done], chatId);
+
+				if (step && summary?.files.length) {
+					const changed = summary.files.map((file) => file.path);
+					session.addVersion(aiVersion(done.id, prompt, step, changed, new Date()));
+				}
+
 				set({ lastRun: step && summary?.files.length ? { messageId: done.id, step } : null });
 			}
 

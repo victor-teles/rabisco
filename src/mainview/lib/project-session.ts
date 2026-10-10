@@ -15,6 +15,7 @@ import {
 } from "@/lib/history";
 import type { RabiscoApi } from "@/lib/rpc";
 import { sameSelection } from "@/lib/selection";
+import { type SessionVersion, withVersion } from "@/lib/versions";
 import type { AssetChange, ProjectAssets } from "../../shared/assets";
 import { type ChatSummary, newChatId, withAppended, withMoreMessages } from "../../shared/chats";
 import { detachComments } from "../../shared/comments";
@@ -36,6 +37,7 @@ export type ProjectState = {
 	messages: ChatMessage[];
 	chats: ChatSummary[];
 	history: History;
+	versions: SessionVersion[];
 };
 
 export type ChangeOptions = {
@@ -184,6 +186,7 @@ export function createProjectSession({
 					messages: project.messages,
 					chats: project.chats,
 					history: createHistory(snapshotOf(canvas, project.files)),
+					versions: [],
 				});
 			},
 			(reason) => {
@@ -273,6 +276,12 @@ export function createProjectSession({
 
 			return name === snapshot.name && device === snapshot.device ? snapshot : { ...snapshot, name, device };
 		}, options);
+
+	function addVersion(version: SessionVersion) {
+		const current = view.state;
+
+		if (current) publish({ ...view, state: { ...current, versions: withVersion(current.versions, version) } });
+	}
 
 	function addMessages(messages: ChatMessage[], chatId?: string) {
 		const current = view.state;
@@ -364,6 +373,7 @@ export function createProjectSession({
 		redo: redoStep,
 		setSelection,
 		setMeta,
+		addVersion,
 		addMessages,
 		newChat,
 		openChat,
@@ -388,12 +398,15 @@ function snapshotOf(canvas: CanvasDoc, files: ProjectFiles): Snapshot {
 		theme: canvas.theme,
 		name: canvas.name,
 		device: canvas.device,
+		locks: canvas.locks,
+		sections: canvas.sections,
 	};
 }
 
 function withHistory(current: ProjectState, history: History, selection?: string[]): ProjectState {
 	const { frames, files, comments = current.canvas.comments, theme = current.canvas.theme } = history.present;
 	const { name = current.canvas.name, device = current.canvas.device } = history.present;
+	const { locks, sections = current.canvas.sections } = history.present;
 
 	// Selection may also hold component files picked in the components panel
 	const nextSelection = (selection ?? current.canvas.selection).filter(
@@ -406,9 +419,11 @@ function withHistory(current: ProjectState, history: History, selection?: string
 		theme === current.canvas.theme &&
 		name === current.canvas.name &&
 		device === current.canvas.device &&
+		locks === current.canvas.locks &&
+		sections === current.canvas.sections &&
 		sameSelection(nextSelection, current.canvas.selection)
 			? current.canvas
-			: { ...current.canvas, frames, comments, theme, name, device, selection: nextSelection };
+			: { ...current.canvas, frames, comments, theme, name, device, locks, sections, selection: nextSelection };
 
 	return { ...current, history, files, canvas };
 }

@@ -11,7 +11,17 @@ import {
 import { cn } from "@/lib/utils";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
-import { BACK, hasExpressionLink, linkOfElement, resolveLink, type ElementRef } from "../../../shared/prototype/links";
+import {
+	BACK,
+	effectiveTransition,
+	hasExpressionLink,
+	linkOfElement,
+	linkSettingsOfElement,
+	resolveLink,
+	type ElementRef,
+	type LinkEdit,
+} from "../../../shared/prototype/links";
+import { TRANSITIONS, type LinkTransition, type OverlayMode } from "../../../shared/prototype/transitions";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 
 export type LinkControlProps = {
@@ -19,12 +29,30 @@ export type LinkControlProps = {
 	frames: Frame[];
 	/** Nothing renders without one */
 	element: ElementRef | null;
-	/** A screen path, `"back"`, or `null` to remove the link; write it as one undo step */
-	onChange: (element: ElementRef, to: string | null) => void;
+	onChange: (element: ElementRef, edit: LinkEdit) => void;
 	disabled?: boolean;
 };
 
 const NONE = "";
+
+const NAVIGATE = "navigate";
+
+const MODE_LABELS: Record<OverlayMode | typeof NAVIGATE, string> = {
+	navigate: "Navigate",
+	overlay: "Overlay",
+	sheet: "Sheet",
+};
+
+const TRANSITION_LABELS: Record<LinkTransition, string> = {
+	instant: "Instant",
+	dissolve: "Dissolve",
+	slide: "Slide",
+	push: "Push",
+};
+
+const isMode = (value: string): value is OverlayMode => value === "overlay" || value === "sheet";
+
+const isTransitionName = (value: string): value is LinkTransition => TRANSITIONS.some((name) => name === value);
 
 /** Writes `data-link-to` (decision 0007); a link written as code is read-only */
 export function LinkControl({ files, frames, element, onChange, disabled }: LinkControlProps) {
@@ -52,6 +80,10 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 				: `Missing: ${target.to}`;
 
 	const code = hasExpressionLink(node);
+	const settings = linkSettingsOfElement(node);
+	const mode = settings.mode ?? NAVIGATE;
+	const transition = effectiveTransition(settings);
+	const options = !code && target !== null && target.kind !== "back";
 
 	return (
 		<section className="flex flex-col gap-2 border-b p-4">
@@ -93,7 +125,7 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 							<DropdownMenuContent align="end" className="max-h-80 min-w-44">
 								<DropdownMenuRadioGroup
 									value={value}
-									onValueChange={(next) => next !== value && onChange(element, next === NONE ? null : next)}
+									onValueChange={(next) => next !== value && onChange(element, { to: next === NONE ? null : next })}
 								>
 									<DropdownMenuRadioItem value={NONE} className="text-[13px]">
 										None
@@ -123,6 +155,71 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 					)}
 				</div>
 			</div>
+			{options ? (
+				<>
+					<OptionRow
+						label="Open as"
+						value={mode}
+						labels={MODE_LABELS}
+						disabled={disabled}
+						onChange={(next) => onChange(element, { mode: isMode(next) ? next : null })}
+					/>
+					<OptionRow
+						label="Animation"
+						value={transition}
+						labels={TRANSITION_LABELS}
+						disabled={disabled}
+						onChange={(next) => isTransitionName(next) && onChange(element, { transition: next })}
+					/>
+				</>
+			) : null}
 		</section>
+	);
+}
+
+function OptionRow<T extends string>({
+	label,
+	value,
+	labels,
+	disabled,
+	onChange,
+}: {
+	label: string;
+	value: T;
+	labels: Record<T, string>;
+	disabled?: boolean;
+	onChange: (next: string) => void;
+}) {
+	const entries: [string, string][] = Object.entries(labels);
+
+	return (
+		<div className="flex min-h-8 items-center gap-2">
+			<span className="w-[72px] shrink-0 truncate text-xs text-muted-foreground">{label}</span>
+			<div className="flex min-w-0 flex-1 items-center">
+				<DropdownMenu modal={false}>
+					<DropdownMenuTrigger asChild>
+						<Button
+							variant="outline"
+							size="xs"
+							disabled={disabled}
+							aria-label={label}
+							className="h-7 w-full min-w-0 justify-between gap-1 px-2 text-xs font-normal"
+						>
+							<span className="truncate">{labels[value]}</span>
+							<ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="min-w-36">
+						<DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onChange(next)}>
+							{entries.map(([key, text]) => (
+								<DropdownMenuRadioItem key={key} value={key} className="text-[13px]">
+									{text}
+								</DropdownMenuRadioItem>
+							))}
+						</DropdownMenuRadioGroup>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
+		</div>
 	);
 }

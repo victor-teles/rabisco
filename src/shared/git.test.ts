@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { commitMessage, redactRemoteUrl } from "./git";
+import {
+	checkpointMessage,
+	checkpointScope,
+	cleanCheckpointName,
+	commitMessage,
+	parseCheckpoints,
+	redactRemoteUrl,
+} from "./git";
 
 const subject = (changes: Parameters<typeof commitMessage>[0]) => commitMessage(changes).split("\n")[0];
 
@@ -57,4 +64,40 @@ test("redactRemoteUrl drops credentials", () => {
 	expect(redactRemoteUrl("https://user:token@github.com/me/app.git")).toBe("https://github.com/me/app.git");
 	expect(redactRemoteUrl("git@github.com:me/app.git")).toBe("git@github.com:me/app.git");
 	expect(redactRemoteUrl("/tmp/remote.git")).toBe("/tmp/remote.git");
+});
+
+describe("checkpoints", () => {
+	test("the message names the checkpoint, lists the files and ends with the trailer", () => {
+		expect(checkpointMessage("  Before   the\nredesign ", [{ status: "?", path: "screens/home.tsx" }], ".")).toBe(
+			"Rabisco checkpoint: Before the redesign\n\n- add screens/home.tsx\n\nRabisco-Checkpoint: .\n",
+		);
+		expect(checkpointMessage("Clean", [], "design/app")).toBe(
+			"Rabisco checkpoint: Clean\n\nRabisco-Checkpoint: design/app\n",
+		);
+	});
+
+	test("the scope is the project folder in the repository", () => {
+		expect(checkpointScope("")).toBe(".");
+		expect(checkpointScope("design/app.rabisco/")).toBe("design/app.rabisco");
+	});
+
+	test("names are one line and capped", () => {
+		expect(cleanCheckpointName(" a\t b ")).toBe("a b");
+		expect(cleanCheckpointName("x".repeat(300))).toHaveLength(120);
+	});
+
+	test("parsing keeps this project's checkpoints only", () => {
+		const record = (hash: string, subject: string, trailer: string) =>
+			[hash, hash.slice(0, 7), "2026-10-10T12:00:00Z", subject, trailer].join("\0");
+
+		const output = [
+			record("a".repeat(40), "Rabisco checkpoint: Mine", "design/app"),
+			record("b".repeat(40), "Rabisco checkpoint: Other", "design/app2"),
+			record("c".repeat(40), "Rabisco: update the canvas", "design/app"),
+		].join("\x1e\n");
+
+		expect(parseCheckpoints(output, "design/app")).toEqual([
+			{ hash: "a".repeat(40), short: "aaaaaaa", date: "2026-10-10T12:00:00Z", name: "Mine" },
+		]);
+	});
 });

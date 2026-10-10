@@ -211,3 +211,78 @@ describe.skipIf(!hasGit)("git sync", () => {
 		expect(sh(root, "diff", "--cached", "--name-only")).toBe("README.md");
 	});
 });
+
+describe.skipIf(!hasGit)("checkpoints", () => {
+	test("a checkpoint is a commit, listed newest first, even when nothing changed", async () => {
+		const dir = makeProject();
+		await git.init(dir, "app");
+		expect(await git.checkpoints(dir)).toEqual([]);
+		writeFileSync(join(dir, "screens/settings.tsx"), "export default () => null;\n");
+
+		const first = await git.checkpoint(dir, "Before the redesign");
+		expect(first.name).toBe("Before the redesign");
+		expect(sh(dir, "log", "-1", "--format=%s")).toBe("Rabisco checkpoint: Before the redesign");
+		expect(sh(dir, "log", "-1", "--format=%b")).toContain("- add screens/settings.tsx");
+		expect(sh(dir, "status", "--porcelain")).toBe("");
+
+		const second = await git.checkpoint(dir, "Same files");
+		expect(second.hash).not.toBe(first.hash);
+		expect((await git.checkpoints(dir)).map((checkpoint) => checkpoint.name)).toEqual([
+			"Same files",
+			"Before the redesign",
+		]);
+		await expect(git.checkpoint(dir, "  ")).rejects.toThrow("Name the checkpoint");
+	});
+
+	test("reading a checkpoint gives its files and canvas, and leaves the folder alone", async () => {
+		const dir = makeProject();
+		await git.init(dir, "app");
+
+		writeFileSync(
+			join(dir, "rabisco.json"),
+			JSON.stringify({ name: "app", frames: [{ file: "screens/welcome.tsx", x: 10, y: 20 }] }),
+		);
+
+		const saved = await git.checkpoint(dir, "One screen");
+		writeFileSync(join(dir, "screens/welcome.tsx"), "export default () => null;\n");
+		writeFileSync(join(dir, "screens/later.tsx"), "export default () => null;\n");
+
+		const version = await git.readCheckpoint(dir, saved.hash);
+		expect(Object.keys(version.files).sort()).toEqual(["DESIGN.md", "screens/welcome.tsx"]);
+		expect(version.files["screens/welcome.tsx"]).toContain("Hello");
+		expect(version.canvas.frames).toMatchObject([{ file: "screens/welcome.tsx", x: 10, y: 20 }]);
+		expect(readFileSync(join(dir, "screens/welcome.tsx"), "utf8")).toBe("export default () => null;\n");
+		expect(sh(dir, "log", "--format=%s").split("\n")).toHaveLength(2);
+		await expect(git.readCheckpoint(dir, "--output=x")).rejects.toThrow("isn't in this repository");
+	});
+
+	test("in a bigger repository a checkpoint commits only the project and lists only its own", async () => {
+		const root = tempDir();
+		sh(root, "init", "-q");
+		writeFileSync(join(root, "README.md"), "readme\n");
+		sh(root, "add", "README.md");
+		sh(root, "commit", "-qm", "Initial");
+		const dir = makeProject(join(root, "design"));
+		const other = join(root, "other.rabisco");
+		mkdirSync(join(other, "screens"), { recursive: true });
+		writeFileSync(join(other, "screens/a.tsx"), "export default () => null;\n");
+		writeFileSync(join(root, "README.md"), "changed\n");
+		sh(root, "add", "README.md");
+
+		await git.checkpoint(dir, "Design");
+		await git.checkpoint(other, "Other");
+		expect(sh(root, "diff", "--cached", "--name-only")).toBe("README.md");
+		expect((await git.checkpoints(dir)).map((checkpoint) => checkpoint.name)).toEqual(["Design"]);
+		const [saved] = await git.checkpoints(dir);
+		expect(Object.keys((await git.readCheckpoint(dir, saved!.hash)).files).sort()).toEqual([
+			"DESIGN.md",
+			"screens/welcome.tsx",
+		]);
+	});
+
+	test("without a repository there are no checkpoints and saving one says how to set up git", async () => {
+		const dir = makeProject();
+		expect(await git.checkpoints(dir)).toEqual([]);
+		await expect(git.checkpoint(dir, "First")).rejects.toThrow("Set up git");
+	});
+});

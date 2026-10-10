@@ -1,5 +1,11 @@
 // Play mode (decision 0007). Links are read from React fibers so components that don't forward the prop still link.
-import { LINK_TO_ATTRIBUTE, type FrameMessage } from "../lib/render/protocol";
+import {
+	LINK_MODE_ATTRIBUTE,
+	LINK_TO_ATTRIBUTE,
+	LINK_TRANSITION_ATTRIBUTE,
+	type FrameMessage,
+	type LinkOptions,
+} from "../lib/render/protocol";
 import { fiberOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect";
 
 /** Marks the DOM of linked component elements, which don't carry `data-link-to` themselves. */
@@ -9,7 +15,21 @@ const POINTER_CSS = `:is([${LINK_TO_ATTRIBUTE}], [${MARK}]), :is([${LINK_TO_ATTR
 
 const linkOf = (fiber: Fiber) => textProp(fiber, LINK_TO_ATTRIBUTE)?.trim() || null;
 
-export function linkAt(target: EventTarget | null): string | null {
+export type LinkClick = { to: string } & LinkOptions;
+
+const fromFiber = (fiber: Fiber, to: string): LinkClick => ({
+	to,
+	transition: textProp(fiber, LINK_TRANSITION_ATTRIBUTE)?.trim() || undefined,
+	mode: textProp(fiber, LINK_MODE_ATTRIBUTE)?.trim() || undefined,
+});
+
+const fromElement = (element: Element, to: string): LinkClick => ({
+	to,
+	transition: element.getAttribute(LINK_TRANSITION_ATTRIBUTE)?.trim() || undefined,
+	mode: element.getAttribute(LINK_MODE_ATTRIBUTE)?.trim() || undefined,
+});
+
+export function linkAt(target: EventTarget | null): LinkClick | null {
 	const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
 
 	if (!element) return null;
@@ -17,12 +37,13 @@ export function linkAt(target: EventTarget | null): string | null {
 	for (let fiber = fiberOf(element); fiber; fiber = fiber.return) {
 		const to = linkOf(fiber);
 
-		if (to) return to;
+		if (to) return fromFiber(fiber, to);
 	}
 
-	const value = element.closest(`[${LINK_TO_ATTRIBUTE}]`)?.getAttribute(LINK_TO_ATTRIBUTE)?.trim();
+	const linked = element.closest(`[${LINK_TO_ATTRIBUTE}]`);
+	const value = linked?.getAttribute(LINK_TO_ATTRIBUTE)?.trim();
 
-	return value || null;
+	return linked && value ? fromElement(linked, value) : null;
 }
 
 export function createPlay(container: Element, post: (message: FrameMessage) => void) {
@@ -52,12 +73,12 @@ export function createPlay(container: Element, post: (message: FrameMessage) => 
 		"click",
 		(event) => {
 			if (!playing || event.button !== 0) return;
-			const to = linkAt(event.target);
+			const link = linkAt(event.target);
 
-			if (to) {
+			if (link) {
 				event.preventDefault();
 				event.stopPropagation();
-				post({ type: "navigate", to });
+				post({ type: "navigate", ...link });
 
 				return;
 			}

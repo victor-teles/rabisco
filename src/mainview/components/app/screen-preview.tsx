@@ -9,6 +9,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { FrameHost, onFrameStatus, runtimeUrl } from "@/lib/render/frame-host";
+import type { LinkOptions } from "@/lib/render/protocol";
 import {
 	cachedSnapshot,
 	captureLive,
@@ -60,6 +61,7 @@ export function ScreenFrame({
 	onContentHeight,
 	onNavigate,
 	onEscape,
+	onPainted,
 }: {
 	entry: string;
 	files: ProjectFiles;
@@ -70,14 +72,15 @@ export function ScreenFrame({
 	play?: boolean;
 	live?: boolean;
 	onContentHeight?: (height: number) => void;
-	onNavigate?: (to: string) => void;
+	onNavigate?: (to: string, options: LinkOptions) => void;
 	onEscape?: () => void;
+	onPainted?: () => void;
 }) {
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const hostRef = useRef<FrameHost | null>(null);
 	const contentHeightChanged = useEffectEvent((contentHeight: number) => onContentHeight?.(contentHeight));
-	const navigated = useEffectEvent((to: string) => onNavigate?.(to));
+	const navigated = useEffectEvent((to: string, options: LinkOptions) => onNavigate?.(to, options));
 	const escaped = useEffectEvent(() => onEscape?.());
 	const theme = useContext(ScreenTheme);
 	const virtual = live !== undefined;
@@ -107,7 +110,7 @@ export function ScreenFrame({
 		if (!mounted) return;
 		const host = new FrameHost(frameRef.current!);
 		host.onContentHeight = (contentHeight) => contentHeightChanged(contentHeight);
-		host.onNavigate = (to) => navigated(to);
+		host.onNavigate = (to, options) => navigated(to, options);
 		host.onEscape = () => escaped();
 		hostRef.current = host;
 
@@ -134,6 +137,12 @@ export function ScreenFrame({
 	useEffect(() => {
 		hostRef.current?.setPlay(play);
 	}, [play, mounted]);
+
+	const paintedOnce = useEffectEvent(() => onPainted?.());
+
+	useEffect(() => {
+		if (painted) paintedOnce();
+	}, [painted]);
 
 	useEffect(() => {
 		if (isLive || !mounted) return;

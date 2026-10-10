@@ -348,6 +348,8 @@ ${ui.length ? `\nUI components: ${ui.map((name) => `\`${name}\``).join(", ")}\n`
 ## Prototype links
 
 Elements with \`data-link-to="screens/settings.tsx"\` open that screen when clicked, and \`data-link-to="back"\` goes back. \`src/App.tsx\` handles them with a small hash router (\`#/settings\`). Replace it with your app's router when you wire the screens to real data.
+
+\`data-link-transition\` (\`dissolve\`, \`slide\`, \`push\`) and \`data-link-mode\` (\`overlay\`, \`sheet\`) say how Rabisco plays a link: with an animation, or as a modal or sheet over the current screen. The small router here ignores them and opens the screen; keep them as notes for your own transitions and dialogs, or remove them.
 `;
 }
 

@@ -11,6 +11,7 @@ import {
 	ArrowRight,
 	ChevronDown,
 	Lock,
+	Pipette,
 	Plus,
 	Scan,
 	WrapText,
@@ -32,6 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SCREEN_THEME_CSS } from "@/lib/render/theme";
 import { commonValue, editEach, restyle, retoken, sharedClasses } from "@/lib/element-selection";
+import { snapColor, type ColorCandidate } from "@/lib/eyedropper";
 import { cn } from "@/lib/utils";
 import {
 	customTokenNames,
@@ -41,6 +43,15 @@ import {
 	type TokenKind,
 } from "../../../shared/context/tokens";
 import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
+import {
+	readAutoLayout,
+	setAlignment,
+	setDirection,
+	setSpaced,
+	type Align,
+	type Cell,
+	type Direction,
+} from "../../../shared/tailwind/auto-layout";
 import {
 	BORDER_WIDTH_SCALE,
 	classNameOf,
@@ -78,6 +89,8 @@ import {
 	type ScaleOption,
 	type SimpleProp,
 } from "../../../shared/tailwind/classes";
+import { EYEDROPPER_KEYS, Eyedropper, EyedropperShortcut } from "./eyedropper";
+import { isTyping } from "./shortcuts";
 
 export type ElementStyleProps = {
 	source: string;
@@ -247,7 +260,10 @@ type Edit = {
 	onBlur: () => void;
 	disabled?: boolean;
 	tokens: DesignTokens;
+	eyedropper: (label: string, pick: (value: string) => void) => void;
 };
+
+type Picking = { label: string; pick: (value: string) => void };
 
 export function ElementStyle({
 	source,
@@ -262,6 +278,7 @@ export function ElementStyle({
 	tokens = NO_TOKENS,
 }: ElementStyleProps) {
 	const burst = useRef(0);
+	const [picking, setPicking] = useState<Picking | null>(null);
 
 	registerTokens(tokens);
 	const tree = parseJsx(source);
@@ -303,6 +320,7 @@ export function ElementStyle({
 		variant,
 		disabled,
 		tokens,
+		eyedropper: (label, pick) => setPicking({ label, pick }),
 	};
 
 	if (!info.editable) {
@@ -327,9 +345,25 @@ export function ElementStyle({
 	const hasLayout = !replaced && !(tag !== null && FORM_FIELDS.has(tag));
 	const hasText = !replaced;
 	const parentLayout = layoutOf(source, element.parent);
+	const autoLayout = hasLayout && isFlex(effective(classes, "display", variant));
+
+	const pickBackground = (value: string) =>
+		edit.apply((classes) => setStyle(classes, "backgroundColor", value, variant));
 
 	return (
 		<div className="flex flex-col gap-4 border-b p-4" key={start}>
+			<EyedropperShortcut
+				disabled={disabled || picking !== null}
+				onStart={() => edit.eyedropper("Fill", pickBackground)}
+			/>
+			{picking ? (
+				<Eyedropper
+					label={picking.label}
+					snap={(css) => snapColor(css, colorGroups(tokens))}
+					onPick={picking.pick}
+					onClose={() => setPicking(null)}
+				/>
+			) : null}
 			<StateSwitch classes={classes} value={variant} disabled={disabled} onChange={onVariantChange} />
 			{skipped ? (
 				<p className="-mt-2 text-xs text-subtle-foreground">
@@ -339,7 +373,7 @@ export function ElementStyle({
 			) : null}
 			{hasLayout ? <LayoutSection classes={classes} edit={edit} /> : null}
 			{parentLayout ? <ItemSection classes={classes} edit={edit} parent={parentLayout} /> : null}
-			<SpacingSection edit={edit} />
+			<SpacingSection edit={edit} padding={!autoLayout} />
 			<SizeSection classes={classes} edit={edit} />
 			<PositionSection classes={classes} edit={edit} />
 			{hasText ? <TypographySection classes={classes} edit={edit} /> : null}
@@ -506,10 +540,8 @@ const styleWriter = (edit: Edit, prop: SimpleProp) => (value: string | null, con
 function LayoutSection({ classes, edit }: SectionProps) {
 	const display = getStyle(classes, "display", edit.variant);
 	const shown = effective(classes, "display", edit.variant);
-	const flex = shown === "flex" || shown === "inline-flex";
+	const flex = isFlex(shown);
 	const grid = shown === "grid" || shown === "inline-grid";
-	const direction = getStyle(classes, "flexDirection", edit.variant);
-	const wrap = getStyle(classes, "flexWrap", edit.variant);
 
 	return (
 		<Section title="Layout">
@@ -523,33 +555,8 @@ function LayoutSection({ classes, edit }: SectionProps) {
 					onChange={styleWriter(edit, "display")}
 				/>
 			</Row>
-			{flex ? (
-				<Row label="Direction">
-					<div className="flex min-w-0 flex-1 items-center gap-1">
-						<Segmented
-							label="Direction"
-							value={direction ?? "row"}
-							options={DIRECTION_OPTIONS}
-							disabled={edit.disabled}
-							onChange={(value) =>
-								edit.apply((classes) =>
-									setStyle(classes, "flexDirection", value === "row" || value === null ? null : value, edit.variant),
-								)
-							}
-						/>
-						<IconToggle
-							icon={WrapText}
-							label={wrap === "wrap" ? "Wrapping (flex-wrap)" : "Wrap (flex-wrap)"}
-							pressed={wrap === "wrap"}
-							disabled={edit.disabled}
-							onChange={(pressed) =>
-								edit.apply((classes) => setStyle(classes, "flexWrap", pressed ? "wrap" : null, edit.variant))
-							}
-						/>
-					</div>
-				</Row>
-			) : null}
-			{flex || grid ? (
+			{flex ? <AutoLayoutFields classes={classes} edit={edit} /> : null}
+			{grid ? (
 				<>
 					<Row label="Justify">
 						<SelectField
@@ -571,18 +578,16 @@ function LayoutSection({ classes, edit }: SectionProps) {
 							onChange={styleWriter(edit, "alignItems")}
 						/>
 					</Row>
-					{grid ? (
-						<Row label="Columns">
-							<ScaleField
-								ariaLabel="Grid columns"
-								value={getStyle(classes, "gridColumns", edit.variant)}
-								mixed={mixedStyle(edit, "gridColumns")}
-								scale={GRID_COLUMNS_SCALE}
-								edit={edit}
-								onChange={styleWriter(edit, "gridColumns")}
-							/>
-						</Row>
-					) : null}
+					<Row label="Columns">
+						<ScaleField
+							ariaLabel="Grid columns"
+							value={getStyle(classes, "gridColumns", edit.variant)}
+							mixed={mixedStyle(edit, "gridColumns")}
+							scale={GRID_COLUMNS_SCALE}
+							edit={edit}
+							onChange={styleWriter(edit, "gridColumns")}
+						/>
+					</Row>
 					<BoxField title="Gap" group="gap" scale={SPACING_SCALE} linked={GAP_ALL} split={GAP_AXES} edit={edit} />
 				</>
 			) : null}
@@ -598,6 +603,153 @@ function LayoutSection({ classes, edit }: SectionProps) {
 				/>
 			</Row>
 		</Section>
+	);
+}
+
+const isFlex = (display: string | null) => display === "flex" || display === "inline-flex";
+
+const ALIGNS: readonly Align[] = ["start", "center", "end"];
+
+const X_NAMES: Record<Align, string> = { start: "left", center: "center", end: "right" };
+
+const Y_NAMES: Record<Align, string> = { start: "top", center: "middle", end: "bottom" };
+
+const CROSS_CLASSES: Record<Align, string> = { start: "items-start", center: "items-center", end: "items-end" };
+
+const crossOf = (direction: Direction, cell: Cell) => (direction === "row" ? cell.y : cell.x);
+
+function AutoLayoutFields({ classes, edit }: SectionProps) {
+	const layout = readAutoLayout(classes, edit.variant);
+	const wrap = getStyle(classes, "flexWrap", edit.variant);
+
+	const mixed = isMixed(edit, (own) => {
+		const { direction, cell, spaced } = readAutoLayout(own, edit.variant);
+
+		return `${direction} ${cell.x} ${cell.y} ${spaced}`;
+	});
+
+	return (
+		<>
+			<Row label="Direction">
+				<div className="flex min-w-0 flex-1 items-center gap-1">
+					<Segmented
+						label="Direction"
+						value={layout.direction}
+						options={DIRECTION_OPTIONS}
+						disabled={edit.disabled}
+						onChange={(value) => edit.apply((own) => setDirection(own, value === "col" ? "col" : "row", edit.variant))}
+					/>
+					<IconToggle
+						icon={WrapText}
+						label={wrap === "wrap" ? "Wrapping (flex-wrap)" : "Wrap (flex-wrap)"}
+						pressed={wrap === "wrap"}
+						disabled={edit.disabled}
+						onChange={(pressed) =>
+							edit.apply((own) => setStyle(own, "flexWrap", pressed ? "wrap" : null, edit.variant))
+						}
+					/>
+				</div>
+			</Row>
+			<div className="flex items-start gap-3">
+				<AlignmentGrid
+					direction={layout.direction}
+					cell={mixed ? null : layout.cell}
+					spaced={layout.spaced}
+					disabled={edit.disabled}
+					onPick={(cell) => edit.apply((own) => setAlignment(own, cell, edit.variant))}
+				/>
+				<div className="min-w-0 flex-1">
+					<BoxField
+						title="Gap"
+						group="gap"
+						scale={SPACING_SCALE}
+						linked={GAP_ALL}
+						split={GAP_AXES}
+						edit={edit}
+						action={
+							<Button
+								variant="ghost"
+								size="xs"
+								aria-pressed={layout.spaced}
+								title="Space the items evenly (justify-between)"
+								disabled={edit.disabled}
+								onClick={() => edit.apply((own) => setSpaced(own, !layout.spaced, edit.variant))}
+								className={cn(
+									"h-5 px-1.5 text-xs font-normal text-muted-foreground",
+									layout.spaced && "bg-accent text-accent-foreground",
+								)}
+							>
+								Auto
+							</Button>
+						}
+					/>
+				</div>
+			</div>
+			<BoxField title="Padding" group="padding" scale={SPACING_SCALE} linked={AXES} split={SIDES} edit={edit} />
+		</>
+	);
+}
+
+function AlignmentGrid({
+	direction,
+	cell,
+	spaced,
+	disabled,
+	onPick,
+}: {
+	direction: Direction;
+	cell: Cell | null;
+	spaced: boolean;
+	disabled?: boolean;
+	onPick: (cell: Cell) => void;
+}) {
+	return (
+		<div
+			role="group"
+			aria-label="Alignment"
+			className={cn("grid size-[76px] shrink-0 grid-cols-3 rounded-md border p-0.5", disabled && "opacity-50")}
+		>
+			{ALIGNS.flatMap((y) =>
+				ALIGNS.map((x) => {
+					const cross = crossOf(direction, { x, y });
+					const active = cell !== null && (spaced ? cross === crossOf(direction, cell) : cell.x === x && cell.y === y);
+					const name = x === "center" && y === "center" ? "center" : `${Y_NAMES[y]} ${X_NAMES[x]}`;
+
+					return (
+						<button
+							key={`${y}-${x}`}
+							type="button"
+							disabled={disabled}
+							aria-label={`Align ${name}`}
+							aria-pressed={active}
+							title={`Align ${name}`}
+							onClick={() => onPick({ x, y })}
+							className="group flex items-center justify-center rounded-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							{active ? (
+								<AlignmentBars direction={direction} cross={cross} />
+							) : (
+								<span className="size-1 rounded-full bg-subtle-foreground/60 group-hover:bg-foreground" />
+							)}
+						</button>
+					);
+				}),
+			)}
+		</div>
+	);
+}
+
+function AlignmentBars({ direction, cross }: { direction: Direction; cross: Align }) {
+	return (
+		<span className={cn("flex gap-[2px]", direction === "row" ? "h-3" : "w-3 flex-col", CROSS_CLASSES[cross])}>
+			{[60, 100, 80].map((length) => (
+				<span
+					key={length}
+					className="rounded-[1px] bg-primary"
+					style={direction === "row" ? { width: 2, height: `${length}%` } : { height: 2, width: `${length}%` }}
+				/>
+			))}
+		</span>
 	);
 }
 
@@ -721,10 +873,12 @@ function PositionSection({ classes, edit }: SectionProps) {
 	);
 }
 
-function SpacingSection({ edit }: Pick<SectionProps, "edit">) {
+function SpacingSection({ edit, padding }: Pick<SectionProps, "edit"> & { padding: boolean }) {
 	return (
 		<Section title="Spacing">
-			<BoxField title="Padding" group="padding" scale={SPACING_SCALE} linked={AXES} split={SIDES} edit={edit} />
+			{padding ? (
+				<BoxField title="Padding" group="padding" scale={SPACING_SCALE} linked={AXES} split={SIDES} edit={edit} />
+			) : null}
 			<BoxField title="Margin" group="margin" scale={MARGIN_SCALE} linked={AXES} split={SIDES} edit={edit} />
 		</Section>
 	);
@@ -1065,7 +1219,15 @@ function BoxField({
 	linked,
 	split,
 	edit,
-}: Pick<SectionProps, "edit"> & { title: string; group: BoxGroup; scale: Scale; linked: Part[]; split: Part[] }) {
+	action,
+}: Pick<SectionProps, "edit"> & {
+	title: string;
+	group: BoxGroup;
+	scale: Scale;
+	linked: Part[];
+	split: Part[];
+	action?: React.ReactNode;
+}) {
 	const boxes = edit.all.map((own) => getBox(own, group, edit.variant));
 
 	/** `undefined` when the parts or the elements differ */
@@ -1094,18 +1256,21 @@ function BoxField({
 		<div className="flex flex-col gap-1.5">
 			<div className="flex h-5 items-center justify-between">
 				<span className="text-xs text-muted-foreground">{title}</span>
-				<IconToggle
-					icon={Scan}
-					label={
-						isSplit
-							? `${title}: one value per ${group === "borderRadius" ? "corner" : "side"} (switch to linked)`
-							: `${title}: set each ${group === "borderRadius" ? "corner" : "side"}`
-					}
-					pressed={isSplit}
-					disabled={edit.disabled}
-					small
-					onChange={setSplitChoice}
-				/>
+				<span className="flex items-center gap-1">
+					{action}
+					<IconToggle
+						icon={Scan}
+						label={
+							isSplit
+								? `${title}: one value per ${group === "borderRadius" ? "corner" : "side"} (switch to linked)`
+								: `${title}: set each ${group === "borderRadius" ? "corner" : "side"}`
+						}
+						pressed={isSplit}
+						disabled={edit.disabled}
+						small
+						onChange={setSplitChoice}
+					/>
+				</span>
 			</div>
 			<div className={cn("grid gap-2", fields.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
 				{fields.map((part) => {
@@ -1438,6 +1603,28 @@ function swatchesOf(tokens: DesignTokens): SwatchCss {
 	return swatch;
 }
 
+const groupCache = new WeakMap<DesignTokens, ColorCandidate[][]>();
+
+function colorGroups(tokens: DesignTokens): ColorCandidate[][] {
+	const cached = groupCache.get(tokens);
+
+	if (cached) return cached;
+	const swatch = swatchesOf(tokens);
+	const candidate = (value: string): ColorCandidate => ({ value, css: swatch(value) });
+
+	const palette = Object.keys(PALETTE).flatMap((hue) => PALETTE_SHADES.map((shade) => candidate(`${hue}-${shade}`)));
+
+	const groups = [
+		THEME_COLORS.map(candidate),
+		tokenOptions(tokens, "color").map((token) => candidate(token.value)),
+		[candidate("black"), candidate("white"), ...palette],
+	];
+
+	groupCache.set(tokens, groups);
+
+	return groups;
+}
+
 const CHECKERBOARD = "repeating-conic-gradient(#d4d4d8 0 25%, #fff 0 50%) 0 0 / 8px 8px";
 
 function Swatch({ css, className }: { css: string | null; className?: string }) {
@@ -1483,6 +1670,11 @@ function ColorField({
 	const withOpacity = (next: string) => (modifier === null ? next : `${next}/${modifier}`);
 	const pick = (next: string) => onPick(withOpacity(next));
 
+	const startEyedropper = () => {
+		setOpen(false);
+		edit.eyedropper(label, (next) => onPick(next));
+	};
+
 	return (
 		<div className="flex min-w-0 flex-1 items-center gap-1">
 			<Popover open={open} onOpenChange={setOpen}>
@@ -1499,8 +1691,34 @@ function ColorField({
 						</span>
 					</button>
 				</PopoverTrigger>
-				<PopoverContent align="end" className="flex w-64 flex-col gap-3 p-3">
-					<ColorGroup title="Theme">
+				<PopoverContent
+					align="end"
+					className="flex w-64 flex-col gap-3 p-3"
+					onKeyDown={(event) => {
+						const plain = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+
+						if (!plain || event.code !== "KeyI" || isTyping(event.target)) return;
+						event.preventDefault();
+						event.stopPropagation();
+						startEyedropper();
+					}}
+				>
+					<ColorGroup
+						title="Theme"
+						action={
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								className="-my-1 -mr-1 size-6 text-muted-foreground"
+								aria-label="Pick a color from a screen"
+								title={`Pick a color from a screen (${EYEDROPPER_KEYS})`}
+								disabled={edit.disabled}
+								onClick={startEyedropper}
+							>
+								<Pipette className="size-3.5" />
+							</Button>
+						}
+					>
 						<div className="grid grid-cols-9 gap-1">
 							{THEME_COLORS.map((token) => (
 								<ColorCell
@@ -1586,10 +1804,21 @@ function ColorField({
 	);
 }
 
-function ColorGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function ColorGroup({
+	title,
+	action,
+	children,
+}: {
+	title: string;
+	action?: React.ReactNode;
+	children: React.ReactNode;
+}) {
 	return (
 		<div className="flex flex-col gap-1.5">
-			<span className="text-[11px] font-medium text-subtle-foreground">{title}</span>
+			<div className="flex items-center justify-between">
+				<span className="text-[11px] font-medium text-subtle-foreground">{title}</span>
+				{action}
+			</div>
 			{children}
 		</div>
 	);

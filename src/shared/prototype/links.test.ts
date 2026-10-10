@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { findElement, parseJsx } from "../jsx";
 import {
+	editLink,
+	effectiveTransition,
 	hasExpressionLink,
 	hrefScreen,
 	LINK_ATTRIBUTE,
 	linkHrefToScreen,
+	linkSettingsOfElement,
 	listLinks,
 	normalizeTarget,
 	readLink,
@@ -134,5 +137,48 @@ describe("href links", () => {
 			`export default function A() {\n\treturn <a href="#/settings" data-link-to="screens/settings.tsx">Go</a>;\n}\n`,
 		);
 		expect(linkHrefToScreen(source, 0, "screens/settings.tsx")).toBeNull();
+	});
+});
+
+describe("transitions and overlays", () => {
+	const SOURCE = `export default function A() {\n\treturn <button data-link-to="screens/b.tsx">Go</button>;\n}\n`;
+	const START = SOURCE.indexOf("<button");
+	const settingsOf = (source: string) => linkSettingsOfElement(findElement(parseJsx(source), START)!);
+
+	test("reads literal transition and mode, and ignores code and unknown values", () => {
+		const written = `<a data-link-to="b" data-link-transition="Push" data-link-mode={"sheet"} />`;
+		expect(linkSettingsOfElement(findElement(parseJsx(written), 0)!)).toEqual({ transition: "push", mode: "sheet" });
+		const code = `<a data-link-to="b" data-link-transition={kind} data-link-mode="popup" />`;
+		expect(linkSettingsOfElement(findElement(parseJsx(code), 0)!)).toEqual({ transition: null, mode: null });
+	});
+
+	test("an unwritten transition is instant, or the overlay's own default", () => {
+		expect(effectiveTransition({ transition: null, mode: null })).toBe("instant");
+		expect(effectiveTransition({ transition: null, mode: "sheet" })).toBe("slide");
+		expect(effectiveTransition({ transition: null, mode: "overlay" })).toBe("dissolve");
+		expect(effectiveTransition({ transition: "push", mode: "overlay" })).toBe("push");
+	});
+
+	test("writes a transition and a mode, and leaves defaults out", () => {
+		const pushed = editLink(SOURCE, START, { transition: "push" })!;
+		expect(pushed).toContain(`<button data-link-to="screens/b.tsx" data-link-transition="push">`);
+		expect(editLink(pushed, START, { transition: "instant" })).toBe(SOURCE);
+		const sheet = editLink(SOURCE, START, { mode: "sheet" })!;
+		expect(settingsOf(sheet)).toEqual({ transition: null, mode: "sheet" });
+		expect(editLink(sheet, START, { transition: "slide" })).toBe(sheet);
+		expect(settingsOf(editLink(sheet, START, { transition: "instant" })!)).toEqual({
+			transition: "instant",
+			mode: "sheet",
+		});
+		expect(editLink(sheet, START, { mode: null })).toBe(SOURCE);
+	});
+
+	test("removing a link or pointing it back drops its transition and mode", () => {
+		const full = editLink(SOURCE, START, { mode: "overlay", transition: "push" })!;
+		expect(settingsOf(full)).toEqual({ transition: "push", mode: "overlay" });
+		expect(editLink(full, START, { to: null })).toBe(SOURCE.replace(` data-link-to="screens/b.tsx"`, ""));
+		expect(editLink(full, START, { to: "back" })).toBe(SOURCE.replace("screens/b.tsx", "back"));
+		expect(editLink(full, START, { to: "screens/c.tsx" })).toBe(full.replace("screens/b.tsx", "screens/c.tsx"));
+		expect(editLink(SOURCE, 3, { transition: "push" })).toBeNull();
 	});
 });

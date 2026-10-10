@@ -5,7 +5,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/component
 import { matchesScreen, stepTarget } from "@/lib/screen-list";
 import { cn } from "@/lib/utils";
 import { isString } from "../../../shared/guards";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import { groupBySection } from "../../../shared/sections";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
+import { SECTION_COLOR } from "./sections-layer";
 
 /** Rows dragged within the list; the canvas and the composer ignore this type */
 const DRAG_TYPE = "application/x-rabisco-screens";
@@ -26,7 +28,11 @@ type ScreensPanelProps = {
 	onRename: (file: string, name: string) => void;
 	/** Moves `files` in front of `before`, or to the end; one undo step */
 	onReorder: (files: string[], before: string | null) => void;
+	sections?: CanvasSection[];
+	onSelectSection?: (id: string) => void;
 };
+
+const NO_SECTIONS: CanvasSection[] = [];
 
 type DropMark = { file: string; after: boolean };
 
@@ -40,6 +46,8 @@ export const ScreensPanel = memo(function ScreensPanel({
 	screenMenu,
 	onRename,
 	onReorder,
+	sections = NO_SECTIONS,
+	onSelectSection,
 }: ScreensPanelProps) {
 	const [query, setQuery] = useState("");
 	const [renaming, setRenaming] = useState<string | null>(null);
@@ -47,6 +55,7 @@ export const ScreensPanel = memo(function ScreensPanel({
 	const listRef = useRef<HTMLDivElement>(null);
 	const selected = new Set(selection);
 	const shown = frames.filter((frame) => matchesScreen(frame, query));
+	const groups = groupBySection(shown, sections);
 
 	/** The selection moves together when the row is part of it */
 	const movingWith = (file: string) =>
@@ -121,47 +130,58 @@ export const ScreensPanel = memo(function ScreensPanel({
 				) : shown.length === 0 ? (
 					<p className="px-2 py-1 text-[13px] text-subtle-foreground">No screens match “{query.trim()}”.</p>
 				) : (
-					shown.map((frame) => (
-						<ScreenRow
-							key={frame.file}
-							frame={frame}
-							files={files}
-							selected={selected.has(frame.file)}
-							renaming={renaming === frame.file}
-							drop={drop?.file === frame.file ? (drop.after ? "after" : "before") : null}
-							onSelect={onSelect}
-							onContextSelect={onContextSelect}
-							screenMenu={screenMenu}
-							onStartRename={() => setRenaming(frame.file)}
-							onRename={(name) => {
-								setRenaming(null);
+					groups.map(({ section, frames: members }) =>
+						section && query && !members.length ? null : (
+							<div key={section?.id ?? ""} role={section ? "group" : undefined} aria-label={section?.name}>
+								{section ? (
+									<SectionHeader section={section} onSelect={onSelectSection} />
+								) : sections.length ? (
+									<p className="px-2 pt-2 pb-1 text-xs font-medium text-subtle-foreground">Not in a section</p>
+								) : null}
+								{members.map((frame) => (
+									<ScreenRow
+										key={frame.file}
+										frame={frame}
+										files={files}
+										selected={selected.has(frame.file)}
+										renaming={renaming === frame.file}
+										drop={drop?.file === frame.file ? (drop.after ? "after" : "before") : null}
+										onSelect={onSelect}
+										onContextSelect={onContextSelect}
+										screenMenu={screenMenu}
+										onStartRename={() => setRenaming(frame.file)}
+										onRename={(name) => {
+											setRenaming(null);
 
-								if (name.trim() && name.trim() !== frame.name) onRename(frame.file, name.trim());
-							}}
-							onKeyDown={(event) => rowKeys(event, frame.file)}
-							onDragStart={(event) => {
-								event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(movingWith(frame.file)));
-								event.dataTransfer.effectAllowed = "move";
-							}}
-							onDragOver={(event) => {
-								if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
-								event.preventDefault();
-								event.dataTransfer.dropEffect = "move";
-								const mark = dropMark(event, frame.file);
+											if (name.trim() && name.trim() !== frame.name) onRename(frame.file, name.trim());
+										}}
+										onKeyDown={(event) => rowKeys(event, frame.file)}
+										onDragStart={(event) => {
+											event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(movingWith(frame.file)));
+											event.dataTransfer.effectAllowed = "move";
+										}}
+										onDragOver={(event) => {
+											if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+											event.preventDefault();
+											event.dataTransfer.dropEffect = "move";
+											const mark = dropMark(event, frame.file);
 
-								if (drop?.file !== mark.file || drop.after !== mark.after) setDrop(mark);
-							}}
-							onDrop={(event) => {
-								setDrop(null);
-								const moving = parseMoving(event.dataTransfer.getData(DRAG_TYPE));
+											if (drop?.file !== mark.file || drop.after !== mark.after) setDrop(mark);
+										}}
+										onDrop={(event) => {
+											setDrop(null);
+											const moving = parseMoving(event.dataTransfer.getData(DRAG_TYPE));
 
-								if (!moving) return;
-								event.preventDefault();
-								dropOn(dropMark(event, frame.file), moving);
-							}}
-							onDragEnd={() => setDrop(null)}
-						/>
-					))
+											if (!moving) return;
+											event.preventDefault();
+											dropOn(dropMark(event, frame.file), moving);
+										}}
+										onDragEnd={() => setDrop(null)}
+									/>
+								))}
+							</div>
+						),
+					)
 				)}
 			</div>
 		</div>
@@ -293,5 +313,18 @@ function ScreenRow({
 				/>
 			) : null}
 		</div>
+	);
+}
+
+function SectionHeader({ section, onSelect }: { section: CanvasSection; onSelect?: (id: string) => void }) {
+	return (
+		<button
+			type="button"
+			onClick={() => onSelect?.(section.id)}
+			className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+		>
+			<span className="size-2 shrink-0 rounded-full" style={{ background: SECTION_COLOR[section.color] }} />
+			<span className="min-w-0 flex-1 truncate">{section.name}</span>
+		</button>
 	);
 }

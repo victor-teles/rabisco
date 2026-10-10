@@ -13,6 +13,7 @@ import {
 	type FrameHit,
 	type FrameMessage,
 	type HostMessage,
+	type LinkOptions,
 	type ModulePayload,
 	type OrderPreview,
 	type SnapshotRaster,
@@ -120,7 +121,7 @@ export class FrameHost {
 	#play = false;
 	/** Re-sent when the frame reloads. */
 	#paused = false;
-	onNavigate: ((to: string) => void) | null = null;
+	onNavigate: ((to: string, options: LinkOptions) => void) | null = null;
 	onEscape: (() => void) | null = null;
 	#requests = new Map<number, (message: FrameMessage | null) => void>();
 	#renderWaiters = new Set<(status: FrameStatus["status"]) => void>();
@@ -332,6 +333,13 @@ export class FrameHost {
 		return reply?.type === "element-boxes" ? reply.boxes : null;
 	}
 
+	async colorAt(x: number, y: number): Promise<string | null> {
+		if (!this.#sentEntry) return null;
+		const reply = await this.#request({ type: "pick-color", id: ++requestId, x, y }, HIT_TEST_TIMEOUT_MS);
+
+		return reply?.type === "picked-color" ? reply.color : null;
+	}
+
 	/** `theme` is the CSS of the applied tokens (`themeCss`) */
 	update(entry: string, files: ProjectFiles, theme: string) {
 		this.#entry = entry;
@@ -398,13 +406,15 @@ export class FrameHost {
 			else if (message.state === "refused") edit.resolve(undefined);
 			else if (message.state === "done") edit.resolve(message.text);
 		} else if (message?.type === "navigate") {
-			if (this.#play && message.to.trim()) this.onNavigate?.(message.to);
+			if (this.#play && message.to.trim())
+				this.onNavigate?.(message.to, { transition: message.transition, mode: message.mode });
 		} else if (
 			message?.type === "measured" ||
 			message?.type === "snapshot" ||
 			message?.type === "lint" ||
 			message?.type === "drop-layout" ||
-			message?.type === "element-boxes"
+			message?.type === "element-boxes" ||
+			message?.type === "picked-color"
 		) {
 			this.#requests.get(message.id)?.(message);
 		} else if (message?.type === "escape") {

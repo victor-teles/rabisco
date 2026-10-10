@@ -42,6 +42,10 @@ export const NEW_CHAT_KEYS = "⇧⌘O";
 
 export const NEW_CHAT_CODE = "KeyO";
 
+export const CHECKPOINT_KEYS = "⌥⌘S";
+
+export const CHECKPOINT_CODE = "KeyS";
+
 export const MAKE_COMPONENT_KEYS = "⌥⌘K";
 
 /** ⌥⌘K (⌃⌥K off macOS), matched on `event.code` since ⌥ changes `event.key` */
