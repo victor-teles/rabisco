@@ -200,15 +200,19 @@ export async function runPlannedCreate(options: PlannedRunOptions): Promise<Plan
 			writes,
 		};
 
+		// One phase step naming the parts; the provider's own steps follow it as they are
+		onEvent(
+			{ type: "status", label: "Writing shared components", detail: list(plan.components.map((c) => c.name)) },
+			1,
+		);
+
 		const shell = await runGeneration({
 			provider: scopedProvider(provider, new Set(writes)),
 			request,
 			projectFiles: files,
 			signal,
 			onEvent: (event, attempt) => {
-				const next = relabel(event, "Writing shared components");
-
-				if (next) onEvent(next, attempt);
+				if (event.type !== "message.delta") onEvent(event, attempt);
 			},
 		});
 

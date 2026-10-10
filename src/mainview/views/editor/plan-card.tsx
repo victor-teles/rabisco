@@ -156,7 +156,7 @@ export function PlanCard({
 			tabIndex={0}
 			onPointerDown={hold}
 			onKeyDown={keys}
-			className="rounded-xl border bg-card/60 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+			className="min-w-0 rounded-xl border bg-card/60 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
 		>
 			<header className="flex min-h-10 items-center gap-2 px-3">
 				<h3 className="font-medium">Plan</h3>
@@ -257,7 +257,7 @@ export function PlanCard({
 			</div>
 
 			<footer className="flex items-center gap-1.5 border-t py-1.5 pr-1.5 pl-3">
-				<span className="truncate text-xs text-subtle-foreground">
+				<span className="min-w-0 truncate text-xs text-subtle-foreground">
 					{!ready
 						? "Tick a screen to generate"
 						: seconds !== null
