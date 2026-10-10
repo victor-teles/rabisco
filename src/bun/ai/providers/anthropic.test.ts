@@ -163,6 +163,15 @@ describe("anthropic provider", () => {
 		expect(plain.at(-1)).toMatchObject({ type: "error", code: "invalid_output" });
 	});
 
+	test("a plan task ends with a text reply and no files", async () => {
+		const block = '```json\n{ "screens": [{ "name": "Home" }] }\n```';
+		const { provider: p } = provider(({ init }) => sseResponse(textEvents(block), init.signal));
+		const plan: GenerationRequest = { ...request, task: "plan", attachments: undefined, history: undefined };
+		const out = await collect(p.generate(plan, new AbortController().signal));
+		expect(out.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("")).toBe(block);
+		expect(out.at(-1)?.type).toBe("done");
+	});
+
 	test("abort stops the stream promptly with aborted", async () => {
 		const controller = new AbortController();
 

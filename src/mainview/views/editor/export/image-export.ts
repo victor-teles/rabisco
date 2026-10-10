@@ -1,8 +1,7 @@
 import { toast } from "sonner";
-import { FrameHost, runtimeUrl, type Snapshot } from "@/lib/render/frame-host";
-import { OFFSTAGE_FRAME_STYLE, offstage } from "@/lib/render/offstage";
+import type { Snapshot } from "@/lib/render/frame-host";
+import { renderOffstage } from "@/lib/render/offstage-render";
 import type { SnapshotRaster } from "@/lib/render/protocol";
-import { themeCss } from "@/lib/render/styles";
 import { api, isDesktop } from "@/lib/rpc";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/export/flow";
@@ -19,54 +18,13 @@ const JPEG_QUALITY = 0.88;
 
 const PARALLEL = 3;
 
-/** Passes to grow a screen whose content grows with it (e.g. `min-h-screen`) */
-const GROW_PASSES = 3;
-
 type Rendered = { frame: Frame; snapshot: Snapshot };
 
 type Failure = { frame: Frame; message: string };
 
-const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
-
 /** Renders in an `offstage()` frame */
-async function renderScreen(
-	frame: Frame,
-	files: ProjectFiles,
-	theme: DesignTokens,
-	raster?: SnapshotRaster,
-): Promise<Snapshot> {
-	const iframe = document.createElement("iframe");
-	iframe.sandbox.add("allow-scripts");
-	iframe.title = `Export ${frame.file}`;
-	iframe.tabIndex = -1;
-	iframe.setAttribute("aria-hidden", "true");
-	iframe.style.cssText = OFFSTAGE_FRAME_STYLE;
-	iframe.style.width = `${frame.width}px`;
-	iframe.style.height = `${frame.height}px`;
-	const host = new FrameHost(iframe);
-
-	try {
-		iframe.src = runtimeUrl();
-		offstage().appendChild(iframe);
-		host.update(frame.file, files, themeCss(theme));
-		await host.whenRendered();
-		let height = frame.height;
-
-		for (let pass = 0; pass < GROW_PASSES; pass++) {
-			const content = await host.measure();
-
-			if (!content || content <= height) break;
-			height = content;
-			iframe.style.height = `${height}px`;
-			await nextFrame();
-		}
-
-		return await host.snapshot(raster);
-	} finally {
-		host.dispose();
-		iframe.remove();
-	}
-}
+const renderScreen = (frame: Frame, files: ProjectFiles, theme: DesignTokens, raster?: SnapshotRaster) =>
+	renderOffstage(frame, files, theme, (host) => host.snapshot(raster));
 
 async function renderAll(
 	frames: Frame[],

@@ -18,3 +18,4 @@ Architecture decision records. Each one states the context, the decision, the ev
 | [0012](./0012-chat-sessions-and-provider-commands.md)    | Chat sessions are files in `chats/`; provider commands are read and expanded by Rabisco                              | accepted |
 | [0013](./0013-custom-tokens-names-in-the-compiler.md)    | Custom tokens use Tailwind namespaces; the compiler gets the names in `@theme reference`, frames get the values      | accepted |
 | [0014](./0014-uai-blocks-in-screens.md)                  | Screens can import uai blocks as `@/components/ui/uai/<name>`; the screen theme carries their extra tokens           | accepted |
+| [0015](./0015-plan-then-screens.md)                      | A create is planned first; its shared components are written before its screens, which then run in parallel          | accepted |

@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test";
 import type { GenerationEvent, GenerationRequest } from "../../../shared/ai/contract";
 import { validateFiles } from "../validate";
 import { elementFocus } from "../../../shared/ai/focus";
-import { createMockProvider, mockProductMd, primaryFamilyOf, restyleElement, restyleForVariation } from "./mock";
+import { parsePlanReply } from "../../../shared/ai/plan";
+import {
+	createMockProvider,
+	mockProductMd,
+	primaryFamilyOf,
+	restyleElement,
+	restyleForVariation,
+	withoutMissingComponents,
+} from "./mock";
 
 const request: GenerationRequest = {
 	id: "g",
@@ -52,6 +60,17 @@ describe("mock provider", () => {
 				{},
 			),
 		).toEqual([]);
+	});
+
+	test("a tablet request streams tablet screens", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate({ ...request, device: "tablet" }, new AbortController().signal),
+		);
+
+		const starts = events.filter((e) => e.type === "file.start" && e.kind === "screen");
+		expect(starts.length).toBeGreaterThan(0);
+
+		for (const start of starts) expect(start).toMatchObject({ screen: { device: "tablet" } });
 	});
 
 	test("respects existing files", async () => {
@@ -212,6 +231,35 @@ describe("mock theme task", () => {
 		expect(events.at(-1)?.type).toBe("done");
 		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
 		expect(reply).toBe("## Tokens\n\n- background: #ffffff\n- primary: #0052ff\n");
+	});
+});
+
+describe("mock plan task", () => {
+	test("replies with a plan of its own drafts, and writes no file", async () => {
+		const plan: GenerationRequest = { ...request, task: "plan", projectScreens: ["screens/home.tsx"] };
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(plan, new AbortController().signal));
+		expect(events.some((e) => e.type.startsWith("file."))).toBe(false);
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		const parsed = parsePlanReply(reply, {})!;
+		expect(parsed.screens.map((s) => s.path)).toEqual([
+			"screens/welcome.tsx",
+			"screens/home-2.tsx",
+			"screens/details.tsx",
+		]);
+		expect(parsed.components.map((c) => c.name)).toEqual(["StatCard", "TabBar"]);
+		expect(parsed.links[0]).toEqual({ from: "screens/welcome.tsx", to: "screens/home-2.tsx", label: "Continue" });
+	});
+
+	test("a planned screen drops the components that weren't written", () => {
+		const source = `import { Flame } from "lucide-react";\nimport { StatCard } from "../components/stat-card";\nimport { TabBar } from "../components/tab-bar";\n\nexport default function A() {\n\treturn (\n\t\t<div>\n\t\t\t<StatCard label="A" icon={Flame} />\n\t\t\t<TabBar active={0} />\n\t\t</div>\n\t);\n}\n`;
+		const out = withoutMissingComponents(source, new Set(["components/stat-card.tsx"]));
+		expect(out).toContain("StatCard");
+		expect(out).not.toContain("TabBar");
+		expect(
+			validateFiles([{ path: "screens/a.tsx", content: out }], {
+				"components/stat-card.tsx": "export function StatCard() { return null }",
+			}),
+		).toEqual([]);
 	});
 });
 

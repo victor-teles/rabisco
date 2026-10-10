@@ -1,7 +1,7 @@
 // Decision 0003. Chunks may split anything anywhere, tag names included; providers emit `done`/`error`.
 
 import type { FileKind, GenerationEvent, ScreenMeta } from "../../shared/ai/contract";
-import { screenNameFromPath, toKebab } from "../../shared/project";
+import { isDevice, screenNameFromPath, toKebab } from "../../shared/project";
 
 const OPEN = "<rabisco-file";
 
@@ -156,7 +156,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 
 			const device = attrs.device;
 
-			if (device === "mobile" || device === "desktop") screen.device = device;
+			if (isDevice(device)) screen.device = device;
 			events.push({ type: "file.start", path, kind, screen });
 		} else {
 			events.push({ type: "file.start", path, kind });

@@ -19,6 +19,7 @@ import {
 	runThemeReading,
 	type BuildRequestParams,
 } from "./run";
+import { buildPlanRequest, runPlannedCreate, runPlanReading } from "./plan-run";
 import { variantProvider } from "./variant-provider";
 import { createSettingsStore, type NewProvider, type ProviderPatch, type Detected } from "./settings-store";
 
@@ -256,9 +257,40 @@ export function createAiService(options: AiServiceOptions) {
 				)
 					history.pop();
 
+				if (params.task === "plan") {
+					const request = buildPlanRequest({
+						id: params.generationId,
+						model: resolved.model,
+						prompt,
+						device: params.device,
+						projectFiles,
+						attachments: params.attachments,
+						history: history.slice(-HISTORY_TURNS),
+					});
+
+					const reading = await runPlanReading({
+						provider: resolved.provider,
+						request,
+						projectFiles,
+						signal: controller.signal,
+						onEvent: (event) => options.send({ generationId: params.generationId, attempt: 1, event }),
+					});
+
+					return {
+						ok: true,
+						changes: [],
+						frames: [],
+						reply: "",
+						problems: [],
+						usage: reading.usage,
+						context: contextFilesOf(request),
+						plan: reading.plan,
+					};
+				}
+
 				const task = taskOf(params);
 
-				const request = buildGenerationRequest({
+				const buildParams: BuildRequestParams = {
 					id: params.generationId,
 					task,
 					prompt: vary ? varyPrompt(prompt) : prompt,
@@ -271,7 +303,22 @@ export function createAiService(options: AiServiceOptions) {
 					attachments: params.attachments,
 					history: history.slice(-HISTORY_TURNS),
 					theme: readCanvas(params.projectPath)?.theme,
-				});
+				};
+
+				const request = buildGenerationRequest(buildParams);
+
+				if (task === "create" && params.plan && clampVariations(params.variations) === 1) {
+					const planned = await runPlannedCreate({
+						provider: resolved.provider,
+						build: buildParams,
+						plan: params.plan,
+						projectFiles,
+						signal: controller.signal,
+						onEvent: (event, attempt) => options.send({ generationId: params.generationId, attempt, event }),
+					});
+
+					return { ok: true, ...planned, context: contextFilesOf(request) };
+				}
 
 				if (params.task === "repair") Object.assign(request, { task: "repair", problems: params.problems ?? [] });
 

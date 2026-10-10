@@ -1842,7 +1842,7 @@ const FrameView = memo(function FrameView({
 			<div
 				className={cn(
 					"h-full w-full overflow-hidden bg-white",
-					frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+					frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
 				)}
 				style={{
 					boxShadow: selected
@@ -1867,7 +1867,7 @@ const FrameView = memo(function FrameView({
 				<div
 					className={cn(
 						"pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/frame:opacity-100",
-						frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+						frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
 					)}
 					style={{
 						boxShadow: "0 0 0 calc(1.5px * var(--unzoom)) color-mix(in oklab, var(--primary) 70%, transparent)",
@@ -1878,7 +1878,7 @@ const FrameView = memo(function FrameView({
 				<div
 					className={cn(
 						"pointer-events-none absolute inset-0 bg-primary/5",
-						frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+						frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
 					)}
 					style={{ boxShadow: "0 0 0 calc(2px * var(--unzoom)) var(--primary)" }}
 				/>
@@ -2180,7 +2180,7 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 			<div
 				className={cn(
 					"pointer-events-none absolute bg-destructive/5",
-					frame.device === "mobile" ? "rounded-[28px]" : "rounded-md",
+					frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
 				)}
 				style={{
 					left: frame.x,

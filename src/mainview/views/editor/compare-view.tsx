@@ -47,7 +47,7 @@ function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 			picked,
 			width: size.width,
 			height: size.height,
-			radius: frame?.device === "mobile" ? 28 : 6,
+			radius: frame?.device === "desktop" ? 6 : 28,
 		};
 	});
 }

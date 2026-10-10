@@ -14,7 +14,7 @@ hutch run dev         # build the UI and launch the app, rebuilding on changes
 hutch run dev:hmr     # same, but with the Vite dev server and hot reload
 ```
 
-Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`.
+Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`, `hutch run bench:gen` (the generation eval, see [bench/gen](bench/gen/README.md)).
 
 The UI also runs in a plain browser: `hutch run hmr`, then open http://localhost:5173. Outside Electrobun the RPC layer falls back to localStorage.
 
@@ -60,6 +60,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘\`                                                   | Show or hide the chat and screens panel                                      |
 | `⇧⌘O`                                                   | New chat                                                                     |
 | `/` in the chat                                         | Chat commands: Rabisco's own and your CLI's commands                         |
+| `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                |
 | Double-click the title bar                              | Zoom the window (follows the macOS setting)                                  |
 | `⌥C`                                                    | Comments list                                                                |
 | `⌘C`, `⌘V`                                              | Copy the selected screens, paste screens or screen code as new screens       |

@@ -64,6 +64,7 @@ import {
 	type ThemeUpdate,
 	type TokenChange,
 } from "../../../shared/context/theme";
+import { lacksDesignDirection, styleById, withStyle, type StyleId } from "../../../shared/context/styles";
 import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { designTokensOf } from "../../../shared/context/tokens";
 import { LINK_ATTRIBUTE } from "../../../shared/prototype/links";
@@ -91,15 +92,19 @@ import { ActionMenuItems, type MenuEntry, SEPARATOR } from "./action-menu";
 import { ELEMENT_MENU, elementActions } from "./element-actions";
 import { copyCode } from "./export/code-export";
 import { copyImage, exportFlowPdf, exportImages } from "./export/image-export";
+import { checkDesign, type ScreenCheck } from "./design-check";
+import { DesignCheckDialog } from "./design-check-dialog";
 import { ShareButton } from "./export/share-button";
 import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { CustomSizeDialog } from "./custom-size-dialog";
+import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
 import { ScreensPanel } from "./screens-panel";
 import { ChatSessions } from "./chat-sessions";
+import { PlanCard } from "./plan-card";
 import { SidePanel, useSidePanel } from "./side-panel";
 import {
 	ALIGN_SHORTCUTS,
@@ -185,9 +190,11 @@ export function EditorView({
 	/** By its base path */
 	const [compareBase, setCompareBase] = useState<string | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
+	const [designChecks, setDesignChecks] = useState<ScreenCheck[] | null>(null);
 	/** The screen whose name field in the inspector takes focus */
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const [paletteOpen, setPaletteOpen] = useState(false);
+	const [styleDialogOpen, setStyleDialogOpen] = useState(false);
 	const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
 	const commands = useChatCommands(projectPath);
 	const [sheetOpen, setSheetOpen] = useState(false);
@@ -208,6 +215,8 @@ export function EditorView({
 	const appliedTokens = project?.canvas.theme ?? NO_TOKENS;
 	const design = files["DESIGN.md"];
 	const loaded = project !== null;
+	/** A project opened from a folder can start DESIGN.md from a style, like a new one from Home */
+	const canStartStyle = loaded && lacksDesignDirection(design);
 
 	const themeUpdate = useMemo(
 		() => (loaded ? themeUpdateOf(appliedTokens, design) : null),
@@ -266,6 +275,9 @@ export function EditorView({
 		regenerate,
 		lastRun,
 		undoRun,
+		pendingPlan,
+		acceptPlan,
+		cancelPlan,
 	} = useGeneration({
 		projectPath,
 		stateRef,
@@ -650,6 +662,29 @@ export function EditorView({
 		[change],
 	);
 
+	/** One undo step that writes DESIGN.md and re-themes the screens; picking a style is the request to apply it */
+	const startFromStyle = useCallback(
+		(id: StyleId) => {
+			if (!lacksDesignDirection(stateRef.current?.files["DESIGN.md"])) return;
+			change((snapshot) => withStyle(snapshot, id));
+			const step = stateRef.current?.history.present;
+
+			toast(`Started DESIGN.md from the ${styleById(id).label} style`, {
+				id: "start-style",
+				action: {
+					label: "Undo",
+					onClick: () => {
+						// Only while the style is the latest step: a later edit would be undone instead
+						if (stateRef.current?.history.present !== step)
+							return void toast("Other edits came after the style", { description: "Press ⌘Z to step back to it." });
+						undo();
+					},
+				},
+			});
+		},
+		[stateRef, change, undo],
+	);
+
 	/** One undo step; the bar then shows what changed */
 	const applyReadTheme = useCallback(
 		(theme: AppliedTheme) => {
@@ -915,6 +950,22 @@ export function EditorView({
 	const singleGroup = single ? groups.find((group) => group.base === baseOf(single.file)) : undefined;
 	const scopedExport: ExportContext = { ...exportContext, selected, selectedComponent: null };
 
+	/** Renders the selected screens (else all) offstage, so it works at any zoom */
+	const runDesignCheck = async () => {
+		const id = toast.loading("Checking screens…");
+
+		try {
+			const results = await checkDesign({ frames, selected, files, theme: appliedTokens }, (done, total) => {
+				if (total > 1) toast.loading(`Checking screens… ${done} of ${total}`, { id });
+			});
+
+			toast.dismiss(id);
+			setDesignChecks(results);
+		} catch (error) {
+			toast.error("Design check failed", { id, description: error instanceof Error ? error.message : String(error) });
+		}
+	};
+
 	const toggleTab = (next: InspectorTab) => setTab((current) => (current === next ? "design" : next));
 
 	const screenContext: ScreenActionsContext = {
@@ -1039,6 +1090,20 @@ export function EditorView({
 			chords: [{ key: "Enter", mod: true, alt: true }],
 			enabled: frames.length > 0,
 			run: startPlay,
+		},
+		{
+			id: "check-design",
+			label: "Check design",
+			group: "Screen",
+			enabled: frames.length > 0,
+			run: () => void runDesignCheck(),
+		},
+		{
+			id: "start-style",
+			label: "Start from a style…",
+			group: "Screen",
+			enabled: canStartStyle,
+			run: () => setStyleDialogOpen(true),
 		},
 		{
 			id: "export-png",
@@ -1719,6 +1784,18 @@ export function EditorView({
 								onCancelInterview={cancelInterview}
 								commands={commands}
 								onRunCommand={onRunCommand}
+								onPickStyle={canStartStyle ? startFromStyle : null}
+								planCard={
+									pendingPlan ? (
+										<PlanCard
+											key={pendingPlan.id}
+											plan={pendingPlan.plan}
+											files={files}
+											onGenerate={acceptPlan}
+											onCancel={cancelPlan}
+										/>
+									) : null
+								}
 							/>
 						}
 						chatActions={
@@ -1873,7 +1950,11 @@ export function EditorView({
 					/>
 				</div>
 			</div>
+			{designChecks && (
+				<DesignCheckDialog results={designChecks} onSelect={selectElement} onClose={() => setDesignChecks(null)} />
+			)}
 			<CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} actions={actions} />
+			<StyleDialog open={styleDialogOpen && canStartStyle} onOpenChange={setStyleDialogOpen} onPick={startFromStyle} />
 			<ShortcutSheet open={sheetOpen} onOpenChange={setSheetOpen} actions={actions} />
 			<CustomSizeDialog />
 		</ScreenTheme>

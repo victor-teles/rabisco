@@ -1,4 +1,5 @@
-import type { ElementFocus, GenerationRequest } from "../../shared/ai/contract";
+import type { ElementFocus, GenerationPlan, GenerationRequest } from "../../shared/ai/contract";
+import { PLAN_LIMITS } from "../../shared/ai/plan";
 import { FILE_RULES } from "../../shared/ai/contract";
 import { contextBody } from "../../shared/context/body";
 import { FRAME_SIZE } from "../../shared/project";
@@ -8,7 +9,7 @@ import { stagedAttachments } from "./attachments";
 import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 11;
+export const PROMPT_VERSION = 13;
 
 export type PromptMode = "text" | "agent";
 
@@ -36,6 +37,14 @@ const frameOf = (request: GenerationRequest) => {
 	return `${request.device}, ${width}×${height} px`;
 };
 
+/** Without its own note a tablet screen comes out as a phone layout stretched to 834 px */
+const DEVICE_NOTES: Record<GenerationRequest["device"], string> = {
+	mobile: " Leave about 48px at the top for the status bar.",
+	tablet:
+		" Leave about 24px at the top for the status bar. Use the width: a sidebar or a list beside its detail, two-column grids and forms, 32px page padding. Never a single phone-width column stretched across the frame.",
+	desktop: "",
+};
+
 const ROLE = `You are the design engine of Rabisco, a design canvas. You design app screens as React + Tailwind CSS v4 TSX files. Each screen renders live in a fixed-size frame on the canvas, like a static mockup that is real code.`;
 
 const DESIGN_RULES = `# Design
@@ -51,7 +60,7 @@ const DESIGN_RULES = `# Design
 const FILE_RULES_TEXT = (request: GenerationRequest) => `# Files
 - Screens: screens/<kebab-name>.tsx. Components: components/<kebab-name>.tsx. Lowercase letters, digits and hyphens only. No other files, except the target of a context task.
 - A screen default-exports one component: \`export default function OrderHistory() {…}\`. Its root fills the frame: \`h-full\` for app layouts with fixed bars (content area scrolls with overflow-y-auto), \`min-h-full\` for pages that grow.
-- The frame is ${frameOf(request)}. Design for exactly that size; never set a root width.${request.device === "mobile" ? " Leave about 48px at the top for the status bar." : ""}
+- The frame is ${frameOf(request)}. Design for exactly that size; never set a root width.${DEVICE_NOTES[request.device]}
 - Components use named exports only (\`export function StatCard…\`), never default exports.
 - Imports allowed: react, lucide-react, @/lib/utils (\`cn\`), the @/components/ui modules below, and project components as \`../components/<kebab-name>\` (same form from screens and components, no extension). Nothing else: no other packages.
 - Keep every \`data-link-to\` attribute when you edit a file: it is a prototype link (\`data-link-to="screens/<name>.tsx"\` or \`"back"\`). To add navigation, put \`data-link-to\` with the target screen's path on the clickable element.
@@ -159,11 +168,40 @@ Map the document's own names onto these by meaning. No other names.
 - Keep each text color readable on its fill (foreground on background, primary-foreground on primary, every -foreground pair): at least 4.5:1 contrast. When the document gives no text color for a fill, use white or near-black, whichever reads better.
 - Don't write, edit or delete any file: DESIGN.md stays as it is. Everything you need is in the request.`;
 
+const PLAN_ROLE = `You plan app flows for Rabisco, a design canvas. Before any screen is designed, you decide which screens a request needs, the parts they share, and how they link. Each screen is then written separately, in parallel, from your plan.`;
+
+const PLAN_RULES = `# Output
+Reply with only one JSON block in a \`\`\`json fence, in this shape, and nothing else:
+
+\`\`\`json
+{
+	"screens": [
+		{ "path": "screens/home.tsx", "name": "Home", "purpose": "Today's habits and the streak.", "content": "greeting, streak card, 4 habit rows, tab bar" },
+		{ "path": "screens/habit-detail.tsx", "name": "Habit detail", "purpose": "One habit's history.", "content": "header with back, 30-day grid, notes" }
+	],
+	"components": [
+		{ "path": "components/tab-bar.tsx", "name": "TabBar", "purpose": "Bottom navigation with Today, Stats and Profile; takes the active tab.", "usedBy": ["screens/home.tsx"] },
+		{ "path": "components/habit-row.tsx", "name": "HabitRow", "purpose": "A habit's icon, name, streak and check button.", "usedBy": ["screens/home.tsx", "screens/habit-detail.tsx"] }
+	],
+	"links": [
+		{ "from": "screens/home.tsx", "to": "screens/habit-detail.tsx", "label": "A habit row" }
+	]
+}
+\`\`\`
+
+# Rules
+- screens: the screens the request needs, in the order of the flow. Usually 2 to 4, at most ${PLAN_LIMITS.screens}; exactly 1 when the request asks for one screen. path is screens/<kebab-name>.tsx and must not be an existing screen. name is a short title. purpose is one line. content lists the key content in a few words.
+- components: the parts that 2 or more screens share and that must look the same on each: navigation (tab bar, sidebar, top bar), a screen header, a list row, a summary card. At most ${PLAN_LIMITS.components}, and none for a single screen. path is components/<kebab-name>.tsx; name is its PascalCase export. Never plan a part the project components already cover: the screens import those. usedBy lists the paths of the screens that use it.
+- links: how the user moves between the screens. from is a planned screen; to is a planned or existing screen; label names the control (a button, a row, a tab).
+- Plain words in purpose and content; no code. Don't write, edit or delete any file: everything you need is in the request.`;
+
 const contextFileOf = (request: GenerationRequest) =>
 	request.targets?.find((path) => FILE_RULES.paths.context.test(path));
 
 export function systemPrompt(request: GenerationRequest, mode: PromptMode): string {
 	if (request.task === "theme") return [THEME_ROLE, THEME_RULES].join("\n\n");
+
+	if (request.task === "plan") return [PLAN_ROLE, PLAN_RULES].join("\n\n");
 
 	const output = mode === "text" ? TEXT_PROTOCOL_RULES.replace("DEVICE", request.device) : AGENT_RULES;
 	const target = contextFileOf(request);
@@ -179,6 +217,7 @@ function taskText(request: GenerationRequest, mode: PromptMode): string {
 
 	switch (request.task) {
 		case "create": {
+			if (request.plan && request.writes?.length) return plannedTaskText(request, request.plan, request.writes, mode);
 			const existing = request.files.map((file) => file.path).filter((path) => path.startsWith("screens/"));
 			const taken = existing.length ? ` Existing screens (pick other paths): ${existing.join(", ")}.` : "";
 
@@ -199,7 +238,63 @@ function taskText(request: GenerationRequest, mode: PromptMode): string {
 			return contextTaskText(request, mode);
 		case "theme":
 			return `Task: theme. Read the theme of the DESIGN.md above and reply with its "## Tokens" block${mode === "agent" ? ", as text. Don't write any file" : ""}.`;
+		case "plan": {
+			const screens = request.projectScreens?.length
+				? ` Existing screens (pick other paths; links may point at them): ${request.projectScreens.join(", ")}.`
+				: "";
+
+			return `Task: plan. Plan the ${frameOf(request)} screens for the request below, their shared components and the links between them.${screens} Reply with the JSON block${mode === "agent" ? " as text. Don't write any file" : ""}.`;
+		}
 	}
+}
+
+/** The accepted plan, in every run that follows it */
+export function planText(plan: GenerationPlan): string {
+	const screens = plan.screens.map(
+		(screen) =>
+			`- ${screen.path} · "${screen.name}": ${screen.purpose}${screen.content ? ` Content: ${screen.content}.` : ""}`,
+	);
+
+	const components = plan.components.map(
+		(component) =>
+			`- ${component.path} · ${component.name}: ${component.purpose}${component.usedBy.length ? ` Used by ${component.usedBy.join(", ")}.` : ""}`,
+	);
+
+	const links = plan.links.map((link) => `- ${link.from} → ${link.to}${link.label ? ` (${link.label})` : ""}`);
+
+	return [
+		"# Plan\nThe user accepted this plan for the flow. Follow it: the same screens, names, shared parts and links.",
+		`Screens:\n${screens.join("\n")}`,
+		components.length ? `Shared components:\n${components.join("\n")}` : "",
+		links.length ? `Links:\n${links.join("\n")}` : "",
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
+/** Shared components first, in one run; then one run per screen, in parallel, importing them */
+function plannedTaskText(request: GenerationRequest, plan: GenerationPlan, writes: string[], mode: PromptMode) {
+	const screen = plan.screens.find((s) => writes.includes(s.path));
+
+	if (!screen) {
+		return `Task: create. Write the plan's shared components, and only these files:
+${writes.map((path) => `- ${path}`).join("\n")}
+No screens: they are written next, in parallel, and each one imports these. Give every component the props its screens need (the active tab, a title, actions), with defaults, so each screen can use it as it is. Named exports only.`;
+	}
+
+	const shared = plan.components.length
+		? ` Import the shared components (${plan.components.map((c) => c.name).join(", ")}, under "# Project components") for the parts they cover, and never rebuild their markup: they must look the same on every screen.`
+		: "";
+
+	const links = plan.links.filter((link) => link.from === screen.path);
+
+	const linkText = links.length
+		? `\nAdd these links with data-link-to on the clickable element:\n${links.map((link) => `- ${link.label || "a control"} → data-link-to="${link.to}"`).join("\n")}`
+		: "";
+
+	const meta = mode === "text" ? ` with name="${screen.name}"` : "";
+
+	return `Task: create. Write exactly one file: ${screen.path}${meta}, the "${screen.name}" screen of the plan (${frameOf(request)}). The plan's other screens are written at the same time by separate runs.${shared} Don't write or change any other file; keep small helpers inside the screen file.${linkText}`;
 }
 
 function contextTaskText(request: GenerationRequest, mode: PromptMode): string {
@@ -348,13 +443,17 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 	if (components) parts.push(components);
 
 	const tokens =
-		request.task === "context" || request.task === "theme" || !request.theme ? null : themeTokensText(request.theme);
+		request.task === "context" || request.task === "theme" || request.task === "plan" || !request.theme
+			? null
+			: themeTokensText(request.theme);
 
 	if (tokens) parts.push(tokens);
 
 	const attachments = attachmentsText(request, mode);
 
 	if (attachments) parts.push(attachments);
+
+	if (request.plan && request.task !== "plan") parts.push(planText(request.plan));
 
 	parts.push(taskText(request, mode));
 	const focus = focusText(request, mode);

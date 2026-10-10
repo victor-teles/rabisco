@@ -28,7 +28,7 @@ const one = (path: string, content: string, files: Record<string, string> = proj
 
 describe("validateFiles", () => {
 	test("mock generator output is valid", () => {
-		for (const device of ["mobile", "desktop"] as const) {
+		for (const device of ["mobile", "tablet", "desktop"] as const) {
 			const result = generateMockScreens({ prompt: "A habit tracker", device });
 			const files = result.changes.map((c) => ({ path: c.path, content: c.content! }));
 			expect(validateFiles(files, {})).toEqual([]);

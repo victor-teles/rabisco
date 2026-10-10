@@ -7,4 +7,5 @@ artifacts/
 *.tsbuildinfo
 .DS_Store
 bench/compile/generated/
+bench/gen/runs/
 src/mainview/public/runtime/

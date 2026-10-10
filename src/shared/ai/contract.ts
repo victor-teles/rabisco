@@ -57,7 +57,9 @@ export type GenerationTask =
 	/** Write PRODUCT.md or DESIGN.md (the one path in `targets`) */
 	| "context"
 	/** Read the theme tokens from `context.design`; the reply holds them, and no file is written (decision 0009) */
-	| "theme";
+	| "theme"
+	/** Plan the screens and shared components of a `create`; the reply holds the plan, and no file is written (decision 0015) */
+	| "plan";
 
 export type ProjectFile = {
 	/** Project-relative, forward slashes */
@@ -83,6 +85,42 @@ export type ComponentSignature = {
 	/** e.g. `StatCard({ label: string; tone?: "default" | "success" = "default" })` */
 	signature: string[];
 	usedBy?: string[];
+};
+
+export type PlannedScreen = {
+	/** `screens/<kebab>.tsx`, new in the project */
+	path: string;
+	name: string;
+	/** One line */
+	purpose: string;
+	/** The key content, in a few words */
+	content: string;
+};
+
+export type PlannedComponent = {
+	/** `components/<kebab>.tsx`, new in the project */
+	path: string;
+	/** The PascalCase export */
+	name: string;
+	purpose: string;
+	/** Planned screen paths */
+	usedBy: string[];
+};
+
+export type PlannedLink = {
+	/** A planned screen */
+	from: string;
+	/** A planned or existing screen */
+	to: string;
+	/** The control that links, e.g. "Continue" */
+	label: string;
+};
+
+/** What a `create` makes, before any file is written (decision 0015) */
+export type GenerationPlan = {
+	screens: PlannedScreen[];
+	components: PlannedComponent[];
+	links: PlannedLink[];
 };
 
 export type ElementFocus = {
@@ -136,6 +174,15 @@ export type GenerationRequest = {
 
 	/** Oldest first */
 	history?: { role: "user" | "assistant"; content: string }[];
+
+	/** A `create` that follows an accepted plan; `writes` says which of its files this run makes. */
+	plan?: GenerationPlan;
+
+	/** With `plan`: the only paths this run writes. Rabisco drops writes to other paths. */
+	writes?: string[];
+
+	/** `plan` task: the project's screens, so new paths don't collide and links can point at them */
+	projectScreens?: string[];
 };
 
 export type FileKind = "screen" | "component" | "context";

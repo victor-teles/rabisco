@@ -2,12 +2,19 @@ import type { ScreenMeta } from "./ai/contract";
 import { detachComments } from "./comments";
 import type { AppliedTheme } from "./context/theme";
 import { designTokensOf } from "./context/tokens";
+import type { Json } from "./json";
 import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenCover, ScreenSource } from "./types";
 
 export const FRAME_SIZE = {
 	mobile: { width: 390, height: 844 },
+	/** iPad Pro 11″, portrait */
+	tablet: { width: 834, height: 1194 },
 	desktop: { width: 1280, height: 800 },
 } as const satisfies Record<Device, { width: number; height: number }>;
+
+/** Anything else falls back to the caller's default, so files from a newer or older app still load */
+export const isDevice = (value: Json | undefined): value is Device =>
+	value === "mobile" || value === "tablet" || value === "desktop";
 
 export const FRAME_GAP = 120;
 

@@ -162,6 +162,17 @@ describe("text protocol parser", () => {
 		]);
 	});
 
+	test("keeps known devices and drops unknown ones", () => {
+		const { events } = run([
+			'<rabisco-file path="screens/a.tsx" device="tablet">x</rabisco-file><rabisco-file path="screens/b.tsx" device="watch">y</rabisco-file>',
+		]);
+
+		expect(events.filter((e) => e.type === "file.start")).toEqual([
+			{ type: "file.start", path: "screens/a.tsx", kind: "screen", screen: { name: "A", device: "tablet" } },
+			{ type: "file.start", path: "screens/b.tsx", kind: "screen", screen: { name: "B" } },
+		]);
+	});
+
 	test("a file still open at the end is truncated", () => {
 		const parser = createTextProtocolParser();
 		const events = [...parser.push('<rabisco-file path="screens/a.tsx">\nconst a = 1;\nconst b'), ...parser.end()];

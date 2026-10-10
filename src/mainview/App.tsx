@@ -31,9 +31,9 @@ export default function App() {
 	// useProject resets the Tailwind build with the project's candidates once its files load
 	const openEditor = (next: Extract<Route, { view: "editor" }>) => setRoute(next);
 
-	const startDesign: StartDesign = async ({ prompt, device, files, variations }) => {
+	const startDesign: StartDesign = async ({ prompt, device, files, variations, style }) => {
 		try {
-			const project = await api.createProject({ name: projectNameFromPrompt(prompt), device });
+			const project = await api.createProject({ name: projectNameFromPrompt(prompt), device, style });
 			openEditor({
 				view: "editor",
 				projectPath: project.path,

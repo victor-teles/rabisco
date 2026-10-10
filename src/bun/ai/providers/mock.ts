@@ -1,4 +1,11 @@
-import type { ElementFocus, GenerationEvent, GenerationRequest, Provider } from "../../../shared/ai/contract";
+import type {
+	ElementFocus,
+	GenerationEvent,
+	GenerationPlan,
+	GenerationRequest,
+	Provider,
+} from "../../../shared/ai/contract";
+import { pascalName, planBlock } from "../../../shared/ai/plan";
 import { tokenBlock } from "../../../shared/context/theme";
 import { GENERATION_STEPS, generateMockScreens, mockThemeTokens } from "../../../shared/mock-generator";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
@@ -41,6 +48,8 @@ const sleep = (ms: number, signal: AbortSignal) =>
 
 const THEME_STEPS = ["Reading DESIGN.md", "Mapping colors to theme tokens"];
 
+const PLAN_STEPS = ["Reading your brief", "Planning screens and shared parts"];
+
 /** Development only. */
 export function createMockProvider(options: MockProviderOptions = {}): Provider {
 	const delay = options.delayMs ?? 300;
@@ -68,6 +77,20 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 			return;
 		}
 
+		if (request.task === "plan") {
+			for (const label of PLAN_STEPS) {
+				if (signal.aborted) return yield aborted;
+				yield { type: "status", label };
+				await sleep(delay * 2, signal);
+			}
+
+			if (signal.aborted) return yield aborted;
+			yield { type: "message.delta", text: planBlock(mockPlan(request)) };
+			yield { type: "done", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+
+			return;
+		}
+
 		const images = request.attachments?.length ?? 0;
 
 		if (images) yield { type: "status", label: `Looking at ${images === 1 ? "the image" : `${images} images`}` };
@@ -89,9 +112,11 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 
 		const result: { changes: FileChange[]; frames: { file: string; name: string }[]; reply: string } = target
 			? mockContextFile(request, target)
-			: edits.length
-				? mockEdit(request, edits)
-				: mockCreate(request);
+			: request.plan && request.writes
+				? mockPlanned(request, request.plan, request.writes)
+				: edits.length
+					? mockEdit(request, edits)
+					: mockCreate(request);
 
 		const seen = images ? `I used the attached ${images === 1 ? "image" : "images"} as a reference. ` : "";
 		yield { type: "message.delta", text: seen + result.reply };
@@ -203,6 +228,109 @@ function mockCreate(request: GenerationRequest) {
 	);
 
 	return { ...result, changes };
+}
+
+/** The mock's own screens for the prompt, as a plan: its drafts, the components they import, and a forward flow */
+export function mockPlan(request: GenerationRequest): GenerationPlan {
+	const result = generateMockScreens({
+		prompt: request.prompt,
+		device: request.device,
+		existingFiles: [...(request.projectScreens ?? []), ...(request.components ?? []).map((c) => c.path)],
+	});
+
+	const screens = result.frames.map((frame) => ({
+		path: frame.file,
+		name: frame.name,
+		purpose: `The ${frame.name.toLowerCase()} step of the flow.`,
+		content: request.prompt.trim().slice(0, 80) || frame.name,
+	}));
+
+	const sources = result.changes.flatMap((change) =>
+		change.content !== null && isScreenFile(change.path) ? [{ path: change.path, content: change.content }] : [],
+	);
+
+	const components = result.changes.flatMap((change) => {
+		if (change.content === null || isScreenFile(change.path)) return [];
+		const module = `../${change.path.replace(/\.tsx$/, "")}"`;
+		const usedBy = sources.flatMap((source) => (source.content.includes(module) ? [source.path] : []));
+
+		return [
+			{ path: change.path, name: pascalName(change.path), purpose: "Shared by the screens that use it.", usedBy },
+		];
+	});
+
+	const links = screens
+		.slice(1)
+		.map((screen, index) => ({ from: screens[index]!.path, to: screen.path, label: "Continue" }));
+
+	return { screens, components, links };
+}
+
+/** A run of an accepted plan: only the files in `writes`, each from the mock's drafts or a plain stand-in */
+function mockPlanned(request: GenerationRequest, plan: GenerationPlan, writes: string[]) {
+	const drafts = generateMockScreens({ prompt: request.prompt, device: request.device });
+
+	const draftScreens = drafts.frames.map((frame) => ({
+		name: frame.name.toLowerCase(),
+		source: drafts.changes.find((c) => c.path === frame.file)?.content ?? "",
+	}));
+
+	const available = new Set([...request.files.map((f) => f.path), ...(request.components ?? []).map((c) => c.path)]);
+
+	const changes = writes.map((path) => {
+		const at = plan.screens.findIndex((screen) => screen.path === path);
+
+		if (at === -1) {
+			const draft = drafts.changes.find((change) => change.path === path)?.content;
+			const name = plan.components.find((component) => component.path === path)?.name ?? pascalName(path);
+
+			return { path, content: draft ?? standInComponent(name || "Part") };
+		}
+
+		// The draft of the same name, so a screen keeps its look when others are unticked; else by position
+		const name = plan.screens[at]!.name.toLowerCase();
+		const source = (draftScreens.find((d) => d.name === name) ?? draftScreens[at % draftScreens.length])?.source ?? "";
+		const link = plan.links.find((l) => l.from === path);
+
+		return { path, content: linkFirstButton(withoutMissingComponents(source, available), link?.to) };
+	});
+
+	const frames = plan.screens.flatMap((screen) =>
+		writes.includes(screen.path) ? [{ file: screen.path, name: screen.name }] : [],
+	);
+
+	return { changes, frames, reply: `Wrote ${writes.join(", ")}.` };
+}
+
+function standInComponent(name: string) {
+	return `export function ${name}({ title = "${name}" }: { title?: string }) {
+	return <div className="rounded-lg border bg-card p-4 text-sm font-medium">{title}</div>;
+}
+`;
+}
+
+/** Drops imports of project components that weren't written, and their (self-closing) elements */
+export function withoutMissingComponents(source: string, available: ReadonlySet<string>) {
+	let out = source;
+
+	for (const match of source.matchAll(/^import \{ ([A-Za-z, ]+) \} from "\.\.\/(components\/[a-z0-9-]+)";\n/gm)) {
+		if (available.has(`${match[2]}.tsx`)) continue;
+		out = out.replace(match[0], "");
+
+		for (const name of match[1]!.split(",").map((n) => n.trim())) {
+			out = out.replace(new RegExp(`\\s*<${name}\\b[^>]*/>`, "g"), "");
+		}
+	}
+
+	return out;
+}
+
+/** The planned link goes on the first button, else the first card */
+function linkFirstButton(source: string, to: string | undefined) {
+	if (!to) return source;
+	const tag = /<Button\b/.test(source) ? "Button" : "Card";
+
+	return source.replace(new RegExp(`<${tag}\\b`), `<${tag} data-link-to="${to}"`);
 }
 
 /** Added when restyling changes nothing, so the edit still shows */

@@ -133,6 +133,25 @@ describe("project files", () => {
 		expect(normalizeCanvas(withComments, "x").comments).toEqual([{ id: "1", x: 1, y: 2, text: "Hi", createdAt: "t" }]);
 	});
 
+	test("tablet canvases and frames load at the tablet size; unknown devices fall back", () => {
+		const frame = { file: "screens/home.tsx", x: 0, y: 0 };
+		const tablet = normalizeCanvas({ version: 1, name: "Pad", device: "tablet", frames: [frame] }, "x");
+		expect(tablet.device).toBe("tablet");
+		expect(tablet.frames[0]).toMatchObject({ device: "tablet", width: 834, height: 1194 });
+
+		const old = normalizeCanvas({ version: 1, name: "Old", frames: [{ ...frame, device: "desktop" }] }, "x");
+		expect(old.device).toBe("mobile");
+		expect(old.frames[0]).toMatchObject({ device: "desktop", width: 1280, height: 800 });
+
+		const unknown = normalizeCanvas(
+			{ version: 1, name: "Watch", device: "watch", frames: [{ ...frame, device: "tv" }] },
+			"x",
+		);
+
+		expect(unknown.device).toBe("mobile");
+		expect(unknown.frames[0]).toMatchObject({ device: "mobile", width: 390, height: 844 });
+	});
+
 	test("the applied theme loads when present and stays missing in older files", () => {
 		const old = { version: 1, name: "Old", frames: [] };
 		expect("theme" in normalizeCanvas(old, "x")).toBe(false);

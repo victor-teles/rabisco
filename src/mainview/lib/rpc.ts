@@ -1,7 +1,7 @@
 import { Electroview } from "electrobun/view";
 import { normalizeComments } from "../../shared/comments";
 import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
-import { CONTEXT_TEMPLATES } from "../../shared/context/templates";
+import { starterFiles } from "../../shared/context/styles";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
 import type { RabiscoRPC } from "../../shared/rpc";
 import type {
@@ -195,11 +195,11 @@ function createBrowserApi(): RabiscoApi {
 		async closeProject() {
 			return ok;
 		},
-		async createProject({ name, device }) {
+		async createProject({ name, device, style }) {
 			const path = `browser://${crypto.randomUUID()}`;
 			write(path, {
 				canvas: emptyCanvas(name.trim() || "Untitled", device),
-				files: { ...CONTEXT_TEMPLATES },
+				files: starterFiles(style),
 				chats: {},
 			});
 

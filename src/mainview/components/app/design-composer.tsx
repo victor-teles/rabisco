@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useRef } from "react";
-import { ChevronDown, Monitor, Settings2, Smartphone, Square } from "lucide-react";
+import { ChevronDown, Monitor, Settings2, Smartphone, Square, Tablet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -23,9 +23,12 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
+import { StylePicker } from "@/components/app/style-picker";
 import type { ChatCommand } from "@/lib/chat-commands";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
+import type { StyleId } from "../../../shared/context/styles";
+import { isDevice } from "../../../shared/project";
 import type { Device } from "../../../shared/types";
 import { MAX_VARIATIONS } from "../../../shared/variations";
 
@@ -53,6 +56,9 @@ export type DesignComposerProps = {
 	onVariationsChange?: (variations: number) => void;
 	/** Why the count doesn't apply right now; dims the picker. */
 	variationsHint?: string;
+	/** The starting style of a new project; the picker shows only when `onDesignStyleChange` is set */
+	designStyle?: StyleId | null;
+	onDesignStyleChange?: (style: StyleId | null) => void;
 	inlineOptions?: boolean;
 	className?: string;
 	/** Typing `/` lists them */
@@ -76,6 +82,8 @@ export function DesignComposer({
 	variations = 1,
 	onVariationsChange,
 	variationsHint,
+	designStyle = null,
+	onDesignStyleChange,
 	inlineOptions = true,
 	className,
 	commands,
@@ -114,6 +122,7 @@ export function DesignComposer({
 				{inlineOptions ? (
 					<>
 						<DeviceToggle device={device} onDeviceChange={onDeviceChange} />
+						{onDesignStyleChange ? <StylePicker value={designStyle} onChange={onDesignStyleChange} /> : null}
 						{onVariationsChange ? (
 							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
 						) : null}
@@ -138,8 +147,6 @@ export function DesignComposer({
 	);
 }
 
-const isDevice = (value: string): value is Device => value === "mobile" || value === "desktop";
-
 export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDeviceChange: (device: Device) => void }) {
 	return (
 		<ToggleGroup
@@ -154,6 +161,9 @@ export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDev
 		>
 			<ToggleGroupItem value="mobile" aria-label="Mobile" className="h-7 px-2">
 				<Smartphone className="size-3.5" />
+			</ToggleGroupItem>
+			<ToggleGroupItem value="tablet" aria-label="Tablet" className="h-7 px-2">
+				<Tablet className="size-3.5" />
 			</ToggleGroupItem>
 			<ToggleGroupItem value="desktop" aria-label="Desktop" className="h-7 px-2">
 				<Monitor className="size-3.5" />

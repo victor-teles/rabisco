@@ -48,11 +48,13 @@ import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
 import { openSettings } from "@/hooks/use-providers";
+import { useDesignStyle } from "@/hooks/use-design-style";
 import { useVariations } from "@/hooks/use-variations";
 import { arrangeRecents, isRecentsSort, RECENTS_SORTS, type RecentsSort } from "@/lib/recents";
 import { api, isDesktop } from "@/lib/rpc";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import type { StyleId } from "../../shared/context/styles";
 import type { Device, ProjectSummary, ScreenCover, ScreenSource } from "../../shared/types";
 
 const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
@@ -92,7 +94,13 @@ function storedSort(): RecentsSort {
 	}
 }
 
-export type StartDesign = (input: { prompt: string; device: Device; files?: File[]; variations?: number }) => void;
+export type StartDesign = (input: {
+	prompt: string;
+	device: Device;
+	files?: File[];
+	variations?: number;
+	style?: StyleId | null;
+}) => void;
 
 type HomeProps = {
 	theme: Theme;
@@ -105,6 +113,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const [prompt, setPrompt] = useState("");
 	const [device, setDevice] = useState<Device>("mobile");
 	const [variations, setVariations] = useVariations();
+	const [designStyle, setDesignStyle] = useDesignStyle();
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
 	const [section, setSection] = useState<Section>("home");
@@ -227,8 +236,10 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								onDeviceChange={setDevice}
 								variations={variations}
 								onVariationsChange={setVariations}
+								designStyle={designStyle}
+								onDesignStyleChange={setDesignStyle}
 								placeholder="A meditation app with a soft, editorial feel…"
-								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations })}
+								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations, style: designStyle })}
 							/>
 
 							<div className="mt-4 flex flex-wrap justify-center gap-1.5">

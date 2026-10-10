@@ -2,6 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNod
 import { Crosshair, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, X } from "lucide-react";
 import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
 import { Markdown } from "@/components/app/markdown";
+import { StyleChoices } from "@/components/app/style-picker";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -63,6 +64,7 @@ import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
 import { api } from "@/lib/rpc";
 import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
+import type { StyleId } from "../../../shared/context/styles";
 import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
 import { ChangeSummaryCard } from "./change-summary";
 
@@ -136,6 +138,10 @@ type ChatPanelProps = {
 	commands: readonly ChatCommand[];
 	/** `false` when it didn't run */
 	onRunCommand: (command: ChatCommand, args: string, files?: File[]) => boolean;
+	/** Offered in the empty chat while DESIGN.md has no direction; `null` hides the styles */
+	onPickStyle?: ((id: StyleId) => void) | null;
+	/** A plan waiting for review, under the latest message (decision 0015) */
+	planCard?: ReactNode;
 };
 
 const TASK_TITLE = {
@@ -145,6 +151,7 @@ const TASK_TITLE = {
 	context: "Writing",
 	vary: "Varying",
 	theme: "Reading the theme",
+	plan: "Planning",
 } as const;
 
 function generationTitle(generation: Generation) {
@@ -183,6 +190,8 @@ export const ChatPanel = memo(function ChatPanel({
 	onCancelInterview,
 	commands,
 	onRunCommand,
+	onPickStyle = null,
+	planCard = null,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
 	const files = generation ? Object.entries(generation.writing) : [];
@@ -286,7 +295,7 @@ export const ChatPanel = memo(function ChatPanel({
 			<ScrollArea ref={scrollRef} className="min-h-0 flex-1">
 				<div className="flex flex-col gap-5 px-4 py-5">
 					{messages.length === 0 && !generation ? (
-						<EmptyState variant="plain" className="pt-16">
+						<EmptyState variant="plain" className={onPickStyle ? "pt-8" : "pt-16"}>
 							<EmptyStateMedia>
 								<Sparkles />
 							</EmptyStateMedia>
@@ -307,6 +316,13 @@ export const ChatPanel = memo(function ChatPanel({
 						</EmptyState>
 					) : null}
 
+					{messages.length === 0 && !generation && onPickStyle ? (
+						<section aria-label="Starting style" className="grid gap-1.5">
+							<p className="px-2 text-xs text-subtle-foreground">Or start DESIGN.md from a style</p>
+							<StyleChoices onPick={onPickStyle} />
+						</section>
+					) : null}
+
 					<MessageList
 						messages={messages}
 						onOpenContext={onOpenContext}
@@ -315,6 +331,8 @@ export const ChatPanel = memo(function ChatPanel({
 						lastReply={lastReply}
 						undoableRun={undoableRun}
 					/>
+
+					{planCard}
 
 					{generation ? (
 						<>

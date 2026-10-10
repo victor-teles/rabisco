@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import type { AssetChange } from "../shared/assets";
+import type { StyleId } from "../shared/context/styles";
 import type {
 	CanvasDoc,
 	ChatMessage,
@@ -142,8 +143,8 @@ export function createProjectStore(options: StoreOptions) {
 			stopWatching(normalize(path));
 		},
 
-		createProject(name: string, device: Device): Project {
-			return openProject(createProjectFolder(projectsDir, name, device));
+		createProject(name: string, device: Device, style?: StyleId | null): Project {
+			return openProject(createProjectFolder(projectsDir, name, device, style));
 		},
 
 		saveCanvas(path: string, canvas: CanvasDoc) {

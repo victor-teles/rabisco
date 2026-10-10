@@ -2,7 +2,7 @@
 import { assetKey } from "../assets";
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
-import { isScreenFile, screenNameFromPath } from "../project";
+import { isDevice, isScreenFile, screenNameFromPath } from "../project";
 import type { Device, Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
 
@@ -55,7 +55,7 @@ function assertScreens(screens: readonly Json[], modules: JsonObject): asserts s
 			!isJsonObject(screen) ||
 			!isString(screen.file) ||
 			!isString(screen.name) ||
-			(screen.device !== "mobile" && screen.device !== "desktop") ||
+			!isDevice(screen.device) ||
 			!isFiniteNumber(screen.width) ||
 			!isFiniteNumber(screen.height)
 		)

@@ -19,9 +19,9 @@ import { LINK_TO_ATTRIBUTE } from "../lib/render/protocol";
 import { frameAssets } from "./assets";
 import { boxOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect";
 
-const SKIPPED = new Set(["script", "style", "link", "meta", "template", "noscript", "head", "title"]);
+export const SKIPPED = new Set(["script", "style", "link", "meta", "template", "noscript", "head", "title"]);
 
-const OVERLAY_ID = "rabisco-error";
+export const OVERLAY_ID = "rabisco-error";
 
 const PLACEHOLDER: Rgba = { r: 228, g: 228, b: 231, a: 1 };
 
@@ -63,7 +63,8 @@ const probeContext = () => {
 
 const colors = new Map<string, Rgba | null>();
 
-function color(value: string): Rgba | null {
+/** A computed color; a canvas parses what `parseColor` can't */
+export function color(value: string): Rgba | null {
 	if (colors.has(value)) return colors.get(value)!;
 	let parsed = parseColor(value);
 
@@ -256,7 +257,7 @@ function backgroundPaint(style: CSSStyleDeclaration, box: Box): Paint | null {
 	return isVisible(fill) ? { kind: "color", color: fill } : null;
 }
 
-function isScreenReaderOnly(style: CSSStyleDeclaration, rect: DOMRect) {
+export function isScreenReaderOnly(style: CSSStyleDeclaration, rect: DOMRect) {
 	if (style.clip === "rect(0px, 0px, 0px, 0px)" || style.clipPath === "inset(50%)") return true;
 
 	return style.position === "absolute" && rect.width <= 1 && rect.height <= 1 && style.overflow !== "visible";

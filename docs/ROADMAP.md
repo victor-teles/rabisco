@@ -452,6 +452,90 @@ From a review of the uai catalog against the editor (`tool-call`, now used in th
 
 ---
 
+## Phase 16: Generation quality 🚧
+
+_Principles: UX first (a bad generation costs one keystroke) · Context is a file · Screens are React_
+
+Today a generation is checked only for code: path, compile, imports, exports and render errors. Nothing checks how the screen looks. A project without DESIGN.md gets the generic look of the model. Fix that in this order: measure, then give the model a direction, then check what it made.
+
+**Measure first**
+
+- ✅ A generation eval in `bench/gen` (`hutch run bench:gen -- --model …`, or `--mock`): 12 fixed briefs (mobile, tablet, desktop; empty and themed projects; create, edit, point and prompt, vary). It runs through the real AI layer with the app's providers, and writes each brief as a project folder you can open in Rabisco
+- ✅ Design checks with no AI, from the rendered frame (`src/shared/design/layout-checks.ts`, collected by `runtime/design-lint.ts` through a `lint` frame message): content wider than the frame, clipped text, overlapping siblings, contrast under 4.5:1 (3:1 for large text), empty containers, more than 6 font sizes on a screen or 3 in a card. From the source (`source-checks.ts`): neutral and arbitrary colors where a theme token exists, and more than 2 palette color families. Each finding has a path and a line from `data-rabisco-loc`
+- ✅ "Check design" in the command palette: renders the selected screens (or all) offstage, lists the findings by screen, selects the element on click, and copies them as JSON
+- ✅ Score each eval run (`bench/gen/score.ts`): ok and error codes, repair attempts, files, time, tokens and cost, raw colors, project component reuse, UI and uai module use, custom token use, lines changed outside a focused element. `report.json` stores `PROMPT_VERSION`; `--baseline` prints the change in each total
+- ⬜ Run the eval with real providers (API, Claude Code, Ollama) and keep the first report as the baseline
+- ⬜ Layout findings in the eval report: today they come from "Check design" in the app, since they need a browser
+- ✅ Tablet is a real device: the composer has a tablet option, and generation designs at 834×1194 with its own layout guidance
+
+**Direction before generation**
+
+- ✅ Style direction on Home: a Style picker in the composer with five starting points (Minimal, Editorial, Playful, Dense data, Bold) and "No style". Each writes a starter DESIGN.md with light and dark tokens and rules, so screens render themed with no AI step (`src/shared/context/styles.ts`). Minimal is the default; the choice is remembered. Every text and fill pair is tested at 4.5:1. `bench:gen --style <id>` starts the briefs without a DESIGN.md from a style. Measured with Claude Code (Opus) on the 5 briefs without a DESIGN.md: new raw colors went from 22 to 1, at the same cost
+- ✅ The same styles in the empty chat while DESIGN.md is missing or still the template, and "Start from a style…" in the command palette. Picking one writes DESIGN.md and applies its tokens to the screens as one undo step, with Undo in the toast
+- ⬜ "Auto": write DESIGN.md from the first prompt with a `context` task before the screens, when the prompt describes a look ("soft, editorial") that no preset matches
+- ✅ Plan, then screens ([0015](./decisions/0015-plan-then-screens.md)): a create first runs a short `plan` task. The plan lists the screens, the shared components and the links between screens. It shows in the chat as a checklist: untick a screen or component, rename a screen, then Generate or ↵. It starts by itself after 5 s, unless you touch it. A plan of one screen with nothing shared runs at once. The eval plans its create briefs; `--no-plan` compares with the old one-shot create
+- ✅ Shared shell first: the plan's components are written in one run, then each screen in its own run, in parallel. Screens get the components as references and the plan's links as `data-link-to`. Everything is one undo step and one change summary
+- ⬜ Better prompt rules (`prompt.ts`): layout patterns per device (mobile tab bar and safe areas, desktop sidebar and content width), a type scale, one focal point per screen, and states (empty, loading, error) when the request names them. Measure each change with the eval
+- ⬜ Image placeholders: a `@/components/ui/placeholder` module (photo, avatar, illustration, map, chart) that draws tasteful local images, so screens are not only icons and gradients. Needs a decision record (bundled assets, export, size)
+
+**Check after generation**
+
+- ⬜ Design checks feed the repair loop: findings above a severity become problems for one "polish" attempt, like render errors do today. The change summary lists the findings that are left, each with a "Fix" action
+- ⬜ Visual review (opt-in, vision models only): the screen's PNG (`runtime/raster.ts`) goes back to the model with the brief and DESIGN.md for one critique and fix pass. Off by default, since it doubles the cost. Needs a decision record (images out of the frame, which providers support it)
+
+**Edits**
+
+- ⬜ Search-and-replace edits for API providers (`<rabisco-edit path>` with exact blocks), instead of rewriting the whole file. Faster, cheaper, and fewer changes outside the request. A block that doesn't match falls back to the whole file. Supersedes part of [0003](./decisions/0003-ai-provider-contract.md) with a new record
+- ⬜ "Improve prompt" button in the composer: expand a short prompt into a brief with PRODUCT.md, and show it for editing before sending
+- ⬜ Model per task in Settings: one model for create and vary, a faster one for edits, theme and context tasks
+
+**Done when** the eval shows fewer design findings and higher token and component reuse than today's baseline with the same provider, and a new project with no DESIGN.md still gets a consistent, intentional look.
+
+---
+
+## Phase 17: Figma parity ⬜
+
+_Principles: Direct manipulation over prompts · Keyboard first (Figma conventions)_
+
+Designers come with Figma habits. Rabisco has selection, layers, auto layout through flex classes, align, resize and comments. It has no insert tools: you can't draw a box or type a text layer. Each tool here writes plain TSX and Tailwind, so the code still reads like a developer wrote it.
+
+**Insert tools** (most used first)
+
+- ⬜ Text (T): click inside a screen to add a `<p>` at the drop placement (Phase 10) and edit it in place; drag to set a width
+- ⬜ Frame (F, A): drag on the empty canvas to make a new screen of that size; drag inside a screen to add a `<div>` with `w-*`/`h-*` and the Phase 10 placement. Device presets in the inspector while the tool is active
+- ⬜ Rectangle (R) and ellipse (O): a `<div>` with `bg-muted` and the radius token; ellipse adds `rounded-full`
+- ⬜ Image (⇧⌘K): pick a file, it lands in `public/images/` (decision 0010) at the pointer
+- ⬜ The tool bar shows the active tool; ↵ after insert selects the new element; Esc returns to Move (V)
+
+**Inspect and measure**
+
+- ⬜ ⌥ + hover: red distance lines and values between the selection and the hovered element or its parent
+- ⬜ Layout grid per screen (⌃G): columns and margins drawn over the frame, stored in `rabisco.json`
+- ⬜ ⇧2 zoom to selection, ⇧0 zoom to 100%
+
+**Properties**
+
+- ⬜ Copy and paste properties (⌥⌘C / ⌥⌘V): copy an element's classes without its variants and children, paste onto one or many elements, one undo step
+- ⬜ Eyedropper (I) in the color field: pick a color from any frame, and snap it to the matching token when one exists
+- ⬜ Auto layout panel the way Figma shows it: direction, wrap, a 3×3 alignment grid, gap and padding with "Auto" (`justify-between`), on top of the existing flex classes
+- ⬜ Hide (⇧⌘H) and lock (⇧⌘L) in Layers. Hide writes `hidden` in the TSX so exports match; lock is canvas state in `rabisco.json`
+- ⬜ Select matching (⌥⌘A): elements with the same component or the same classes, across the screen
+
+**Organize**
+
+- ⬜ Sections on the canvas (⇧S): a named, colored area that holds screens and moves with them, stored in `rabisco.json`. The screens list groups by section
+- ⬜ Find and replace text across screens (⌘F on the canvas): results by screen, replace one or all as one undo step
+- ⬜ Version history panel: named checkpoints (⌥⌘S) and the AI changes in the session, each with a preview and Restore. Builds on undo history and git sync, with no new storage when git is set up
+
+**Prototype**
+
+- ⬜ Transitions on links (instant, dissolve, slide, push) as `data-link-transition`, played in play mode and the share viewer
+- ⬜ Overlays: open a screen as a modal or sheet over the current one (`data-link-mode="overlay"`). Extends [0007](./decisions/0007-prototype-links-in-source.md) with a new record
+
+**Done when** a Figma user can draw a frame, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
+
+---
+
 ## Later
 
 - Real-time collaboration

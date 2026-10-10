@@ -212,7 +212,7 @@ export function PlayView({
 						style={{
 							width: size.width * scale,
 							height: size.height * scale,
-							borderRadius: (device === "mobile" ? 28 : 6) * scale,
+							borderRadius: (device === "desktop" ? 6 : 28) * scale,
 						}}
 					>
 						<div className="origin-top-left" style={{ transform: `scale(${scale})` }}>

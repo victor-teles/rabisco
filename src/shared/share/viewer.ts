@@ -141,7 +141,7 @@ const VIEWER_JS = `(function () {
 		scaler.style.transform = "scale(" + scale + ")";
 		device.style.width = screen.width * scale + "px";
 		device.style.height = screen.height * scale + "px";
-		device.style.borderRadius = (screen.device === "mobile" ? 28 : 6) * scale + "px";
+		device.style.borderRadius = (screen.device === "desktop" ? 6 : 28) * scale + "px";
 	}
 
 	function show(file) {

@@ -8,10 +8,12 @@ import type {
 	ElementFocus,
 	FileKind,
 	GenerationEvent,
+	GenerationPlan,
 	Problem,
 	ScreenMeta,
 } from "../../shared/ai/contract";
 import { focusNote, focusOf } from "../../shared/ai/focus";
+import { isTrivialPlan } from "../../shared/ai/plan";
 import { changeSummaryOf } from "../../shared/change-summary";
 import type { AppliedTheme } from "../../shared/context/theme";
 import { draftLayout, mixNote, mixPrompt, variantLabel, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
@@ -36,7 +38,7 @@ export type WritingFile = { kind: FileKind; screen?: ScreenMeta; text: string; d
 
 export type Generation = {
 	id: string;
-	task: "create" | "edit" | "repair" | "context" | "vary" | "theme";
+	task: "create" | "edit" | "repair" | "context" | "vary" | "theme" | "plan";
 	variations: number;
 	/** `variant` is set only for the extra variations (1…) of a parallel run. */
 	steps: { label: string; detail?: string; variant?: number }[];
@@ -64,7 +66,12 @@ type SendOptions = {
 	command?: { name: string; args: string };
 	/** Comments the prompt came from, resolved in the same undo step as a result that changes files */
 	resolves?: string[];
+	/** An accepted plan: its shared components, then its screens in parallel (decision 0015) */
+	plan?: GenerationPlan;
 };
+
+/** A plan waiting in the chat for the user to review it; its request runs when they accept it */
+export type PendingPlan = { id: string; plan: GenerationPlan; prompt: string; options: SendOptions };
 
 type LastRequest = { prompt: string; options: SendOptions };
 
@@ -202,6 +209,7 @@ export function useGeneration({
 	const [regenerable, setRegenerable] = useState(false);
 	/** The reply whose result is an undo step, so its summary can offer Undo while that step is still the latest */
 	const [lastRun, setLastRun] = useState<{ messageId: string; step: Snapshot } | null>(null);
+	const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
 
 	// Events arrive per token; batch them into one render per frame
 	useEffect(
@@ -248,8 +256,50 @@ export function useGeneration({
 		});
 	}, []);
 
+	/** The plan step of a create; `null` when it failed, so the request runs in one go instead (no dead end) */
+	const readPlan = useCallback(
+		async (prompt: string, options: SendOptions): Promise<GenerationPlan | "stopped" | null> => {
+			const current = stateRef.current;
+
+			if (!current || !model) return null;
+			const generationId = crypto.randomUUID();
+			live.current = { id: generationId, task: "plan", variations: 1, steps: [], reply: "", attempt: 1, writing: {} };
+			setGeneration(live.current);
+
+			try {
+				await flushProjectFiles();
+
+				const result = await api.generate({
+					generationId,
+					projectPath,
+					prompt,
+					device,
+					model,
+					task: "plan",
+					attachments: options.attachments,
+					chatId: current.chatId,
+					command: options.command,
+				});
+
+				if (result.ok) return result.plan ?? null;
+
+				return result.error.code === "aborted" ? "stopped" : null;
+			} catch {
+				return null;
+			} finally {
+				if (flush.current) cancelAnimationFrame(flush.current);
+				flush.current = 0;
+
+				if (live.current?.id === generationId) live.current = null;
+				setGeneration((g) => (g?.id === generationId ? null : g));
+			}
+		},
+		[stateRef, model, projectPath, device],
+	);
+
 	const run = useCallback(
-		async (prompt: string, options: SendOptions = {}): Promise<boolean> => {
+		async (prompt: string, request: SendOptions = {}): Promise<boolean> => {
+			let options = request;
 			const current = stateRef.current;
 
 			if (!current || live.current) return false;
@@ -271,6 +321,31 @@ export function useGeneration({
 			}
 
 			setFailure(null);
+			// A new request replaces a plan still waiting for review
+			setPendingPlan(null);
+
+			// Decision 0015: a create of one variation is planned first, and the plan waits in the chat for review
+			if (task === "create" && variations === 1 && !options.plan) {
+				const plan = await readPlan(prompt, options);
+
+				if (plan === "stopped") {
+					addMessages([message("assistant", "Stopped. Nothing was changed.")]);
+
+					return false;
+				}
+
+				if (plan && !isTrivialPlan(plan)) {
+					setPendingPlan({ id: generationId, plan, prompt, options });
+
+					return false;
+				}
+
+				if (plan) {
+					options = { ...options, plan };
+					last.current = { prompt, options };
+				}
+			}
+
 			live.current = { id: generationId, task, variations, steps: [], reply: "", attempt: 1, writing: {} };
 			setGeneration(live.current);
 			let check: RenderCheck = { screens: [], via: new Map() };
@@ -294,6 +369,7 @@ export function useGeneration({
 					attachments: options.attachments,
 					chatId: current.chatId,
 					command: options.command,
+					plan: options.plan,
 				});
 
 				const latest = stateRef.current;
@@ -383,7 +459,7 @@ export function useGeneration({
 		},
 		// `run` calls itself for the repair; the latest closure is fine there
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[stateRef, model, projectPath, device, change, addMessages, onPlaced, onResolved, collectRenderErrors],
+		[stateRef, model, projectPath, device, change, addMessages, onPlaced, onResolved, collectRenderErrors, readPlan],
 	);
 
 	const ready = useCallback(() => {
@@ -404,6 +480,31 @@ export function useGeneration({
 
 		return true;
 	}, [stateRef, model]);
+
+	/** Runs the reviewed plan: the card's ticks and names are in `plan` */
+	const acceptPlan = useCallback(
+		(plan: GenerationPlan) => {
+			const pending = pendingPlan;
+
+			if (!pending || !ready()) return;
+			setPendingPlan(null);
+
+			if (!plan.screens.length) {
+				addMessages([message("assistant", "No screens were left in the plan, so nothing was made.")]);
+
+				return;
+			}
+
+			void run(pending.prompt, { ...pending.options, plan });
+		},
+		[pendingPlan, ready, run, addMessages],
+	);
+
+	const cancelPlan = useCallback(() => {
+		if (!pendingPlan) return;
+		setPendingPlan(null);
+		addMessages([message("assistant", "Cancelled the plan. Nothing was changed.")]);
+	}, [pendingPlan, addMessages]);
 
 	/**
 	 * `variations` is ignored when editing `targets`; a stale `focus` falls back to editing the whole file.
@@ -616,6 +717,9 @@ export function useGeneration({
 		regenerate: regenerable ? regenerate : null,
 		lastRun,
 		undoRun,
+		pendingPlan,
+		acceptPlan,
+		cancelPlan,
 	};
 }
 

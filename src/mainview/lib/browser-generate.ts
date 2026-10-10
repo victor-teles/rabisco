@@ -112,6 +112,66 @@ async function mockEvents(request: GenerationRequest, signal: AbortSignal) {
 	return createMockProvider().generate(request, signal);
 }
 
+/** Plans run the main process's own orchestration (`src/bun/ai/plan-run.ts`) on the mock provider, with validation */
+async function planned(
+	params: GenerateParams,
+	files: ProjectFiles,
+	context: ContextFileName[],
+	signal: AbortSignal,
+	emit: (message: GenerationEventMessage) => void,
+): Promise<GenerateResult> {
+	if (!import.meta.env.DEV) throw new Error("The mock provider is only available in development.");
+
+	const [{ createMockProvider }, { buildPlanRequest, runPlannedCreate, runPlanReading }] = await Promise.all([
+		import("../../bun/ai/providers/mock"),
+		import("../../bun/ai/plan-run"),
+	]);
+
+	const provider = createMockProvider();
+	const send = (event: GenerationEvent, attempt = 1) => emit({ generationId: params.generationId, attempt, event });
+
+	try {
+		if (params.task === "plan") {
+			const request = buildPlanRequest({
+				id: params.generationId,
+				model: "mock",
+				prompt: params.prompt,
+				device: params.device,
+				projectFiles: files,
+				attachments: params.attachments,
+			});
+
+			const reading = await runPlanReading({ provider, request, projectFiles: files, signal, onEvent: send });
+
+			return { ok: true, changes: [], frames: [], reply: "", problems: [], context, plan: reading.plan };
+		}
+
+		const result = await runPlannedCreate({
+			provider,
+			build: {
+				id: params.generationId,
+				task: "create",
+				prompt: params.prompt,
+				device: params.device,
+				model: "mock",
+				projectFiles: files,
+				attachments: params.attachments,
+			},
+			plan: params.plan ?? { screens: [], components: [], links: [] },
+			projectFiles: files,
+			signal,
+			onEvent: send,
+		});
+
+		return { ok: true, ...result, context };
+	} catch (cause) {
+		if (signal.aborted)
+			return { ok: false, error: { code: "aborted", message: "Generation stopped.", retryable: true } };
+
+		return { ok: false, error: failureOf(cause) };
+	}
+}
+
 /** Mirrors `runThemeReading` in `src/bun/ai/run.ts` */
 async function readTheme(
 	params: GenerateParams,
@@ -243,6 +303,14 @@ export function createBrowserGenerator(
 
 			const controller = new AbortController();
 			running.set(params.generationId, controller);
+
+			if (task === "plan" || (task === "create" && params.plan && clampVariations(params.variations) === 1)) {
+				try {
+					return await planned(params, files, context, controller.signal, emit);
+				} finally {
+					running.delete(params.generationId);
+				}
+			}
 
 			const requestTask: GenerationRequest["task"] =
 				params.task === "vary" ? "edit" : (params.task ?? (params.targets?.length ? "edit" : "create"));
