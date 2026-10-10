@@ -582,7 +582,6 @@ function SuggestionRow({
 	const [error, setError] = useState<string | null>(null);
 	const [pointing, setPointing] = useState(false);
 	const [focused, setFocused] = useState(false);
-	// Outlines the copies on the canvas while the row is pointed at or being named, so it's clear what becomes a component
 	const showing = pointing || focused || naming;
 
 	useEffect(() => {
@@ -670,7 +669,6 @@ function SuggestionRow({
 				size="xs"
 				disabled={busy}
 				onClick={() => {
-					// The button unmounts without a blur; `naming` keeps the outlines up instead
 					setFocused(false);
 					setNaming(true);
 				}}

@@ -2178,7 +2178,6 @@ function LayerHover({
 	);
 }
 
-/** Every copy a component suggestion would replace on one screen, outlined and labeled with the suggested name */
 function SuggestionOutlines({
 	suggestion,
 	frame,
