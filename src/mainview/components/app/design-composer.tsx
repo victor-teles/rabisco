@@ -1,0 +1,287 @@
+import { Fragment, useCallback, useRef } from "react";
+import { ChevronDown, Monitor, Settings2, Smartphone, Square } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+	PromptComposer,
+	PromptComposerActions,
+	PromptComposerAdd,
+	PromptComposerFileItem,
+	PromptComposerInput,
+	PromptComposerSubmit,
+	type PromptComposerVariant,
+} from "@/components/ui/uai/prompt-composer";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
+import type { ChatCommand } from "@/lib/chat-commands";
+import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
+import { cn } from "@/lib/utils";
+import type { Device } from "../../../shared/types";
+import { MAX_VARIATIONS } from "../../../shared/variations";
+
+/** The image types every provider takes */
+const PROMPT_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+const isPromptImage = (file: File) => PROMPT_IMAGE_TYPES.includes(file.type);
+
+export type DesignComposerProps = {
+	value?: string;
+	onValueChange?: (value: string) => void;
+	/** Uncontrolled starting prompt and images */
+	defaultValue?: string;
+	defaultFiles?: File[];
+	device: Device;
+	onDeviceChange: (device: Device) => void;
+	/** `false` keeps the prompt in the composer */
+	onSubmit: (prompt: string, files: File[]) => void | boolean;
+	busy?: boolean;
+	onStop?: () => void;
+	placeholder?: string;
+	variant?: PromptComposerVariant;
+	/** The picker shows only when `onVariationsChange` is set. */
+	variations?: number;
+	onVariationsChange?: (variations: number) => void;
+	/** Why the count doesn't apply right now; dims the picker. */
+	variationsHint?: string;
+	inlineOptions?: boolean;
+	className?: string;
+	/** Typing `/` lists them */
+	commands?: readonly ChatCommand[];
+	/** A command picked from the list; `false` keeps the prompt */
+	onRunCommand?: (command: ChatCommand) => boolean | void;
+};
+
+export function DesignComposer({
+	value,
+	onValueChange,
+	defaultValue,
+	defaultFiles,
+	device,
+	onDeviceChange,
+	onSubmit,
+	busy,
+	onStop,
+	placeholder = "Describe a screen, flow or change…",
+	variant = "rounded",
+	variations = 1,
+	onVariationsChange,
+	variationsHint,
+	inlineOptions = true,
+	className,
+	commands,
+	onRunCommand,
+}: DesignComposerProps) {
+	const slashKeys = useRef<SlashKeyHandler | null>(null);
+
+	const setSlashKeys = useCallback((handler: SlashKeyHandler | null) => {
+		slashKeys.current = handler;
+	}, []);
+
+	return (
+		<PromptComposer
+			variant={variant}
+			busy={busy}
+			value={value}
+			onValueChange={onValueChange}
+			defaultValue={defaultValue}
+			defaultFiles={defaultFiles}
+			onSubmit={(prompt, files) => onSubmit(prompt, files)}
+			acceptFile={isPromptImage}
+			className={className}
+		>
+			<PromptComposerAdd>
+				<PromptComposerFileItem
+					label="Add reference images"
+					description="Or paste or drop them here"
+					accept={PROMPT_IMAGE_TYPES.join(",")}
+				/>
+			</PromptComposerAdd>
+			{commands?.length && onRunCommand ? (
+				<SlashMenu commands={commands} onKeys={setSlashKeys} onRun={onRunCommand} />
+			) : null}
+			<PromptComposerInput placeholder={placeholder} onKeyDown={(event) => slashKeys.current?.(event)} />
+			<PromptComposerActions>
+				{inlineOptions ? (
+					<>
+						<DeviceToggle device={device} onDeviceChange={onDeviceChange} />
+						{onVariationsChange ? (
+							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
+						) : null}
+						<ModelPicker />
+					</>
+				) : null}
+				{busy && onStop ? (
+					<Button
+						type="button"
+						size="icon"
+						aria-label="Stop generating"
+						onClick={onStop}
+						className="size-8 rounded-full bg-foreground text-card hover:bg-foreground/90"
+					>
+						<Square className="size-3 fill-current" />
+					</Button>
+				) : (
+					<PromptComposerSubmit />
+				)}
+			</PromptComposerActions>
+		</PromptComposer>
+	);
+}
+
+const isDevice = (value: string): value is Device => value === "mobile" || value === "desktop";
+
+export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDeviceChange: (device: Device) => void }) {
+	return (
+		<ToggleGroup
+			type="single"
+			size="sm"
+			value={device}
+			onValueChange={(next) => {
+				if (isDevice(next)) onDeviceChange(next);
+			}}
+			aria-label="Target device"
+			className="h-7"
+		>
+			<ToggleGroupItem value="mobile" aria-label="Mobile" className="h-7 px-2">
+				<Smartphone className="size-3.5" />
+			</ToggleGroupItem>
+			<ToggleGroupItem value="desktop" aria-label="Desktop" className="h-7 px-2">
+				<Monitor className="size-3.5" />
+			</ToggleGroupItem>
+		</ToggleGroup>
+	);
+}
+
+const COUNTS = Array.from({ length: MAX_VARIATIONS }, (_, i) => i + 1);
+
+export function VariationsPicker({
+	value,
+	onChange,
+	hint,
+	className,
+}: {
+	value: number;
+	onChange: (value: number) => void;
+	hint?: string;
+	className?: string;
+}) {
+	const trigger = (
+		<Button
+			type="button"
+			variant="ghost"
+			size="xs"
+			aria-label={`Variations: ${value}`}
+			aria-disabled={hint ? true : undefined}
+			className={cn(
+				"h-7 gap-0.5 px-1.5 text-muted-foreground tabular-nums",
+				hint && "opacity-40 hover:bg-transparent",
+				className,
+			)}
+		>
+			{value}×{hint ? null : <ChevronDown className="size-3 shrink-0" />}
+		</Button>
+	);
+
+	if (hint) {
+		return (
+			<Tooltip>
+				<TooltipTrigger asChild>{trigger}</TooltipTrigger>
+				<TooltipContent side="top" className="max-w-56">
+					{hint}
+				</TooltipContent>
+			</Tooltip>
+		);
+	}
+
+	return (
+		<DropdownMenu modal={false}>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+				</TooltipTrigger>
+				<TooltipContent side="top">Variations</TooltipContent>
+			</Tooltip>
+			<DropdownMenuContent align="start" side="top" className="min-w-40">
+				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+					Variations per screen
+				</DropdownMenuLabel>
+				<DropdownMenuRadioGroup value={String(value)} onValueChange={(next) => onChange(Number(next))}>
+					{COUNTS.map((count) => (
+						<DropdownMenuRadioItem key={count} value={String(count)} className="text-[13px]">
+							{count === 1 ? "1 version" : `${count} variations`}
+						</DropdownMenuRadioItem>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+export function ModelPicker({ className }: { className?: string }) {
+	const { models, model, loading } = useProviders();
+	const groups = new Map<string, ModelOption[]>();
+
+	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
+
+	if (!loading && models.length === 0) {
+		return (
+			<Button
+				type="button"
+				variant="ghost"
+				size="xs"
+				className={cn("h-7 gap-1 text-muted-foreground", className)}
+				onClick={() => openSettings()}
+			>
+				<Settings2 />
+				Set up a model
+			</Button>
+		);
+	}
+
+	return (
+		<DropdownMenu modal={false}>
+			<DropdownMenuTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="xs"
+					aria-label="Choose model"
+					className={cn("h-7 max-w-44 gap-1 text-muted-foreground", className)}
+				>
+					<span className="truncate">{loading && !model ? "Loading…" : modelLabel(model)}</span>
+					<ChevronDown className="size-3 shrink-0" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start" side="top" className="max-h-80 min-w-52">
+				<DropdownMenuRadioGroup value={model ?? ""} onValueChange={selectModel}>
+					{[...groups].map(([provider, options], index) => (
+						<Fragment key={provider}>
+							{index > 0 ? <DropdownMenuSeparator /> : null}
+							<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">{provider}</DropdownMenuLabel>
+							{options.map((option) => (
+								<DropdownMenuRadioItem key={option.id} value={option.id} className="text-[13px]">
+									{option.label}
+								</DropdownMenuRadioItem>
+							))}
+						</Fragment>
+					))}
+				</DropdownMenuRadioGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem className="text-[13px]" onSelect={() => openSettings()}>
+					<Settings2 />
+					Manage providers…
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}

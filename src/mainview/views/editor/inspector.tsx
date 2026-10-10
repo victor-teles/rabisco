@@ -1,0 +1,613 @@
+import { memo, useEffect, useRef, useState } from "react";
+import {
+	AlignCenterHorizontal,
+	AlignCenterVertical,
+	AlignEndHorizontal,
+	AlignEndVertical,
+	AlignHorizontalSpaceAround,
+	AlignStartHorizontal,
+	AlignStartVertical,
+	AlignVerticalSpaceAround,
+	Check,
+	ChevronDown,
+	Columns2,
+	Copy,
+	Shuffle,
+	Trash2,
+	type LucideIcon,
+} from "lucide-react";
+import { DeviceToggle, VariationsPicker } from "@/components/app/design-composer";
+import { ResizeHandle, usePanelSize } from "@/components/app/resize-handle";
+import { InspectorSection } from "@/components/app/inspector-section";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useVariations } from "@/hooks/use-variations";
+import type { Alignment, Axis } from "@/lib/align";
+import { cn } from "@/lib/utils";
+import { variationName } from "@/lib/variations";
+import { isScreenFile } from "../../../shared/project";
+import type { Device, Frame, ProjectFiles } from "../../../shared/types";
+import { groupOf, isAlternate } from "../../../shared/variations";
+import {
+	ALIGN_SHORTCUTS,
+	CODE_VIEW_KEYS,
+	COMPARE_KEYS,
+	COMPONENTS_VIEW_KEYS,
+	CONTEXT_VIEW_KEYS,
+	DISTRIBUTE_SHORTCUTS,
+} from "./shortcuts";
+
+const INSPECTOR_TABS = ["design", "code", "context", "components"] as const;
+
+export type InspectorTab = (typeof INSPECTOR_TABS)[number];
+
+function isInspectorTab(value: string): value is InspectorTab {
+	return INSPECTOR_TABS.some((tab) => tab === value);
+}
+
+export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device">>;
+
+type InspectorProps = {
+	frames: Frame[];
+	files: ProjectFiles;
+	selection: string[];
+	tab: InspectorTab;
+	onTabChange: (tab: InspectorTab) => void;
+	/** `additive` with ⇧ */
+	onSelect: (file: string, additive: boolean) => void;
+	/** The screen whose name field takes focus */
+	renaming: string | null;
+	onRenamed: () => void;
+	/** `step` groups edits of one field focus into a single undo step */
+	onChange: (file: string, patch: FramePatch, step?: string) => void;
+	/** Seals the current burst of edits as one undo step */
+	onEndStep: () => void;
+	onAlign: (alignment: Alignment) => void;
+	onDistribute: (axis: Axis) => void;
+	onDuplicate: () => void;
+	onDelete: () => void;
+	busy: boolean;
+	/** Why Vary and Mix are off while `busy` */
+	busyReason?: string;
+	onPick: (file: string) => void;
+	onCompare: (base: string) => void;
+	onVary: (target: string, direction: string, count: number) => void;
+	onMix: (receiver: string, source: string, section: string) => void;
+	contextPanel: React.ReactNode;
+	componentsPanel: React.ReactNode;
+	codePanel: React.ReactNode;
+	/** Top of the Design tab */
+	propsPanel?: React.ReactNode;
+	/** The selected screen's element tree, above the element's props so they don't push it around */
+	layersPanel?: React.ReactNode;
+	componentsBadge?: number;
+};
+
+const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
+	left: AlignStartVertical,
+	"h-center": AlignCenterVertical,
+	right: AlignEndVertical,
+	top: AlignStartHorizontal,
+	"v-middle": AlignCenterHorizontal,
+	bottom: AlignEndHorizontal,
+};
+
+const DISTRIBUTE_ICONS: Record<Axis, LucideIcon> = {
+	horizontal: AlignHorizontalSpaceAround,
+	vertical: AlignVerticalSpaceAround,
+};
+
+/** One width for every tab, so switching tabs doesn't move the canvas */
+const WIDTH = { key: "rabisco:inspector-width", initial: 360, min: 272, max: 720 };
+
+export const Inspector = memo(function Inspector(props: InspectorProps) {
+	const { frames, selection, tab, onTabChange } = props;
+	const selectedSet = new Set(selection);
+	const selected = frames.filter((frame) => selectedSet.has(frame.file));
+	const single = selected.length === 1 ? selected[0]! : null;
+	const size = usePanelSize(WIDTH);
+	const empty = !props.layersPanel && !props.propsPanel && selected.length === 0;
+
+	return (
+		<aside className="relative flex shrink-0 flex-col border-l bg-background" style={{ width: size.width }}>
+			<ResizeHandle edge="left" label="Resize the inspector" panel={size} />
+			<Tabs
+				value={tab}
+				onValueChange={(value) => {
+					if (isInspectorTab(value)) onTabChange(value);
+				}}
+				className="gap-0"
+			>
+				<div className="flex h-10 shrink-0 items-center border-b px-2">
+					<TabsList variant="line" className="h-8!">
+						<TabsTrigger value="design" className="px-2 text-[13px]">
+							Design
+						</TabsTrigger>
+						{/* Tooltips go inside the triggers: a tooltip's `data-state` on a trigger would hide the active tab */}
+						<TabsTrigger value="code" className="px-2 text-[13px]">
+							<TabTooltip label="Code view" keys={CODE_VIEW_KEYS}>
+								Code
+							</TabTooltip>
+						</TabsTrigger>
+						<TabsTrigger value="context" className="px-2 text-[13px]">
+							<TabTooltip label="PRODUCT.md and DESIGN.md" keys={CONTEXT_VIEW_KEYS}>
+								Context
+							</TabTooltip>
+						</TabsTrigger>
+						<TabsTrigger value="components" className="gap-1 px-2 text-[13px]">
+							<TabTooltip label="Project components and the library" keys={COMPONENTS_VIEW_KEYS}>
+								Components
+							</TabTooltip>
+							{props.componentsBadge ? (
+								<span
+									className="min-w-4 rounded-full bg-primary/12 px-1 text-[11px] leading-4 font-medium text-primary tabular-nums"
+									aria-label={`${props.componentsBadge} new ${props.componentsBadge === 1 ? "suggestion" : "suggestions"}`}
+								>
+									{props.componentsBadge}
+								</span>
+							) : null}
+						</TabsTrigger>
+					</TabsList>
+				</div>
+			</Tabs>
+
+			{tab === "context" ? (
+				props.contextPanel
+			) : tab === "components" ? (
+				props.componentsPanel
+			) : tab === "code" ? (
+				props.codePanel
+			) : (
+				// One scroll for the whole tab, so long props lists never push the screens away
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{props.layersPanel}
+					{props.propsPanel}
+					{single ? <FrameDetails frame={single} {...props} /> : null}
+					{selected.length > 1 ? <MultiDetails count={selected.length} {...props} /> : null}
+					{empty ? (
+						<p className="px-4 py-5 text-[13px] text-subtle-foreground">
+							Select a screen to see its frame, variations and layers.
+						</p>
+					) : null}
+				</div>
+			)}
+		</aside>
+	);
+});
+
+function TabTooltip({ label, keys, children }: { label: string; keys: string; children: React.ReactNode }) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span>{children}</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">
+				{label} <Kbd>{keys}</Kbd>
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function FrameDetails(props: InspectorProps & { frame: Frame }) {
+	const { frame, onChange, onEndStep, onDuplicate, onDelete, renaming, onRenamed } = props;
+	const field = useFieldSteps(frame.file);
+	const nameRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (renaming !== frame.file) return;
+		nameRef.current?.focus();
+		nameRef.current?.select();
+		onRenamed();
+	}, [renaming, frame.file, onRenamed]);
+
+	return (
+		<div className="flex flex-col gap-4 p-4">
+			<Section title="Screen">
+				<input
+					ref={nameRef}
+					value={frame.name}
+					onFocus={field.begin}
+					onBlur={onEndStep}
+					onChange={(event) => onChange(frame.file, { name: event.target.value }, field.key("name"))}
+					onKeyDown={(event) => (event.key === "Enter" || event.key === "Escape") && event.currentTarget.blur()}
+					className="h-8 w-full min-w-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none focus:border-ring"
+					aria-label="Screen name"
+				/>
+				<span className="truncate font-mono text-[11px] text-subtle-foreground" title={frame.file}>
+					{frame.file}
+				</span>
+			</Section>
+			<Section title="Frame">
+				<div className="grid grid-cols-2 gap-2">
+					{(["x", "y", "width", "height"] as const).map((key) => (
+						<NumberField
+							key={key}
+							label={key === "width" ? "W" : key === "height" ? "H" : key.toUpperCase()}
+							value={frame[key]}
+							min={key === "width" || key === "height" ? 1 : undefined}
+							onFocus={field.begin}
+							onBlur={onEndStep}
+							onChange={(value) => onChange(frame.file, { [key]: value }, field.key(key))}
+						/>
+					))}
+				</div>
+				<div className="flex items-center justify-between">
+					<span className="text-xs text-muted-foreground">Device</span>
+					<DeviceToggle
+						device={frame.device}
+						onDeviceChange={(device: Device) => device !== frame.device && onChange(frame.file, { device })}
+					/>
+				</div>
+			</Section>
+			{isScreenFile(frame.file) ? <Variations key={frame.file} {...props} /> : null}
+			<Separator />
+			<SelectionActions label="screen" onDuplicate={onDuplicate} onDelete={onDelete} />
+		</div>
+	);
+}
+
+/** Variation groups (decision 0004) follow from file names */
+function Variations({
+	frame,
+	frames,
+	files,
+	busy,
+	busyReason,
+	onSelect,
+	onPick,
+	onCompare,
+	onVary,
+	onMix,
+}: InspectorProps & { frame: Frame }) {
+	const group = groupOf(frame.file, Object.keys(files));
+	const [preferred] = useVariations();
+	const [direction, setDirection] = useState("");
+	const [count, setCount] = useState(preferred > 1 ? preferred : 2);
+	const others = group?.files.filter((file) => file !== frame.file) ?? [];
+	const [source, setSource] = useState<string | null>(null);
+	const [section, setSection] = useState("");
+	const mixSource = source && others.includes(source) ? source : (others[0] ?? null);
+
+	const vary = () => {
+		onVary(frame.file, direction, count);
+		setDirection("");
+	};
+
+	const mix = () => {
+		if (!mixSource || !section.trim()) return;
+		onMix(frame.file, mixSource, section);
+		setSection("");
+	};
+
+	return (
+		<>
+			<Separator />
+			<InspectorSection
+				title="Variations"
+				action={
+					group ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="xs"
+									className="-mr-1.5 text-muted-foreground"
+									onClick={() => onCompare(group.base)}
+								>
+									<Columns2 />
+									Compare
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								Compare side by side <Kbd>{COMPARE_KEYS}</Kbd>
+							</TooltipContent>
+						</Tooltip>
+					) : null
+				}
+			>
+				{group ? (
+					<div className="flex flex-col gap-0.5">
+						{group.files.map((file) => {
+							const picked = file === group.picked;
+
+							return (
+								<div
+									key={file}
+									className={cn(
+										"group/row flex h-7 items-center gap-1 rounded-md pr-0.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+										file === frame.file && "bg-accent text-accent-foreground",
+									)}
+								>
+									<button
+										type="button"
+										title={file}
+										onClick={() => onSelect(file, false)}
+										className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+									>
+										<Check
+											className={cn("size-3.5 shrink-0", !picked && "invisible")}
+											aria-label={picked ? "Picked" : undefined}
+										/>
+										<span className="truncate">{variationName(file, frames)}</span>
+									</button>
+									{isAlternate(file) ? (
+										<Button
+											variant="ghost"
+											size="xs"
+											disabled={busy}
+											onClick={() => onPick(file)}
+											title={`Make this ${group.picked ? `${variationName(group.base, frames)}; the current one becomes an alternate` : "the screen again"}`}
+											className="h-6 px-1.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+										>
+											Pick
+										</Button>
+									) : null}
+								</div>
+							);
+						})}
+						{group.picked ? null : (
+							<p className="px-2 pt-1 text-xs text-subtle-foreground">
+								The picked version was deleted. Pick one to take its place.
+							</p>
+						)}
+					</div>
+				) : null}
+
+				<div className="flex flex-col gap-1.5">
+					<input
+						value={direction}
+						onChange={(event) => setDirection(event.target.value)}
+						onKeyDown={(event) => event.key === "Enter" && !busy && vary()}
+						placeholder="bolder, denser…"
+						aria-label="Direction for new variations (optional)"
+						className="h-8 w-full min-w-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none placeholder:text-subtle-foreground focus:border-ring"
+					/>
+					<div className="flex items-center gap-1">
+						<VariationsPicker value={count} onChange={setCount} />
+						<Button variant="outline" size="sm" className="flex-1" disabled={busy} onClick={vary}>
+							<Shuffle />
+							Vary this
+						</Button>
+					</div>
+				</div>
+
+				{group && mixSource ? (
+					<div className="flex flex-col gap-1.5 pt-1">
+						<span className="text-xs text-muted-foreground">Mix in a section</span>
+						<div className="flex items-center gap-1">
+							<input
+								value={section}
+								onChange={(event) => setSection(event.target.value)}
+								onKeyDown={(event) => event.key === "Enter" && !busy && mix()}
+								placeholder="header"
+								aria-label="Section to take"
+								className="h-8 w-20 min-w-0 shrink-0 rounded-md border bg-transparent px-2.5 text-[13px] outline-none placeholder:text-subtle-foreground focus:border-ring"
+							/>
+							<span className="text-xs text-subtle-foreground">from</span>
+							<DropdownMenu modal={false}>
+								<DropdownMenuTrigger asChild>
+									<Button
+										variant="ghost"
+										size="xs"
+										className="h-8 min-w-0 flex-1 justify-between gap-1 px-2 text-[13px] text-muted-foreground"
+										aria-label="Variation to take it from"
+									>
+										<span className="truncate">{variationName(mixSource, frames)}</span>
+										<ChevronDown className="size-3 shrink-0" />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="min-w-44">
+									<DropdownMenuRadioGroup value={mixSource} onValueChange={setSource}>
+										{others.map((file) => (
+											<DropdownMenuRadioItem key={file} value={file} className="text-[13px]">
+												{variationName(file, frames)}
+											</DropdownMenuRadioItem>
+										))}
+									</DropdownMenuRadioGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</div>
+						<Button variant="outline" size="sm" disabled={busy || !section.trim()} onClick={mix}>
+							<span className="truncate">Mix into {variationName(frame.file, frames)}</span>
+						</Button>
+					</div>
+				) : null}
+				{busy && busyReason ? <p className="text-xs text-subtle-foreground">{busyReason}</p> : null}
+			</InspectorSection>
+		</>
+	);
+}
+
+function MultiDetails({ count, onAlign, onDistribute, onDuplicate, onDelete }: InspectorProps & { count: number }) {
+	return (
+		<div className="flex flex-col gap-4 p-4">
+			<Section title={`${count} screens`}>
+				<div className="flex items-center justify-between rounded-md border p-0.5">
+					{ALIGN_SHORTCUTS.map((item) => (
+						<IconAction
+							key={item.alignment}
+							icon={ALIGN_ICONS[item.alignment]}
+							label={item.label}
+							keys={item.keys}
+							onClick={() => onAlign(item.alignment)}
+						/>
+					))}
+				</div>
+				<div className="flex items-center gap-0.5 rounded-md border p-0.5 self-start">
+					{DISTRIBUTE_SHORTCUTS.map((item) => (
+						<IconAction
+							key={item.axis}
+							icon={DISTRIBUTE_ICONS[item.axis]}
+							label={count < 3 ? `${item.label} (needs 3 screens)` : item.label}
+							keys={item.keys}
+							disabled={count < 3}
+							onClick={() => onDistribute(item.axis)}
+						/>
+					))}
+				</div>
+			</Section>
+			<Separator />
+			<SelectionActions label="screens" onDuplicate={onDuplicate} onDelete={onDelete} />
+		</div>
+	);
+}
+
+function SelectionActions({
+	label,
+	onDuplicate,
+	onDelete,
+}: {
+	label: string;
+	onDuplicate: () => void;
+	onDelete: () => void;
+}) {
+	return (
+		<div className="flex gap-2">
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button variant="outline" size="sm" className="flex-1" onClick={onDuplicate}>
+						<Copy />
+						Duplicate
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">
+					Duplicate <Kbd>⌘D</Kbd>
+				</TooltipContent>
+			</Tooltip>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						variant="outline"
+						size="icon-sm"
+						aria-label={`Delete ${label}`}
+						className="text-destructive hover:text-destructive"
+						onClick={onDelete}
+					>
+						<Trash2 />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">
+					Delete {label} and {label === "screen" ? "its file" : "their files"} <Kbd>⌫</Kbd>
+				</TooltipContent>
+			</Tooltip>
+		</div>
+	);
+}
+
+function IconAction({
+	icon: Icon,
+	label,
+	keys,
+	disabled,
+	onClick,
+}: {
+	icon: LucideIcon;
+	label: string;
+	keys: string;
+	disabled?: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				{/* The span keeps the tooltip working on a disabled button */}
+				<span>
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						className="size-7"
+						aria-label={label}
+						disabled={disabled}
+						onClick={onClick}
+					>
+						<Icon className="size-4" strokeWidth={1.8} />
+					</Button>
+				</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">
+				{label} <Kbd>{keys}</Kbd>
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/** Every focus starts a new undo burst; edits within it share one key (`onBlur` seals it) */
+function useFieldSteps(file: string) {
+	const burst = useRef(0);
+
+	return {
+		begin: () => {
+			burst.current += 1;
+		},
+		key: (field: string) => `inspector:${file}:${field}:${burst.current}`,
+	};
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+	return <InspectorSection title={title}>{children}</InspectorSection>;
+}
+
+/** Tolerates partial text ("-", "") while typing and only reports valid numbers */
+function NumberField({
+	label,
+	value,
+	min,
+	onChange,
+	onFocus,
+	onBlur,
+}: {
+	label: string;
+	value: number;
+	min?: number;
+	onChange: (value: number) => void;
+	onFocus: () => void;
+	onBlur: () => void;
+}) {
+	const [draft, setDraft] = useState<string | null>(null);
+
+	return (
+		<label className="flex h-8 items-center gap-2 rounded-md border bg-transparent px-2 text-[13px] focus-within:border-ring">
+			<span className="w-3 text-xs text-subtle-foreground">{label}</span>
+			<input
+				inputMode="numeric"
+				value={draft ?? String(value)}
+				onFocus={(event) => {
+					onFocus();
+					event.currentTarget.select();
+				}}
+				onBlur={() => {
+					setDraft(null);
+					onBlur();
+				}}
+				onChange={(event) => {
+					setDraft(event.target.value);
+					const next = Math.round(Number(event.target.value));
+
+					if (event.target.value.trim() !== "" && Number.isFinite(next) && (min === undefined || next >= min))
+						onChange(next);
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+					else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+						event.preventDefault();
+						const step = (event.shiftKey ? 10 : 1) * (event.key === "ArrowUp" ? 1 : -1);
+						const next = Math.max(min ?? -Infinity, value + step);
+						setDraft(null);
+						onChange(next);
+					}
+				}}
+				className="min-w-0 flex-1 bg-transparent tabular-nums outline-none"
+			/>
+		</label>
+	);
+}
