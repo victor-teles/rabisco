@@ -78,8 +78,8 @@ The formatter and linter enforce most style. Run them; do not argue with them.
   - No `Reflect.get` or `Reflect.apply`.
   - No shape words in names (`userObject`, `itemsArray`).
   - Separate declarations and logical groups of statements with a blank line.
-- Write code that reads like the code around it. Match its naming, idiom and comment density.
-- Comments explain why, not what. No section banners and no comments that repeat the code.
+- Write code that reads like the code around it. Match its naming and idiom.
+- Do not add comments, including JSDoc. Let names and structure explain the code. The only exception is the `// SAFETY:` comment the lint rule requires.
 - Keep diffs in scope. Do not refactor or reformat unrelated code.
 
 ## Tests

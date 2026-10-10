@@ -14,6 +14,7 @@ import {
 	EmptyStateTitle,
 } from "@/components/ui/uai/empty-state";
 import { COMPONENT_MIME, componentDrag, type DragItem } from "@/lib/component-drop";
+import { suggestionHover } from "@/lib/suggestion-hover";
 import { cn } from "@/lib/utils";
 import type { ComponentExport } from "../../../shared/components/api";
 import { searchLibrary, type LibraryItem } from "../../../shared/components/library";
@@ -579,6 +580,16 @@ function SuggestionRow({
 	const [naming, setNaming] = useState(false);
 	const [name, setName] = useState(group.suggestedName);
 	const [error, setError] = useState<string | null>(null);
+	const [pointing, setPointing] = useState(false);
+	const [focused, setFocused] = useState(false);
+	const showing = pointing || focused || naming;
+
+	useEffect(() => {
+		if (!showing) return;
+		suggestionHover.set(group);
+
+		return () => suggestionHover.clear(group.key);
+	}, [showing, group]);
 
 	const make = () => {
 		if (!name.trim()) return;
@@ -590,7 +601,11 @@ function SuggestionRow({
 
 	if (naming) {
 		return (
-			<div className="flex flex-col gap-1.5 rounded-md bg-accent/60 p-2">
+			<div
+				className="flex flex-col gap-1.5 rounded-md bg-accent/60 p-2"
+				onPointerEnter={() => setPointing(true)}
+				onPointerLeave={() => setPointing(false)}
+			>
 				<div className="flex items-center gap-1">
 					<input
 						autoFocus
@@ -633,7 +648,13 @@ function SuggestionRow({
 	}
 
 	return (
-		<div className="group/row flex items-center gap-1 rounded-md pr-1 hover:bg-accent">
+		<div
+			className="group/row flex items-center gap-1 rounded-md pr-1 hover:bg-accent"
+			onPointerEnter={() => setPointing(true)}
+			onPointerLeave={() => setPointing(false)}
+			onFocus={() => setFocused(true)}
+			onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && setFocused(false)}
+		>
 			<button
 				type="button"
 				onClick={onShow}
@@ -643,7 +664,15 @@ function SuggestionRow({
 				<span className="truncate text-[13px] font-medium">{group.suggestedName}</span>
 				<span className="truncate text-xs text-subtle-foreground">{occurrenceLabel(group)}</span>
 			</button>
-			<Button variant="outline" size="xs" disabled={busy} onClick={() => setNaming(true)}>
+			<Button
+				variant="outline"
+				size="xs"
+				disabled={busy}
+				onClick={() => {
+					setFocused(false);
+					setNaming(true);
+				}}
+			>
 				Make component
 			</Button>
 			<Tooltip>
