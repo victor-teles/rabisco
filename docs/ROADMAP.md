@@ -503,7 +503,7 @@ Designers come with Figma habits. Rabisco has selection, layers, auto layout thr
 **Insert tools** (most used first)
 
 - ✅ Text (T): click inside a screen to add a `<p>` at the drop placement (Phase 10) and edit it in place; drag to set a width. The insert and the first edit are one undo step
-- ✅ Frame (F, A): drag on the empty canvas to make a new screen of that size; drag inside a screen to add a `<div>` with `w-*`/`h-*` and the Phase 10 placement. Device presets in the inspector while the tool is active. Sizes snap to the 4 px spacing scale, and a drag across the parent writes `w-full`/`h-full`
+- ❌ Frame (F, A): dropped. It duplicated New screen (`⌥N` and its presets), and Rectangle draws a box inside a screen. Sizes still snap to the 4 px spacing scale, and a drag across the parent writes `w-full`/`h-full`
 - ✅ Rectangle (R) and ellipse (O): a `<div>` with `bg-muted` and the radius token; ellipse adds `rounded-full`
 - ✅ Image (⇧⌘K): pick a file, it lands in `public/images/` (decision 0010) at the pointer, as `<img className="h-auto max-w-full">` with alt text from the file name. Off the screens it goes into the selected screen
 - ✅ The tool bar shows the active tool; ↵ after insert selects the new element; Esc returns to Move (V). Each insert selects the new element and goes back to Move, as in Figma
@@ -533,7 +533,7 @@ Designers come with Figma habits. Rabisco has selection, layers, auto layout thr
 - ✅ Transitions on links (instant, dissolve, slide, push) as `data-link-transition`, played in play mode and the share viewer. Set in the inspector's Prototype section as one undo step. Back plays the way in reversed, and reduced motion fades instead of moving (`shared/prototype/transitions.ts`)
 - ✅ Overlays: open a screen as a modal (`data-link-mode="overlay"`) or a sheet (`"sheet"`) over the current one, with "Open as" in the inspector. The backdrop, Esc or a `back` link closes it. Extends [0007](./decisions/0007-prototype-links-in-source.md) in [0022](./decisions/0022-link-transitions-and-overlays.md)
 
-**Done when** a Figma user can draw a frame, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
+**Done when** a Figma user can make a screen, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
 
 ---
 

@@ -1,14 +1,12 @@
 import type { Rect } from "./align";
 import { dropTarget, insertDrop } from "./component-drop";
-import { MAX_FRAME_SIZE, MIN_FRAME_SIZE, type Size } from "./device-presets";
+import type { Size } from "./device-presets";
 import { sourceVersion } from "./render/protocol";
 import { attrValue } from "../../shared/jsx/text";
-import { FRAME_SIZE } from "../../shared/project";
-import type { Device } from "../../shared/types";
 
-export type InsertTool = "frame" | "rectangle" | "ellipse" | "text";
+export type InsertTool = "rectangle" | "ellipse" | "text";
 
-export const INSERT_TOOLS: readonly InsertTool[] = ["frame", "rectangle", "ellipse", "text"];
+export const INSERT_TOOLS: readonly InsertTool[] = ["rectangle", "ellipse", "text"];
 
 export const isInsertTool = (tool: string): tool is InsertTool => INSERT_TOOLS.some((insert) => insert === tool);
 
@@ -60,7 +58,7 @@ export function insertSnippet(insert: Pick<CanvasInsert, "tool" | "rect" | "drag
 
 	if (tool === "ellipse") return `<div className="${size} rounded-full bg-muted" />`;
 
-	return `<div className="${size}" />`;
+	return `<div className="${size} rounded-lg bg-muted" />`;
 }
 
 export function imageAlt(src: string): string {
@@ -88,13 +86,4 @@ export function insertIntoScreen(
 	const at = placed ?? (fallback && { parent: fallback.parent, index: fallback.slots.length });
 
 	return at && insertDrop(source, at.parent, at.index, { snippet, imports: [] });
-}
-
-const clampFrame = (value: number) => Math.min(MAX_FRAME_SIZE, Math.max(MIN_FRAME_SIZE, Math.round(value)));
-
-export function newFrameRect(insert: Pick<CanvasInsert, "rect" | "dragged">, device: Device): Rect {
-	const { rect } = insert;
-	const size = insert.dragged ? { width: clampFrame(rect.width), height: clampFrame(rect.height) } : FRAME_SIZE[device];
-
-	return { x: Math.round(rect.x), y: Math.round(rect.y), width: size.width, height: size.height };
 }

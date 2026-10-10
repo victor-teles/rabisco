@@ -94,7 +94,6 @@ type InspectorProps = {
 	/** The selected screen's element tree, above the element's props so they don't push it around */
 	layersPanel?: React.ReactNode;
 	componentsBadge?: number;
-	toolPanel?: React.ReactNode;
 };
 
 const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
@@ -120,7 +119,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
 	const selected = frames.filter((frame) => selectedSet.has(frame.file));
 	const single = selected.length === 1 ? selected[0]! : null;
 	const size = usePanelSize(WIDTH);
-	const empty = !props.toolPanel && !props.layersPanel && !props.propsPanel && selected.length === 0;
+	const empty = !props.layersPanel && !props.propsPanel && selected.length === 0;
 
 	return (
 		<aside className="relative flex shrink-0 flex-col border-l bg-background" style={{ width: size.width }}>
@@ -174,7 +173,6 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
 			) : (
 				// One scroll for the whole tab, so long props lists never push the screens away
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-					{props.toolPanel}
 					{props.layersPanel}
 					{props.propsPanel}
 					{single ? <FrameDetails frame={single} {...props} /> : null}

@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import {
 	ChevronLeft,
 	Circle,
-	FrameIcon,
 	Hand,
 	ImagePlus,
 	Maximize,
@@ -113,12 +112,11 @@ import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
 import { layoutGrids } from "./layout-grids";
 import { PlayView } from "./play-view";
-import { presetActionId, screenActions, type ScreenActionsContext } from "./screen-actions";
+import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { CustomSizeDialog } from "./custom-size-dialog";
 import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
-import { FramePresets } from "./frame-presets";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
 import { ScreensPanel } from "./screens-panel";
 import { SectionDraw, SectionsLayer } from "./sections-layer";
@@ -578,7 +576,6 @@ export function EditorView({
 		stateRef,
 		change,
 		busy,
-		device,
 		select: (element) => selectElement(element.file, element),
 		editText: (element) => void canvasRef.current?.editTextOnceShown(element),
 		pointer: () => canvasRef.current?.pointer() ?? null,
@@ -1445,14 +1442,6 @@ export function EditorView({
 			run: () => setTool("comment"),
 		},
 		{
-			id: "tool-frame",
-			label: "Frame tool",
-			group: "Tools",
-			chords: [{ key: "f" }, { key: "a" }],
-			enabled: true,
-			run: () => setTool("frame"),
-		},
-		{
 			id: "tool-rectangle",
 			label: "Rectangle tool",
 			group: "Tools",
@@ -2205,16 +2194,6 @@ export function EditorView({
 						componentsBadge={unseenSuggestions}
 						codePanel={codePanel}
 						propsPanel={propsPanel}
-						toolPanel={
-							tool === "frame" ? (
-								<FramePresets
-									onPick={(preset) => {
-										setTool("move");
-										actionById(actions, presetActionId(preset))?.run();
-									}}
-								/>
-							) : null
-						}
 						layersPanel={layersPanel}
 						componentsPanel={componentsPanel}
 						contextPanel={contextPanel}
@@ -2297,7 +2276,6 @@ function Toolbar({
 }) {
 	const tools = [
 		{ id: "move" as const, label: "Move", shortcut: "V", icon: MousePointer2 },
-		{ id: "frame" as const, label: "Frame", shortcut: "F", icon: FrameIcon },
 		{ id: "rectangle" as const, label: "Rectangle", shortcut: "R", icon: Square },
 		{ id: "ellipse" as const, label: "Ellipse", shortcut: "O", icon: Circle },
 		{ id: "text" as const, label: "Text", shortcut: "T", icon: Type },

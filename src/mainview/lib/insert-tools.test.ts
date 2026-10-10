@@ -6,7 +6,6 @@ import {
 	insertIntoScreen,
 	insertSnippet,
 	isInsertTool,
-	newFrameRect,
 	boxSize,
 	sizeClass,
 	BOX_SIZE,
@@ -73,12 +72,6 @@ describe("insertSnippet", () => {
 		);
 	});
 
-	test("a frame is a sized div", () => {
-		expect(insertSnippet({ tool: "frame", rect: rect(200, 80), dragged: true, available: null })).toBe(
-			'<div className="h-20 w-50" />',
-		);
-	});
-
 	test("a rectangle uses the muted fill and the radius token", () => {
 		expect(insertSnippet({ ...click, tool: "rectangle" })).toBe('<div className="h-24 w-24 rounded-lg bg-muted" />');
 	});
@@ -131,29 +124,5 @@ describe("insertIntoScreen", () => {
 
 	test("a screen that doesn't parse takes nothing", () => {
 		expect(insertIntoScreen("export default function X() { return <div>; }", null, "<p>Text</p>")).toBeNull();
-	});
-});
-
-describe("newFrameRect", () => {
-	test("a drag makes a screen of that size", () => {
-		expect(newFrameRect({ rect: { x: 10.4, y: 20.6, width: 300.2, height: 500.7 }, dragged: true }, "mobile")).toEqual({
-			x: 10,
-			y: 21,
-			width: 300,
-			height: 501,
-		});
-	});
-
-	test("a click makes a screen of the project's device", () => {
-		expect(newFrameRect({ rect: rect(0, 0), dragged: false }, "desktop")).toEqual({
-			x: 10,
-			y: 20,
-			width: 1280,
-			height: 800,
-		});
-	});
-
-	test("tiny drags keep the smallest frame", () => {
-		expect(newFrameRect({ rect: rect(5, 5), dragged: true }, "mobile").width).toBe(40);
 	});
 });

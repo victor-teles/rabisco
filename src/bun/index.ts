@@ -252,3 +252,5 @@ const mainWindow = new BrowserWindow({
 	frame: { width: 1440, height: 900, x: 120, y: 80 },
 	rpc,
 });
+
+mainWindow.maximize();

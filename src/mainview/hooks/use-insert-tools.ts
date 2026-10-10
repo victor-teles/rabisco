@@ -1,20 +1,16 @@
 import { useCallback, useRef, type RefObject } from "react";
 import { toast } from "sonner";
-import { deviceForSize } from "@/lib/device-presets";
 import type { Snapshot } from "@/lib/history";
 import {
 	imageSnippet,
 	insertIntoScreen,
 	insertSnippet,
-	newFrameRect,
 	type CanvasInsert,
 	type InsertTarget,
 	type InsertTool,
 } from "@/lib/insert-tools";
-import { blankScreen, placeScreens } from "@/lib/new-screens";
 import { api, isDesktop } from "@/lib/rpc";
 import { parseJsx } from "../../shared/jsx";
-import type { Device } from "../../shared/types";
 import type { ChangeOptions, ProjectState } from "./use-project";
 
 type Point = { x: number; y: number };
@@ -26,7 +22,6 @@ type Options = {
 	stateRef: RefObject<ProjectState | null>;
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
 	busy: boolean;
-	device: Device;
 	select: (element: InsertedElement) => void;
 	editText: (element: InsertedElement) => void;
 	pointer: () => Point | null;
@@ -35,20 +30,16 @@ type Options = {
 };
 
 const LABELS: Record<InsertTool, string> = {
-	frame: "a frame",
 	rectangle: "a rectangle",
 	ellipse: "an ellipse",
 	text: "text",
 };
-
-const FRAME_NAME = "Frame";
 
 export function useInsertTools({
 	projectPath,
 	stateRef,
 	change,
 	busy,
-	device,
 	select,
 	editText,
 	pointer,
@@ -96,37 +87,11 @@ export function useInsertTools({
 		[stateRef, busy, change, select],
 	);
 
-	const addFrame = useCallback(
-		(insert: CanvasInsert) => {
-			const current = stateRef.current;
-
-			if (!current) return;
-			const rect = newFrameRect(insert, device);
-			const size = { width: rect.width, height: rect.height };
-			const screen = blankScreen(FRAME_NAME, deviceForSize(size), size);
-			const placed = placeScreens(current.files, current.canvas.frames, [screen], rect);
-
-			change(
-				(snapshot) => ({
-					...snapshot,
-					files: { ...snapshot.files, ...placed.files },
-					frames: [...snapshot.frames, ...placed.frames],
-				}),
-				{ select: placed.frames.map((frame) => frame.file) },
-			);
-		},
-		[stateRef, device, change],
-	);
-
 	const insert = useCallback(
 		(insert: CanvasInsert) => {
 			done();
 
-			if (insert.file === null) {
-				if (insert.tool === "frame") return addFrame(insert);
-
-				return void toast(`Draw inside a screen to add ${LABELS[insert.tool]}`);
-			}
+			if (insert.file === null) return void toast(`Draw inside a screen to add ${LABELS[insert.tool]}`);
 
 			const added = addToScreen(insert.file, insert.target, insertSnippet(insert), LABELS[insert.tool]);
 
@@ -134,7 +99,7 @@ export function useInsertTools({
 			pendingText.current = { ...added.element, step: added.step };
 			editText(added.element);
 		},
-		[done, addFrame, addToScreen, editText],
+		[done, addToScreen, editText],
 	);
 
 	const placeImage = useCallback(async () => {

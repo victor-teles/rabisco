@@ -47,8 +47,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | Key                                                     | Action                                                                       |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `V` / `H` / `C`                                         | Move / hand / comment tool                                                   |
-| `F` or `A`, `R`, `O`, `T`                               | Frame, rectangle, ellipse, text tool: click or drag inside a screen to add   |
-| `F` + drag on the empty canvas                          | New screen of that size (presets in the inspector while the tool is on)      |
+| `R`, `O`, `T`                                           | Rectangle, ellipse, text tool: click or drag inside a screen to add          |
 | `⇧⌘K`                                                   | Place an image from a file at the pointer (copied into `public/images/`)     |
 | `Esc` (insert tool on)                                  | Back to the move tool                                                        |
 | `Space` + drag                                          | Pan                                                                          |
