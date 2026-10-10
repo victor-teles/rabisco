@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
 	ChevronLeft,
+	Circle,
 	Hand,
+	ImagePlus,
 	Maximize,
 	MessageCircle,
 	Minus,
@@ -9,6 +11,8 @@ import {
 	Play,
 	Plus,
 	Redo2,
+	Square,
+	Type,
 	Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -33,9 +37,11 @@ import { useComments } from "@/hooks/use-comments";
 import { useComponents } from "@/hooks/use-components";
 import { useGeneration } from "@/hooks/use-generation";
 import { useInterview } from "@/hooks/use-interview";
+import { useInsertTools } from "@/hooks/use-insert-tools";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useProject } from "@/hooks/use-project";
 import { useShowFps } from "@/hooks/use-show-fps";
+import { useSections } from "@/hooks/use-sections";
 import { useStructure } from "@/hooks/use-structure";
 import type { Theme } from "@/hooks/use-theme";
 import { useVariations } from "@/hooks/use-variations";
@@ -48,6 +54,7 @@ import { useChatCommands } from "@/hooks/use-chat-commands";
 import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
+import { restoredSnapshot } from "@/lib/versions";
 import { sourceVersion } from "@/lib/render/protocol";
 import { themeCss } from "@/lib/render/styles";
 import { reorderFrames } from "@/lib/screen-list";
@@ -73,7 +80,7 @@ import {
 } from "../../../shared/context/styles";
 import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { designTokensOf } from "../../../shared/context/tokens";
-import { LINK_ATTRIBUTE } from "../../../shared/prototype/links";
+import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
@@ -103,6 +110,7 @@ import { checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog } from "./design-check-dialog";
 import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
+import { layoutGrids } from "./layout-grids";
 import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
@@ -111,11 +119,15 @@ import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
 import { ScreensPanel } from "./screens-panel";
+import { SectionDraw, SectionsLayer } from "./sections-layer";
+import { FindPanel } from "./find-panel";
 import { ChatSessions } from "./chat-sessions";
 import { PlanCard } from "./plan-card";
 import { SidePanel, useSidePanel } from "./side-panel";
+import { HistoryPanel } from "./history-panel";
 import {
 	ALIGN_SHORTCUTS,
+	CHECKPOINT_CODE,
 	COMPONENTS_VIEW_CODE,
 	DISTRIBUTE_SHORTCUTS,
 	focusOwnsKey,
@@ -183,6 +195,7 @@ export function EditorView({
 		redo,
 		setSelection,
 		setMeta,
+		addVersion,
 		addMessages,
 		newChat,
 		openChat,
@@ -209,6 +222,8 @@ export function EditorView({
 	const commands = useChatCommands(projectPath);
 	const [sheetOpen, setSheetOpen] = useState(false);
 	const [commentsListOpen, setCommentsListOpen] = useState(false);
+	const [findOpen, setFindOpen] = useState(false);
+	const [findKey, setFindKey] = useState(0);
 	const [variations, setVariations] = useVariations();
 	const canvasRef = useRef<CanvasHandle>(null);
 	const startedInitialPrompt = useRef(false);
@@ -219,8 +234,11 @@ export function EditorView({
 	const files = project?.files ?? NO_FILES;
 	const selection = project?.canvas.selection ?? NO_SELECTION;
 	const device = project?.canvas.device ?? "mobile";
+	const locks = project?.canvas.locks;
 	const messages = project?.messages ?? NO_MESSAGES;
 	const selected = useMemo(() => selectedFrames(frames, selection), [frames, selection]);
+	const sections = useSections({ stateRef, sections: project?.canvas.sections, change, selected, setSelection });
+	const selectSection = sections.select;
 	/** Screens render with this until the user applies DESIGN.md's theme (decision 0009) */
 	const appliedTokens = project?.canvas.theme ?? NO_TOKENS;
 	const design = files["DESIGN.md"];
@@ -397,15 +415,34 @@ export function EditorView({
 		],
 	);
 
+	const [checkpointRequest, setCheckpointRequest] = useState(0);
+	const showSidePanel = sidePanel.show;
+
+	const saveCheckpoint = useCallback(() => {
+		showSidePanel("history");
+		setCheckpointRequest((count) => count + 1);
+	}, [showSidePanel]);
+
+	const clearCheckpointRequest = useCallback(() => setCheckpointRequest(0), []);
+
+	const restoreVersion = useCallback(
+		(snapshot: Snapshot, label: string) => {
+			change((present) => restoredSnapshot(present, snapshot));
+			toast.success(`Restored “${label}”`, { description: "⌘Z puts back what was there." });
+		},
+		[change],
+	);
+
 	const codeFile = selection.length === 1 ? selection[0]! : null;
 	const showCode = useCallback(() => setTab("code"), []);
 	const liveStructure = useStructure({ files, file: codeFile, stateRef, change, onShowCode: showCode, busy });
 	const { node, select: selectNode, naming, setNaming, makeComponent: makeNodeComponent } = liveStructure;
 	const { nodes, toggle: toggleNode } = liveStructure;
-	const { removeNode, editCode, setProp, setChildren, editClasses } = liveStructure;
+	const { removeNode, editCode, editFile, setProp, setChildren, editClasses } = liveStructure;
 	const { startNaming, duplicateNode, wrapNode } = liveStructure;
 	const { wrapInStackNode, unwrapNode, moveNodeAmongSiblings, moveNodeTo, pasteIntoNode } = liveStructure;
 	const { moveNodeEntry } = liveStructure;
+	const { selectMany, toggleHiddenNodes, pastePropertiesNodes, toggleLockNodes } = liveStructure;
 	const structureBusy = liveStructure.busy;
 
 	// A new object every render otherwise, which would re-render the memoized panels
@@ -414,6 +451,7 @@ export function EditorView({
 			node,
 			nodes,
 			select: selectNode,
+			selectMany,
 			toggle: toggleNode,
 			busy: structureBusy,
 			naming,
@@ -429,6 +467,10 @@ export function EditorView({
 			moveNodeTo,
 			moveNodeEntry,
 			pasteIntoNode,
+			toggleHiddenNodes,
+			pastePropertiesNodes,
+			toggleLockNodes,
+			editFile,
 			editCode,
 			setProp,
 			setChildren,
@@ -438,6 +480,7 @@ export function EditorView({
 			node,
 			nodes,
 			selectNode,
+			selectMany,
 			toggleNode,
 			structureBusy,
 			naming,
@@ -453,6 +496,10 @@ export function EditorView({
 			moveNodeTo,
 			moveNodeEntry,
 			pasteIntoNode,
+			toggleHiddenNodes,
+			pastePropertiesNodes,
+			toggleLockNodes,
+			editFile,
 			editCode,
 			setProp,
 			setChildren,
@@ -524,7 +571,24 @@ export function EditorView({
 		[stateRef, selectElement, fixNote],
 	);
 
-	const editElementText = useCallback((element: ElementRef, text: string) => setChildren(element, text), [setChildren]);
+	const insertTools = useInsertTools({
+		projectPath,
+		stateRef,
+		change,
+		busy,
+		select: (element) => selectElement(element.file, element),
+		editText: (element) => void canvasRef.current?.editTextOnceShown(element),
+		pointer: () => canvasRef.current?.pointer() ?? null,
+		placementAt: async (point) => (await canvasRef.current?.placementAt(point)) ?? null,
+		done: () => setTool("move"),
+	});
+
+	const { textStep } = insertTools;
+
+	const editElementText = useCallback(
+		(element: ElementRef, text: string) => setChildren(element, text, textStep(element)),
+		[setChildren, textStep],
+	);
 
 	const editTextElsewhere = useCallback(() => setTab("design"), []);
 
@@ -965,6 +1029,28 @@ export function EditorView({
 		[stateRef, setSelection],
 	);
 
+	const revealSection = useCallback(
+		(id: string) => {
+			const section = stateRef.current?.canvas.sections?.find((s) => s.id === id);
+
+			if (!section) return;
+			selectSection(id);
+			canvasRef.current?.fitTo([section]);
+		},
+		[stateRef, selectSection],
+	);
+
+	const selectFound = useCallback(
+		(file: string, start: number) => {
+			const frame = stateRef.current?.canvas.frames.find((f) => f.file === file);
+
+			selectElement(file, { file, start });
+
+			if (frame) canvasRef.current?.fitTo([frame], viewport.get().zoom);
+		},
+		[stateRef, selectElement, viewport],
+	);
+
 	const zoomIn = useCallback(() => canvasRef.current?.zoomBy(1.2), []);
 	const zoomOut = useCallback(() => canvasRef.current?.zoomBy(1 / 1.2), []);
 	const resetZoom = useCallback(() => canvasRef.current?.resetZoom(), []);
@@ -976,6 +1062,11 @@ export function EditorView({
 
 	/** The elements ⇧-click added to `element` */
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
+
+	const zoomToSelection = () => {
+		const rect = element && canvasRef.current?.selectedElementRect(element);
+		canvasRef.current?.fitTo(rect ? [rect] : selected, Infinity);
+	};
 
 	const single = selected.length === 1 ? selected[0]! : null;
 	const singleComments = single ? openOnScreen(comments.comments, single.file) : [];
@@ -1057,10 +1148,10 @@ export function EditorView({
 			label: "Select parent or clear selection",
 			group: "Edit",
 			chords: [{ key: "Escape" }],
-			enabled: tool === "comment" || element !== null || selection.length > 0,
+			enabled: (tool !== "move" && tool !== "hand") || element !== null || selection.length > 0,
 			hidden: true,
 			run: () => {
-				if (tool === "comment") setTool("move");
+				if (tool !== "move" && tool !== "hand") setTool("move");
 				else if (element && extraElements.length) structure.select(element);
 				else if (element) structure.select(parentElement(element));
 				else setSelection([]);
@@ -1070,6 +1161,7 @@ export function EditorView({
 			element,
 			extras: extraElements,
 			files,
+			locks,
 			structure,
 			selectParent: () => element && structure.select(parentElement(element)),
 			editText: () => element && canvasRef.current?.editText(element),
@@ -1211,7 +1303,10 @@ export function EditorView({
 			id: "zoom-reset",
 			label: "Zoom to 100%",
 			group: "View",
-			chords: [{ code: "Digit0", mod: true }],
+			chords: [
+				{ code: "Digit0", shift: true },
+				{ code: "Digit0", mod: true },
+			],
 			enabled: true,
 			run: resetZoom,
 		},
@@ -1229,7 +1324,15 @@ export function EditorView({
 			group: "View",
 			chords: [{ code: "Digit2", shift: true }],
 			enabled: selected.length > 0,
-			run: () => canvasRef.current?.fitTo(selected),
+			run: zoomToSelection,
+		},
+		{
+			id: "toggle-layout-grids",
+			label: "Show or hide layout grids",
+			group: "View",
+			chords: [{ code: "KeyG", ctrl: true }],
+			enabled: true,
+			run: layoutGrids.toggle,
 		},
 		{
 			id: "toggle-code",
@@ -1270,6 +1373,22 @@ export function EditorView({
 			chords: [{ code: SCREENS_VIEW_CODE, alt: true }],
 			enabled: true,
 			run: () => sidePanel.toggleTab("screens"),
+		},
+		{
+			id: "toggle-history",
+			label: "Version history",
+			group: "View",
+			enabled: loaded,
+			run: () => sidePanel.toggleTab("history"),
+		},
+		{
+			id: "save-checkpoint",
+			label: "Save checkpoint…",
+			group: "Edit",
+			chords: [{ code: CHECKPOINT_CODE, mod: true, alt: true }],
+			enabled: loaded,
+			global: true,
+			run: saveCheckpoint,
 		},
 		{
 			id: "new-chat",
@@ -1323,6 +1442,38 @@ export function EditorView({
 			run: () => setTool("comment"),
 		},
 		{
+			id: "tool-rectangle",
+			label: "Rectangle tool",
+			group: "Tools",
+			chords: [{ key: "r" }],
+			enabled: true,
+			run: () => setTool("rectangle"),
+		},
+		{
+			id: "tool-ellipse",
+			label: "Ellipse tool",
+			group: "Tools",
+			chords: [{ key: "o" }],
+			enabled: true,
+			run: () => setTool("ellipse"),
+		},
+		{
+			id: "tool-text",
+			label: "Text tool",
+			group: "Tools",
+			chords: [{ key: "t" }],
+			enabled: true,
+			run: () => setTool("text"),
+		},
+		{
+			id: "place-image",
+			label: "Place image…",
+			group: "Tools",
+			chords: [{ code: "KeyK", mod: true, shift: true }],
+			enabled: frames.length > 0,
+			run: () => void insertTools.placeImage(),
+		},
+		{
 			// ⌘K only: ⌥⌘K is make component
 			id: "command-palette",
 			label: "Command palette",
@@ -1340,6 +1491,20 @@ export function EditorView({
 			chords: [{ key: "?", shift: "any" }],
 			enabled: true,
 			run: () => setSheetOpen(true),
+		},
+		...sections.actions,
+		{
+			id: "find-text",
+			label: "Find and replace text…",
+			group: "Edit",
+			chords: [{ code: "KeyF", mod: true }],
+			enabled: tab !== "components",
+			passive: true,
+			global: true,
+			run: () => {
+				setFindOpen(true);
+				setFindKey((key) => key + 1);
+			},
 		},
 		// Last, so ⌘C on a selected element can be its own action
 		...screenActions(screenContext),
@@ -1545,8 +1710,8 @@ export function EditorView({
 	const treeMenu = useCallback(() => latestElementMenu.current(), []);
 
 	const changeLink = useCallback(
-		(element: ElementRef, to: string | null) => setProp(element, LINK_ATTRIBUTE, to),
-		[setProp],
+		(element: ElementRef, edit: LinkEdit) => editFile(element.file, (source) => editLink(source, element.start, edit)),
+		[editFile],
 	);
 
 	const codePanel = useMemo(
@@ -1574,9 +1739,9 @@ export function EditorView({
 	const layersPanel = useMemo(
 		() =>
 			codeFile && codeSource !== undefined ? (
-				<LayersPanel path={codeFile} source={codeSource} structure={structure} elementMenu={treeMenu} />
+				<LayersPanel path={codeFile} source={codeSource} structure={structure} locks={locks} elementMenu={treeMenu} />
 			) : null,
-		[codeFile, codeSource, structure, treeMenu],
+		[codeFile, codeSource, structure, locks, treeMenu],
 	);
 
 	const selectAncestor = useCallback(
@@ -1772,6 +1937,20 @@ export function EditorView({
 						state={sidePanel}
 						screenCount={frames.length}
 						revealChat={composeKey}
+						history={
+							project ? (
+								<HistoryPanel
+									projectPath={projectPath}
+									present={project.history.present}
+									versions={project.versions}
+									focusName={checkpointRequest}
+									onNameFocused={clearCheckpointRequest}
+									onFlush={flushCanvas}
+									onCheckpoint={addVersion}
+									onRestore={restoreVersion}
+								/>
+							) : null
+						}
 						screens={
 							<ScreensPanel
 								frames={frames}
@@ -1782,6 +1961,8 @@ export function EditorView({
 								screenMenu={listMenu}
 								onRename={renameScreen}
 								onReorder={reorderScreens}
+								sections={sections.sections}
+								onSelectSection={revealSection}
 							/>
 						}
 						chat={
@@ -1872,15 +2053,38 @@ export function EditorView({
 							onMoveElement={moveElementTo}
 							onMoveEntry={moveEntryTo}
 							onEditClasses={editClasses}
+							locks={locks}
 							onEditTextElsewhere={editTextElsewhere}
 							onPlaceComment={comments.startDraft}
+							onInsert={insertTools.insert}
 							screenMenu={screenMenu}
 							elementMenu={elementMenu}
 							canvasMenu={canvasMenu}
 							onPatchFrame={patchFrame}
 							onFixRender={busy ? undefined : fix}
 							overlay={overlay}
+							underlay={
+								<SectionsLayer
+									sections={sections.sections}
+									frames={frames}
+									viewport={viewport}
+									selectedId={sections.selectedId}
+									renaming={sections.renaming}
+									interactive={tool === "move"}
+									onSelect={sections.select}
+									onMove={sections.move}
+									onMoveEnd={endStep}
+									onStartRename={sections.startRename}
+									onRename={sections.rename}
+									onRecolor={sections.recolor}
+									onDelete={sections.remove}
+									onSelectScreens={setSelection}
+								/>
+							}
 						>
+							{sections.drawing ? (
+								<SectionDraw viewport={viewport} onDraw={sections.draw} onCancel={sections.cancelDrawing} />
+							) : null}
 							{project && frames.length === 0 && !generation ? (
 								<div className="pointer-events-none absolute inset-0 grid place-items-center">
 									<EmptyState variant="plain" className="max-w-xs">
@@ -1897,10 +2101,22 @@ export function EditorView({
 							) : null}
 						</Canvas>
 						{showFps ? <FpsMeter className="absolute top-3 left-3" /> : null}
+						{findOpen ? (
+							<FindPanel
+								frames={frames}
+								files={files}
+								focusKey={findKey}
+								busyReason={busyReason}
+								change={change}
+								onSelect={selectFound}
+								onClose={() => setFindOpen(false)}
+							/>
+						) : null}
 
 						<Toolbar
 							tool={tool}
 							onToolChange={setTool}
+							onPlaceImage={() => void insertTools.placeImage()}
 							canUndo={canUndo}
 							canRedo={canRedo}
 							onUndo={undo}
@@ -2011,6 +2227,7 @@ const SCREEN_MENU: MenuEntry[] = [
 		items: ["align-left", "align-h-center", "align-right", SEPARATOR, "align-top", "align-v-middle", "align-bottom"],
 	},
 	{ label: "Distribute", items: ["distribute-horizontal", "distribute-vertical"] },
+	"add-section",
 	SEPARATOR,
 	"copy-screens",
 	"duplicate-screens",
@@ -2025,6 +2242,7 @@ const CANVAS_MENU: MenuEntry[] = [
 	"new-screen",
 	NEW_SCREEN_SUBMENU,
 	"add-comment",
+	"add-section",
 	SEPARATOR,
 	"zoom-fit",
 	"select-all",
@@ -2036,6 +2254,7 @@ const floatingBar =
 function Toolbar({
 	tool,
 	onToolChange,
+	onPlaceImage,
 	canUndo,
 	canRedo,
 	onUndo,
@@ -2045,6 +2264,7 @@ function Toolbar({
 }: {
 	tool: Tool;
 	onToolChange: (tool: Tool) => void;
+	onPlaceImage: () => void;
 	canUndo: boolean;
 	canRedo: boolean;
 	onUndo: () => void;
@@ -2056,6 +2276,9 @@ function Toolbar({
 }) {
 	const tools = [
 		{ id: "move" as const, label: "Move", shortcut: "V", icon: MousePointer2 },
+		{ id: "rectangle" as const, label: "Rectangle", shortcut: "R", icon: Square },
+		{ id: "ellipse" as const, label: "Ellipse", shortcut: "O", icon: Circle },
+		{ id: "text" as const, label: "Text", shortcut: "T", icon: Type },
 		{ id: "hand" as const, label: "Hand", shortcut: "H", icon: Hand },
 		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
 	];
@@ -2088,6 +2311,16 @@ function Toolbar({
 					</TooltipContent>
 				</Tooltip>
 			))}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button variant="ghost" size="icon-sm" aria-label="Place image" onClick={onPlaceImage}>
+						<ImagePlus />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="top">
+					Place image <Kbd>⇧⌘K</Kbd>
+				</TooltipContent>
+			</Tooltip>
 			{newScreen}
 			{comments}
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />

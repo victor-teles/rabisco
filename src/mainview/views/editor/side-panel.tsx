@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { LayoutList, MessageSquare, PanelLeftClose, type LucideIcon } from "lucide-react";
+import { History, LayoutList, MessageSquare, PanelLeftClose, type LucideIcon } from "lucide-react";
 import { ResizeHandle, usePanelSize } from "@/components/app/resize-handle";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { isBoolean } from "../../../shared/guards";
 import { SCREENS_VIEW_KEYS, SIDE_PANEL_KEYS } from "./shortcuts";
 
-export type SideTab = "chat" | "screens";
+export type SideTab = "chat" | "screens" | "history";
 
 const TAB_KEY = "rabisco:side-tab";
 
@@ -17,7 +17,8 @@ const OPEN_KEY = "rabisco:side-open";
 
 const WIDTH = { key: "rabisco:side-width", initial: 340, min: 280, max: 560 };
 
-const isSideTab = (value: string | null): value is SideTab => value === "chat" || value === "screens";
+const isSideTab = (value: string | null): value is SideTab =>
+	value === "chat" || value === "screens" || value === "history";
 
 function storedOpen() {
 	try {
@@ -67,6 +68,7 @@ export type SidePanelState = ReturnType<typeof useSidePanel>;
 const TABS: { tab: SideTab; label: string; icon: LucideIcon; keys?: string }[] = [
 	{ tab: "chat", label: "Chat", icon: MessageSquare },
 	{ tab: "screens", label: "Screens", icon: LayoutList, keys: SCREENS_VIEW_KEYS },
+	{ tab: "history", label: "History", icon: History },
 ];
 
 /** Chat and the screens list, side by side as tabs. The chat stays mounted so a draft survives switching. */
@@ -74,6 +76,7 @@ export function SidePanel({
 	state,
 	chat,
 	screens,
+	history,
 	screenCount,
 	revealChat = 0,
 	chatActions,
@@ -83,6 +86,7 @@ export function SidePanel({
 	/** In the header while the chat shows */
 	chatActions?: ReactNode;
 	screens: ReactNode;
+	history: ReactNode;
 	screenCount: number;
 	/** Bumped to show the chat, e.g. when Ask AI puts the caret there */
 	revealChat?: number;
@@ -174,6 +178,7 @@ export function SidePanel({
 			{open ? header : rail}
 			<div className={cn("flex min-h-0 flex-1 flex-col", (!open || tab !== "chat") && "hidden")}>{chat}</div>
 			{open && tab === "screens" ? screens : null}
+			{open && tab === "history" ? history : null}
 			{open ? <ResizeHandle edge="right" label="Resize the panel" panel={size} /> : null}
 		</aside>
 	);

@@ -2,7 +2,8 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import { pasteCopy, type ElementCopy } from "@/lib/element-clipboard";
-import { adjacentRange, editEach, outermost, toggleStart, wrapRange } from "@/lib/element-selection";
+import { adjacentRange, editEach, outermost, restyle, toggleStart, wrapRange } from "@/lib/element-selection";
+import { toggleLocks } from "@/lib/element-locks";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { atPath, pathOf, remapStart } from "@/lib/outline";
 import { setChildrenText, writeProp, type Literal } from "@/lib/props";
@@ -21,7 +22,8 @@ import {
 	wrapInStack,
 } from "../../shared/jsx";
 import type { PropSpec } from "../../shared/components/api";
-import { readClassName, setClassName } from "../../shared/tailwind/classes";
+import { classNameOf, readClassName, setClassName } from "../../shared/tailwind/classes";
+import { isHidden, pasteProperties, setHidden } from "../../shared/tailwind/properties";
 import type { ProjectFiles } from "../../shared/types";
 
 export type StructureNode = { file: string; start: number };
@@ -87,6 +89,16 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 			setTracked(next && source !== undefined ? { ...next, source, extras: [] } : null);
 
 			if (!next) setNaming(false);
+		},
+		[stateRef],
+	);
+
+	const selectMany = useCallback(
+		(file: string, starts: readonly number[]) => {
+			const source = stateRef.current?.files[file];
+			const [start, ...extras] = starts;
+			setTracked(source === undefined || start === undefined ? null : { file, start, source, extras });
+			setNaming(false);
 		},
 		[stateRef],
 	);
@@ -374,6 +386,82 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[replaceNode],
 	);
 
+	const restyleNodes = useCallback(
+		(
+			edit: (source: string, starts: number[]) => (classes: string) => string,
+			refusal: string,
+			target?: StructureNode,
+		) => {
+			const path = target?.file ?? node?.file;
+			const source = path === undefined ? undefined : stateRef.current?.files[path];
+
+			if (path === undefined || source === undefined) return;
+
+			if (busyRef.current) {
+				toast(BUSY_MESSAGE);
+
+				return;
+			}
+
+			const starts = target ? [target.start] : node ? [node.start, ...node.extras] : [];
+			const result = editEach(source, starts, restyle(edit(source, starts)));
+			const [start, ...extras] = result.starts.flatMap((at) => at ?? []);
+
+			if (start === undefined) {
+				toast(refusal);
+
+				return;
+			}
+
+			if (result.source !== source)
+				change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [path]: result.source } }));
+
+			if (!target) setTracked({ file: path, start, source: result.source, extras });
+		},
+		[node, stateRef, change],
+	);
+
+	const toggleHiddenNodes = useCallback(
+		(target?: StructureNode) =>
+			restyleNodes(
+				(source, starts) => {
+					const tree = parseJsx(source);
+
+					const hidden = starts.every((start) => {
+						const element = findElement(tree, start);
+
+						return element !== null && isHidden(classNameOf(source, element).classes);
+					});
+
+					return (classes) => setHidden(classes, !hidden);
+				},
+				"Only elements with plain classes can be hidden",
+				target,
+			),
+		[restyleNodes],
+	);
+
+	const pastePropertiesNodes = useCallback(
+		(copied: string) =>
+			restyleNodes(
+				() => (classes) => pasteProperties(classes, copied),
+				"Only elements with plain classes can take properties",
+			),
+		[restyleNodes],
+	);
+
+	const toggleLockNodes = useCallback(
+		(target?: StructureNode) => {
+			const path = target?.file ?? node?.file;
+			const source = path === undefined ? undefined : stateRef.current?.files[path];
+
+			if (path === undefined || source === undefined) return;
+			const starts = target ? [target.start] : node ? [node.start, ...node.extras] : [];
+			change((snapshot) => ({ ...snapshot, locks: toggleLocks(snapshot.locks ?? [], path, source, starts) }));
+		},
+		[node, stateRef, change],
+	);
+
 	const nodeFile = node?.file ?? null;
 	const nodeStart = node?.start ?? -1;
 
@@ -397,6 +485,7 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		node: selected,
 		nodes,
 		select,
+		selectMany,
 		toggle,
 		busy,
 		naming,
@@ -412,6 +501,10 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		moveNodeTo,
 		moveNodeEntry,
 		pasteIntoNode,
+		toggleHiddenNodes,
+		pastePropertiesNodes,
+		toggleLockNodes,
+		editFile,
 		editCode,
 		setProp,
 		setChildren,

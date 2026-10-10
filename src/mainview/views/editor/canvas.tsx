@@ -18,6 +18,7 @@ import { boundsOf, rectFromPoints, type Rect } from "@/lib/align";
 import { COMPONENT_MIME, componentDrag, dropTarget, hitStarts, slotOf } from "@/lib/component-drop";
 import { dropPlacement } from "@/lib/drop-placement";
 import { elementHover, type ElementHover } from "@/lib/element-hover";
+import { isElementLocked, lockedStarts, unlockedStarts } from "@/lib/element-locks";
 import {
 	draggedElement,
 	draggedEntry,
@@ -28,6 +29,7 @@ import {
 	type DraggedEntry,
 } from "@/lib/element-move";
 import { HANDLES, handleSides, resizeRect, snapResize, type Handle } from "@/lib/frame-resize";
+import { isInsertTool, type CanvasInsert, type InsertTarget, type InsertTool } from "@/lib/insert-tools";
 import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
 import { suggestionHover, type SuggestionHover } from "@/lib/suggestion-hover";
@@ -39,24 +41,29 @@ import type { Viewport, ViewportStore } from "@/lib/viewport";
 import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
 import { ElementHandles } from "./element-handles";
+import { LayoutGrids } from "./layout-grids";
 import { LinksLayer } from "./links-layer";
+import { MeasureLayer, useAltHeld } from "./measure-layer";
 import { Minimap } from "./minimap";
 import { focusOwnsKey, isTyping } from "./shortcuts";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
 import { screenNameFromPath } from "../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import type { ElementLock, Frame, ProjectFiles } from "../../../shared/types";
 import { FRAME_GAP } from "../../../shared/project";
 import { isAlternate, variationGroups, type VariationGroup } from "../../../shared/variations";
 
-export type Tool = "move" | "hand" | "comment";
+export type Tool = "move" | "hand" | "comment" | InsertTool;
 
 export type CanvasHandle = {
 	zoomBy: (factor: number) => void;
-	fitTo: (rects: Rect[]) => void;
+	fitTo: (rects: Rect[], maxZoom?: number) => void;
+	selectedElementRect: (element: ElementRef) => Rect | null;
 	resetZoom: () => void;
 	editText: (element: ElementRef) => void;
+	editTextOnceShown: (element: ElementRef) => Promise<void>;
+	placementAt: (point: Point) => Promise<{ file: string; target: InsertTarget | null } | null>;
 	isEditingText: () => boolean;
 	endTextEdit: (commit: boolean) => void;
 	/** Null unless the frame shows the current source */
@@ -115,6 +122,10 @@ const GESTURE_IDLE_MS = 150;
 /** Blurred shadows are slow to repaint while zooming: frames keep only their ring during a gesture */
 const NO_SHADOW = "0 0 #0000";
 
+const SHOWN_ATTEMPTS = 40;
+
+const SHOWN_RETRY_MS = 50;
+
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((v) => b.has(v));
@@ -155,9 +166,11 @@ type CanvasProps = {
 	onMoveEntry?: (element: ElementRef, move: { from: number; to: number; version: string }) => void;
 	/** The selection's resize, padding and gap handles; one undo step per call */
 	onEditClasses?: (element: ElementRef, edit: (classes: string) => string) => void;
+	locks?: ElementLock[];
 	/** For elements that hold more than text */
 	onEditTextElsewhere?: (element: ElementRef) => void;
 	onPlaceComment?: (point: Point) => void;
+	onInsert?: (insert: CanvasInsert) => void;
 	/** Items of the right-click menu on screens; `files` is the selection it acts on */
 	screenMenu?: (files: string[]) => React.ReactNode;
 	/** Items of the right-click menu on the canvas background; `point` is where it opened, in canvas coordinates */
@@ -170,6 +183,7 @@ type CanvasProps = {
 	onFixRender?: (file: string, problem: Problem) => void;
 	/** Drawn in canvas coordinates; `frames` include a drag in progress */
 	overlay?: (frames: Frame[]) => React.ReactNode;
+	underlay?: React.ReactNode;
 	children?: React.ReactNode;
 };
 
@@ -252,6 +266,16 @@ type Drag =
 			moved: boolean;
 			/** Shown on the canvas during the drag; the editor gets it once, on release */
 			selection: string[];
+	  }
+	| {
+			kind: "insert";
+			tool: InsertTool;
+			file: string | null;
+			start: Point;
+			current: Point;
+			startX: number;
+			startY: number;
+			moved: boolean;
 	  };
 
 type HoverRequest = { clientX: number; clientY: number; deep: boolean };
@@ -326,14 +350,17 @@ export function Canvas({
 	onMoveElement,
 	onMoveEntry,
 	onEditClasses,
+	locks,
 	onEditTextElsewhere,
 	onPlaceComment,
+	onInsert,
 	screenMenu,
 	canvasMenu,
 	elementMenu,
 	onPatchFrame,
 	onFixRender,
 	overlay,
+	underlay,
 	children,
 }: CanvasProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -354,6 +381,8 @@ export function Canvas({
 	});
 
 	const pendingMarquee = useRef(0);
+	const pendingInsert = useRef(0);
+	const probeRef = useRef<((clientX: number, clientY: number) => Promise<DropPreview | null>) | null>(null);
 
 	const shown = useMemo(() => {
 		const moved = moving ? withMoves(frames, moving) : frames;
@@ -365,6 +394,7 @@ export function Canvas({
 
 	const framesRef = useRef(shown);
 	const [spaceHeld, setSpaceHeld] = useState(false);
+	const altHeld = useAltHeld();
 	// Stable for the memoized frames, whatever the parent passes
 	const pickRef = useRef(onPick);
 	const pick = useCallback((file: string) => pickRef.current?.(file), []);
@@ -561,14 +591,18 @@ export function Canvas({
 	);
 
 	const fitTo = useCallback(
-		(targets: Rect[]) => {
+		(targets: Rect[], maxZoom = 1) => {
 			const rect = containerRef.current?.getBoundingClientRect();
 			const bounds = boundsOf(targets);
 
 			if (!rect || !bounds) return;
 
 			const zoom = clampZoom(
-				Math.min((rect.width - FIT_PADDING * 2) / bounds.width, (rect.height - FIT_PADDING * 2) / bounds.height, 1),
+				Math.min(
+					(rect.width - FIT_PADDING * 2) / bounds.width,
+					(rect.height - FIT_PADDING * 2) / bounds.height,
+					maxZoom,
+				),
 			);
 
 			view.set({
@@ -625,11 +659,46 @@ export function Canvas({
 				settle();
 			},
 			fitTo,
+			selectedElementRect: (target) => {
+				const tracked = selectedBoxes.current;
+				const boxes = tracked?.file === target.file && tracked.start === target.start ? tracked : null;
+				const frame = boxes && framesRef.current.find((f) => f.file === boxes.file);
+				const bounds = boxes && boundsOf(boxes.boxes);
+
+				return frame && bounds ? { ...bounds, x: frame.x + bounds.x, y: frame.y + bounds.y } : null;
+			},
 			resetZoom: () => {
 				zoomAround(1 / view.get().zoom);
 				settle();
 			},
 			editText: (target) => editText(target),
+			editTextOnceShown: async (target) => {
+				for (let attempt = 0; attempt < SHOWN_ATTEMPTS; attempt++) {
+					const source = filesRef.current[target.file];
+					const host = hostFor(target.file);
+
+					const boxes =
+						host && source !== undefined ? await host.elementBoxes(target.start, sourceVersion(source)) : null;
+
+					if (boxes?.length) return editText(target);
+					await new Promise((resolve) => setTimeout(resolve, SHOWN_RETRY_MS));
+				}
+			},
+			placementAt: async (point) => {
+				const rect = containerRef.current?.getBoundingClientRect();
+
+				if (!rect) return null;
+				const { x, y, zoom } = view.get();
+				const preview = await probeRef.current?.(rect.left + x + point.x * zoom, rect.top + y + point.y * zoom);
+				const spot = preview?.spot;
+
+				if (!preview) return null;
+
+				return {
+					file: preview.file,
+					target: spot ? { parent: spot.parent, index: spot.index, version: spot.version } : null,
+				};
+			},
 			isEditingText: () => editingRef.current !== null,
 			endTextEdit: (commit) => {
 				if (editingRef.current) hostFor(editingRef.current.file)?.endTextEdit(commit);
@@ -813,6 +882,12 @@ export function Canvas({
 		setDropFile(null);
 	}, []);
 
+	const inserting = isInsertTool(tool);
+
+	useEffect(() => {
+		if (!inserting) clearDrop();
+	}, [inserting, clearDrop]);
+
 	// A cancelled drag (Esc) ends without a drop or a dragleave
 	useEffect(
 		() =>
@@ -890,6 +965,10 @@ export function Canvas({
 
 		return { file, spot: { parent: entry.parent, index: to, from, version, name, box: layout.box, line } };
 	};
+
+	useLayoutEffect(() => {
+		probeRef.current = probeDrop;
+	});
 
 	/** The siblings of a dragged list item make room in the frame itself, so the screen doesn't render mid-drag */
 	const shiftEntries = (settle = false) => {
@@ -1035,6 +1114,8 @@ export function Canvas({
 		if (!onMoveElement || source === undefined || !frame) return false;
 		const point = toCanvas(event.clientX, event.clientY);
 		const pressed = pressedElement(file, { x: point.x - frame.x, y: point.y - frame.y });
+
+		if (pressed && isElementLocked(locks, file, source, pressed.start)) return false;
 		const dragged = pressed ? draggedElement(source, pressed.start) : null;
 		const entry = pressed && !dragged && onMoveEntry ? draggedEntry(source, pressed.start) : null;
 
@@ -1129,7 +1210,16 @@ export function Canvas({
 		const hit = await host.hitTest(local.x, local.y);
 		const starts = hitStarts(hit, frame.file, source);
 
-		return starts && hit ? { starts, boxes: hit.boxes ?? [], point: local } : null;
+		if (!starts || !hit) return null;
+		const open = unlockedStarts(source, lockedStarts(locks, frame.file, source), starts);
+		const [first] = open;
+
+		if (first === starts[0]) return { starts, boxes: hit.boxes ?? [], point: local };
+
+		if (first === undefined) return null;
+		const boxes = await host.elementBoxes(first, hit.version);
+
+		return { starts: open, boxes: [boxes?.find((box) => contains(box, local)) ?? null], point: local };
 	};
 
 	/** `keepSelected`: a right-click on one of several selected elements keeps them all, as in Figma */
@@ -1213,6 +1303,15 @@ export function Canvas({
 			return;
 		}
 
+		if (isInsertTool(tool)) {
+			const start = toCanvas(event.clientX, event.clientY);
+			const file = frameAt(event.clientX, event.clientY)?.file ?? null;
+			const { clientX: startX, clientY: startY } = event;
+			setDrag({ kind: "insert", tool, file, start, current: start, startX, startY, moved: false });
+
+			return;
+		}
+
 		const target = event.target instanceof Element ? event.target : null;
 		const handle = target?.closest<HTMLElement>("[data-resize-handle]")?.dataset;
 		const resizing = handle ? shown.find((frame) => frame.file === handle.file) : undefined;
@@ -1288,6 +1387,8 @@ export function Canvas({
 			if (!panning && tool === "move" && onSelectElement)
 				updateHover(event.clientX, event.clientY, event.metaKey || event.ctrlKey);
 			else if (hover) clearHover();
+
+			if (!panning && isInsertTool(tool) && onInsert) updateDrop(event.clientX, event.clientY);
 
 			return;
 		}
@@ -1381,6 +1482,17 @@ export function Canvas({
 				setResized(pending.resized ? { file: drag.file, rect: pending.resized } : null);
 				setGuides(pending.guides);
 			});
+		} else if (drag.kind === "insert") {
+			const dx = event.clientX - drag.startX;
+			const dy = event.clientY - drag.startY;
+
+			if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+			const current = toCanvas(event.clientX, event.clientY);
+			cancelAnimationFrame(pendingInsert.current);
+
+			pendingInsert.current = requestAnimationFrame(() =>
+				setDrag((latest) => (latest?.kind === "insert" ? { ...latest, current, moved: true } : latest)),
+			);
 		} else {
 			const current = toCanvas(event.clientX, event.clientY);
 
@@ -1450,9 +1562,38 @@ export function Canvas({
 				: drag.selection;
 
 			if (!sameSelection(next, selection)) onSelectionChange(next);
+		} else if (drag?.kind === "insert") {
+			cancelAnimationFrame(pendingInsert.current);
+			finishInsert(drag, event.clientX, event.clientY);
 		}
 
 		setDrag(null);
+	};
+
+	const finishInsert = (drag: Extract<Drag, { kind: "insert" }>, clientX: number, clientY: number) => {
+		const end = toCanvas(clientX, clientY);
+		const dragged = drag.moved || Math.hypot(clientX - drag.startX, clientY - drag.startY) >= DRAG_THRESHOLD;
+		const rect = rectFromPoints(drag.start, end);
+		const frame = drag.file ? shown.find((f) => f.file === drag.file) : undefined;
+		const state = dropping.current;
+		state.next = null;
+		state.generation++;
+
+		if (!frame) {
+			clearDrop();
+
+			return onInsert?.({ tool: drag.tool, file: null, rect, dragged, target: null, available: null });
+		}
+
+		const local = { ...rect, x: rect.x - frame.x, y: rect.y - frame.y };
+
+		void probeDrop(drag.startX, drag.startY).then((preview) => {
+			clearDrop();
+			const spot = preview?.file === frame.file ? preview.spot : null;
+			const target = spot && { parent: spot.parent, index: spot.index, version: spot.version };
+			const available = spot && { width: spot.box.width, height: spot.box.height };
+			onInsert?.({ tool: drag.tool, file: frame.file, rect: local, dragged, target, available });
+		});
 	};
 
 	// Radix opens a context menu only from its trigger's event, and would also take it on the canvas
@@ -1521,6 +1662,8 @@ export function Canvas({
 	const shownSelection = drag?.kind === "marquee" ? drag.selection : selection;
 	const selected = new Set(shownSelection);
 	const selectionBounds = shownSelection.length > 1 ? boundsOf(selectedFrames(shown, shownSelection)) : null;
+	const measuredFile = element?.file ?? (shownSelection.length === 1 ? shownSelection[0] : undefined);
+	const measured = measuredFile === undefined ? undefined : shown.find((f) => f.file === measuredFile);
 	const marquee = drag?.kind === "marquee" && drag.moved ? rectFromPoints(drag.start, drag.current) : null;
 	const groups = groupLayouts(shown, drafts?.frames);
 	const pickedFiles = new Set(groups.flatMap(({ group }) => (group.picked ? [group.picked] : [])));
@@ -1547,6 +1690,7 @@ export function Canvas({
 		<>
 			<div
 				ref={containerRef}
+				data-canvas
 				className={cn(
 					"relative h-full w-full touch-none overflow-hidden bg-muted/50 select-none",
 					drag?.kind === "resize"
@@ -1555,7 +1699,7 @@ export function Canvas({
 							? drag
 								? "cursor-grabbing"
 								: "cursor-grab"
-							: tool === "comment"
+							: tool === "comment" || isInsertTool(tool)
 								? "cursor-crosshair"
 								: "cursor-default",
 				)}
@@ -1575,6 +1719,7 @@ export function Canvas({
 				<div ref={gridRef} aria-hidden className="pointer-events-none absolute" />
 				{/* `--zoom` and `--unzoom` (set with the transform) counter-scale the chrome without re-rendering it */}
 				<div ref={layerRef} className="absolute top-0 left-0 origin-top-left">
+					{underlay}
 					{shown.map((frame) => {
 						const writing = drafts?.writing[frame.file];
 
@@ -1614,6 +1759,7 @@ export function Canvas({
 							draft
 						/>
 					))}
+					<LayoutGrids frames={shown} />
 					<LinksLayer frames={shown} files={rendered} selected={element} />
 					{hover && !(element && hover.file === element.file && hover.start === element.start) ? (
 						<ElementOutline
@@ -1653,8 +1799,24 @@ export function Canvas({
 							zoom={zoomOf}
 							onBoxes={reportSelectedBoxes}
 							onEditClasses={
-								editing || draggingElement || drafts || tool !== "move" || elements.length ? undefined : onEditClasses
+								editing ||
+								draggingElement ||
+								drafts ||
+								tool !== "move" ||
+								elements.length ||
+								isElementLocked(locks, element.file, files[element.file], element.start)
+									? undefined
+									: onEditClasses
 							}
+						/>
+					) : null}
+					{altHeld && measured && !drag ? (
+						<MeasureLayer
+							frame={measured}
+							source={rendered[measured.file]}
+							host={hostFor}
+							selected={element?.file === measured.file ? element.start : null}
+							hover={hover?.file === measured.file ? hover : null}
 						/>
 					) : null}
 					{element && elements.length ? (
@@ -1693,6 +1855,7 @@ export function Canvas({
 						<DropOutline preview={dropPreview} frame={shown.find((f) => f.file === dropPreview.file)} />
 					) : null}
 					{overlay?.(shown)}
+					{drag?.kind === "insert" && drag.moved ? <InsertOutline drag={drag} /> : null}
 					{marquee ? (
 						<div
 							className="pointer-events-none absolute bg-primary/8"
@@ -2226,6 +2389,35 @@ const OUTLINE_LABEL = "absolute rounded-[4px] px-1 font-mono text-[11px]/4 white
 
 /** Raises a label above its box, at any zoom */
 const LABEL_ABOVE = "translateY(-100%) scale(var(--unzoom)) translateY(-2px)";
+
+function InsertOutline({ drag }: { drag: Extract<Drag, { kind: "insert" }> }) {
+	const rect = rectFromPoints(drag.start, drag.current);
+
+	return (
+		<div
+			className={cn("pointer-events-none absolute bg-primary/8", drag.tool === "ellipse" && "rounded-full")}
+			style={{
+				left: rect.x,
+				top: rect.y,
+				width: rect.width,
+				height: drag.tool === "text" ? 0 : rect.height,
+				outline: "calc(1px * var(--unzoom)) solid var(--primary)",
+			}}
+		>
+			<div
+				className={cn(OUTLINE_LABEL, "bg-primary font-sans tabular-nums")}
+				style={{
+					left: rect.width / 2,
+					top: "100%",
+					transform: "translateX(-50%) scale(var(--unzoom)) translateY(4px)",
+					transformOrigin: "top center",
+				}}
+			>
+				{drag.tool === "text" ? px(rect.width) : sizeOf(rect)}
+			</div>
+		</div>
+	);
+}
 
 /** The container a drop goes into and where among its children, or a screen that can't take it */
 function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | undefined }) {

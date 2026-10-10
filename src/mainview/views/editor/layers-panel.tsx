@@ -1,8 +1,11 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Structure } from "@/hooks/use-structure";
+import { lockedStarts } from "@/lib/element-locks";
 import { findNode } from "@/lib/outline";
 import { isBoolean } from "../../../shared/guards";
+import { hiddenStarts } from "../../../shared/tailwind/properties";
+import type { ElementLock } from "../../../shared/types";
 import { StructureTree, useOutline } from "./structure-tree";
 
 const OPEN_KEY = "rabisco:layers-open";
@@ -21,18 +24,27 @@ type LayersPanelProps = {
 	path: string;
 	source: string;
 	structure: Structure;
+	locks?: ElementLock[];
 	/** Items of the right-click menu on a row, which it selects first */
 	elementMenu?: () => React.ReactNode;
 };
 
 /** The Code tab's structure tree in the Design tab, as Figma's layers */
-export const LayersPanel = memo(function LayersPanel({ path, source, structure, elementMenu }: LayersPanelProps) {
-	const { node, nodes, select, toggle, removeNode } = structure;
+export const LayersPanel = memo(function LayersPanel({
+	path,
+	source,
+	structure,
+	locks,
+	elementMenu,
+}: LayersPanelProps) {
+	const { node, nodes, select, toggle, removeNode, toggleHiddenNodes, toggleLockNodes } = structure;
 	const [open, setOpen] = useState(storedOpen);
 	const tree = useRef<HTMLDivElement>(null);
 	const { outline, shown, stale } = useOutline(path, source);
 	const selected = node && node.file === path && !stale ? findNode(outline.roots, node.start) : null;
 	const extraStarts = selected ? nodes.slice(1).map((n) => n.start) : [];
+	const hidden = useMemo(() => hiddenStarts(source), [source]);
+	const locked = useMemo(() => lockedStarts(locks, path, source), [locks, path, source]);
 
 	useEffect(() => localStorage.setItem(OPEN_KEY, JSON.stringify(open)), [open]);
 
@@ -61,6 +73,10 @@ export const LayersPanel = memo(function LayersPanel({ path, source, structure, 
 							ancestors={selected?.ancestors ?? []}
 							onSelect={(start) => select({ file: path, start })}
 							onToggle={(start) => toggle({ file: path, start })}
+							hiddenStarts={hidden}
+							lockedStarts={locked}
+							onToggleHidden={(start) => toggleHiddenNodes({ file: path, start })}
+							onToggleLocked={(start) => toggleLockNodes({ file: path, start })}
 							onDelete={removeNode}
 							menu={elementMenu}
 						/>

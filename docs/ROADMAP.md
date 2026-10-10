@@ -494,7 +494,7 @@ Today a generation is checked only for code: path, compile, imports, exports and
 
 ---
 
-## Phase 17: Figma parity ⬜
+## Phase 17: Figma parity 🚧
 
 _Principles: Direct manipulation over prompts · Keyboard first (Figma conventions)_
 
@@ -502,38 +502,38 @@ Designers come with Figma habits. Rabisco has selection, layers, auto layout thr
 
 **Insert tools** (most used first)
 
-- ⬜ Text (T): click inside a screen to add a `<p>` at the drop placement (Phase 10) and edit it in place; drag to set a width
-- ⬜ Frame (F, A): drag on the empty canvas to make a new screen of that size; drag inside a screen to add a `<div>` with `w-*`/`h-*` and the Phase 10 placement. Device presets in the inspector while the tool is active
-- ⬜ Rectangle (R) and ellipse (O): a `<div>` with `bg-muted` and the radius token; ellipse adds `rounded-full`
-- ⬜ Image (⇧⌘K): pick a file, it lands in `public/images/` (decision 0010) at the pointer
-- ⬜ The tool bar shows the active tool; ↵ after insert selects the new element; Esc returns to Move (V)
+- ✅ Text (T): click inside a screen to add a `<p>` at the drop placement (Phase 10) and edit it in place; drag to set a width. The insert and the first edit are one undo step
+- ❌ Frame (F, A): dropped. It duplicated New screen (`⌥N` and its presets), and Rectangle draws a box inside a screen. Sizes still snap to the 4 px spacing scale, and a drag across the parent writes `w-full`/`h-full`
+- ✅ Rectangle (R) and ellipse (O): a `<div>` with `bg-muted` and the radius token; ellipse adds `rounded-full`
+- ✅ Image (⇧⌘K): pick a file, it lands in `public/images/` (decision 0010) at the pointer, as `<img className="h-auto max-w-full">` with alt text from the file name. Off the screens it goes into the selected screen
+- ✅ The tool bar shows the active tool; ↵ after insert selects the new element; Esc returns to Move (V). Each insert selects the new element and goes back to Move, as in Figma
 
 **Inspect and measure**
 
-- ⬜ ⌥ + hover: red distance lines and values between the selection and the hovered element or its parent
-- ⬜ Layout grid per screen (⌃G): columns and margins drawn over the frame, stored in `rabisco.json`
-- ⬜ ⇧2 zoom to selection, ⇧0 zoom to 100%
+- ✅ ⌥ + hover: red distance lines and values between the selection and the hovered element or its parent. Gaps when apart, edge to edge when one holds the other, dashed guides on a diagonal. Boxes come from the frame, with no RPC (`lib/measure.ts`, `measure-layer.tsx`)
+- ✅ Layout grid per screen (⌃G): columns and margins drawn over the frame, stored in `rabisco.json` as the frame's `layoutGrid`. Add it and set count, gutter and margin in the inspector, with undo; ⌃G shows or hides every grid (`shared/layout-grid.ts`)
+- ✅ ⇧2 zoom to selection (the selected element, else the screens, past 100% as in Figma), ⇧0 zoom to 100%
 
 **Properties**
 
-- ⬜ Copy and paste properties (⌥⌘C / ⌥⌘V): copy an element's classes without its variants and children, paste onto one or many elements, one undo step
-- ⬜ Eyedropper (I) in the color field: pick a color from any frame, and snap it to the matching token when one exists
-- ⬜ Auto layout panel the way Figma shows it: direction, wrap, a 3×3 alignment grid, gap and padding with "Auto" (`justify-between`), on top of the existing flex classes
-- ⬜ Hide (⇧⌘H) and lock (⇧⌘L) in Layers. Hide writes `hidden` in the TSX so exports match; lock is canvas state in `rabisco.json`
-- ⬜ Select matching (⌥⌘A): elements with the same component or the same classes, across the screen
+- ✅ Copy and paste properties (⌥⌘C / ⌥⌘V): copy an element's classes without its variants and children, paste onto one or many elements, one undo step. Copy keeps the base classes and leaves out `md:`/`hover:` variants; paste replaces each target's base classes and keeps its own variants
+- ✅ Eyedropper (I) in the color field: pick a color from any frame, and snap it to the matching token when one exists. The frame reports the computed color under the pointer (text, SVG fill or the nearest background), so no pixels and no RPC; the value snaps to a theme token, a project color or the palette, else `[#hex]`, and keeps its alpha as `/NN`. One undo step (`lib/eyedropper.ts`, `runtime/pick-color.ts`)
+- ✅ Auto layout panel the way Figma shows it: direction, wrap, a 3×3 alignment grid, gap and padding with "Auto" (`justify-between`), on top of the existing flex classes. The grid writes `justify-*`/`items-*` for the direction (reverse included), a direction change keeps the alignment where it shows, and a stretch survives a click on its row (`shared/tailwind/auto-layout.ts`)
+- ✅ Hide (⇧⌘H) and lock (⇧⌘L) in Layers. Hide writes `hidden` in the TSX so exports match; lock is canvas state in `rabisco.json`. Layers rows show an eye and a lock to toggle them. Hide writes `hidden!` when a display class would win over `hidden`. A lock names its element by tree path and tag, follows it through edits in history, and is undoable. Locked elements and their children can't be picked, dragged or resized on the canvas; a click reaches the nearest unlocked ancestor
+- ✅ Select matching (⌥⌘A): elements with the same component or the same classes, across the screen. Classes match in any order; an element without classes matches the same tag without classes
 
 **Organize**
 
-- ⬜ Sections on the canvas (⇧S): a named, colored area that holds screens and moves with them, stored in `rabisco.json`. The screens list groups by section
-- ⬜ Find and replace text across screens (⌘F on the canvas): results by screen, replace one or all as one undo step
-- ⬜ Version history panel: named checkpoints (⌥⌘S) and the AI changes in the session, each with a preview and Restore. Builds on undo history and git sync, with no new storage when git is set up
+- ✅ Sections on the canvas (⇧S): a named, colored area that holds the screens whose center lies inside it and moves with them, stored in `rabisco.json` as `sections`. ⇧S wraps the selected screens or draws one; drag the name to move, double-click to rename, right-click for color and delete (the screens stay). The screens list groups by section (`shared/sections.ts`, `sections-layer.tsx`)
+- ✅ Find and replace text across screens (⌘F on the canvas): JSX text and string literal children in the TSX, results by screen, click to select the element, replace one or all as one undo step. Text built by other expressions is skipped (`shared/jsx/find-text.ts`, `find-panel.tsx`)
+- ✅ Version history panel: named checkpoints (⌥⌘S) and the AI changes in the session, each with a preview and Restore. Builds on undo history and git sync, with no new storage when git is set up. History tab in the left panel; a checkpoint is a commit with a `Rabisco-Checkpoint` trailer, or a session snapshot without git; Restore is one undo step and never rewrites git history ([0023](./decisions/0023-version-history.md))
 
 **Prototype**
 
-- ⬜ Transitions on links (instant, dissolve, slide, push) as `data-link-transition`, played in play mode and the share viewer
-- ⬜ Overlays: open a screen as a modal or sheet over the current one (`data-link-mode="overlay"`). Extends [0007](./decisions/0007-prototype-links-in-source.md) with a new record
+- ✅ Transitions on links (instant, dissolve, slide, push) as `data-link-transition`, played in play mode and the share viewer. Set in the inspector's Prototype section as one undo step. Back plays the way in reversed, and reduced motion fades instead of moving (`shared/prototype/transitions.ts`)
+- ✅ Overlays: open a screen as a modal (`data-link-mode="overlay"`) or a sheet (`"sheet"`) over the current one, with "Open as" in the inspector. The backdrop, Esc or a `back` link closes it. Extends [0007](./decisions/0007-prototype-links-in-source.md) in [0022](./decisions/0022-link-transitions-and-overlays.md)
 
-**Done when** a Figma user can draw a frame, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
+**Done when** a Figma user can make a screen, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
 
 ---
 

@@ -1,8 +1,13 @@
 // Git sync: docs/decisions/0008-share-link-and-git-sync.md
 import { CHATS_DIR, LEGACY_CHAT_FILE } from "./chats";
 import { isComponentFile, isScreenFile, screenNameFromPath } from "./project";
+import type { CanvasDoc, ProjectFiles } from "./types";
 
 export type GitCommit = { hash: string; subject: string; date: string };
+
+export type GitCheckpoint = { hash: string; short: string; name: string; date: string };
+
+export type CheckpointVersion = { files: ProjectFiles; canvas: CanvasDoc };
 
 export type GitStatus =
 	| { state: "unavailable"; error: string }
@@ -53,6 +58,12 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 /** `screens/order-history.tsx` → `order history` */
 const shortName = (path: string) => screenNameFromPath(path).toLowerCase();
 
+const changeLines = (changes: ChangedPath[]) =>
+	[...changes]
+		.sort((a, b) => a.path.localeCompare(b.path))
+		.map((change) => `- ${verbOf(change.status)} ${change.path}`)
+		.join("\n");
+
 /** e.g. `Rabisco: add 2 screens, update button component`, with a body listing the files */
 export function commitMessage(changes: ChangedPath[]): string {
 	const parts: string[] = [];
@@ -102,12 +113,43 @@ export function commitMessage(changes: ChangedPath[]): string {
 	const shown = parts.length > 3 ? [...parts.slice(0, 3), "more"] : parts;
 	const subject = `Rabisco: ${shown.join(", ")}`;
 
-	const body = [...changes]
-		.sort((a, b) => a.path.localeCompare(b.path))
-		.map((change) => `- ${verbOf(change.status)} ${change.path}`)
-		.join("\n");
+	return `${subject}\n\n${changeLines(changes)}\n`;
+}
 
-	return `${subject}\n\n${body}\n`;
+export const CHECKPOINT_TRAILER = "Rabisco-Checkpoint";
+
+const CHECKPOINT_SUBJECT = "Rabisco checkpoint: ";
+
+const NAME_LIMIT = 120;
+
+export const CHECKPOINT_FORMAT = `%H%x00%h%x00%cI%x00%s%x00%(trailers:key=${CHECKPOINT_TRAILER},valueonly,separator=%x2C)%x1e`;
+
+export const checkpointScope = (prefix: string) => prefix.replace(/\/+$/, "") || ".";
+
+export const cleanCheckpointName = (name: string) => name.replace(/\s+/g, " ").trim().slice(0, NAME_LIMIT).trim();
+
+export function checkpointMessage(name: string, changes: ChangedPath[], scope: string): string {
+	const parts = [`${CHECKPOINT_SUBJECT}${cleanCheckpointName(name)}`];
+
+	if (changes.length) parts.push(changeLines(changes));
+	parts.push(`${CHECKPOINT_TRAILER}: ${scope}`);
+
+	return `${parts.join("\n\n")}\n`;
+}
+
+export function parseCheckpoints(output: string, scope: string): GitCheckpoint[] {
+	const checkpoints: GitCheckpoint[] = [];
+
+	for (const record of output.split("\x1e")) {
+		const [hash = "", short = "", date = "", subject = "", trailer = ""] = record.trim().split("\0");
+
+		if (!hash || !subject.startsWith(CHECKPOINT_SUBJECT)) continue;
+
+		if (!trailer.split(",").some((value) => value.trim() === scope)) continue;
+		checkpoints.push({ hash, short, date, name: subject.slice(CHECKPOINT_SUBJECT.length) });
+	}
+
+	return checkpoints;
 }
 
 export function redactRemoteUrl(url: string): string {

@@ -1,5 +1,13 @@
 // Relative URLs and a classic data script (not `fetch`) so the site works from `file://`. The runtime is
 // inlined because a sandboxed `file://` frame can't load scripts from other files.
+import {
+	OVERLAY_MODES,
+	overlayMotion,
+	screenTransition,
+	TRANSITIONS,
+	type OverlayMotion,
+	type ScreenTransition,
+} from "../prototype/transitions";
 import type { ExportFile } from "../types";
 import type { ScreenRuntime, ShareSnapshot } from "./snapshot";
 
@@ -12,6 +20,54 @@ export const NORMALIZE_TARGET_JS = `function normalizeTarget(to) {
 	if (!/\\.tsx$/.test(path)) path = path + ".tsx";
 	return path;
 }`;
+
+export const LINK_OPTIONS_JS = `function parseTransition(value) {
+	var name = String(value || "").trim().toLowerCase();
+	return ${JSON.stringify(TRANSITIONS)}.indexOf(name) === -1 ? null : name;
+}
+function parseOverlayMode(value) {
+	var name = String(value || "").trim().toLowerCase();
+	if (name === "overlay" || name === "modal") return "overlay";
+	return name === "sheet" ? "sheet" : null;
+}
+function overlayRect(mode, screen, overlay) {
+	var height = Math.min(overlay.height, screen.height);
+	if (mode === "sheet") return { x: 0, y: screen.height - height, width: screen.width, height: height };
+	var width = Math.min(overlay.width, screen.width);
+	return { x: (screen.width - width) / 2, y: (screen.height - height) / 2, width: width, height: height };
+}`;
+
+export const screenMotionKey = (transition: string, direction: string, reduced: boolean) =>
+	`${transition}:${direction}:${reduced ? 1 : 0}`;
+
+export const overlayMotionKey = (mode: string, transition: string, opening: boolean, reduced: boolean) =>
+	`${mode}:${transition}:${opening ? "open" : "close"}:${reduced ? 1 : 0}`;
+
+export function motionTables() {
+	const screens: Record<string, ScreenTransition | null> = {};
+	const overlays: Record<string, OverlayMotion | null> = {};
+
+	for (const reduced of [false, true]) {
+		for (const transition of TRANSITIONS) {
+			for (const direction of ["forward", "back"] as const)
+				screens[screenMotionKey(transition, direction, reduced)] = screenTransition(transition, direction, reduced);
+		}
+
+		for (const mode of OVERLAY_MODES) {
+			for (const transition of [...TRANSITIONS, null]) {
+				for (const opening of [true, false])
+					overlays[overlayMotionKey(mode, transition ?? "", opening, reduced)] = overlayMotion(
+						mode,
+						transition,
+						opening,
+						reduced,
+					);
+			}
+		}
+	}
+
+	return { screens, overlays };
+}
 
 const escapeHtml = (text: string) =>
 	text.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
@@ -41,8 +97,14 @@ nav button[aria-current="page"]{background:#f4f4f5;font-weight:600}
 nav p{margin:8px;color:#71717a;font-size:12px}
 main{position:relative;flex:1;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #device{overflow:hidden;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0/.08),0 10px 40px -12px rgb(0 0 0/.25)}
-#scaler{transform-origin:top left}
-#frame{display:block;border:0}
+#scaler{position:relative;transform-origin:top left}
+.layer{position:absolute;inset:0;background:#fff}
+.layer.leaving{pointer-events:none}
+iframe{display:block;border:0;width:100%;height:100%}
+.overlay{position:absolute;inset:0;z-index:10}
+.overlay.closing{pointer-events:none}
+.backdrop{position:absolute;inset:0;background:rgb(0 0 0/.4)}
+.panel{position:absolute;overflow:hidden;background:#fff;box-shadow:0 10px 40px -12px rgb(0 0 0/.35)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;padding:8px 14px;border-radius:8px;background:#18181b;color:#fafafa;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
 :focus-visible{outline:2px solid #a1a1aa;outline-offset:1px}
@@ -81,7 +143,7 @@ function indexHtml(snapshot: ShareSnapshot) {
 				<p>Read-only prototype. Click links to move between screens.</p>
 			</nav>
 			<main id="stage">
-				<div id="device"><div id="scaler"><iframe id="frame" title="Screen" sandbox="allow-scripts" src="runtime/frame.html"></iframe></div></div>
+				<div id="device"><div id="scaler"><div class="layer"><iframe id="frame" title="Screen" sandbox="allow-scripts" src="runtime/frame.html"></iframe></div></div></div>
 			</main>
 		</div>
 		<div id="toast" role="status" aria-live="polite"></div>
@@ -93,13 +155,14 @@ function indexHtml(snapshot: ShareSnapshot) {
 }
 
 /** Same messages as `FrameHost`; the screen lives in the URL hash so links and the back button work. */
-const VIEWER_JS = `(function () {
+const viewerJs = () => `(function () {
 	"use strict";
 	var data = window.${SNAPSHOT_GLOBAL};
+	var MOTIONS = ${JSON.stringify(motionTables())};
 	var PADDING = 32;
+	var PAINT_TIMEOUT_MS = 1000;
 	var byFile = {};
 	data.screens.forEach(function (screen) { byFile[screen.file] = screen; });
-	var frame = document.getElementById("frame");
 	var device = document.getElementById("device");
 	var scaler = document.getElementById("scaler");
 	var stage = document.getElementById("stage");
@@ -108,15 +171,58 @@ const VIEWER_JS = `(function () {
 	var backButton = document.getElementById("back");
 	var toastEl = document.getElementById("toast");
 	var current = null;
-	var ready = false;
 	var depth = 0;
+	var arrivedWith = "instant";
 	var toastTimer = 0;
+	var frames = [];
+	var layers = [];
+	var overlays = [];
+	var motion = null;
 
 	${NORMALIZE_TARGET_JS}
 
-	function post(message) {
+	${LINK_OPTIONS_JS}
+
+	function reducedMotion() {
+		return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+	}
+
+	function animate(element, keyframes, options) {
+		return keyframes.length && element.animate ? element.animate(keyframes, options) : null;
+	}
+
+	function post(record, message) {
 		// The frame has an opaque origin: no target origin can match it
-		if (frame.contentWindow) frame.contentWindow.postMessage(message, "*");
+		if (record.iframe.contentWindow) record.iframe.contentWindow.postMessage(message, "*");
+	}
+
+	function watch(iframe, file) {
+		var record = { iframe: iframe, file: file, ready: false, onRendered: null };
+		frames.push(record);
+		return record;
+	}
+
+	function unwatch(record) {
+		frames = frames.filter(function (other) { return other !== record; });
+	}
+
+	function newFrame(file) {
+		var iframe = document.createElement("iframe");
+		iframe.title = "Screen";
+		iframe.setAttribute("sandbox", "allow-scripts");
+		iframe.src = "runtime/frame.html";
+		return watch(iframe, file);
+	}
+
+	function whenRendered(record, run) {
+		var done = false;
+		function once() {
+			if (done) return;
+			done = true;
+			run();
+		}
+		record.onRendered = once;
+		setTimeout(once, PAINT_TIMEOUT_MS);
 	}
 
 	function toast(text) {
@@ -132,50 +238,177 @@ const VIEWER_JS = `(function () {
 		return byFile[file] ? file : data.start;
 	}
 
+	function overlayOpen() {
+		return overlays.some(function (overlay) { return !overlay.closing; });
+	}
+
+	function updateBack() {
+		backButton.disabled = depth === 0 && !overlayOpen();
+	}
+
 	function layout() {
 		var screen = byFile[current];
 		if (!screen) return;
 		var scale = Math.max(0.1, Math.min(1, (stage.clientWidth - PADDING * 2) / screen.width, (stage.clientHeight - PADDING * 2) / screen.height));
-		frame.style.width = screen.width + "px";
-		frame.style.height = screen.height + "px";
+		scaler.style.width = screen.width + "px";
+		scaler.style.height = screen.height + "px";
 		scaler.style.transform = "scale(" + scale + ")";
 		device.style.width = screen.width * scale + "px";
 		device.style.height = screen.height * scale + "px";
 		device.style.borderRadius = (screen.device === "desktop" ? 6 : 28) * scale + "px";
 	}
 
-	function show(file) {
+	function settle() {
+		if (!motion) return;
+		clearTimeout(motion.timer);
+		motion.animations.forEach(function (animation) { if (animation) animation.cancel(); });
+		motion = null;
+		while (layers.length > 1) {
+			var old = layers.shift();
+			unwatch(old.record);
+			old.element.remove();
+		}
+		layers[0].element.style.visibility = "";
+		layers[0].element.style.zIndex = "";
+	}
+
+	function play(layer, plan) {
+		if (!motion || motion.layer !== layer) return;
+		var outgoing = layers[layers.length - 2];
+		layer.element.style.visibility = "";
+		(plan.top === "incoming" ? layer : outgoing).element.style.zIndex = "1";
+		var timing = { duration: plan.duration, easing: plan.easing };
+		motion.animations = [
+			animate(layer.element, plan.incoming, timing),
+			animate(outgoing.element, plan.outgoing, { duration: plan.duration, easing: plan.easing, fill: "forwards" }),
+		];
+		motion.timer = setTimeout(settle, plan.duration);
+	}
+
+	function show(file, plan) {
+		settle();
 		current = file;
 		var screen = byFile[file];
 		label.textContent = screen.name;
 		document.title = screen.name + " · " + data.name;
-		backButton.disabled = depth === 0;
+		updateBack();
 		Array.prototype.forEach.call(list.querySelectorAll("button"), function (button) {
 			if (button.getAttribute("data-file") === file) button.setAttribute("aria-current", "page");
 			else button.removeAttribute("aria-current");
 		});
 		layout();
-		if (ready) post({ type: "modules", entry: file, modules: {} });
+		var top = layers[0];
+		if (!plan || !top.record.ready) {
+			top.record.file = file;
+			if (top.record.ready) post(top.record, { type: "modules", entry: file, modules: {} });
+			return;
+		}
+		var element = document.createElement("div");
+		element.className = "layer";
+		element.style.visibility = "hidden";
+		var record = newFrame(file);
+		element.appendChild(record.iframe);
+		var layer = { element: element, record: record };
+		top.element.className = "layer leaving";
+		layers.push(layer);
+		scaler.insertBefore(element, overlays.length ? overlays[0].element : null);
+		motion = { layer: layer, animations: [], timer: 0 };
+		whenRendered(record, function () { play(layer, plan); });
 	}
 
-	function go(file) {
+	function screenMotion(transition, direction) {
+		return MOTIONS.screens[transition + ":" + direction + ":" + (reducedMotion() ? 1 : 0)] || null;
+	}
+
+	function overlayMotion(overlay, opening) {
+		return MOTIONS.overlays[overlay.mode + ":" + (overlay.transition || "") + ":" + (opening ? "open" : "close") + ":" + (reducedMotion() ? 1 : 0)] || null;
+	}
+
+	function removeOverlay(overlay) {
+		overlays = overlays.filter(function (other) { return other !== overlay; });
+		unwatch(overlay.record);
+		overlay.element.remove();
+		updateBack();
+	}
+
+	function clearOverlays() {
+		overlays.slice().forEach(removeOverlay);
+	}
+
+	function openOverlay(file, mode, transition) {
+		var screen = byFile[current];
+		var target = byFile[file];
+		var rect = overlayRect(mode, screen, target);
+		var element = document.createElement("div");
+		element.className = "overlay";
+		var backdrop = document.createElement("div");
+		backdrop.className = "backdrop";
+		var panel = document.createElement("div");
+		panel.className = "panel";
+		panel.style.left = rect.x + "px";
+		panel.style.top = rect.y + "px";
+		panel.style.width = rect.width + "px";
+		panel.style.height = rect.height + "px";
+		element.style.visibility = "hidden";
+		var record = newFrame(file);
+		panel.appendChild(record.iframe);
+		element.appendChild(backdrop);
+		element.appendChild(panel);
+		var overlay = { element: element, backdrop: backdrop, panel: panel, record: record, mode: mode, transition: transition, closing: false, animations: [] };
+		backdrop.addEventListener("click", closeOverlay);
+		overlays.push(overlay);
+		scaler.appendChild(element);
+		updateBack();
+		whenRendered(record, function () {
+			if (overlay.closing) return;
+			element.style.visibility = "";
+			var plan = overlayMotion(overlay, true);
+			if (!plan) return;
+			var timing = { duration: plan.duration, easing: plan.easing };
+			overlay.animations = [animate(panel, plan.panel, timing), animate(backdrop, plan.backdrop, timing)];
+		});
+	}
+
+	function closeOverlay() {
+		var open = overlays.filter(function (overlay) { return !overlay.closing; });
+		var overlay = open[open.length - 1];
+		if (!overlay) return;
+		overlay.closing = true;
+		overlay.element.className = "overlay closing";
+		updateBack();
+		overlay.animations.forEach(function (animation) { if (animation) animation.cancel(); });
+		var plan = overlay.element.style.visibility === "hidden" ? null : overlayMotion(overlay, false);
+		if (!plan) return removeOverlay(overlay);
+		var timing = { duration: plan.duration, easing: plan.easing, fill: "forwards" };
+		animate(overlay.panel, plan.panel, timing);
+		animate(overlay.backdrop, plan.backdrop, timing);
+		setTimeout(function () { removeOverlay(overlay); }, plan.duration);
+	}
+
+	function go(file, transition) {
+		clearOverlays();
 		if (file === current) return;
 		depth++;
-		try { history.pushState({ depth: depth }, "", "#" + encodeURIComponent(file)); }
+		arrivedWith = transition || "instant";
+		try { history.pushState({ depth: depth, transition: arrivedWith }, "", "#" + encodeURIComponent(file)); }
 		catch (error) { /* some file:// pages refuse pushState: the screen still changes */ }
-		show(file);
+		show(file, screenMotion(arrivedWith, "forward"));
 	}
 
 	function back() {
-		if (depth > 0) history.back();
+		if (overlayOpen()) closeOverlay();
+		else if (depth > 0) history.back();
 		else toast("This is the first screen");
 	}
 
-	function follow(to) {
-		if (String(to).trim().toLowerCase() === "back") return back();
-		var file = normalizeTarget(to);
-		if (byFile[file]) go(file);
-		else toast("This link goes nowhere yet");
+	function follow(message) {
+		if (String(message.to).trim().toLowerCase() === "back") return back();
+		var file = normalizeTarget(message.to);
+		if (!byFile[file]) return toast("This link goes nowhere yet");
+		var mode = parseOverlayMode(message.mode);
+		var transition = parseTransition(message.transition);
+		if (mode) openOverlay(file, mode, transition);
+		else go(file, transition);
 	}
 
 	data.screens.forEach(function (screen) {
@@ -192,26 +425,40 @@ const VIEWER_JS = `(function () {
 	document.getElementById("restart").addEventListener("click", function () { go(data.start); });
 
 	window.addEventListener("popstate", function (event) {
-		depth = (event.state && event.state.depth) || 0;
-		show(fromHash());
+		var next = (event.state && event.state.depth) || 0;
+		var transition = (event.state && event.state.transition) || "instant";
+		var plan = next < depth ? screenMotion(arrivedWith, "back") : next > depth ? screenMotion(transition, "forward") : null;
+		depth = next;
+		arrivedWith = transition;
+		clearOverlays();
+		show(fromHash(), plan);
 	});
 	window.addEventListener("resize", layout);
+	window.addEventListener("keydown", function (event) {
+		if (event.key === "Escape" && overlayOpen()) closeOverlay();
+	});
 	window.addEventListener("message", function (event) {
-		if (event.source !== frame.contentWindow) return;
+		var record = frames.filter(function (frame) { return event.source === frame.iframe.contentWindow; })[0];
+		if (!record) return;
 		var message = event.data || {};
 		if (message.type === "ready") {
 			// A (re)loaded frame starts empty: send everything, then turn play mode on
-			ready = true;
-			if (data.assets) post({ type: "assets", assets: data.assets, reset: true });
-			post({ type: "modules", entry: current, modules: data.modules, css: data.css, theme: data.theme, reset: true });
-			post({ type: "play", on: true });
+			record.ready = true;
+			if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });
+			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: data.theme, reset: true });
+			post(record, { type: "play", on: true });
+		} else if (message.type === "rendered" || message.type === "error") {
+			if (record.onRendered) record.onRendered();
 		} else if (message.type === "navigate" && typeof message.to === "string") {
-			follow(message.to);
+			follow(message);
+		} else if (message.type === "escape" && overlayOpen()) {
+			closeOverlay();
 		}
 	});
 
-	try { history.replaceState({ depth: 0 }, "", location.hash || "#" + encodeURIComponent(data.start)); } catch (error) {}
-	show(fromHash());
+	layers.push({ element: scaler.querySelector(".layer"), record: watch(document.getElementById("frame"), data.start) });
+	try { history.replaceState({ depth: 0, transition: "instant" }, "", location.hash || "#" + encodeURIComponent(data.start)); } catch (error) {}
+	show(fromHash(), null);
 })();
 `;
 
@@ -228,7 +475,7 @@ export function inlineRuntime(runtime: ScreenRuntime): string {
 export function viewerFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[] {
 	return [
 		{ path: "index.html", content: indexHtml(snapshot) },
-		{ path: "viewer.js", content: VIEWER_JS },
+		{ path: "viewer.js", content: viewerJs() },
 		{ path: "snapshot.js", content: `window.${SNAPSHOT_GLOBAL} = ${scriptJson(snapshot)};\n` },
 		{ path: "runtime/frame.html", content: inlineRuntime(runtime) },
 	];

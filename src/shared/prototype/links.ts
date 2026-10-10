@@ -6,6 +6,15 @@ import { setAttribute } from "../jsx/transforms";
 import { findElement, flatten, parseFile, type JsxElement } from "../jsx/tree";
 import { isComponentFile, isScreenFile } from "../project";
 import type { FileChange, ProjectFiles } from "../types";
+import {
+	defaultOverlayTransition,
+	LINK_MODE_ATTRIBUTE,
+	LINK_TRANSITION_ATTRIBUTE,
+	parseOverlayMode,
+	parseTransition,
+	type LinkTransition,
+	type OverlayMode,
+} from "./transitions";
 
 export const LINK_ATTRIBUTE = "data-link-to";
 
@@ -41,14 +50,60 @@ function stringLiteral(text: string): string | undefined {
 	return body!.includes("'") || body!.includes("\\") ? undefined : body;
 }
 
-/** The last `data-link-to` wins; `null` when the value is an expression. */
-export function linkOfElement(element: JsxElement): string | null {
-	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === LINK_ATTRIBUTE);
+function literalAttribute(element: JsxElement, name: string): string | null {
+	const attribute = [...element.attributes].reverse().find((a) => a.kind === "attribute" && a.name === name);
 
 	if (attribute?.kind !== "attribute" || !attribute.value) return null;
 	const value = attribute.value.kind === "string" ? attribute.value.value : stringLiteral(attribute.value.text);
 
 	return value?.trim() ? value.trim() : null;
+}
+
+export function linkOfElement(element: JsxElement): string | null {
+	return literalAttribute(element, LINK_ATTRIBUTE);
+}
+
+export type LinkSettings = { transition: LinkTransition | null; mode: OverlayMode | null };
+
+export function linkSettingsOfElement(element: JsxElement): LinkSettings {
+	return {
+		transition: parseTransition(literalAttribute(element, LINK_TRANSITION_ATTRIBUTE)),
+		mode: parseOverlayMode(literalAttribute(element, LINK_MODE_ATTRIBUTE)),
+	};
+}
+
+export const effectiveTransition = (settings: LinkSettings): LinkTransition =>
+	settings.transition ?? (settings.mode ? defaultOverlayTransition(settings.mode) : "instant");
+
+export type LinkEdit = { to?: string | null; transition?: LinkTransition; mode?: OverlayMode | null };
+
+const isDefaultTransition = (transition: LinkTransition, mode: OverlayMode | null) =>
+	transition === effectiveTransition({ transition: null, mode });
+
+export function editLink(source: string, start: number, edit: LinkEdit): string | null {
+	let next: string | null = source;
+
+	if (edit.to !== undefined) {
+		next = setLink(next, start, edit.to);
+		const plain = edit.to === null || !edit.to.trim() || edit.to.trim().toLowerCase() === BACK;
+
+		if (plain && next !== null) next = setAttribute(next, start, LINK_TRANSITION_ATTRIBUTE, null);
+
+		if (plain && next !== null) next = setAttribute(next, start, LINK_MODE_ATTRIBUTE, null);
+	}
+
+	if (edit.mode !== undefined && next !== null) next = setAttribute(next, start, LINK_MODE_ATTRIBUTE, edit.mode);
+
+	if (edit.transition !== undefined && next !== null) {
+		const parsed = parseFile(next);
+		const element = parsed.ok ? findElement(parsed, start) : null;
+		const mode = edit.mode === undefined ? (element ? linkSettingsOfElement(element).mode : null) : edit.mode;
+		const value = isDefaultTransition(edit.transition, mode) ? null : edit.transition;
+
+		next = setAttribute(next, start, LINK_TRANSITION_ATTRIBUTE, value);
+	}
+
+	return next;
 }
 
 /** Read-only in the inspector */

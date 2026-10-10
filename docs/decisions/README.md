@@ -25,3 +25,5 @@ Architecture decision records. Each one states the context, the decision, the ev
 | [0019](./0019-visual-review.md)                          | The polish run reviews screenshots of new screens; a provider without images runs the plain polish                   | accepted                            |
 | [0020](./0020-plan-mode.md)                              | Plan mode is a composer toggle, off by default; a plan waits for approval and a reply revises it                     | accepted                            |
 | [0021](./0021-generations-outlive-the-editor.md)         | Generations outlive the editor: an open project is a session that stays while work runs                              | accepted                            |
+| [0022](./0022-link-transitions-and-overlays.md)          | Link transitions and overlays are `data-link-transition` and `data-link-mode`, next to `data-link-to`                | accepted                            |
+| [0023](./0023-version-history.md)                        | Version history: checkpoints are git commits with a trailer, or session snapshots without git; Restore is an edit    | accepted                            |

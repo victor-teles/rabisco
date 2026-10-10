@@ -206,6 +206,11 @@ export default function Gallery() {
 		expect(app).toContain('closest("[data-link-to]")');
 	});
 
+	test("the README says what transitions and overlays do in the export", () => {
+		expect(out["README.md"]).toContain("`data-link-transition`");
+		expect(out["README.md"]).toContain("`data-link-mode` (`overlay`, `sheet`)");
+	});
+
 	test("screens without a frame still export, after the canvas ones", () => {
 		const app = byPath(viteProject({ ...input, frames: [frame("screens/welcome.tsx", 0)] }))["src/App.tsx"]!;
 		expect(app.indexOf('id: "welcome"')).toBeLessThan(app.indexOf('id: "home"'));

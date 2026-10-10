@@ -54,7 +54,8 @@ export type HostMessage =
 	/** Answered by a `snapshot` with the same `id`. */
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
 	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
-	| { type: "lint"; id: number };
+	| { type: "lint"; id: number }
+	| { type: "pick-color"; id: number; x: number; y: number };
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
 export type AssetPayload = Blob | string;
@@ -100,14 +101,15 @@ export type FrameMessage =
 	/** `refused` when the element's DOM doesn't hold just its text; `done` with `text: null` means cancelled. */
 	| { type: "text-edit"; start: number; version: string; state: "editing" | "refused" }
 	| { type: "text-edit"; start: number; version: string; state: "done"; text: string | null }
-	| { type: "navigate"; to: string }
+	| ({ type: "navigate"; to: string } & LinkOptions)
 	/** Escape pressed in play mode and not handled by the screen. */
 	| { type: "escape" }
 	| { type: "measured"; id: number; height: number }
 	| { type: "snapshot"; id: number; scene: Scene; raster?: { dataUrl: string; scale: number } }
 	| { type: "snapshot"; id: number; error: string }
 	| { type: "lint"; id: number; findings: DesignFinding[] }
-	| { type: "lint"; id: number; error: string };
+	| { type: "lint"; id: number; error: string }
+	| { type: "picked-color"; id: number; color: string | null };
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };
@@ -189,6 +191,12 @@ export function resolveHit(
 
 /** Mirrors `LINK_ATTRIBUTE` in `src/shared/prototype/links.ts` (decision 0007). */
 export const LINK_TO_ATTRIBUTE = "data-link-to";
+
+export const LINK_TRANSITION_ATTRIBUTE = "data-link-transition";
+
+export const LINK_MODE_ATTRIBUTE = "data-link-mode";
+
+export type LinkOptions = { transition?: string; mode?: string };
 
 export const locationOf = (entry: string, start: number) => `${entry}:${start}`;
 
@@ -374,7 +382,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 
 			return data.state === "editing" || data.state === "refused";
 		case "navigate":
-			return "to" in data && isString(data.to);
+			return (
+				"to" in data &&
+				isString(data.to) &&
+				(!("transition" in data) || data.transition === undefined || isString(data.transition)) &&
+				(!("mode" in data) || data.mode === undefined || isString(data.mode))
+			);
 		case "measured":
 			return hasId(data) && "height" in data && isNumber(data.height);
 		case "snapshot":
@@ -393,6 +406,8 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 			if ("error" in data) return isString(data.error);
 
 			return "findings" in data && Array.isArray(data.findings) && data.findings.every(isDesignFinding);
+		case "picked-color":
+			return hasId(data) && "color" in data && (data.color === null || isString(data.color));
 		default:
 			return false;
 	}

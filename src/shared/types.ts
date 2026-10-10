@@ -28,6 +28,21 @@ export type Frame = {
 	y: number;
 	width: number;
 	height: number;
+	layoutGrid?: LayoutGrid;
+};
+
+export type LayoutGrid = { columns: number; gutter: number; margin: number };
+
+export type SectionColor = "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
+
+export type CanvasSection = {
+	id: string;
+	name: string;
+	color: SectionColor;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 };
 
 /** Derived from file names (decision 0004) */
@@ -51,7 +66,11 @@ export type CanvasDoc = {
 	comments?: CanvasComment[];
 	/** The theme screens render with, applied on request (decision 0009). Missing in older projects: DESIGN.md's tokens count as applied */
 	theme?: AppliedTheme;
+	locks?: ElementLock[];
+	sections?: CanvasSection[];
 };
+
+export type ElementLock = { file: string; path: number[]; name: string };
 
 export type CommentReply = { id: string; text: string; createdAt: string };
 

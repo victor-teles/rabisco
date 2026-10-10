@@ -3,7 +3,7 @@ import type { AssetChange } from "./assets";
 import type { StyleId } from "./context/styles";
 import type { ProviderCommand } from "./ai/contract";
 import type { ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
-import type { GitStatus, GitSyncResult } from "./git";
+import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
 	CanvasDoc,
@@ -120,6 +120,9 @@ export type RabiscoRPC = {
 			gitSetRemote: { params: { path: string; url: string }; response: GitStatus };
 			/** Commit, rebase onto the remote, push. Never forces. */
 			gitSync: { params: { path: string }; response: GitSyncResult };
+			gitCheckpoints: { params: { path: string }; response: GitCheckpoint[] };
+			gitCheckpoint: { params: { path: string; name: string }; response: GitCheckpoint };
+			gitReadCheckpoint: { params: { path: string; hash: string }; response: CheckpointVersion };
 		};
 		messages: {};
 	}>;

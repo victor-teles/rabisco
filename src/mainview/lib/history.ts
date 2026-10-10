@@ -1,6 +1,15 @@
 import { detachComments } from "../../shared/comments";
 import type { AppliedTheme } from "../../shared/context/theme";
-import type { CanvasComment, Device, FileChange, Frame, ProjectFiles } from "../../shared/types";
+import type {
+	CanvasComment,
+	CanvasSection,
+	Device,
+	ElementLock,
+	FileChange,
+	Frame,
+	ProjectFiles,
+} from "../../shared/types";
+import { remapLocks } from "./element-locks";
 
 /** Recipes may omit `comments`, `theme`, `name` and `device`; `nextSnapshot` carries them over. */
 export type Snapshot = {
@@ -12,6 +21,8 @@ export type Snapshot = {
 	name?: string;
 	/** The project's default device */
 	device?: Device;
+	locks?: ElementLock[];
+	sections?: CanvasSection[];
 };
 
 /** Pins on removed frames are detached in the same step, so undo puts them back on their frame. */
@@ -21,11 +32,24 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	const theme = update.theme ?? present.theme;
 	const name = update.name ?? present.name;
 	const device = update.device ?? present.device;
+	const sections = update.sections ?? present.sections;
 
-	if (comments === update.comments && theme === update.theme && name === update.name && device === update.device)
+	const locks =
+		update.locks === undefined || update.locks === present.locks
+			? present.locks && remapLocks(present.locks, present.files, update.files)
+			: update.locks;
+
+	if (
+		comments === update.comments &&
+		theme === update.theme &&
+		name === update.name &&
+		device === update.device &&
+		locks === update.locks &&
+		sections === update.sections
+	)
 		return update;
 
-	return { ...update, comments, theme, name, device };
+	return { ...update, comments, theme, name, device, locks, sections };
 }
 
 export type History = {

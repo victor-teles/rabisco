@@ -284,3 +284,41 @@ describe("project name and device", () => {
 		expect(h.present.device).toBe("desktop");
 	});
 });
+
+describe("element locks in snapshots", () => {
+	const file = "screens/a.tsx";
+	const before = `const A = () => (\n\t<main>\n\t\t<header />\n\t\t<footer />\n\t</main>\n);\n`;
+	const after = `const A = () => (\n\t<main>\n\t\t<nav />\n\t\t<header />\n\t\t<footer />\n\t</main>\n);\n`;
+	const locks = [{ file, path: [0, 1], name: "footer" }];
+
+	test("an edit carries the locks along with their elements, and undo restores them", () => {
+		let h = createHistory({ ...snap({ [file]: before }), locks });
+		h = commit(h, nextSnapshot(h.present, { ...h.present, files: { [file]: after } }));
+		expect(h.present.locks).toEqual([{ file, path: [0, 2], name: "footer" }]);
+		h = undo(h);
+		expect(h.present.locks).toBe(locks);
+	});
+
+	test("a recipe that sets the locks keeps them as given", () => {
+		const present = { ...snap({ [file]: before }), locks };
+		expect(nextSnapshot(present, { ...present, locks: [] }).locks).toEqual([]);
+		expect(nextSnapshot(present, { files: present.files, frames: [] }).locks).toBe(locks);
+	});
+});
+
+describe("sections in snapshots", () => {
+	const section = { id: "s", name: "Flow", color: "blue" as const, x: 0, y: 0, width: 800, height: 800 };
+
+	test("recipes that leave them out keep them, and moving one with its screens is one undo step", () => {
+		const present: Snapshot = { ...snap({}, [frame("a")]), sections: [section] };
+		expect(nextSnapshot(present, { files: {}, frames: [] }).sections).toEqual([section]);
+
+		let h = createHistory(present);
+		const moved = { sections: [{ ...section, x: 40 }], frames: [frame("a", 40)] };
+		h = commit(h, nextSnapshot(h.present, { ...h.present, ...moved }));
+		expect(h.present.sections?.[0]?.x).toBe(40);
+		h = undo(h);
+		expect(h.present.sections).toEqual([section]);
+		expect(h.present.frames[0]?.x).toBe(0);
+	});
+});

@@ -47,13 +47,24 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | Key                                                     | Action                                                                       |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `V` / `H` / `C`                                         | Move / hand / comment tool                                                   |
+| `R`, `O`, `T`                                           | Rectangle, ellipse, text tool: click or drag inside a screen to add          |
+| `⇧⌘K`                                                   | Place an image from a file at the pointer (copied into `public/images/`)     |
+| `Esc` (insert tool on)                                  | Back to the move tool                                                        |
 | `Space` + drag                                          | Pan                                                                          |
 | Scroll / ⌘ + scroll                                     | Pan / zoom                                                                   |
 | `⇧1`                                                    | Zoom to fit                                                                  |
-| `⌘0`, `⌘+`, `⌘-`                                        | Reset zoom, zoom in, zoom out                                                |
+| `⇧2`                                                    | Zoom to selection: the selected element, else the selected screens           |
+| `⇧0` or `⌘0`, `⌘+`, `⌘-`                                | Zoom to 100%, zoom in, zoom out                                              |
+| `⌥` + hover                                             | Measure: distances from the selection to the hovered element or its parent   |
+| `⌃G`                                                    | Show or hide layout grids (add one to a screen in the inspector)             |
+| `I` (element selected)                                  | Eyedropper: pick a fill from any screen, or for the open color field         |
 | `⌘D`, `⌫`                                               | Duplicate, delete the selected screen                                        |
 | `⌘R`                                                    | Rename the selected screen                                                   |
 | `⌥N`                                                    | New blank screen (presets in the toolbar and the canvas menu)                |
+| `⇧S`                                                    | Section around the selected screens, or drag on the canvas to draw one       |
+| Drag a section's name / double-click it                 | Move it with its screens / rename it; right-click for color and delete       |
+| `⌫`, `⌘R` (section selected)                            | Delete the section (keeps its screens), rename it                            |
+| `⌘F` (canvas)                                           | Find and replace text across screens; `↵` steps through the results          |
 | Double-click a screen's label                           | Rename it in place                                                           |
 | Drag a selected screen's edge or corner                 | Resize the screen (`⇧` keeps the ratio, `⌥` from the center)                 |
 | `⌥1`                                                    | Screens list, or back to the chat                                            |
@@ -66,6 +77,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                |
 | Double-click the title bar                              | Zoom the window (follows the macOS setting)                                  |
 | `⌥C`                                                    | Comments list                                                                |
+| `⌥⌘S`                                                   | Save a checkpoint in version history (a git commit when git is set up)       |
 | `⌘C`, `⌘V`                                              | Copy the selected screens, paste screens or screen code as new screens       |
 | Right-click a screen, element or the canvas             | Every action for what's under the pointer, with its shortcut                 |
 | `⌘K`                                                    | Command palette: every action, searchable                                    |
@@ -83,6 +95,10 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌫` (element selected)                                  | Delete it                                                                    |
 | `⌘D`, `⌘C`, `⌘X`, `⌘V` (element selected)               | Duplicate, copy, cut, paste after it (between screens too)                   |
 | `⌥⌘G`, `⇧A`, `⇧⌘G` (element selected)                   | Wrap in a div, wrap in a flex stack, unwrap                                  |
+| `⌥⌘C` / `⌥⌘V` (element selected)                        | Copy its classes without `md:`/`hover:` variants / paste onto the selection  |
+| `⇧⌘H` (element selected, or the eye in Layers)          | Hide or show: writes `hidden` in the TSX                                     |
+| `⇧⌘L` (element selected, or the lock in Layers)         | Lock or unlock: the canvas can't select, move or resize it; Layers still can |
+| `⌥⌘A` (element selected)                                | Select matching: the same component, or the same classes, in the screen      |
 | Prompt with an element selected                         | Change only that element (point and prompt)                                  |
 | `⌥2`                                                    | Components panel: project components, the shadcn library and suggestions     |
 | `/` or `⌘F` (Components panel open)                     | Search components                                                            |

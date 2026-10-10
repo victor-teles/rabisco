@@ -2,7 +2,10 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import {
 	heightReporter,
 	isFrameMessage,
+	LINK_MODE_ATTRIBUTE,
 	LINK_TO_ATTRIBUTE,
+	LINK_TRANSITION_ATTRIBUTE,
+	type LinkOptions,
 	LOC_ATTRIBUTE,
 	resolveHit,
 	sourceVersion,
@@ -381,6 +384,9 @@ describe("play mode", () => {
 	test("the runtime and the link tools agree on the attribute", async () => {
 		const { LINK_ATTRIBUTE } = await import("../../../shared/prototype/links");
 		expect(LINK_TO_ATTRIBUTE).toBe(LINK_ATTRIBUTE);
+		const shared = await import("../../../shared/prototype/transitions");
+		expect(LINK_TRANSITION_ATTRIBUTE).toBe(shared.LINK_TRANSITION_ATTRIBUTE);
+		expect(LINK_MODE_ATTRIBUTE).toBe(shared.LINK_MODE_ATTRIBUTE);
 	});
 
 	test("setPlay is sent once ready, and again after the frame reloads", () => {
@@ -448,8 +454,15 @@ describe("play mode", () => {
 		host.receive({ type: "navigate", to: "back" });
 		host.receive({ type: "navigate", to: "  " });
 		expect(isFrameMessage({ type: "navigate", to: 3 })).toBe(false);
+		expect(isFrameMessage({ type: "navigate", to: "b", transition: "push", mode: "sheet" })).toBe(true);
+		expect(isFrameMessage({ type: "navigate", to: "b", transition: 1 })).toBe(false);
+		expect(isFrameMessage({ type: "navigate", to: "b", mode: null })).toBe(false);
 		host.receive({ type: "escape" });
 		expect(seen).toEqual(["screens/b.tsx", "back", "escape"]);
+		const options: LinkOptions[] = [];
+		host.onNavigate = (_to, link) => options.push(link);
+		host.receive({ type: "navigate", to: "b", transition: "push", mode: "sheet" });
+		expect(options).toEqual([{ transition: "push", mode: "sheet" }]);
 		expect(host.status).toBe("ready");
 		host.dispose();
 	});

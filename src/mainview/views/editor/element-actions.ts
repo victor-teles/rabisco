@@ -2,11 +2,15 @@ import { toast } from "sonner";
 import type { Structure } from "@/hooks/use-structure";
 import type { Action } from "@/lib/actions";
 import { readElement, usedImports, writeElement } from "@/lib/element-clipboard";
+import { isLocked, lockedStarts } from "@/lib/element-locks";
 import { siblingStart } from "@/lib/element-nav";
 import { outermost } from "@/lib/element-selection";
 import { findElement, moveAmongSiblings, parseJsx, type JsxElement } from "../../../shared/jsx";
+import { matchingStarts } from "../../../shared/jsx/matching";
 import { dedent, indentAt } from "../../../shared/jsx/text";
-import type { ProjectFiles } from "../../../shared/types";
+import { readClassName } from "../../../shared/tailwind/classes";
+import { baseClasses, isHidden } from "../../../shared/tailwind/properties";
+import type { ElementLock, ProjectFiles } from "../../../shared/types";
 import { type MenuEntry, SEPARATOR } from "./action-menu";
 import type { ElementRef } from "./canvas";
 
@@ -17,11 +21,17 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	SEPARATOR,
 	"select-parent",
 	"select-children",
+	"select-matching",
 	SEPARATOR,
 	"cut-element",
 	"copy-element",
 	"paste-element",
 	"duplicate-element",
+	"copy-properties",
+	"paste-properties",
+	SEPARATOR,
+	"toggle-hidden",
+	"toggle-locked",
 	SEPARATOR,
 	"wrap-element",
 	"wrap-element-in-stack",
@@ -113,12 +123,43 @@ async function copyElement(source: string, starts: readonly number[]) {
 	}
 }
 
+let copiedProperties: string | null = null;
+
+function copyProperties(source: string, start: number) {
+	const info = readClassName(source, start);
+
+	if (!info?.editable) {
+		toast("This element's classes are computed, so they can't be copied");
+
+		return;
+	}
+
+	copiedProperties = baseClasses(info.classes);
+	toast.success("Copied properties");
+}
+
+export function hiddenState(source: string, starts: readonly number[]) {
+	return starts.every((start) => isHidden(readClassName(source, start)?.classes ?? ""));
+}
+
+export function lockedState(
+	locks: readonly ElementLock[] | undefined,
+	file: string,
+	source: string,
+	starts: readonly number[],
+) {
+	const locked = lockedStarts(locks, file, source);
+
+	return starts.every((start) => isLocked(source, locked, start));
+}
+
 type Options = {
 	/** The selected element, when it is in the one selected screen */
 	element: ElementRef | null;
 	/** Elements ⇧-click added to it: actions that make sense for one only are off */
 	extras: ElementRef[];
 	files: ProjectFiles;
+	locks?: ElementLock[];
 	structure: Structure;
 	selectParent: () => void;
 	editText: () => void;
@@ -133,6 +174,7 @@ export function elementActions({
 	element,
 	extras,
 	files,
+	locks,
 	structure,
 	selectParent,
 	editText,
@@ -145,6 +187,21 @@ export function elementActions({
 	const on = element !== null;
 	const one = on && !extras.length;
 	const starts = element ? [element.start, ...extras.map((extra) => extra.start)] : [];
+
+	const hidden = on && source !== undefined && hiddenState(source, starts);
+	const locked = element !== null && source !== undefined && lockedState(locks, element.file, source, starts);
+
+	const pasteProperties = () => {
+		if (copiedProperties === null) toast("Copy an element's properties first (⌥⌘C)");
+		else structure.pastePropertiesNodes(copiedProperties);
+	};
+
+	const selectMatching = () => {
+		if (!element || source === undefined) return;
+		const matching = matchingStarts(source, element.start);
+		structure.selectMany(element.file, matching);
+		toast(matching.length === 1 ? "No other matching elements" : `Selected ${matching.length} matching elements`);
+	};
 
 	const canMove = (delta: -1 | 1) =>
 		one && element !== null && source !== undefined && moveAmongSiblings(source, element.start, delta) !== null;
@@ -237,6 +294,46 @@ export function elementActions({
 				element &&
 				source !== undefined &&
 				void copyElement(source, starts).then((copied) => copied && structure.removeNode()),
+		},
+		{
+			id: "copy-properties",
+			label: "Copy properties",
+			group: "Element",
+			chords: [{ code: "KeyC", mod: true, alt: true }],
+			enabled: one,
+			run: () => element && source !== undefined && copyProperties(source, element.start),
+		},
+		{
+			id: "paste-properties",
+			label: "Paste properties",
+			group: "Element",
+			chords: [{ code: "KeyV", mod: true, alt: true }],
+			enabled: on,
+			run: pasteProperties,
+		},
+		{
+			id: "toggle-hidden",
+			label: hidden ? "Show" : "Hide",
+			group: "Element",
+			chords: [{ code: "KeyH", mod: true, shift: true }],
+			enabled: on,
+			run: () => structure.toggleHiddenNodes(),
+		},
+		{
+			id: "toggle-locked",
+			label: locked ? "Unlock" : "Lock",
+			group: "Element",
+			chords: [{ code: "KeyL", mod: true, shift: true }],
+			enabled: on,
+			run: () => structure.toggleLockNodes(),
+		},
+		{
+			id: "select-matching",
+			label: "Select matching",
+			group: "Element",
+			chords: [{ code: "KeyA", mod: true, alt: true }],
+			enabled: one,
+			run: selectMatching,
 		},
 		{
 			// After the selected element, or into it when it is an empty container (`pasteElement`)

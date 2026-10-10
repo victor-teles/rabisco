@@ -75,6 +75,7 @@ export function useProject(path: string) {
 		redo: session.redo,
 		setSelection: session.setSelection,
 		setMeta: session.setMeta,
+		addVersion: session.addVersion,
 		addMessages,
 		newChat: session.newChat,
 		openChat: session.openChat,

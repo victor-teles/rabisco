@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ChevronDown, ChevronRight, Component } from "lucide-react";
+import { ChevronDown, ChevronRight, Component, Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { elementHover } from "@/lib/element-hover";
 import { buildOutline, visibleRows, type Outline, type OutlineNode } from "@/lib/outline";
@@ -49,6 +49,10 @@ export function StructureTree({
 	stale,
 	selectedStart,
 	extraStarts = NO_STARTS,
+	hiddenStarts = NO_STARTS,
+	lockedStarts = NO_STARTS,
+	onToggleHidden,
+	onToggleLocked,
 	ancestors,
 	onSelect,
 	onToggle,
@@ -64,6 +68,10 @@ export function StructureTree({
 	selectedStart: number | null;
 	/** Rows ⇧-click added to the selection */
 	extraStarts?: readonly number[];
+	hiddenStarts?: readonly number[];
+	lockedStarts?: readonly number[];
+	onToggleHidden?: (start: number) => void;
+	onToggleLocked?: (start: number) => void;
 	ancestors: OutlineNode[];
 	onSelect: (start: number) => void;
 	/** ⇧-click or ⌘-click on a row adds or removes it; without it, they select it */
@@ -212,6 +220,8 @@ export function StructureTree({
 				const alsoSelected = extraStarts.includes(row.start);
 				const hasChildren = row.children.length > 0;
 				const isComponent = row.kind === "component";
+				const isHidden = hiddenStarts.includes(row.start);
+				const isLocked = lockedStarts.includes(row.start);
 
 				return (
 					<div
@@ -243,7 +253,7 @@ export function StructureTree({
 								: undefined
 						}
 						className={cn(
-							"flex h-6 cursor-default items-center gap-1 pr-3 text-xs select-none hover:bg-accent/60",
+							"group flex h-6 cursor-default items-center gap-1 pr-3 text-xs select-none hover:bg-accent/60",
 							row.start === hoveredStart && "bg-accent/60",
 							(isSelected || alsoSelected) && "bg-accent hover:bg-accent",
 						)}
@@ -276,6 +286,7 @@ export function StructureTree({
 									: row.kind === "fragment"
 										? "text-subtle-foreground italic"
 										: "text-foreground/80",
+								isHidden && "opacity-50",
 							)}
 						>
 							{row.label}
@@ -291,6 +302,24 @@ export function StructureTree({
 						{row.hint ? (
 							<span className="min-w-0 truncate text-subtle-foreground" title={row.hint}>
 								{row.hint}
+							</span>
+						) : null}
+						{row.kind !== "fragment" && (onToggleLocked || onToggleHidden) ? (
+							<span className="ml-auto flex shrink-0 items-center gap-0.5">
+								{onToggleLocked ? (
+									<RowToggle
+										on={isLocked}
+										label={isLocked ? "Unlock" : "Lock"}
+										onClick={() => onToggleLocked(row.start)}
+									>
+										{isLocked ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
+									</RowToggle>
+								) : null}
+								{onToggleHidden ? (
+									<RowToggle on={isHidden} label={isHidden ? "Show" : "Hide"} onClick={() => onToggleHidden(row.start)}>
+										{isHidden ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+									</RowToggle>
+								) : null}
 							</span>
 						) : null}
 					</div>
@@ -316,5 +345,37 @@ export function StructureTree({
 				{menuOpen ? menu() : null}
 			</ContextMenuContent>
 		</ContextMenu>
+	);
+}
+
+function RowToggle({
+	on,
+	label,
+	onClick,
+	children,
+}: {
+	on: boolean;
+	label: string;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			tabIndex={-1}
+			aria-label={label}
+			title={label}
+			onClick={(event) => {
+				event.stopPropagation();
+				onClick();
+			}}
+			onDoubleClick={(event) => event.stopPropagation()}
+			className={cn(
+				"grid size-4 place-items-center rounded-sm text-subtle-foreground hover:text-foreground",
+				!on && "opacity-0 group-hover:opacity-100",
+			)}
+		>
+			{children}
+		</button>
 	);
 }

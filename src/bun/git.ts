@@ -2,14 +2,26 @@
 import { existsSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import {
+	CHECKPOINT_FORMAT,
+	CHECKPOINT_TRAILER,
+	checkpointMessage,
+	checkpointScope,
+	cleanCheckpointName,
 	commitMessage,
+	parseCheckpoints,
 	redactRemoteUrl,
 	type ChangedPath,
+	type CheckpointVersion,
+	type GitCheckpoint,
 	type GitCommit,
 	type GitStatus,
 	type GitSyncResult,
 } from "../shared/git";
+import { emptyCanvas, isProjectFile, projectNameFromPath, reconcileFrames } from "../shared/project";
+import type { CanvasDoc, ProjectFiles } from "../shared/types";
 import { cliEnv, resolveBinary } from "./ai/cli";
+import { parseJson } from "./json";
+import { CANVAS_FILE, normalizeCanvas } from "./project-folder";
 
 export type GitResult = { code: number; stdout: string; stderr: string; timedOut: boolean };
 
@@ -37,6 +49,34 @@ export class GitError extends Error {
 }
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+
+const CHECKPOINT_LIMIT = 100;
+
+const isCommitHash = (hash: string) => /^[0-9a-f]{7,64}$/i.test(hash);
+
+function commitFailure(text: string, again: string) {
+	if (/tell me who you are|empty ident|user\.email|user\.name/i.test(text)) {
+		return new GitError(
+			`Git doesn't know who you are yet. In Terminal, run \`git config --global user.name "Your Name"\` and \`git config --global user.email you@example.com\`, then ${again}.`,
+			text,
+		);
+	}
+
+	return new GitError("Git couldn't commit the project's changes.", text);
+}
+
+function versionCanvas(dir: string, text: string | undefined, files: ProjectFiles): CanvasDoc {
+	const name = projectNameFromPath(dir);
+	let canvas = emptyCanvas(name, "mobile");
+
+	if (text !== undefined) {
+		try {
+			canvas = normalizeCanvas(parseJson(text), name);
+		} catch {}
+	}
+
+	return reconcileFrames(canvas, files);
+}
 
 /** Parses `git status --porcelain=v1 -z`; paths are root-relative. */
 export function parsePorcelain(output: string): ChangedPath[] {
@@ -291,20 +331,106 @@ export function createGit(options: GitOptions = {}) {
 		// `-- .` commits only the project folder, whatever else is staged in the repository
 		const result = await run(dir, ["commit", "--no-verify", "-q", "-m", message ?? commitMessage(changes), "--", "."]);
 
-		if (result.code !== 0) {
-			const text = output(result);
-
-			if (/tell me who you are|empty ident|user\.email|user\.name/i.test(text)) {
-				throw new GitError(
-					'Git doesn\'t know who you are yet. In Terminal, run `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`, then sync again.',
-					text,
-				);
-			}
-
-			throw new GitError("Git couldn't commit the project's changes.", text);
-		}
+		if (result.code !== 0) throw commitFailure(output(result), "sync again");
 
 		return lastCommit(dir, "HEAD", false);
+	}
+
+	async function checkpoints(dir: string): Promise<GitCheckpoint[]> {
+		const prefix = await line(dir, ["rev-parse", "--show-prefix"]);
+
+		if (prefix === null || !(await ok(dir, ["rev-parse", "--verify", "-q", "HEAD"]))) return [];
+		const scope = checkpointScope(prefix);
+
+		const text = await must(
+			dir,
+			[
+				"log",
+				`-n${CHECKPOINT_LIMIT}`,
+				"--fixed-strings",
+				`--grep=${CHECKPOINT_TRAILER}: ${scope}`,
+				`--format=${CHECKPOINT_FORMAT}`,
+				"HEAD",
+			],
+			"Git couldn't read the checkpoints.",
+		);
+
+		return parseCheckpoints(text, scope);
+	}
+
+	async function checkpoint(dir: string, rawName: string): Promise<GitCheckpoint> {
+		const name = cleanCheckpointName(rawName);
+
+		if (!name) throw new GitError("Name the checkpoint.");
+		const current = await status(dir);
+
+		if (current.state !== "repo")
+			throw new GitError(current.state === "unavailable" ? current.error : "Set up git for this project first.");
+
+		if (current.unfinished) {
+			throw new GitError(
+				`A ${current.unfinished} is in progress in this repository. Finish or abort it in a terminal, then save the checkpoint again.`,
+			);
+		}
+
+		if (!current.branch)
+			throw new GitError(
+				"The repository isn't on a branch (detached HEAD). Check out a branch in a terminal, then save the checkpoint again.",
+			);
+		const scope = checkpointScope(current.prefix);
+		const changes = await changedPaths(dir, current.prefix);
+
+		if (changes.length) await must(dir, ["add", "-A", "--", "."], "Git couldn't stage the project's files.");
+
+		const result = await run(dir, [
+			"commit",
+			"--no-verify",
+			"--allow-empty",
+			"-q",
+			"-m",
+			checkpointMessage(name, changes, scope),
+			"--",
+			".",
+		]);
+
+		if (result.code !== 0) throw commitFailure(output(result), "save the checkpoint again");
+
+		const [saved] = parseCheckpoints(
+			await must(dir, ["log", "-1", `--format=${CHECKPOINT_FORMAT}`, "HEAD"], "Git couldn't read the checkpoint."),
+			scope,
+		);
+
+		if (!saved) throw new GitError("Git couldn't read the checkpoint.");
+
+		return saved;
+	}
+
+	async function readCheckpoint(dir: string, hash: string): Promise<CheckpointVersion> {
+		if (!isCommitHash(hash)) throw new GitError("That checkpoint isn't in this repository.");
+
+		const listing = await must(
+			dir,
+			["ls-tree", "-r", "-z", "--name-only", hash, "--", "."],
+			"Git couldn't read the checkpoint.",
+		);
+
+		const paths: string[] = [];
+
+		for (const path of listing.split("\0")) if (isProjectFile(path) || path === CANVAS_FILE) paths.push(path);
+
+		const contents = await Promise.all(
+			paths.map((path) => must(dir, ["cat-file", "blob", `${hash}:./${path}`], `Git couldn't read ${path}.`)),
+		);
+
+		const files: ProjectFiles = {};
+		let canvas: string | undefined;
+
+		paths.forEach((path, index) => {
+			if (path === CANVAS_FILE) canvas = contents[index];
+			else files[path] = contents[index] ?? "";
+		});
+
+		return { files, canvas: versionCanvas(dir, canvas, files) };
 	}
 
 	async function init(dir: string, name: string): Promise<GitStatus> {
@@ -465,7 +591,7 @@ export function createGit(options: GitOptions = {}) {
 		}
 	}
 
-	return { status, init, setRemote, sync, run };
+	return { status, init, setRemote, sync, checkpoint, checkpoints, readCheckpoint, run };
 }
 
 export type Git = ReturnType<typeof createGit>;

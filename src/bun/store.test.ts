@@ -162,6 +162,36 @@ describe("project files", () => {
 		expect("source" in normalizeCanvas({ ...old, theme: { ...theme, source: 4 } }, "x").theme!).toBe(false);
 	});
 
+	test("layout grids load when valid and stay missing in older files", () => {
+		const frame = { file: "screens/home.tsx", x: 0, y: 0 };
+		const grid = { columns: 4, gutter: 16, margin: 16 };
+
+		const canvas = normalizeCanvas(
+			{
+				version: 1,
+				name: "Grid",
+				frames: [frame, { ...frame, layoutGrid: grid }, { ...frame, layoutGrid: { columns: 4 } }],
+			},
+			"x",
+		);
+
+		expect("layoutGrid" in canvas.frames[0]!).toBe(false);
+		expect(canvas.frames[1]!.layoutGrid).toEqual(grid);
+		expect("layoutGrid" in canvas.frames[2]!).toBe(false);
+	});
+
+	test("sections load when valid and stay missing in older files", () => {
+		const section = { id: "s1", name: "Onboarding", color: "blue" as const, x: -80, y: -80, width: 560, height: 960 };
+
+		const canvas = normalizeCanvas(
+			{ version: 1, name: "Sections", frames: [], sections: [section, { id: "s2", x: 0 }] },
+			"x",
+		);
+
+		expect(canvas.sections).toEqual([section]);
+		expect("sections" in normalizeCanvas({ version: 1, name: "Old", frames: [] }, "x")).toBe(false);
+	});
+
 	test("comments round-trip through rabisco.json and survive a screen deleted on disk", () => {
 		const dir = createProjectFolder(tempDir(), "Pins", "mobile");
 		writeProjectFiles(dir, [{ path: "screens/home.tsx", content: "export default () => null" }]);

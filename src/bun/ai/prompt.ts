@@ -9,7 +9,7 @@ import { stagedAttachments } from "./attachments";
 import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 17;
+export const PROMPT_VERSION = 18;
 
 export type PromptMode = "text" | "agent";
 
@@ -70,7 +70,7 @@ const FILE_RULES_TEXT = (request: GenerationRequest) => `# Files
 - The frame is ${frameOf(request)}. Design for exactly that size; never set a root width.${DEVICE_NOTES[request.device]}
 - Components use named exports only (\`export function StatCard…\`), never default exports.
 - Imports allowed: react, lucide-react, @/lib/utils (\`cn\`), the @/components/ui modules below, and project components as \`../components/<kebab-name>\` (same form from screens and components, no extension). Nothing else: no other packages.
-- Keep every \`data-link-to\` attribute when you edit a file: it is a prototype link (\`data-link-to="screens/<name>.tsx"\` or \`"back"\`). To add navigation, put \`data-link-to\` with the target screen's path on the clickable element.
+- Keep every \`data-link-to\` attribute when you edit a file: it is a prototype link (\`data-link-to="screens/<name>.tsx"\` or \`"back"\`). To add navigation, put \`data-link-to\` with the target screen's path on the clickable element. Keep \`data-link-transition\` (\`instant\`, \`dissolve\`, \`slide\`, \`push\`) and \`data-link-mode\` (\`overlay\` for a modal, \`sheet\`) next to it.
 - Every file you write is complete: never a diff, never "// rest unchanged" or "..." placeholders. Under ${FILE_RULES.maxFileLength.toLocaleString("en-US")} characters.
 
 # Components

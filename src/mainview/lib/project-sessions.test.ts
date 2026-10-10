@@ -415,6 +415,30 @@ describe("project sessions", () => {
 		expect(session.state()!.messages.at(-1)?.content).toContain("Polished 1 design problem");
 	});
 
+	test("an AI change is a version in the session, recorded after its polish", async () => {
+		const { open, nextCall, finish } = setup({ polish: "polish" });
+		const { session, controller } = await open("/p/a");
+		const running = controller.run("Habits\nwith streaks", {}, MODEL);
+		finish(await nextCall(1), created());
+		const repair = await nextCall(2);
+
+		finish(repair, {
+			ok: true,
+			changes: [{ path: "screens/home.tsx", content: POLISHED }],
+			frames: [],
+			reply: "",
+			problems: [],
+			context: [],
+		});
+		await running;
+
+		const [version] = session.state()!.versions;
+		expect(session.state()!.versions).toHaveLength(1);
+		expect(version).toMatchObject({ kind: "ai", label: "Habits", changed: ["screens/home.tsx"] });
+		expect(version!.snapshot).toBe(session.state()!.history.present);
+		expect(version!.snapshot.files["screens/home.tsx"]).toBe(POLISHED);
+	});
+
 	test("undo after reattaching takes back the result that landed while away", async () => {
 		const { open, nextCall, finish, sessions } = setup();
 		const first = await open("/p/a");

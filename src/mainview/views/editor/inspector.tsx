@@ -12,6 +12,8 @@ import {
 	ChevronDown,
 	Columns2,
 	Copy,
+	Minus,
+	Plus,
 	Shuffle,
 	Trash2,
 	type LucideIcon,
@@ -35,8 +37,9 @@ import { useVariations } from "@/hooks/use-variations";
 import type { Alignment, Axis } from "@/lib/align";
 import { cn } from "@/lib/utils";
 import { variationName } from "@/lib/variations";
+import { DEFAULT_LAYOUT_GRID, normalizeLayoutGrid } from "../../../shared/layout-grid";
 import { isScreenFile } from "../../../shared/project";
-import type { Device, Frame, ProjectFiles } from "../../../shared/types";
+import type { Device, Frame, LayoutGrid, ProjectFiles } from "../../../shared/types";
 import { groupOf, isAlternate } from "../../../shared/variations";
 import {
 	ALIGN_SHORTCUTS,
@@ -55,7 +58,7 @@ function isInspectorTab(value: string): value is InspectorTab {
 	return INSPECTOR_TABS.some((tab) => tab === value);
 }
 
-export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device">>;
+export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device" | "layoutGrid">>;
 
 type InspectorProps = {
 	frames: Frame[];
@@ -249,10 +252,68 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 					/>
 				</div>
 			</Section>
+			<LayoutGridSection {...props} />
 			{isScreenFile(frame.file) ? <Variations key={frame.file} {...props} /> : null}
 			<Separator />
 			<SelectionActions label="screen" onDuplicate={onDuplicate} onDelete={onDelete} />
 		</div>
+	);
+}
+
+const GRID_FIELDS: { key: keyof LayoutGrid; label: string }[] = [
+	{ key: "columns", label: "Count" },
+	{ key: "gutter", label: "Gutter" },
+	{ key: "margin", label: "Margin" },
+];
+
+function LayoutGridSection({ frame, onChange, onEndStep }: InspectorProps & { frame: Frame }) {
+	const field = useFieldSteps(frame.file);
+	const grid = frame.layoutGrid;
+
+	return (
+		<InspectorSection
+			title="Layout grid"
+			action={
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							className="-mr-1.5 size-5 text-subtle-foreground"
+							aria-label={grid ? "Remove layout grid" : "Add layout grid"}
+							onClick={() => onChange(frame.file, { layoutGrid: grid ? undefined : DEFAULT_LAYOUT_GRID[frame.device] })}
+						>
+							{grid ? <Minus /> : <Plus />}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">
+						{grid ? "Remove" : "Add"} layout grid. Show or hide grids <Kbd>⌃G</Kbd>
+					</TooltipContent>
+				</Tooltip>
+			}
+		>
+			{grid ? (
+				<div className="grid grid-cols-3 gap-2">
+					{GRID_FIELDS.map(({ key, label }) => (
+						<NumberField
+							key={key}
+							label={label}
+							value={grid[key]}
+							min={key === "columns" ? 1 : 0}
+							onFocus={field.begin}
+							onBlur={onEndStep}
+							onChange={(value) =>
+								onChange(
+									frame.file,
+									{ layoutGrid: normalizeLayoutGrid({ ...grid, [key]: value }) },
+									field.key(`grid-${key}`),
+								)
+							}
+						/>
+					))}
+				</div>
+			) : null}
+		</InspectorSection>
 	);
 }
 
@@ -577,7 +638,7 @@ function NumberField({
 
 	return (
 		<label className="flex h-8 items-center gap-2 rounded-md border bg-transparent px-2 text-[13px] focus-within:border-ring">
-			<span className="w-3 text-xs text-subtle-foreground">{label}</span>
+			<span className="min-w-3 text-xs text-subtle-foreground">{label}</span>
 			<input
 				inputMode="numeric"
 				value={draft ?? String(value)}

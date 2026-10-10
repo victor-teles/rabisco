@@ -16,8 +16,11 @@ import { starterFiles, type StyleId } from "../shared/context/styles";
 import type { AppliedTheme } from "../shared/context/theme";
 import { validateToken } from "../shared/context/tokens";
 import { normalizeComments } from "../shared/comments";
+import { normalizeLocks } from "../shared/locks";
 import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
+import { parseLayoutGrid } from "../shared/layout-grid";
+import { normalizeSections } from "../shared/sections";
 import {
 	emptyCanvas,
 	FRAME_SIZE,
@@ -130,18 +133,21 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	if (file === undefined || x === undefined || y === undefined) return [];
 	const device = parseDevice(frame.device) ?? canvasDevice;
 	const size = FRAME_SIZE[device];
+	const layoutGrid = parseLayoutGrid(frame.layoutGrid);
 
-	return [
-		{
-			file,
-			name: optionalString(frame.name) ?? screenNameFromPath(file),
-			device,
-			x,
-			y,
-			width: optionalNumber(frame.width) ?? size.width,
-			height: optionalNumber(frame.height) ?? size.height,
-		},
-	];
+	const parsed: Frame = {
+		file,
+		name: optionalString(frame.name) ?? screenNameFromPath(file),
+		device,
+		x,
+		y,
+		width: optionalNumber(frame.width) ?? size.width,
+		height: optionalNumber(frame.height) ?? size.height,
+	};
+
+	if (layoutGrid) parsed.layoutGrid = layoutGrid;
+
+	return [parsed];
 }
 
 function parseAlternateGroup(value: Json): AlternateGroup[] {
@@ -171,6 +177,12 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 	};
 
 	if (isJsonObject(raw.theme)) canvas.theme = parseTheme(raw.theme);
+	const locks = normalizeLocks(raw.locks);
+
+	if (locks.length) canvas.locks = locks;
+	const sections = normalizeSections(raw.sections);
+
+	if (sections.length) canvas.sections = sections;
 
 	return canvas;
 }

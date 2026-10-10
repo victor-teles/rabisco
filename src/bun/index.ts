@@ -207,6 +207,9 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			gitInit: ({ path, name }) => git.init(path, name),
 			gitSetRemote: ({ path, url }) => git.setRemote(path, url),
 			gitSync: ({ path }) => git.sync(path),
+			gitCheckpoints: ({ path }) => git.checkpoints(path),
+			gitCheckpoint: ({ path, name }) => git.checkpoint(path, name),
+			gitReadCheckpoint: ({ path, hash }) => git.readCheckpoint(path, hash),
 		},
 		messages: {},
 	},
@@ -249,3 +252,5 @@ const mainWindow = new BrowserWindow({
 	frame: { width: 1440, height: 900, x: 120, y: 80 },
 	rpc,
 });
+
+mainWindow.maximize();

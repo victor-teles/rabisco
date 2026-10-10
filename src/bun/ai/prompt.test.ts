@@ -147,6 +147,13 @@ describe("systemPrompt", () => {
 		expect(prompt).toContain("No network images");
 	});
 
+	test("keeps prototype links with their transition and mode", () => {
+		const prompt = systemPrompt(request(), "text");
+		expect(prompt).toContain("Keep every `data-link-to` attribute");
+		expect(prompt).toContain("Keep `data-link-transition`");
+		expect(prompt).toContain("`data-link-mode`");
+	});
+
 	test("teaches theme token classes", () => {
 		expect(systemPrompt(request(), "text")).toContain("re-themes every screen");
 	});
