@@ -60,6 +60,8 @@ export type DesignComposerProps = {
 	designStyle?: StyleId | null;
 	onDesignStyleChange?: (style: StyleId | null) => void;
 	inlineOptions?: boolean;
+	/** The prompt on its own row, with the options in a toolbar under it (Home) */
+	stacked?: boolean;
 	className?: string;
 	/** Typing `/` lists them */
 	commands?: readonly ChatCommand[];
@@ -85,6 +87,7 @@ export function DesignComposer({
 	designStyle = null,
 	onDesignStyleChange,
 	inlineOptions = true,
+	stacked = false,
 	className,
 	commands,
 	onRunCommand,
@@ -105,6 +108,7 @@ export function DesignComposer({
 			defaultFiles={defaultFiles}
 			onSubmit={(prompt, files) => onSubmit(prompt, files)}
 			acceptFile={isPromptImage}
+			stacked={stacked}
 			className={className}
 		>
 			<PromptComposerAdd>
@@ -117,8 +121,12 @@ export function DesignComposer({
 			{commands?.length && onRunCommand ? (
 				<SlashMenu commands={commands} onKeys={setSlashKeys} onRun={onRunCommand} />
 			) : null}
-			<PromptComposerInput placeholder={placeholder} onKeyDown={(event) => slashKeys.current?.(event)} />
-			<PromptComposerActions>
+			<PromptComposerInput
+				placeholder={placeholder}
+				onKeyDown={(event) => slashKeys.current?.(event)}
+				className={cn(stacked && "min-h-14 px-2 pt-2 text-[15px]/6 md:text-[15px]/6")}
+			/>
+			<PromptComposerActions className={cn(stacked && "justify-self-stretch")}>
 				{inlineOptions ? (
 					<>
 						<DeviceToggle device={device} onDeviceChange={onDeviceChange} />
@@ -126,7 +134,7 @@ export function DesignComposer({
 						{onVariationsChange ? (
 							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
 						) : null}
-						<ModelPicker />
+						<ModelPicker className={cn(stacked && "ml-auto")} />
 					</>
 				) : null}
 				{busy && onStop ? (

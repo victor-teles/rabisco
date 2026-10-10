@@ -238,6 +238,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								onVariationsChange={setVariations}
 								designStyle={designStyle}
 								onDesignStyleChange={setDesignStyle}
+								stacked
 								placeholder="A meditation app with a soft, editorial feel…"
 								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations, style: designStyle })}
 							/>
