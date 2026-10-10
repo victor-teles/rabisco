@@ -30,6 +30,7 @@ import {
 import { HANDLES, handleSides, resizeRect, snapResize, type Handle } from "@/lib/frame-resize";
 import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
+import { suggestionHover, type SuggestionHover } from "@/lib/suggestion-hover";
 import { sourceVersion, type Box, type DropLayout, type FrameError } from "@/lib/render/protocol";
 import type { ElementLayout, Spacing } from "@/lib/render/spacing";
 import { contextSelection, marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
@@ -370,6 +371,7 @@ export function Canvas({
 	const [dropFile, setDropFile] = useState<string | null>(null);
 	const draggingComponent = useSyncExternalStore(componentDrag.subscribe, () => componentDrag.current() !== null);
 	const layerHover = useSyncExternalStore(elementHover.subscribe, elementHover.current);
+	const suggestion = useSyncExternalStore(suggestionHover.subscribe, suggestionHover.current);
 	const [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
 
 	const dropping = useRef<DropProbe>({
@@ -1630,6 +1632,17 @@ export function Canvas({
 							host={hostFor}
 						/>
 					) : null}
+					{suggestion
+						? shown.map((frame) => (
+								<SuggestionOutlines
+									key={frame.file}
+									suggestion={suggestion}
+									frame={frame}
+									source={rendered[frame.file]}
+									host={hostFor}
+								/>
+							))
+						: null}
 					{element ? (
 						<SelectedElement
 							key={element.file}
@@ -2162,6 +2175,51 @@ function LayerHover({
 			component={!!node && !node.intrinsic && node.name !== null}
 			size
 		/>
+	);
+}
+
+/** Every copy a component suggestion would replace on one screen, outlined and labeled with the suggested name */
+function SuggestionOutlines({
+	suggestion,
+	frame,
+	source,
+	host,
+}: {
+	suggestion: SuggestionHover;
+	frame: Frame;
+	source: string | undefined;
+	host: (file: string) => FrameHost | undefined;
+}) {
+	const version = source === undefined ? "" : sourceVersion(source);
+
+	const startsKey = suggestion.occurrences.flatMap((o) => (o.path === frame.file ? [o.start] : [])).join(",");
+
+	const key = `${frame.file}\n${startsKey}\n${version}`;
+	const [found, setFound] = useState<{ key: string; boxes: Box[][] } | null>(null);
+
+	useEffect(() => {
+		const target = host(frame.file);
+
+		if (!target || !version || !startsKey) return;
+		let current = true;
+
+		void Promise.all(startsKey.split(",").map((start) => target.elementBoxes(Number(start), version))).then(
+			(all) => current && setFound({ key, boxes: all.map((boxes) => boxes ?? []) }),
+		);
+
+		return () => {
+			current = false;
+		};
+	}, [host, frame.file, version, startsKey, key]);
+
+	if (!startsKey || found?.key !== key) return null;
+
+	return (
+		<>
+			{found.boxes.map((boxes, i) => (
+				<ElementOutline key={i} frame={frame} boxes={boxes} label={suggestion.suggestedName} component selected />
+			))}
+		</>
 	);
 }
 
