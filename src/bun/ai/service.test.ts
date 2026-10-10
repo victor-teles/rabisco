@@ -7,10 +7,10 @@ import type { GenerationEventMessage } from "../../shared/types";
 import { createProjectFolder } from "../project-folder";
 import { tempDir } from "../test-utils";
 import { createMemorySecretStore } from "./keychain";
-import { createAiService } from "./service";
+import { createAiService, NO_IMAGES_STEP } from "./service";
 import { designSourceOf } from "../../shared/context/theme";
 import { commandMethods } from "./command-template";
-import { MOCK_COMMANDS } from "./providers/mock";
+import { createMockProvider, MOCK_COMMANDS } from "./providers/mock";
 
 function setup() {
 	const root = tempDir();
@@ -145,7 +145,7 @@ const screenSource = (name: string) => `export default function ${name}() { retu
 
 type Play = (request: GenerationRequest, signal: AbortSignal) => AsyncIterable<GenerationEvent>;
 
-function setupFake(play: Play) {
+function setupFake(play: Play, images = false) {
 	const root = tempDir();
 	const sent: GenerationEventMessage[] = [];
 	const requests: GenerationRequest[] = [];
@@ -154,7 +154,7 @@ function setupFake(play: Play) {
 		id: "mock",
 		kind: "api",
 		label: "Fake",
-		capabilities: { streaming: true, images: false, agentic: false, maxContextTokens: 1000 },
+		capabilities: { streaming: true, images, agentic: false, maxContextTokens: 1000 },
 		health: async () => ({ ok: true }),
 		listModels: async () => [{ id: "mock", label: "Fake" }],
 		...commandMethods(() => MOCK_COMMANDS),
@@ -476,5 +476,178 @@ describe("point and prompt", () => {
 		expect(result.ok).toBe(true);
 		expect(requests[0]!.focus).toBeUndefined();
 		expect(requests[0]!.targets).toEqual([path]);
+	});
+});
+
+describe("model per task", () => {
+	function routed() {
+		const root = tempDir();
+		const models: Record<string, string[]> = {};
+		const mock = createMockProvider({ delayMs: 0 });
+
+		const provider: Provider = {
+			...mock,
+			generate(request, signal) {
+				(models[request.task] ??= []).push(request.model);
+
+				return mock.generate(request, signal);
+			},
+		};
+
+		const ai = createAiService({
+			userDataDir: join(root, "userData"),
+			secrets: createMemorySecretStore(),
+			includeMock: true,
+			send: () => {},
+			detect: async () => ({}),
+			createProvider: () => provider,
+		});
+
+		const projectPath = createProjectFolder(root, "Demo", "mobile");
+		mkdirSync(join(projectPath, "screens"), { recursive: true });
+		writeFileSync(join(projectPath, "screens/home.tsx"), `export default function Home() { return <div /> }\n`);
+		writeFileSync(join(projectPath, "DESIGN.md"), "# Design\n\nThe primary color is #0052ff.\n");
+
+		return { ai, models, projectPath };
+	}
+
+	async function runAll({ ai, projectPath }: ReturnType<typeof routed>) {
+		await ai.generate({ ...params(projectPath, "c"), task: "create" });
+		await ai.generate({ ...params(projectPath, "p"), task: "plan" });
+		await ai.generate({ ...params(projectPath, "e"), targets: ["screens/home.tsx"] });
+		await ai.generate({ ...params(projectPath, "v"), task: "vary", targets: ["screens/home.tsx"] });
+		await ai.generate({ ...params(projectPath, "t"), task: "theme" });
+		await ai.improvePrompt({ ...params(projectPath, "b") });
+	}
+
+	test("without a fast model, every task runs on the picked model", async () => {
+		const setup = routed();
+		await runAll(setup);
+		expect(new Set(Object.values(setup.models).flat())).toEqual(new Set(["mock"]));
+	});
+
+	test("the fast model runs edits, plans, themes and briefs; create and vary keep the picked one", async () => {
+		const setup = routed();
+		await setup.ai.setFastModel("mock:fast");
+		await runAll(setup);
+		expect(setup.models.create).toEqual(["mock"]);
+		expect(new Set(setup.models.edit)).toEqual(new Set(["fast", "mock"]));
+		expect(setup.models.plan).toEqual(["fast"]);
+		expect(setup.models.theme).toEqual(["fast"]);
+		expect(setup.models.brief).toEqual(["fast"]);
+		expect((await setup.ai.listProviders()).settings.fastModel).toBe("mock:fast");
+	});
+
+	test("an unavailable fast model falls back to the picked one", async () => {
+		const setup = routed();
+		await setup.ai.setFastModel("gone:model");
+		await setup.ai.generate({ ...params(setup.projectPath, "p"), task: "plan" });
+		expect(setup.models.plan).toEqual(["mock"]);
+	});
+});
+
+describe("improve prompt", () => {
+	test("streams a brief that uses PRODUCT.md and writes nothing", async () => {
+		const { ai, sent, projectPath } = setup();
+		writeFileSync(join(projectPath, "PRODUCT.md"), "# Product\n\nA budgeting app for students.\n");
+		const result = await ai.improvePrompt({ ...params(projectPath, "b1"), prompt: "budget app" });
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.brief.startsWith("Design budget app")).toBe(true);
+		expect(result.brief).toContain("A budgeting app for students.");
+		expect(sent.some((m) => m.generationId === "b1" && m.event.type === "message.delta")).toBe(true);
+		expect(sent.some((m) => m.event.type.startsWith("file."))).toBe(false);
+	});
+
+	test("works on Home, with no project", async () => {
+		const { ai } = setup();
+
+		const result = await ai.improvePrompt({
+			generationId: "b2",
+			prompt: "A recipe app.",
+			device: "mobile",
+			model: "mock:mock",
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.brief).toContain("Design a recipe app, as mobile screens.");
+	});
+
+	test("an unknown model fails with a fix", async () => {
+		const { ai, projectPath } = setup();
+		const result = await ai.improvePrompt({ ...params(projectPath), model: "gone:model" });
+		expect(result.ok).toBe(false);
+
+		if (!result.ok) expect(result.error.fix).toBeString();
+	});
+});
+
+describe("visual review", () => {
+	const review = {
+		prompt: "Look at the screenshots",
+		attachments: [{ name: "screens/home.tsx.jpg", mediaType: "image/jpeg" as const, data: "AA==" }],
+	};
+
+	const problems = [{ path: "screens/home.tsx", line: 1, message: "Low contrast: <p> “Home”" }];
+
+	test("a provider that takes images gets the review's prompt and screenshots", async () => {
+		const { ai, requests, projectPath } = setupFake(() => events({ type: "done" }), true);
+
+		put(projectPath, "screens/home.tsx", screenSource("Home"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			prompt: "Polish",
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems: [],
+			review,
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.withoutImages).toBeUndefined();
+		expect(requests[0]?.task).toBe("repair");
+		expect(requests[0]?.prompt).toBe("Look at the screenshots");
+		expect(requests[0]?.attachments).toEqual(review.attachments);
+		expect(requests[0]?.targets).toEqual(["screens/home.tsx"]);
+	});
+
+	test("a provider without images runs the plain polish of the errors, and says so", async () => {
+		const { ai, sent, requests, projectPath } = setupFake(() => events({ type: "done" }));
+
+		put(projectPath, "screens/home.tsx", screenSource("Home"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			prompt: "Polish",
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems,
+			review,
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.withoutImages).toBe(true);
+		expect(requests[0]?.prompt).toBe("Polish");
+		expect(requests[0]?.attachments).toBeUndefined();
+		expect(requests[0]?.problems).toEqual(problems);
+		expect(sent.some((m) => m.event.type === "status" && m.event.label === NO_IMAGES_STEP)).toBe(true);
+	});
+
+	test("without images and without errors there is nothing to run", async () => {
+		const { ai, requests, projectPath } = setupFake(() => events({ type: "done" }));
+
+		put(projectPath, "screens/home.tsx", screenSource("Home"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems: [],
+			review,
+		});
+
+		expect(result).toMatchObject({ ok: true, changes: [], withoutImages: true });
+		expect(requests).toHaveLength(0);
 	});
 });

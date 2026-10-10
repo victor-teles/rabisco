@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Component, Monitor, Search, Smartphone, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Component, Monitor, Search, Smartphone, Sparkles, Tablet, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ import {
 import type { ProjectComponent } from "../../../shared/components/usages";
 import type { DuplicateGroup } from "../../../shared/jsx";
 import { isComponentFile, isScreenFile, screenNameFromPath } from "../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import type { Device, Frame, ProjectFiles } from "../../../shared/types";
 
 export type ComponentsPanelProps = {
 	files: ProjectFiles;
@@ -46,6 +46,8 @@ export type ComponentsPanelProps = {
 	onMakeComponent: (group: DuplicateGroup, name: string) => string | null;
 	onDismissSuggestion: (key: string) => void;
 };
+
+const DEVICE_ICONS: Record<Device, typeof Monitor> = { mobile: Smartphone, tablet: Tablet, desktop: Monitor };
 
 const THUMB = { width: 400, height: 260, scale: 0.5 };
 
@@ -464,7 +466,7 @@ function ComponentDetail({
 					<div className="-mx-2 flex flex-col gap-0.5">
 						{component.usedBy.map((file) => {
 							const frame = frames.find((f) => f.file === file);
-							const Icon = !isScreenFile(file) ? Component : frame?.device === "desktop" ? Monitor : Smartphone;
+							const Icon = !isScreenFile(file) ? Component : DEVICE_ICONS[frame?.device ?? "mobile"];
 
 							const label =
 								frame?.name ?? (isComponentFile(file) ? file.replace(/^components\//, "") : screenNameFromPath(file));

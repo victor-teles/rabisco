@@ -1,7 +1,14 @@
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Crosshair, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, X } from "lucide-react";
-import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
+import {
+	DesignComposer,
+	DeviceToggle,
+	ModelPicker,
+	PlanModeToggle,
+	VariationsPicker,
+} from "@/components/app/design-composer";
 import { Markdown } from "@/components/app/markdown";
+import { StyleChoices } from "@/components/app/style-picker";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -55,6 +62,7 @@ import {
 	ToolCallSummary,
 	ToolCallTrigger,
 } from "@/components/ui/uai/tool-call";
+import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import type { Generation, WritingFile } from "@/hooks/use-generation";
@@ -63,8 +71,9 @@ import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
 import { api } from "@/lib/rpc";
 import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
+import type { StyleId } from "../../../shared/context/styles";
 import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
-import { ChangeSummaryCard } from "./change-summary";
+import { ChangeSummaryCard, type DesignNoteActions } from "./change-summary";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
 function WrittenFile({ path, file }: { path: string; file: WritingFile }) {
@@ -136,6 +145,12 @@ type ChatPanelProps = {
 	commands: readonly ChatCommand[];
 	/** `false` when it didn't run */
 	onRunCommand: (command: ChatCommand, args: string, files?: File[]) => boolean;
+	/** Offered in the empty chat while DESIGN.md has no direction; `null` hides the styles */
+	onPickStyle?: ((id: StyleId) => void) | null;
+	/** A plan waiting for review, under the latest message (decision 0015) */
+	planCard?: ReactNode;
+	noteActions?: DesignNoteActions | null;
+	projectPath?: string;
 };
 
 const TASK_TITLE = {
@@ -145,6 +160,7 @@ const TASK_TITLE = {
 	context: "Writing",
 	vary: "Varying",
 	theme: "Reading the theme",
+	plan: "Planning",
 } as const;
 
 function generationTitle(generation: Generation) {
@@ -183,8 +199,14 @@ export const ChatPanel = memo(function ChatPanel({
 	onCancelInterview,
 	commands,
 	onRunCommand,
+	onPickStyle = null,
+	planCard = null,
+	noteActions = null,
+	projectPath,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
+	const [planMode, setPlanMode] = usePlanMode();
+	const planHint = planModeHint({ editing: editingCount, variations });
 	const files = generation ? Object.entries(generation.writing) : [];
 
 	// Streaming output follows on its own; a new message brings the reader back down
@@ -283,10 +305,10 @@ export const ChatPanel = memo(function ChatPanel({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<ScrollArea ref={scrollRef} className="min-h-0 flex-1">
+			<ScrollArea ref={scrollRef} className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
 				<div className="flex flex-col gap-5 px-4 py-5">
 					{messages.length === 0 && !generation ? (
-						<EmptyState variant="plain" className="pt-16">
+						<EmptyState variant="plain" className={onPickStyle ? "pt-8" : "pt-16"}>
 							<EmptyStateMedia>
 								<Sparkles />
 							</EmptyStateMedia>
@@ -307,6 +329,13 @@ export const ChatPanel = memo(function ChatPanel({
 						</EmptyState>
 					) : null}
 
+					{messages.length === 0 && !generation && onPickStyle ? (
+						<section aria-label="Starting style" className="grid gap-1.5">
+							<p className="px-2 text-xs text-subtle-foreground">Or start DESIGN.md from a style</p>
+							<StyleChoices onPick={onPickStyle} />
+						</section>
+					) : null}
+
 					<MessageList
 						messages={messages}
 						onOpenContext={onOpenContext}
@@ -314,7 +343,10 @@ export const ChatPanel = memo(function ChatPanel({
 						regenerate={regenerate ? { id: lastReply, run: regenerate } : null}
 						lastReply={lastReply}
 						undoableRun={undoableRun}
+						noteActions={noteActions}
 					/>
+
+					{planCard}
 
 					{generation ? (
 						<>
@@ -393,8 +425,12 @@ export const ChatPanel = memo(function ChatPanel({
 					onDeviceChange={onDeviceChange}
 					onSubmit={submit}
 					inlineOptions={false}
+					planMode={planMode}
+					onPlanModeChange={interview ? undefined : setPlanMode}
+					planModeHint={planHint}
 					commands={interview ? undefined : commands}
 					onRunCommand={(command) => onRunCommand(command, "")}
+					improve={interview ? undefined : { projectPath }}
 					placeholder={
 						interview
 							? "Type your answer…"
@@ -402,7 +438,9 @@ export const ChatPanel = memo(function ChatPanel({
 								? `Change ${focusLabel}…`
 								: selectedScreenName
 									? `Change ${selectedScreenName}…`
-									: "Describe screens to add…"
+									: planCard
+										? "Reply to change the plan…"
+										: "Describe screens to add…"
 					}
 				/>
 				<div className="mt-1.5 flex items-center gap-1 px-0.5">
@@ -418,6 +456,7 @@ export const ChatPanel = memo(function ChatPanel({
 							}
 						/>
 					)}
+					{interview ? null : <PlanModeToggle on={planMode} onChange={setPlanMode} hint={planHint} />}
 					<ModelPicker />
 					{selectedScreenName && !(focusLabel && !interview) ? (
 						<span className="ml-auto truncate text-xs text-subtle-foreground">
@@ -648,6 +687,7 @@ const MessageList = memo(function MessageList({
 	regenerate,
 	lastReply,
 	undoableRun,
+	noteActions,
 }: {
 	messages: ChatMessage[];
 	onOpenContext: ChatPanelProps["onOpenContext"];
@@ -658,6 +698,7 @@ const MessageList = memo(function MessageList({
 	/** Only the latest reply shows its summary, so the history stays a conversation */
 	lastReply: string | undefined;
 	undoableRun: { id: string; run: () => void } | null;
+	noteActions: DesignNoteActions | null;
 }) {
 	return messages.map((message) => {
 		const assistant = message.role === "assistant";
@@ -692,7 +733,11 @@ const MessageList = memo(function MessageList({
 				</Message>
 				{/* Full width: the file tree needs the room the bubble's indent would take */}
 				{summary ? (
-					<ChangeSummaryCard summary={summary} onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined} />
+					<ChangeSummaryCard
+						summary={summary}
+						onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined}
+						noteActions={noteActions}
+					/>
 				) : null}
 			</Fragment>
 		);

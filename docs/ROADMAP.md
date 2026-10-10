@@ -406,6 +406,7 @@ Findings from the audit of the current editor, by impact.
 - ✅ A toast with "Undo" after deleting screens; confirm removing a provider
 - ✅ Undo for the project name and device; warn before a reload from disk clears the history
 - ✅ A comments list, with resolved threads
+- ✅ Back to Home doesn't stop a generation: the run, its review and a waiting plan keep going, the project card shows the progress, and a toast offers Open when it's done. The result is one undo step when you come back ([0021](./decisions/0021-generations-outlive-the-editor.md))
 
 **Done when** a new user can go from install to an edited, shared screen without reading the README.
 
@@ -449,6 +450,90 @@ From a review of the uai catalog against the editor (`tool-call`, now used in th
 - ✅ Expose uai blocks to generated screens as `@/components/ui/uai/<name>`: message, prompt-composer, thinking, metric-card, status-banner, step-indicator, search-field, form-field and form-error-summary, plus the `label` primitive. Their classes seed the screen compiler, and exports ship their sources ([0014](./decisions/0014-uai-blocks-in-screens.md))
 
 **Remaining:** check in the running app (WKWebView) how the new chat cards and popovers fit a narrow panel, and how the blocks look under a DESIGN.md theme and in dark mode. Check that snapshots don't catch entry animations half-drawn. Pressing Stop still writes a "Stopped" chat message instead of the stopped status.
+
+---
+
+## Phase 16: Generation quality 🚧
+
+_Principles: UX first (a bad generation costs one keystroke) · Context is a file · Screens are React_
+
+Today a generation is checked only for code: path, compile, imports, exports and render errors. Nothing checks how the screen looks. A project without DESIGN.md gets the generic look of the model. Fix that in this order: measure, then give the model a direction, then check what it made.
+
+**Measure first**
+
+- ✅ A generation eval in `bench/gen` (`hutch run bench:gen -- --model …`, or `--mock`): 12 fixed briefs (mobile, tablet, desktop; empty and themed projects; create, edit, point and prompt, vary). It runs through the real AI layer with the app's providers, and writes each brief as a project folder you can open in Rabisco
+- ✅ Design checks with no AI, from the rendered frame (`src/shared/design/layout-checks.ts`, collected by `runtime/design-lint.ts` through a `lint` frame message): content wider than the frame, clipped text, overlapping siblings, contrast under 4.5:1 (3:1 for large text), empty containers, more than 6 font sizes on a screen or 3 in a card. From the source (`source-checks.ts`): neutral and arbitrary colors where a theme token exists, and more than 2 palette color families. Each finding has a path and a line from `data-rabisco-loc`
+- ✅ "Check design" in the command palette: renders the selected screens (or all) offstage, lists the findings by screen, selects the element on click, and copies them as JSON
+- ✅ Score each eval run (`bench/gen/score.ts`): ok and error codes, repair attempts, files, time, tokens and cost, raw colors, project component reuse, UI and uai module use, custom token use, lines changed outside a focused element. `report.json` stores `PROMPT_VERSION`; `--baseline` prints the change in each total
+- ⬜ Run the eval with real providers (API, Claude Code, Ollama) and keep the first report as the baseline
+- ✅ Layout findings in the eval report: the eval renders each written screen with the real screen runtime in headless Chrome (`playwright-core`) and runs the same layout checks as "Check design". Findings already in a seed screen don't count. `--rescore <run>` checks an earlier run without generating again; `--no-layout` skips the checks
+- ✅ Tablet is a real device: the composer has a tablet option, and generation designs at 834×1194 with its own layout guidance
+
+**Direction before generation**
+
+- ✅ Style direction on Home: a Style picker in the composer with five starting points (Minimal, Editorial, Playful, Dense data, Bold) and "No style". Each writes a starter DESIGN.md with light and dark tokens and rules, so screens render themed with no AI step (`src/shared/context/styles.ts`). Minimal is the default; the choice is remembered. Every text and fill pair is tested at 4.5:1. `bench:gen --style <id>` starts the briefs without a DESIGN.md from a style. Measured with Claude Code (Opus) on the 5 briefs without a DESIGN.md: new raw colors went from 22 to 1, at the same cost
+- ✅ The same styles in the empty chat while DESIGN.md is missing or still the template, and "Start from a style…" in the command palette. Picking one writes DESIGN.md and applies its tokens to the screens as one undo step, with Undo in the toast
+- ✅ "Auto" in the Style picker: a new project writes DESIGN.md from its first prompt with a `context` task, then applies its tokens, before the plan and the screens. The chat shows "Writing DESIGN.md from your prompt". DESIGN.md and its theme are one undo step, separate from the screens, so undoing the screens keeps the look. If it fails or has no tokens, the project starts from Minimal and the chat says so. Minimal stays the default; Auto is opt-in
+- ✅ Plan, then screens ([0015](./decisions/0015-plan-then-screens.md), [0020](./decisions/0020-plan-mode.md)): with "Plan first" on in the composer (`⇧⌘P`, off by default, remembered), a create first runs a short `plan` task. The plan lists the screens, the shared components and the links between screens. It shows in the chat as a checklist and waits: untick a screen or component, rename a screen, then Generate or ↵. Esc cancels it. A reply in the chat revises it. With plan mode off, a create runs in one go. The eval runs one-shot creates; `--plan` plans its create briefs
+- ✅ Shared shell first: the plan's components are written in one run, then each screen in its own run, in parallel. Screens get the components as references and the plan's links as `data-link-to`. Everything is one undo step and one change summary
+- ✅ Better prompt rules (`prompt.ts`): a layout pattern per device (mobile top bar, tab bar, safe areas and 44px targets; desktop sidebar and content width), a type scale, a 4px spacing rhythm, one focal point and one primary button per screen, hierarchy without nested cards, realistic density, 4.5:1 text contrast, and states (empty, loading, error) only when the request names them. DESIGN.md still wins. The system prompt grew by about 450 tokens (≈4 characters a token). `PROMPT_VERSION` 15. The eval comparison with real providers is still to run
+- ✅ Image placeholders ([0016](./decisions/0016-image-placeholders.md)): `@/components/ui/placeholder` draws photos (landscape, food, interior, product, people, abstract), avatars, maps with a pin, charts (area, line, bar) and illustrations (tiles, empty, success, error) as SVG. The same seed draws the same image. Everything but photos follows the theme. No bundled assets; about 7.5 kB gzipped. The prompt tells the model to use it instead of network images
+
+**Check after generation**
+
+- ✅ Design checks feed the repair loop: after a create, edit or vary, the webview checks the screens it wrote offstage ("Checking the design"). Errors (overflow, clipped text, contrast under 3:1) become the problems of one `repair` run ("Polishing 2 problems") that may only rewrite existing files, and its writes join the generation's undo step. The change summary lists the findings left as "design notes", collapsed, by file; a click selects the element and "Fix" sends a focused repair. "Polish after generating" in AI providers turns the polish off (`src/shared/design/polish.ts`)
+- ✅ Visual review: the polish also sends a JPEG of each new screen with the prompt, DESIGN.md and the check's findings, and the model fixes only clear visual problems ("Reviewing screenshots", "Applying review"). It is on by default and merged into the polish run, so it adds one call and no undo step. "Review screenshots after generating" in AI providers turns it off. A model that can't see images gets the plain polish ([0019](decisions/0019-visual-review.md))
+
+**Edits**
+
+- ✅ Search-and-replace edits for API providers: edits and repairs send `<rabisco-edit path>` blocks that must match exactly once, and a block that doesn't match asks once for the whole file ([0018](./decisions/0018-search-replace-edits.md))
+- ✅ "Improve prompt" in the composer, on Home and in the chat (wand button or `⌘I`): a `brief` task ([0017](./decisions/0017-brief-task-and-fast-model.md)) expands the prompt with PRODUCT.md and DESIGN.md's direction, and streams the brief into the field for editing. It never sends. "Undo improve" or `⌘Z` puts the original back
+- ✅ Model per task: an optional "Fast model" in Settings runs edits, fixes, plans, DESIGN.md and theme reads, and Improve prompt. Create and vary keep the model picked in the composer. The main process picks the model, and an unavailable fast model falls back to the picked one ([0017](./decisions/0017-brief-task-and-fast-model.md))
+
+**Done when** the eval shows fewer design findings and higher token and component reuse than today's baseline with the same provider, and a new project with no DESIGN.md still gets a consistent, intentional look.
+
+---
+
+## Phase 17: Figma parity ⬜
+
+_Principles: Direct manipulation over prompts · Keyboard first (Figma conventions)_
+
+Designers come with Figma habits. Rabisco has selection, layers, auto layout through flex classes, align, resize and comments. It has no insert tools: you can't draw a box or type a text layer. Each tool here writes plain TSX and Tailwind, so the code still reads like a developer wrote it.
+
+**Insert tools** (most used first)
+
+- ⬜ Text (T): click inside a screen to add a `<p>` at the drop placement (Phase 10) and edit it in place; drag to set a width
+- ⬜ Frame (F, A): drag on the empty canvas to make a new screen of that size; drag inside a screen to add a `<div>` with `w-*`/`h-*` and the Phase 10 placement. Device presets in the inspector while the tool is active
+- ⬜ Rectangle (R) and ellipse (O): a `<div>` with `bg-muted` and the radius token; ellipse adds `rounded-full`
+- ⬜ Image (⇧⌘K): pick a file, it lands in `public/images/` (decision 0010) at the pointer
+- ⬜ The tool bar shows the active tool; ↵ after insert selects the new element; Esc returns to Move (V)
+
+**Inspect and measure**
+
+- ⬜ ⌥ + hover: red distance lines and values between the selection and the hovered element or its parent
+- ⬜ Layout grid per screen (⌃G): columns and margins drawn over the frame, stored in `rabisco.json`
+- ⬜ ⇧2 zoom to selection, ⇧0 zoom to 100%
+
+**Properties**
+
+- ⬜ Copy and paste properties (⌥⌘C / ⌥⌘V): copy an element's classes without its variants and children, paste onto one or many elements, one undo step
+- ⬜ Eyedropper (I) in the color field: pick a color from any frame, and snap it to the matching token when one exists
+- ⬜ Auto layout panel the way Figma shows it: direction, wrap, a 3×3 alignment grid, gap and padding with "Auto" (`justify-between`), on top of the existing flex classes
+- ⬜ Hide (⇧⌘H) and lock (⇧⌘L) in Layers. Hide writes `hidden` in the TSX so exports match; lock is canvas state in `rabisco.json`
+- ⬜ Select matching (⌥⌘A): elements with the same component or the same classes, across the screen
+
+**Organize**
+
+- ⬜ Sections on the canvas (⇧S): a named, colored area that holds screens and moves with them, stored in `rabisco.json`. The screens list groups by section
+- ⬜ Find and replace text across screens (⌘F on the canvas): results by screen, replace one or all as one undo step
+- ⬜ Version history panel: named checkpoints (⌥⌘S) and the AI changes in the session, each with a preview and Restore. Builds on undo history and git sync, with no new storage when git is set up
+
+**Prototype**
+
+- ⬜ Transitions on links (instant, dissolve, slide, push) as `data-link-transition`, played in play mode and the share viewer
+- ⬜ Overlays: open a screen as a modal or sheet over the current one (`data-link-mode="overlay"`). Extends [0007](./decisions/0007-prototype-links-in-source.md) with a new record
+
+**Done when** a Figma user can draw a frame, add text, a box and an image, measure spacing with ⌥ and organize screens into sections, with no prompt and no README.
 
 ---
 

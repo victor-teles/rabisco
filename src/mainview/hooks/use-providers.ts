@@ -111,6 +111,15 @@ export function selectModel(model: ModelRef) {
 	void api.setDefaultModel({ model }).catch((error) => console.warn("Could not save the default model:", error));
 }
 
+export function selectFastModel(model: ModelRef | null) {
+	const settings: ProviderSettings = { ...state.settings };
+
+	if (model) settings.fastModel = model;
+	else delete settings.fastModel;
+	set({ settings });
+	void api.setFastModel({ model }).catch((error) => console.warn("Could not save the fast model:", error));
+}
+
 export function openSettings(focusProvider: string | null = null) {
 	set({ settingsOpen: true, focusProvider });
 	void loadProviders(true);

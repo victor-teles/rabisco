@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
 	ArrowDownUp,
 	FolderOpen,
@@ -6,11 +6,13 @@ import {
 	FolderX,
 	House,
 	LayoutTemplate,
+	Loader2,
 	MoreHorizontal,
 	Palette,
 	Plus,
 	Search,
 	Settings,
+	Square,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -48,11 +50,15 @@ import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
 import { openSettings } from "@/hooks/use-providers";
+import { useDesignStyle } from "@/hooks/use-design-style";
+import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { useVariations } from "@/hooks/use-variations";
 import { arrangeRecents, isRecentsSort, RECENTS_SORTS, type RecentsSort } from "@/lib/recents";
 import { api, isDesktop } from "@/lib/rpc";
+import { projectSessions } from "@/lib/sessions";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import type { StyleChoice } from "../../shared/context/styles";
 import type { Device, ProjectSummary, ScreenCover, ScreenSource } from "../../shared/types";
 
 const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
@@ -92,7 +98,13 @@ function storedSort(): RecentsSort {
 	}
 }
 
-export type StartDesign = (input: { prompt: string; device: Device; files?: File[]; variations?: number }) => void;
+export type StartDesign = (input: {
+	prompt: string;
+	device: Device;
+	files?: File[];
+	variations?: number;
+	style?: StyleChoice;
+}) => void;
 
 type HomeProps = {
 	theme: Theme;
@@ -105,6 +117,8 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const [prompt, setPrompt] = useState("");
 	const [device, setDevice] = useState<Device>("mobile");
 	const [variations, setVariations] = useVariations();
+	const [planMode, setPlanMode] = usePlanMode();
+	const [designStyle, setDesignStyle] = useDesignStyle();
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
 	const [section, setSection] = useState<Section>("home");
@@ -115,10 +129,15 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const shown = useMemo(() => (projects ? arrangeRecents(projects, query, sort) : null), [projects, query, sort]);
 
 	useEffect(() => {
-		api.listRecents({}).then(setProjects, (error) => {
-			setProjects([]);
-			toast.error("Couldn't load recent projects", { description: String(error) });
-		});
+		const load = () =>
+			api.listRecents({}).then(setProjects, (error) => {
+				setProjects([]);
+				toast.error("Couldn't load recent projects", { description: String(error) });
+			});
+
+		void load();
+
+		return projectSessions.onLanded(() => void load());
 	}, []);
 
 	// ⌘F searches the recents, as it finds layers in Figma
@@ -170,6 +189,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 		setTrashTarget(null);
 
 		try {
+			await projectSessions.discard(project.path);
 			await api.deleteProject({ path: project.path });
 			forget(project.path);
 			toast(`Moved “${project.name}” to the Trash`);
@@ -227,8 +247,15 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								onDeviceChange={setDevice}
 								variations={variations}
 								onVariationsChange={setVariations}
+								planMode={planMode}
+								onPlanModeChange={setPlanMode}
+								planModeHint={planModeHint({ editing: 0, variations })}
+								designStyle={designStyle}
+								onDesignStyleChange={setDesignStyle}
+								stacked
+								improve={{}}
 								placeholder="A meditation app with a soft, editorial feel…"
-								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations })}
+								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations, style: designStyle })}
 							/>
 
 							<div className="mt-4 flex flex-wrap justify-center gap-1.5">
@@ -328,6 +355,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 											onReveal={() => api.revealProject({ path: project.path })}
 											onRemove={() => removeRecent(project.path)}
 											onTrash={() => setTrashTarget(project)}
+											onStop={() => projectSessions.stop(project.path)}
 										/>
 									))}
 								</div>
@@ -343,6 +371,9 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 						<DialogTitle className="text-base">Move “{trashTarget?.name}” to the Trash?</DialogTitle>
 						<DialogDescription className="text-[13px] break-all">
 							The folder {trashTarget?.path} and every file in it go to the Trash. You can restore it from there.
+							{trashTarget && projectSessions.activity(trashTarget.path) === "generating"
+								? " The generation running on it stops, and nothing it made is saved."
+								: null}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -423,19 +454,26 @@ function Sidebar({
 	);
 }
 
+const ACTIVITY_LABELS = { generating: "Generating…", plan: "Plan ready to review", failed: "Failed" } as const;
+
 function ProjectCard({
 	project,
 	onOpen,
 	onReveal,
 	onRemove,
 	onTrash,
+	onStop,
 }: {
 	project: ProjectSummary;
 	onOpen: () => void;
 	onReveal: () => void;
 	onRemove: () => void;
 	onTrash: () => void;
+	onStop: () => void;
 }) {
+	const activity = useSyncExternalStore(projectSessions.subscribe, () => projectSessions.activity(project.path));
+	const status = activity && activity !== "ready" ? activity : null;
+
 	return (
 		<div className={cn("group relative", project.missing && "opacity-60")}>
 			<Tooltip>
@@ -459,11 +497,23 @@ function ProjectCard({
 						</div>
 						<div className="px-3 py-2.5">
 							<div className="truncate text-[13px] font-medium">{project.name}</div>
-							<div className="mt-0.5 text-xs text-subtle-foreground">
-								{project.missing
-									? "Moved or deleted"
-									: `${project.screenCount} ${project.screenCount === 1 ? "screen" : "screens"} · ${formatWhen(project.updatedAt)}`}
-							</div>
+							{status ? (
+								<div
+									className={cn(
+										"mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground",
+										status === "failed" && "text-destructive",
+									)}
+								>
+									{status === "generating" ? <Loader2 className="size-3 animate-spin" /> : null}
+									{ACTIVITY_LABELS[status]}
+								</div>
+							) : (
+								<div className="mt-0.5 text-xs text-subtle-foreground">
+									{project.missing
+										? "Moved or deleted"
+										: `${project.screenCount} ${project.screenCount === 1 ? "screen" : "screens"} · ${formatWhen(project.updatedAt)}`}
+								</div>
+							)}
 						</div>
 					</button>
 				</TooltipTrigger>
@@ -484,6 +534,15 @@ function ProjectCard({
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
+					{status === "generating" ? (
+						<>
+							<DropdownMenuItem onSelect={onStop}>
+								<Square />
+								Stop generating
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+						</>
+					) : null}
 					{isDesktop && !project.missing ? (
 						<DropdownMenuItem onSelect={onReveal}>
 							<FolderSearch />

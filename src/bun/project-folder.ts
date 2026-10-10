@@ -12,7 +12,7 @@ import {
 import { dirname, join } from "path";
 import { parseChangeSummary } from "../shared/change-summary";
 import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
-import { CONTEXT_TEMPLATES } from "../shared/context/templates";
+import { starterFiles, type StyleId } from "../shared/context/styles";
 import type { AppliedTheme } from "../shared/context/theme";
 import { validateToken } from "../shared/context/tokens";
 import { normalizeComments } from "../shared/comments";
@@ -21,6 +21,7 @@ import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import {
 	emptyCanvas,
 	FRAME_SIZE,
+	isDevice,
 	isProjectFile,
 	projectNameFromPath,
 	reconcileFrames,
@@ -118,8 +119,7 @@ export function readFileIfExists(path: string): string | null {
 	}
 }
 
-const parseDevice = (value: Json | undefined): Device | undefined =>
-	value === "desktop" || value === "mobile" ? value : undefined;
+const parseDevice = (value: Json | undefined): Device | undefined => (isDevice(value) ? value : undefined);
 
 function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	const frame = objectOr(value);
@@ -387,12 +387,12 @@ export function freeProjectDir(parent: string, name: string) {
 	return dir;
 }
 
-export function createProjectFolder(parent: string, name: string, device: Device) {
+export function createProjectFolder(parent: string, name: string, device: Device, style?: StyleId | null) {
 	const dir = freeProjectDir(parent, name);
 	mkdirSync(dir, { recursive: true });
 	writeCanvas(dir, emptyCanvas(name.trim() || "Untitled", device));
 
-	for (const [file, template] of Object.entries(CONTEXT_TEMPLATES)) writeFileSync(join(dir, file), template);
+	for (const [file, content] of Object.entries(starterFiles(style))) writeFileSync(join(dir, file), content);
 
 	return dir;
 }

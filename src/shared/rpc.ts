@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun";
 import type { AssetChange } from "./assets";
+import type { StyleId } from "./context/styles";
 import type { ProviderCommand } from "./ai/contract";
 import type { ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { GitStatus, GitSyncResult } from "./git";
@@ -14,6 +15,8 @@ import type {
 	GenerateParams,
 	GenerateResult,
 	GenerationEventMessage,
+	ImprovePromptParams,
+	ImprovePromptResult,
 	Project,
 	ProjectSummary,
 	ScreenSource,
@@ -32,7 +35,8 @@ export type RabiscoRPC = {
 			openProject: { params: { path: string }; response: Project };
 			closeProject: { params: { path: string }; response: { ok: true } };
 			/** In the default projects directory */
-			createProject: { params: { name: string; device: Device }; response: Project };
+			/** `style` writes that starter DESIGN.md instead of the template */
+			createProject: { params: { name: string; device: Device; style?: StyleId | null }; response: Project };
 			saveCanvas: { params: { path: string; canvas: CanvasDoc }; response: { ok: true } };
 			writeFiles: { params: { path: string; changes: FileChange[] }; response: { ok: true } };
 			/** Creates the chat's file with its first message */
@@ -75,6 +79,8 @@ export type RabiscoRPC = {
 			removeProvider: { params: { id: string }; response: { ok: true } };
 			testProvider: { params: { id: string }; response: ProviderStatus };
 			setDefaultModel: { params: { model: string }; response: { ok: true } };
+			setFastModel: { params: { model: string | null }; response: { ok: true } };
+			improvePrompt: { params: ImprovePromptParams; response: ImprovePromptResult };
 			/** The model's provider commands, for the chat's `/` menu */
 			listCommands: { params: { model: string; projectPath: string }; response: ProviderCommand[] };
 			openExternal: { params: { url: string }; response: { ok: true } };

@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import {
 	ChevronRight,
 	ChevronsDownUp,
+	CircleAlert,
 	ChevronsUpDown,
 	File,
 	FileCode,
@@ -9,12 +10,18 @@ import {
 	FileText,
 	Folder,
 	FolderOpen,
+	TriangleAlert,
 	Undo2,
+	Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type ChangeTreeNode, changeTree, folderPaths } from "@/lib/change-tree";
 import { cn } from "@/lib/utils";
-import type { ChangedFile, ChangeSummary } from "../../../shared/change-summary";
+import type { ChangedFile, ChangeSummary, DesignNote } from "../../../shared/change-summary";
+import { DESIGN_RULE_LABELS } from "../../../shared/design/findings";
+import { notesByFile } from "../../../shared/design/polish";
+
+export type DesignNoteActions = { select: (note: DesignNote) => void; fix: (note: DesignNote) => void };
 
 // Shiki and the diff renderer are large; load them the first time a diff opens
 const DiffDialog = lazy(() => import("./diff-dialog").then((module) => ({ default: module.DiffDialog })));
@@ -121,8 +128,96 @@ function TreeRows({
 	});
 }
 
+function DesignNotes({ notes, actions }: { notes: DesignNote[]; actions?: DesignNoteActions | null }) {
+	const [open, setOpen] = useState(false);
+	const groups = useMemo(() => notesByFile(notes), [notes]);
+	const errors = notes.filter((note) => note.severity === "error").length;
+
+	return (
+		<div className="border-t px-1.5 py-1">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => setOpen((current) => !current)}
+				className="flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 text-left text-xs text-muted-foreground hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+			>
+				<ChevronRight
+					className={cn("size-3.5 shrink-0 text-subtle-foreground transition-transform", open && "rotate-90")}
+				/>
+				<span>{notes.length === 1 ? "1 design note" : `${notes.length} design notes`}</span>
+				{errors ? <span className="text-warning">· {errors === 1 ? "1 problem" : `${errors} problems`}</span> : null}
+			</button>
+			{open ? (
+				<div className="flex flex-col gap-1 pb-1">
+					{groups.map(({ path, notes: fileNotes }) => (
+						<section key={path} aria-label={path}>
+							<h4 className="truncate px-2 pt-1 pb-0.5 font-mono text-[11.5px] text-subtle-foreground">{path}</h4>
+							<ul>
+								{fileNotes.map((note, index) => (
+									<NoteRow key={`${note.rule}-${note.start ?? index}-${index}`} note={note} actions={actions} />
+								))}
+							</ul>
+						</section>
+					))}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function NoteRow({ note, actions }: { note: DesignNote; actions?: DesignNoteActions | null }) {
+	const Icon = note.severity === "error" ? CircleAlert : TriangleAlert;
+	const label = DESIGN_RULE_LABELS[note.rule];
+
+	return (
+		<li className="group flex items-start gap-1 rounded-md hover:bg-accent/60">
+			<button
+				type="button"
+				disabled={!actions}
+				onClick={() => actions?.select(note)}
+				title={actions ? "Select the element" : undefined}
+				className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-ring"
+			>
+				<Icon
+					className={cn(
+						"mt-0.5 size-3.5 shrink-0",
+						note.severity === "error" ? "text-warning" : "text-subtle-foreground",
+					)}
+				/>
+				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<span className="text-xs font-medium">
+						{label}
+						{note.line ? <span className="font-mono font-normal text-subtle-foreground"> :{note.line}</span> : null}
+					</span>
+					<span className="line-clamp-2 text-xs text-muted-foreground">{note.message}</span>
+				</span>
+			</button>
+			{actions ? (
+				<Button
+					variant="ghost"
+					size="xs"
+					className="mt-1 mr-1 shrink-0 text-muted-foreground"
+					aria-label={`Fix ${label.toLowerCase()}`}
+					onClick={() => actions.fix(note)}
+				>
+					<Wrench />
+					Fix
+				</Button>
+			) : null}
+		</li>
+	);
+}
+
 /** What a generation changed, under its reply: a file tree with line counts, the diff, and Undo while it is the latest step */
-export function ChangeSummaryCard({ summary, onUndo }: { summary: ChangeSummary; onUndo?: () => void }) {
+export function ChangeSummaryCard({
+	summary,
+	onUndo,
+	noteActions,
+}: {
+	summary: ChangeSummary;
+	onUndo?: () => void;
+	noteActions?: DesignNoteActions | null;
+}) {
 	const tree = useMemo(() => changeTree(summary.files), [summary.files]);
 	const folders = useMemo(() => folderPaths(tree), [tree]);
 	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -194,6 +289,7 @@ export function ChangeSummaryCard({ summary, onUndo }: { summary: ChangeSummary;
 					/>
 				</ul>
 			) : null}
+			{summary.design?.length ? <DesignNotes notes={summary.design} actions={noteActions} /> : null}
 			{diff ? (
 				<Suspense fallback={null}>
 					<DiffDialog

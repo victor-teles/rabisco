@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { GenerationEvent } from "../../shared/ai/contract";
-import { createTextProtocolParser, parseAttributes, TRUNCATED_STATUS } from "./protocol";
+import { createTextProtocolParser, EDIT_MISMATCH_STATUS, parseAttributes, TRUNCATED_STATUS } from "./protocol";
 
 const WELCOME = `import { Button } from "@/components/ui/button";
 
@@ -162,6 +162,17 @@ describe("text protocol parser", () => {
 		]);
 	});
 
+	test("keeps known devices and drops unknown ones", () => {
+		const { events } = run([
+			'<rabisco-file path="screens/a.tsx" device="tablet">x</rabisco-file><rabisco-file path="screens/b.tsx" device="watch">y</rabisco-file>',
+		]);
+
+		expect(events.filter((e) => e.type === "file.start")).toEqual([
+			{ type: "file.start", path: "screens/a.tsx", kind: "screen", screen: { name: "A", device: "tablet" } },
+			{ type: "file.start", path: "screens/b.tsx", kind: "screen", screen: { name: "B" } },
+		]);
+	});
+
 	test("a file still open at the end is truncated", () => {
 		const parser = createTextProtocolParser();
 		const events = [...parser.push('<rabisco-file path="screens/a.tsx">\nconst a = 1;\nconst b'), ...parser.end()];
@@ -227,5 +238,81 @@ describe("text protocol parser", () => {
 			path: "DESIGN.md",
 			content: "# Design\n\n- primary: #fff\n",
 		});
+	});
+});
+
+describe("edit tags", () => {
+	const files = [{ path: "screens/welcome.tsx", content: WELCOME }];
+
+	const EDIT = `Bigger button.
+<rabisco-edit path="screens/welcome.tsx">
+<<<<<<< SEARCH
+	return <div className="h-full">{a ? <Button>Go</Button> : null}</div>;
+=======
+	return <div className="h-full">{a ? <Button size="lg">Go</Button> : null}</div>;
+>>>>>>> REPLACE
+</rabisco-edit>
+Done.`;
+
+	const EDITED = WELCOME.replace("<Button>Go", '<Button size="lg">Go');
+
+	function runEdit(chunks: string[], from = files) {
+		const parser = createTextProtocolParser(from);
+		const events: GenerationEvent[] = [];
+
+		for (const chunk of chunks) events.push(...parser.push(chunk));
+		events.push(...parser.end());
+
+		return { events: merge(events), parser };
+	}
+
+	const whole = runEdit([EDIT]);
+
+	test("applies the blocks to the current file and emits a whole-file write", () => {
+		expect(whole.events).toEqual([
+			{ type: "message.delta", text: "Bigger button.\n" },
+			{ type: "status", label: "Editing screens/welcome.tsx" },
+			{ type: "file.start", path: "screens/welcome.tsx", kind: "screen" },
+			{ type: "file.end", path: "screens/welcome.tsx", content: EDITED },
+			{ type: "message.delta", text: "\nDone." },
+		]);
+		expect(whole.parser.written).toEqual(["screens/welcome.tsx"]);
+		expect(whole.parser.unmatched).toEqual([]);
+	});
+
+	test("any split across tags and delimiters gives the same events", () => {
+		for (let i = 1; i < EDIT.length; i++)
+			expect(runEdit([EDIT.slice(0, i), EDIT.slice(i)]).events).toEqual(whole.events);
+
+		for (let seed = 1; seed <= 100; seed++) expect(runEdit(randomSplits(EDIT, seed)).events).toEqual(whole.events);
+		expect(runEdit([...EDIT]).events).toEqual(whole.events);
+	});
+
+	test("an edit after a write in the same reply applies to the new content", () => {
+		const { events } = runEdit(
+			[`<rabisco-file path="screens/welcome.tsx">\n${WELCOME}</rabisco-file>`, EDIT.replace("Bigger button.", "")],
+			[],
+		);
+
+		expect(events.filter((e) => e.type === "file.end").at(-1)).toEqual({
+			type: "file.end",
+			path: "screens/welcome.tsx",
+			content: EDITED,
+		});
+	});
+
+	test("a block that doesn't match, an unknown file or an unclosed edit is unmatched", () => {
+		const missing = runEdit([EDIT.replace("<Button>Go", "<Button>Stop")]);
+		expect(missing.events).toContainEqual({
+			type: "status",
+			label: EDIT_MISMATCH_STATUS,
+			detail: "screens/welcome.tsx",
+		});
+		expect(missing.events.some((e) => e.type === "file.start" || e.type === "file.end")).toBe(false);
+		expect(missing.parser.unmatched).toEqual(["screens/welcome.tsx"]);
+		expect(missing.parser.written).toEqual([]);
+
+		expect(runEdit([EDIT], []).parser.unmatched).toEqual(["screens/welcome.tsx"]);
+		expect(runEdit([EDIT.slice(0, EDIT.indexOf(">>>>>>>"))]).parser.unmatched).toEqual(["screens/welcome.tsx"]);
 	});
 });

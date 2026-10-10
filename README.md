@@ -14,7 +14,7 @@ hutch run dev         # build the UI and launch the app, rebuilding on changes
 hutch run dev:hmr     # same, but with the Vite dev server and hot reload
 ```
 
-Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`.
+Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`, `hutch run bench:gen` (the generation eval, see [bench/gen](bench/gen/README.md)).
 
 The UI also runs in a plain browser: `hutch run hmr`, then open http://localhost:5173. Outside Electrobun the RPC layer falls back to localStorage.
 
@@ -30,6 +30,7 @@ src/
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback
+    lib/project-sessions.ts  open projects and their generations, kept while work runs (decision 0021)
     views/home.tsx      prompt hero and recent projects
     views/editor/       chat panel, infinite canvas, inspector
     components/ui/      shadcn primitives, uai blocks in ui/uai
@@ -60,6 +61,9 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘\`                                                   | Show or hide the chat and screens panel                                      |
 | `⇧⌘O`                                                   | New chat                                                                     |
 | `/` in the chat                                         | Chat commands: Rabisco's own and your CLI's commands                         |
+| `⌘I` in a prompt (Home or chat)                         | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back  |
+| `⇧⌘P` in a prompt (Home or chat)                        | Plan first: new screens wait as a plan you approve; a reply revises the plan |
+| `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                |
 | Double-click the title bar                              | Zoom the window (follows the macOS setting)                                  |
 | `⌥C`                                                    | Comments list                                                                |
 | `⌘C`, `⌘V`                                              | Copy the selected screens, paste screens or screen code as new screens       |

@@ -1,11 +1,19 @@
-import type { Attachment, ElementFocus, GenerationEvent, Problem, ProviderErrorCode, Usage } from "./ai/contract";
+import type {
+	Attachment,
+	ElementFocus,
+	GenerationEvent,
+	GenerationPlan,
+	Problem,
+	ProviderErrorCode,
+	Usage,
+} from "./ai/contract";
 import type { ProjectAssets } from "./assets";
 import type { ChangeSummary } from "./change-summary";
 import type { ChatSummary } from "./chats";
 import type { AppliedTheme } from "./context/theme";
 import type { DesignTokens } from "./context/tokens";
 
-export type Device = "mobile" | "desktop";
+export type Device = "mobile" | "tablet" | "desktop";
 
 export type ContextFileName = "PRODUCT.md" | "DESIGN.md";
 
@@ -138,7 +146,8 @@ export type GenerateParams = {
 	/** Empty or missing: create new screens */
 	targets?: string[];
 	/** `vary`: new alternates of the one screen in `targets`, leaving it as it is. */
-	task?: "create" | "edit" | "repair" | "context" | "vary" | "theme";
+	/** `plan`: reply with a plan for a `create` and write nothing; `create` with `plan` follows one (decision 0015) */
+	task?: "create" | "edit" | "repair" | "context" | "vary" | "theme" | "plan";
 	/** 1 to `MAX_VARIATIONS`, for `create` and `vary`; run as parallel generations */
 	variations?: number;
 	/** Read but must not change, e.g. the variation a "Mix" takes a section from */
@@ -151,7 +160,12 @@ export type GenerateParams = {
 	chatId?: string;
 	/** `prompt` is `/name args`; the main process expands the provider's command */
 	command?: { name: string; args: string };
+	/** `create`: the plan the user accepted; its shared components are written first, then its screens in parallel */
+	plan?: GenerationPlan;
+	review?: VisualReview;
 };
+
+export type VisualReview = { prompt: string; attachments: Attachment[] };
 
 export type GenerationFailure = {
 	code: ProviderErrorCode;
@@ -177,8 +191,21 @@ export type GenerateResult =
 			context: ContextFileName[];
 			/** `theme` task: the valid tokens read from DESIGN.md, with the source they were read from */
 			theme?: AppliedTheme;
+			/** `plan` task: the plan, fitted to the project; nothing was written */
+			plan?: GenerationPlan;
+			withoutImages?: true;
 	  }
 	| { ok: false; error: GenerationFailure };
+
+export type ImprovePromptParams = {
+	generationId: string;
+	prompt: string;
+	device: Device;
+	model: string;
+	projectPath?: string;
+};
+
+export type ImprovePromptResult = { ok: true; brief: string; usage?: Usage } | { ok: false; error: GenerationFailure };
 
 /** `attempt` 1 is the first try, then repairs. */
 export type GenerationEventMessage = {

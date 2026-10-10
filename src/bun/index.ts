@@ -139,7 +139,7 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			openProject: ({ path }) => store.openProject(path),
 			// A share link lives while its project is open
 			closeProject: ({ path }) => (store.closeProject(path), shares.stop(path), ok),
-			createProject: ({ name, device }) => store.createProject(name, device),
+			createProject: ({ name, device, style }) => store.createProject(name, device, style),
 			saveCanvas: ({ path, canvas }) => (store.saveCanvas(path, canvas), ok),
 			writeFiles: ({ path, changes }) => (store.writeFiles(path, changes), ok),
 			appendMessages: ({ path, chatId, messages }) => (store.appendMessages(path, chatId, messages), ok),
@@ -170,6 +170,8 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			removeProvider: async ({ id }) => (await ai.removeProvider(id), ok),
 			testProvider: ({ id }) => ai.testProvider(id),
 			setDefaultModel: async ({ model }) => (await ai.setDefaultModel(model), ok),
+			setFastModel: async ({ model }) => (await ai.setFastModel(model), ok),
+			improvePrompt: (params) => ai.improvePrompt(params),
 			listCommands: ({ model, projectPath }) => ai.listCommands(model, projectPath),
 			openExternal: ({ url }) => (openExternal(url), ok),
 			titleBarDoubleClick: () => (titleBarDoubleClick(), ok),

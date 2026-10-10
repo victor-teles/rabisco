@@ -1,6 +1,13 @@
-import type { ProviderStatus } from "../../shared/ai/settings";
+import { modelForTask, type ProviderStatus } from "../../shared/ai/settings";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
-import type { GenerateParams, GenerateResult, GenerationEventMessage, ProjectFiles } from "../../shared/types";
+import type {
+	GenerateParams,
+	GenerateResult,
+	GenerationEventMessage,
+	ImprovePromptParams,
+	ImprovePromptResult,
+	ProjectFiles,
+} from "../../shared/types";
 import type { ProviderCommand, ScreenMeta, Usage } from "../../shared/ai/contract";
 import { isAlternate } from "../../shared/variations";
 import { clampVariations, combineVariations, createVariantRenamer, variationsNote } from "../../shared/ai/variants";
@@ -19,6 +26,8 @@ import {
 	runThemeReading,
 	type BuildRequestParams,
 } from "./run";
+import { buildPlanRequest, runPlannedCreate, runPlanReading } from "./plan-run";
+import { buildBriefRequest, runBrief } from "./brief";
 import { variantProvider } from "./variant-provider";
 import { createSettingsStore, type NewProvider, type ProviderPatch, type Detected } from "./settings-store";
 
@@ -36,6 +45,8 @@ export type AiServiceOptions = {
 };
 
 const HISTORY_TURNS = 12;
+
+export const NO_IMAGES_STEP = "This model can't see images, so it polishes from the design check";
 
 export function createAiService(options: AiServiceOptions) {
 	const store = createSettingsStore({
@@ -69,6 +80,12 @@ export function createAiService(options: AiServiceOptions) {
 		statuses = statuses ? [...statuses.filter((s) => s.id !== id), status] : null;
 
 		return status;
+	}
+
+	async function resolveFor(task: string, picked: string) {
+		const { fastModel } = await store.get();
+
+		return registry.resolve(modelForTask(task, picked, fastModel)) ?? registry.resolve(picked);
 	}
 
 	return {
@@ -110,27 +127,11 @@ export function createAiService(options: AiServiceOptions) {
 
 		setDefaultModel: (model: string) => store.setDefaultModel(model),
 
-		/** The active model's provider commands; an unavailable model or a tool without commands has none */
-		async listCommands(model: string, projectPath: string): Promise<ProviderCommand[]> {
+		setFastModel: (model: string | null) => store.setFastModel(model),
+
+		async improvePrompt(params: ImprovePromptParams): Promise<ImprovePromptResult> {
 			await sync();
-
-			return (await registry.resolve(model)?.provider.listCommands?.(projectPath)) ?? [];
-		},
-
-		async generate(params: GenerateParams): Promise<GenerateResult> {
-			if (params.task === "context" && !isContextTarget(params.targets)) {
-				return {
-					ok: false,
-					error: {
-						code: "unknown",
-						message: "Writing context needs exactly one target: PRODUCT.md or DESIGN.md.",
-						retryable: false,
-					},
-				};
-			}
-
-			await sync();
-			const resolved = registry.resolve(params.model);
+			const resolved = await resolveFor("brief", params.model);
 
 			if (!resolved) {
 				return {
@@ -143,6 +144,97 @@ export function createAiService(options: AiServiceOptions) {
 					},
 				};
 			}
+
+			const controller = new AbortController();
+			running.set(params.generationId, controller);
+
+			try {
+				const files = params.projectPath ? readProjectFiles(params.projectPath) : {};
+
+				const request = buildBriefRequest({
+					id: params.generationId,
+					model: resolved.model,
+					prompt: params.prompt,
+					device: params.device,
+					product: files["PRODUCT.md"],
+					design: files["DESIGN.md"],
+				});
+
+				const result = await runBrief({
+					provider: resolved.provider,
+					request,
+					signal: controller.signal,
+					onEvent: (event) => options.send({ generationId: params.generationId, attempt: 1, event }),
+				});
+
+				return { ok: true, brief: result.brief, usage: result.usage };
+			} catch (error) {
+				const providerId = resolved.config.id;
+
+				if (error instanceof GenerationError) {
+					const { code, message, retryable, fix } = error;
+
+					return { ok: false, error: { code, message, retryable, fix, providerId } };
+				}
+
+				const message = error instanceof Error ? error.message : String(error);
+
+				return { ok: false, error: { code: "unknown", message, retryable: true, providerId } };
+			} finally {
+				running.delete(params.generationId);
+			}
+		},
+
+		/** The active model's provider commands; an unavailable model or a tool without commands has none */
+		async listCommands(model: string, projectPath: string): Promise<ProviderCommand[]> {
+			await sync();
+
+			return (await registry.resolve(model)?.provider.listCommands?.(projectPath)) ?? [];
+		},
+
+		async generate(asked: GenerateParams): Promise<GenerateResult> {
+			let params = asked;
+
+			if (params.task === "context" && !isContextTarget(params.targets)) {
+				return {
+					ok: false,
+					error: {
+						code: "unknown",
+						message: "Writing context needs exactly one target: PRODUCT.md or DESIGN.md.",
+						retryable: false,
+					},
+				};
+			}
+
+			await sync();
+			const resolved = await resolveFor(params.task ?? taskOf(params), params.model);
+
+			if (!resolved) {
+				return {
+					ok: false,
+					error: {
+						code: "not_authenticated",
+						message: `The model "${params.model}" isn't available. Its provider was removed or disabled.`,
+						fix: "Pick another model, or enable the provider in Settings.",
+						retryable: false,
+					},
+				};
+			}
+
+			const withoutImages = Boolean(asked.review) && !resolved.provider.capabilities.images;
+
+			if (withoutImages && !asked.problems?.length)
+				return { ok: true, changes: [], frames: [], reply: "", problems: [], context: [], withoutImages: true };
+
+			if (asked.review && !withoutImages)
+				params = { ...asked, prompt: asked.review.prompt, attachments: asked.review.attachments };
+
+			if (withoutImages)
+				options.send({
+					generationId: params.generationId,
+					attempt: 1,
+					event: { type: "status", label: NO_IMAGES_STEP },
+				});
 
 			const controller = new AbortController();
 			running.set(params.generationId, controller);
@@ -256,9 +348,40 @@ export function createAiService(options: AiServiceOptions) {
 				)
 					history.pop();
 
+				if (params.task === "plan") {
+					const request = buildPlanRequest({
+						id: params.generationId,
+						model: resolved.model,
+						prompt,
+						device: params.device,
+						projectFiles,
+						attachments: params.attachments,
+						history: history.slice(-HISTORY_TURNS),
+					});
+
+					const reading = await runPlanReading({
+						provider: resolved.provider,
+						request,
+						projectFiles,
+						signal: controller.signal,
+						onEvent: (event) => options.send({ generationId: params.generationId, attempt: 1, event }),
+					});
+
+					return {
+						ok: true,
+						changes: [],
+						frames: [],
+						reply: "",
+						problems: [],
+						usage: reading.usage,
+						context: contextFilesOf(request),
+						plan: reading.plan,
+					};
+				}
+
 				const task = taskOf(params);
 
-				const request = buildGenerationRequest({
+				const buildParams: BuildRequestParams = {
 					id: params.generationId,
 					task,
 					prompt: vary ? varyPrompt(prompt) : prompt,
@@ -271,7 +394,22 @@ export function createAiService(options: AiServiceOptions) {
 					attachments: params.attachments,
 					history: history.slice(-HISTORY_TURNS),
 					theme: readCanvas(params.projectPath)?.theme,
-				});
+				};
+
+				const request = buildGenerationRequest(buildParams);
+
+				if (task === "create" && params.plan && clampVariations(params.variations) === 1) {
+					const planned = await runPlannedCreate({
+						provider: resolved.provider,
+						build: buildParams,
+						plan: params.plan,
+						projectFiles,
+						signal: controller.signal,
+						onEvent: (event, attempt) => options.send({ generationId: params.generationId, attempt, event }),
+					});
+
+					return { ok: true, ...planned, context: contextFilesOf(request) };
+				}
 
 				if (params.task === "repair") Object.assign(request, { task: "repair", problems: params.problems ?? [] });
 
@@ -330,7 +468,7 @@ export function createAiService(options: AiServiceOptions) {
 						.filter((c) => c.content !== null && !(c.path in projectFiles))
 						.map((c) => c.path);
 
-					return {
+					const single: GenerateResult = {
 						ok: true,
 						changes: result.changes,
 						frames: framesForNewScreens(created, screens, params.device),
@@ -339,6 +477,10 @@ export function createAiService(options: AiServiceOptions) {
 						usage: result.usage,
 						context: contextFilesOf(request),
 					};
+
+					if (withoutImages) single.withoutImages = true;
+
+					return single;
 				}
 
 				const combined = combineVariations({

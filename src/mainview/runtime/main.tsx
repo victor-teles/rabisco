@@ -10,6 +10,7 @@ import {
 	type HostMessage,
 } from "../lib/render/protocol";
 import { frameAssets } from "./assets";
+import { lintScreen } from "./design-lint";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
 import { preloadIcons } from "./icons";
@@ -18,7 +19,7 @@ import { createPlay } from "./play";
 import { clearOrder, previewOrder } from "./reorder";
 import { rasterize } from "./raster";
 import { ModuleRegistry, RenderError } from "./registry";
-import { captureScene, contentHeight } from "./snapshot";
+import { captureScene, contentHeight, settle } from "./snapshot";
 import { startTextEdit, type TextEdit } from "./text-edit";
 
 const registry = new ModuleRegistry(externals);
@@ -397,6 +398,16 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				);
 			} catch (error) {
 				post({ type: "snapshot", id, error: error instanceof Error ? error.message : String(error) });
+			}
+		})();
+	} else if (message?.type === "lint") {
+		const { id } = message;
+		void (async () => {
+			try {
+				await settle();
+				post({ type: "lint", id, findings: entry && renderedVersion ? lintScreen(rootElement) : [] });
+			} catch (error) {
+				post({ type: "lint", id, error: error instanceof Error ? error.message : String(error) });
 			}
 		})();
 	} else if (message?.type === "play") {

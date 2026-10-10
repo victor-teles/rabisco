@@ -1,21 +1,28 @@
 // Decision 0003. Chunks may split anything anywhere, tag names included; providers emit `done`/`error`.
 
-import type { FileKind, GenerationEvent, ScreenMeta } from "../../shared/ai/contract";
-import { screenNameFromPath, toKebab } from "../../shared/project";
+import type { FileKind, GenerationEvent, ProjectFile, ScreenMeta } from "../../shared/ai/contract";
+import { isDevice, screenNameFromPath, toKebab } from "../../shared/project";
+import { applyEditBlocks, parseEditBlocks } from "./edit-blocks";
 
 const OPEN = "<rabisco-file";
 
 const CLOSE = "</rabisco-file>";
 
+const EDIT_OPEN = "<rabisco-edit";
+
+const EDIT_CLOSE = "</rabisco-edit>";
+
 const DELETE = "<rabisco-delete";
 
-const TAGS = [OPEN, DELETE, CLOSE];
+const TAGS = [OPEN, EDIT_OPEN, DELETE, CLOSE, EDIT_CLOSE];
 
 /** An unterminated `<rabisco-file …` longer than this is treated as plain text */
 const MAX_TAG_LENGTH = 2000;
 
 /** For a file still open when the stream ended; `detail` is its path. */
 export const TRUNCATED_STATUS = "File cut off";
+
+export const EDIT_MISMATCH_STATUS = "Edit didn't match";
 
 export type TextProtocolParser = {
 	push(chunk: string): GenerationEvent[];
@@ -25,6 +32,7 @@ export type TextProtocolParser = {
 	readonly deleted: readonly string[];
 	/** The caller should turn these into repair problems */
 	readonly truncated: readonly string[];
+	readonly unmatched: readonly string[];
 	readonly hasMessage: boolean;
 };
 
@@ -34,6 +42,12 @@ type OpenFile = {
 	raw: string;
 	sent: number;
 	body: { start: number; fenced: boolean } | null;
+};
+
+type OpenEdit = {
+	path: string | null;
+	kind: FileKind;
+	raw: string;
 };
 
 const ENTITIES = new Map([
@@ -118,13 +132,16 @@ function partialSuffix(text: string, token: string): number {
 	return 0;
 }
 
-export function createTextProtocolParser(): TextProtocolParser {
+export function createTextProtocolParser(files: readonly ProjectFile[] = []): TextProtocolParser {
 	let buffer = "";
 	let file: OpenFile | null = null;
+	let edit: OpenEdit | null = null;
 	let hasMessage = false;
 	const written: string[] = [];
 	const deleted: string[] = [];
 	const truncated: string[] = [];
+	const unmatched: string[] = [];
+	const contents = new Map(files.map((entry) => [entry.path, entry.content]));
 
 	function text(events: GenerationEvent[], value: string) {
 		if (!value) return;
@@ -156,7 +173,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 
 			const device = attrs.device;
 
-			if (device === "mobile" || device === "desktop") screen.device = device;
+			if (isDevice(device)) screen.device = device;
 			events.push({ type: "file.start", path, kind, screen });
 		} else {
 			events.push({ type: "file.start", path, kind });
@@ -203,7 +220,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 			if (!buffer.startsWith(tag)) continue;
 			const next = buffer[tag.length]!;
 
-			if (tag === CLOSE) {
+			if (tag === CLOSE || tag === EDIT_CLOSE) {
 				buffer = buffer.slice(tag.length);
 
 				return true;
@@ -221,9 +238,11 @@ export function createTextProtocolParser(): TextProtocolParser {
 			buffer = buffer.slice(gt + 1);
 
 			if (tag === OPEN) openFile(events, attrs);
+			else if (tag === EDIT_OPEN) openEdit(events, attrs);
 			else if (attrs.path) {
 				const path = normalizePath(attrs.path);
 				deleted.push(path);
+				contents.delete(path);
 				events.push({ type: "file.delete", path });
 			}
 
@@ -258,10 +277,61 @@ export function createTextProtocolParser(): TextProtocolParser {
 			const body = current.body!;
 			const content = finalContent(current.raw.slice(body.start), body.fenced);
 			written.push(current.path);
+			contents.set(current.path, content);
 			events.push({ type: "file.end", path: current.path, content });
 		}
 
 		file = null;
+
+		return true;
+	}
+
+	function openEdit(events: GenerationEvent[], attrs: Record<string, string>) {
+		const path = attrs.path ? normalizePath(attrs.path) : null;
+		edit = { path, kind: path ? inferKind(path, attrs.kind) : "screen", raw: "" };
+
+		events.push(
+			path ? { type: "status", label: `Editing ${path}` } : { type: "status", label: "Ignored an edit without a path" },
+		);
+	}
+
+	function finishEdit(events: GenerationEvent[], closed: boolean) {
+		const open = edit!;
+		edit = null;
+
+		if (!open.path) return;
+		const blocks = closed ? parseEditBlocks(open.raw) : null;
+		const base = contents.get(open.path);
+		const result = blocks && base !== undefined ? applyEditBlocks(base, blocks) : null;
+
+		if (!result?.ok) {
+			unmatched.push(open.path);
+			events.push({ type: "status", label: EDIT_MISMATCH_STATUS, detail: open.path });
+
+			return;
+		}
+
+		written.push(open.path);
+		contents.set(open.path, result.content);
+		events.push({ type: "file.start", path: open.path, kind: open.kind });
+		events.push({ type: "file.end", path: open.path, content: result.content });
+	}
+
+	function stepEdit(events: GenerationEvent[]): boolean {
+		const open = edit!;
+		const close = buffer.indexOf(EDIT_CLOSE);
+
+		if (close === -1) {
+			const keep = partialSuffix(buffer, EDIT_CLOSE);
+			open.raw += buffer.slice(0, buffer.length - keep);
+			buffer = buffer.slice(buffer.length - keep);
+
+			return false;
+		}
+
+		open.raw += buffer.slice(0, close);
+		buffer = buffer.slice(close + EDIT_CLOSE.length);
+		finishEdit(events, true);
 
 		return true;
 	}
@@ -271,7 +341,7 @@ export function createTextProtocolParser(): TextProtocolParser {
 			const events: GenerationEvent[] = [];
 			buffer += chunk;
 
-			while (buffer && (file ? stepFile(events) : stepText(events)));
+			while (buffer && (file ? stepFile(events) : edit ? stepEdit(events) : stepText(events)));
 
 			return events;
 		},
@@ -290,6 +360,8 @@ export function createTextProtocolParser(): TextProtocolParser {
 				}
 
 				file = null;
+			} else if (edit) {
+				finishEdit(events, false);
 			} else if (buffer && !/^<\/?rabisco-/.test(buffer)) {
 				// An unfinished `<rabisco-…` tag is dropped; anything else was just text
 				text(events, buffer);
@@ -307,6 +379,9 @@ export function createTextProtocolParser(): TextProtocolParser {
 		},
 		get truncated() {
 			return truncated;
+		},
+		get unmatched() {
+			return unmatched;
 		},
 		get hasMessage() {
 			return hasMessage;

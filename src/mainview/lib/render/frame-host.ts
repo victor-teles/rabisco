@@ -1,3 +1,4 @@
+import type { DesignFinding } from "../../../shared/design/findings";
 import type { Scene } from "../../../shared/export/scene";
 import type { ProjectFiles } from "../../../shared/types";
 import { projectAssets } from "./assets";
@@ -202,6 +203,19 @@ export class FrameHost {
 		return image ? { scene, raster: image } : { scene };
 	}
 
+	/** The layout and contrast checks on the rendered screen; findings have `path` and `start` but no `line` */
+	async lint(timeoutMs = 15_000): Promise<DesignFinding[]> {
+		if (!this.#ready) throw new Error("The frame isn't ready");
+		const reply = await this.#request({ type: "lint", id: ++requestId }, timeoutMs);
+
+		if (reply?.type !== "lint")
+			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+
+		if ("error" in reply) throw new Error(reply.error);
+
+		return reply.findings;
+	}
+
 	#request(message: HostMessage & { id: number }, timeoutMs: number): Promise<FrameMessage | null> {
 		if (!this.#ready) return Promise.resolve(null);
 
@@ -388,6 +402,7 @@ export class FrameHost {
 		} else if (
 			message?.type === "measured" ||
 			message?.type === "snapshot" ||
+			message?.type === "lint" ||
 			message?.type === "drop-layout" ||
 			message?.type === "element-boxes"
 		) {

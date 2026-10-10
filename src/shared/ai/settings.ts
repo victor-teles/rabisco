@@ -35,6 +35,7 @@ export type ProviderSettings = {
 	version: 1;
 	providers: ProviderConfig[];
 	defaultModel?: string;
+	fastModel?: string;
 };
 
 export type ProviderTypeInfo = {
@@ -158,3 +159,13 @@ export function parseModelRef(ref: ModelRef): { providerId: string; model: strin
 }
 
 export const toModelRef = (providerId: string, model: string): ModelRef => `${providerId}:${model}`;
+
+export const FAST_TASKS = ["edit", "repair", "context", "theme", "plan", "brief"] as const;
+
+export type FastTask = (typeof FAST_TASKS)[number];
+
+const isFastTask = (task: string): task is FastTask => FAST_TASKS.some((fast) => fast === task);
+
+export function modelForTask(task: string, picked: ModelRef, fastModel: ModelRef | undefined): ModelRef {
+	return fastModel && isFastTask(task) ? fastModel : picked;
+}

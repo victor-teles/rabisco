@@ -13,12 +13,19 @@ describe("device presets", () => {
 		const sizes = DEVICE_PRESETS.map(({ width, height }) => ({ width, height }));
 
 		expect(sizes).toContainEqual(FRAME_SIZE.mobile);
+		expect(sizes).toContainEqual(FRAME_SIZE.tablet);
 		expect(sizes).toContainEqual(FRAME_SIZE.desktop);
 	});
 
-	test("phones and tablets render as mobile, desktops as desktop", () => {
+	test("each preset renders as its own kind of device", () => {
 		for (const preset of DEVICE_PRESETS)
-			expect(deviceForSize(preset)).toBe(preset.kind === "desktop" ? "desktop" : "mobile");
+			expect(deviceForSize(preset)).toBe(preset.kind === "phone" ? "mobile" : preset.kind);
+	});
+
+	test("the default frame sizes map back to their device", () => {
+		expect(deviceForSize(FRAME_SIZE.mobile)).toBe("mobile");
+		expect(deviceForSize(FRAME_SIZE.tablet)).toBe("tablet");
+		expect(deviceForSize(FRAME_SIZE.desktop)).toBe("desktop");
 	});
 });
 

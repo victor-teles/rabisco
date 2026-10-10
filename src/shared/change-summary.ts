@@ -1,5 +1,6 @@
 import { formatPatch, structuredPatch } from "diff";
 import type { Problem } from "./ai/contract";
+import { DESIGN_RULES, type DesignFinding, type DesignRule } from "./design/findings";
 import { isFiniteNumber, isString } from "./guards";
 import { isJsonArray, isJsonObject, type Json } from "./json";
 import type { FileChange, ProjectFiles } from "./types";
@@ -16,12 +17,15 @@ export type ChangedFile = {
 	patch?: string;
 };
 
+export type DesignNote = DesignFinding & { screen: string; path: string; version?: string };
+
 /** What one generation did, shown under its reply */
 export type ChangeSummary = {
 	/** Sorted by path */
 	files: ChangedFile[];
 	/** Left out after automatic repairs */
 	problems: number;
+	design?: DesignNote[];
 };
 
 const CHANGE_KINDS: ReadonlySet<string> = new Set<FileChangeKind>(["added", "modified", "deleted"]);
@@ -51,6 +55,34 @@ function fileChange(path: string, change: FileChangeKind, old: string, next: str
 const count = (value: Json | undefined) => (isFiniteNumber(value) ? Math.max(0, Math.round(value)) : 0);
 
 const isChangeKind = (value: string): value is FileChangeKind => CHANGE_KINDS.has(value);
+
+const RULES: ReadonlySet<string> = new Set<DesignRule>(DESIGN_RULES);
+
+const isRule = (value: string): value is DesignRule => RULES.has(value);
+
+function parseDesignNote(value: Json): DesignNote | null {
+	if (!isJsonObject(value) || !isString(value.rule) || !isRule(value.rule)) return null;
+
+	if (!isString(value.message) || !isString(value.screen) || !isString(value.path)) return null;
+
+	const severity = value.severity === "error" ? "error" : "warning";
+
+	const note: DesignNote = {
+		rule: value.rule,
+		severity,
+		message: value.message,
+		screen: value.screen,
+		path: value.path,
+	};
+
+	if (isFiniteNumber(value.start)) note.start = value.start;
+
+	if (isFiniteNumber(value.line)) note.line = value.line;
+
+	if (isString(value.version)) note.version = value.version;
+
+	return note;
+}
 
 /** `null` when the run changed nothing and left no problems */
 export function changeSummaryOf(
@@ -96,5 +128,10 @@ export function parseChangeSummary(value: Json | undefined): ChangeSummary | und
 		files.push(entry);
 	}
 
-	return { files, problems: count(value.problems) };
+	const summary: ChangeSummary = { files, problems: count(value.problems) };
+	const design = isJsonArray(value.design) ? value.design.flatMap((note) => parseDesignNote(note) ?? []) : [];
+
+	if (design.length) summary.design = design;
+
+	return summary;
 }

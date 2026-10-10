@@ -1,3 +1,4 @@
+import { DESIGN_RULES, type DesignFinding } from "../../../shared/design/findings";
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
@@ -51,7 +52,9 @@ export type HostMessage =
 	/** Answered by a `measured` with the same `id`. */
 	| { type: "measure"; id: number }
 	/** Answered by a `snapshot` with the same `id`. */
-	| { type: "snapshot"; id: number; raster?: SnapshotRaster };
+	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
+	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
+	| { type: "lint"; id: number };
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
 export type AssetPayload = Blob | string;
@@ -102,7 +105,9 @@ export type FrameMessage =
 	| { type: "escape" }
 	| { type: "measured"; id: number; height: number }
 	| { type: "snapshot"; id: number; scene: Scene; raster?: { dataUrl: string; scale: number } }
-	| { type: "snapshot"; id: number; error: string };
+	| { type: "snapshot"; id: number; error: string }
+	| { type: "lint"; id: number; findings: DesignFinding[] }
+	| { type: "lint"; id: number; error: string };
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };
@@ -311,6 +316,30 @@ function isElementLayout(layout: unknown): layout is ElementLayout {
 	);
 }
 
+const RULES: readonly string[] = DESIGN_RULES;
+
+const SEVERITIES: readonly string[] = ["error", "warning"] satisfies DesignFinding["severity"][];
+
+const isOffset = (value: unknown): value is number => isNumber(value) && Number.isInteger(value) && value >= 0;
+
+function isDesignFinding(finding: unknown): finding is DesignFinding {
+	if (!isObject(finding) || !("rule" in finding && "severity" in finding && "message" in finding)) return false;
+	const path = "path" in finding ? finding.path : undefined;
+	const start = "start" in finding ? finding.start : undefined;
+	const line = "line" in finding ? finding.line : undefined;
+
+	return (
+		isString(finding.rule) &&
+		RULES.includes(finding.rule) &&
+		isString(finding.severity) &&
+		SEVERITIES.includes(finding.severity) &&
+		isString(finding.message) &&
+		(path === undefined || isString(path)) &&
+		(start === undefined || isOffset(start)) &&
+		(line === undefined || (isOffset(line) && line > 0))
+	);
+}
+
 /** Frames run project code, so their messages are validated before the host acts on them. */
 export function isFrameMessage(data: unknown): data is FrameMessage {
 	if (!isObject(data) || !("type" in data)) return false;
@@ -358,6 +387,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 				isScene(data.scene) &&
 				(!("raster" in data) || data.raster === undefined || isRaster(data.raster))
 			);
+		case "lint":
+			if (!hasId(data)) return false;
+
+			if ("error" in data) return isString(data.error);
+
+			return "findings" in data && Array.isArray(data.findings) && data.findings.every(isDesignFinding);
 		default:
 			return false;
 	}

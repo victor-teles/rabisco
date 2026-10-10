@@ -99,6 +99,9 @@ export function normalizeSettings(raw: Json): ProviderSettings {
 	const defaultModel = nonBlank(data.defaultModel);
 
 	if (defaultModel && parseModelRef(defaultModel)) settings.defaultModel = defaultModel;
+	const fastModel = nonBlank(data.fastModel);
+
+	if (fastModel && parseModelRef(fastModel)) settings.fastModel = fastModel;
 
 	return settings;
 }
@@ -243,7 +246,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 			});
 		},
 
-		/** Also deletes its key and clears the default model when it pointed to it. */
+		/** Also deletes its key and clears the default and fast models when they pointed to it. */
 		remove(id: string): Promise<void> {
 			return mutate(async (settings) => {
 				find(settings, id);
@@ -252,6 +255,8 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 
 				if (settings.defaultModel && parseModelRef(settings.defaultModel)?.providerId === id)
 					delete settings.defaultModel;
+
+				if (settings.fastModel && parseModelRef(settings.fastModel)?.providerId === id) delete settings.fastModel;
 			});
 		},
 
@@ -282,6 +287,14 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 				if (ref === null) delete settings.defaultModel;
 				else if (!parseModelRef(ref)) throw new Error(`Invalid model: ${ref}`);
 				else settings.defaultModel = ref;
+			});
+		},
+
+		setFastModel(ref: string | null): Promise<void> {
+			return mutate((settings) => {
+				if (ref === null) delete settings.fastModel;
+				else if (!parseModelRef(ref)) throw new Error(`Invalid model: ${ref}`);
+				else settings.fastModel = ref;
 			});
 		},
 	};

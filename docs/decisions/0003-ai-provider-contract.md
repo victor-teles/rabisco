@@ -1,6 +1,6 @@
 # 0003 · AI provider contract: providers write files
 
-- **Status:** accepted
+- **Status:** accepted. The "files are always complete" rule for API providers is superseded by [0018](./0018-search-replace-edits.md)
 - **Date:** 2026-10-04
 - **Types:** [`src/shared/ai/contract.ts`](../../src/shared/ai/contract.ts)
 

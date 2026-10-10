@@ -16,6 +16,7 @@ import * as DropdownMenu from "@/components/ui/dropdown-menu";
 import * as Input from "@/components/ui/input";
 import * as Kbd from "@/components/ui/kbd";
 import * as Label from "@/components/ui/label";
+import * as Placeholder from "@/components/ui/placeholder";
 import * as Popover from "@/components/ui/popover";
 import * as Progress from "@/components/ui/progress";
 import * as ScrollArea from "@/components/ui/scroll-area";
@@ -68,6 +69,7 @@ export const externals = {
 	"@/components/ui/input": Input,
 	"@/components/ui/kbd": Kbd,
 	"@/components/ui/label": Label,
+	"@/components/ui/placeholder": Placeholder,
 	"@/components/ui/popover": Popover,
 	"@/components/ui/progress": Progress,
 	"@/components/ui/scroll-area": ScrollArea,

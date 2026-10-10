@@ -2,7 +2,16 @@ import { describe, expect, test } from "bun:test";
 import type { GenerationEvent, GenerationRequest } from "../../../shared/ai/contract";
 import { validateFiles } from "../validate";
 import { elementFocus } from "../../../shared/ai/focus";
-import { createMockProvider, mockProductMd, primaryFamilyOf, restyleElement, restyleForVariation } from "./mock";
+import { parsePlanReply } from "../../../shared/ai/plan";
+import {
+	createMockProvider,
+	mockProductMd,
+	mockRepair,
+	primaryFamilyOf,
+	restyleElement,
+	restyleForVariation,
+	withoutMissingComponents,
+} from "./mock";
 
 const request: GenerationRequest = {
 	id: "g",
@@ -52,6 +61,17 @@ describe("mock provider", () => {
 				{},
 			),
 		).toEqual([]);
+	});
+
+	test("a tablet request streams tablet screens", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate({ ...request, device: "tablet" }, new AbortController().signal),
+		);
+
+		const starts = events.filter((e) => e.type === "file.start" && e.kind === "screen");
+		expect(starts.length).toBeGreaterThan(0);
+
+		for (const start of starts) expect(start).toMatchObject({ screen: { device: "tablet" } });
 	});
 
 	test("respects existing files", async () => {
@@ -132,6 +152,34 @@ describe("mock provider", () => {
 		expect(validateFiles([{ path: end.path, content: end.content }], {}, [], { contextTarget: "DESIGN.md" })).toEqual(
 			[],
 		);
+	});
+
+	test("context task: with no screens, DESIGN.md takes a color the prompt names", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "context", targets: ["DESIGN.md"], prompt: "A calm teal journal" },
+				new AbortController().signal,
+			),
+		);
+
+		const end = events.find((e) => e.type === "file.end");
+
+		if (end?.type !== "file.end") throw new Error("no file.end event");
+		expect(end.content).toContain("- primary: oklch(0.6 0.118 184.704)\n");
+	});
+
+	test("brief task: streams a brief built on the prompt and PRODUCT.md, and writes no file", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "brief", context: { product: "# Product\n\nFor busy parents.\n" } },
+				new AbortController().signal,
+			),
+		);
+
+		const text = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		expect(text.startsWith("Design a habit tracker, as mobile screens.\n- Product: For busy parents.")).toBe(true);
+		expect(events.some((e) => e.type.startsWith("file."))).toBe(false);
+		expect(events.at(-1)!.type).toBe("done");
 	});
 
 	test("primaryFamilyOf ignores neutrals and non-TSX files", () => {
@@ -215,6 +263,35 @@ describe("mock theme task", () => {
 	});
 });
 
+describe("mock plan task", () => {
+	test("replies with a plan of its own drafts, and writes no file", async () => {
+		const plan: GenerationRequest = { ...request, task: "plan", projectScreens: ["screens/home.tsx"] };
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(plan, new AbortController().signal));
+		expect(events.some((e) => e.type.startsWith("file."))).toBe(false);
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		const parsed = parsePlanReply(reply, {})!;
+		expect(parsed.screens.map((s) => s.path)).toEqual([
+			"screens/welcome.tsx",
+			"screens/home-2.tsx",
+			"screens/details.tsx",
+		]);
+		expect(parsed.components.map((c) => c.name)).toEqual(["StatCard", "TabBar"]);
+		expect(parsed.links[0]).toEqual({ from: "screens/welcome.tsx", to: "screens/home-2.tsx", label: "Continue" });
+	});
+
+	test("a planned screen drops the components that weren't written", () => {
+		const source = `import { Flame } from "lucide-react";\nimport { StatCard } from "../components/stat-card";\nimport { TabBar } from "../components/tab-bar";\n\nexport default function A() {\n\treturn (\n\t\t<div>\n\t\t\t<StatCard label="A" icon={Flame} />\n\t\t\t<TabBar active={0} />\n\t\t</div>\n\t);\n}\n`;
+		const out = withoutMissingComponents(source, new Set(["components/stat-card.tsx"]));
+		expect(out).toContain("StatCard");
+		expect(out).not.toContain("TabBar");
+		expect(
+			validateFiles([{ path: "screens/a.tsx", content: out }], {
+				"components/stat-card.tsx": "export function StatCard() { return null }",
+			}),
+		).toEqual([]);
+	});
+});
+
 describe("restyleElement", () => {
 	const source = `export default function A() {\n\treturn (\n\t\t<main className="p-6">\n\t\t\t<h1 className="text-2xl font-semibold">Hi</h1>\n\t\t\t<Badge>New</Badge>\n\t\t</main>\n\t);\n}\n`;
 
@@ -231,5 +308,64 @@ describe("restyleElement", () => {
 			`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`,
 		);
 		expect(restyleElement(source.replace("New", "Old"), focus, 1)).toBeNull();
+	});
+});
+
+describe("mock repair", () => {
+	const home = `export default function Home() {\n\treturn (\n\t\t<div className="bg-orange-600 text-white">\n\t\t\t<p className="text-sm text-white/80">This week</p>\n\t\t\t<h1 className="text-2xl">72%</h1>\n\t\t</div>\n\t);\n}\n`;
+	const badge = `export function Badge() {\n\treturn <span className="text-orange-300">Pro</span>;\n}\n`;
+
+	const repair: GenerationRequest = {
+		...request,
+		task: "repair",
+		files: [
+			{ path: "screens/home.tsx", content: home },
+			{ path: "components/badge.tsx", content: badge },
+		],
+		targets: ["screens/home.tsx"],
+		problems: [
+			{
+				path: "screens/home.tsx",
+				line: 4,
+				message: "Low contrast: <p> “This week” has a contrast of 2.6:1, under 3:1",
+			},
+			{ path: "screens/home.tsx", line: 5, message: "Clipped text: <h1> “72%” is cut off" },
+			{ path: "components/badge.tsx", line: 2, message: "Low contrast: <span> “Pro” has a contrast of 1.9:1" },
+		],
+	};
+
+	test("fixes its targets in place, line by line, and writes nothing else", () => {
+		const result = mockRepair(repair);
+
+		expect(result.changes).toEqual([
+			{
+				path: "screens/home.tsx",
+				content: home
+					.replace(`text-sm text-white/80`, `text-sm text-white`)
+					.replace(`className="text-2xl"`, `className="text-2xl break-words"`),
+			},
+		]);
+		expect(result.reply).toBe("Fixed 2 problems in Home.");
+	});
+
+	test("streams the fixed file as a repair, with no new screens", async () => {
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(repair, new AbortController().signal));
+		const ends = events.flatMap((e) => (e.type === "file.end" ? [e.path] : []));
+
+		expect(ends).toEqual(["screens/home.tsx"]);
+	});
+
+	test("a review with nothing listed writes no files", async () => {
+		const review: GenerationRequest = {
+			...repair,
+			problems: [],
+			attachments: [{ name: "screens/home.tsx.jpg", mediaType: "image/jpeg", data: "AA==" }],
+		};
+
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(review, new AbortController().signal));
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+
+		expect(events.some((e) => e.type === "file.end")).toBe(false);
+		expect(reply).toBe("Nothing to fix.");
 	});
 });

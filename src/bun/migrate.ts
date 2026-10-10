@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync } from "fs";
 import { join } from "path";
 import { isFiniteNumber } from "../shared/guards";
 import { isJsonArray, isJsonObject, type Json } from "../shared/json";
-import { FRAME_GAP, FRAME_SIZE, emptyCanvas, uniqueScreenPath } from "../shared/project";
+import { FRAME_GAP, FRAME_SIZE, emptyCanvas, isDevice, uniqueScreenPath } from "../shared/project";
 import type { CanvasDoc, ChatMessage, Device, FileChange, Frame } from "../shared/types";
 import { newChatId } from "../shared/chats";
 import { appendChat, freeProjectDir, isChatMessage, writeCanvas, writeProjectFiles } from "./project-folder";
@@ -30,8 +30,7 @@ export type LegacyProject = {
 	messages: ChatMessage[];
 };
 
-const parseDevice = (value: Json | undefined): Device | undefined =>
-	value === "desktop" || value === "mobile" ? value : undefined;
+const parseDevice = (value: Json | undefined): Device | undefined => (isDevice(value) ? value : undefined);
 
 const finiteNumber = (value: Json | undefined) => (isFiniteNumber(value) ? value : undefined);
 

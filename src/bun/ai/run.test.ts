@@ -11,8 +11,10 @@ import {
 	contextTargetOf,
 	runGeneration,
 	runThemeReading,
+	EDIT_MISMATCH_PROBLEM,
 } from "./run";
 import { designSourceOf } from "../../shared/context/theme";
+import { runTextGeneration } from "./providers/api-common";
 
 const GOOD_SCREEN = `import { Row } from "../components/row";\nexport default function A() { return <Row /> }\n`;
 
@@ -109,6 +111,7 @@ describe("runGeneration", () => {
 			notes: [],
 			usage: { inputTokens: 10, outputTokens: 5 },
 			attempts: 1,
+			editFallbacks: 0,
 		});
 		expect(events[0]).toEqual(["status", 1]);
 		expect(events.at(-1)).toEqual(["done", 1]);
@@ -689,5 +692,93 @@ describe("theme reading", () => {
 	test("provider errors pass through", async () => {
 		const { result } = read([{ type: "error", code: "rate_limited", message: "slow down", retryable: true }]);
 		await expect(result).rejects.toMatchObject({ code: "rate_limited" });
+	});
+});
+
+describe("search-and-replace edits", () => {
+	const HOME = `export default function Home() {\n\treturn <h1 className="text-2xl">Orders</h1>;\n}\n`;
+
+	const projectFiles = { "screens/home.tsx": HOME };
+
+	const editRequest: GenerationRequest = {
+		...request,
+		task: "edit",
+		prompt: "bigger title",
+		files: [{ path: "screens/home.tsx", content: HOME }],
+		targets: ["screens/home.tsx"],
+	};
+
+	const edit = (search: string, replace: string) =>
+		`Bigger.\n<rabisco-edit path="screens/home.tsx">\n<<<<<<< SEARCH\n${search}\n=======\n${replace}\n>>>>>>> REPLACE\n</rabisco-edit>`;
+
+	function textProvider(replies: string[]) {
+		const requests: GenerationRequest[] = [];
+
+		const provider: Provider = {
+			id: "text",
+			kind: "api",
+			label: "Text",
+			capabilities: { streaming: true, images: false, agentic: false, maxContextTokens: 1000 },
+			health: async () => ({ ok: true }),
+			listModels: async () => [],
+			generate(req, signal) {
+				const reply = replies[requests.length];
+				requests.push(req);
+
+				if (reply === undefined) throw new Error("unexpected call");
+
+				return runTextGeneration(req, signal, async function* () {
+					yield { type: "text", text: reply };
+				});
+			},
+		};
+
+		return { provider, requests };
+	}
+
+	test("a matching edit is one attempt with the applied file", async () => {
+		const { provider, requests } = textProvider([edit('<h1 className="text-2xl">', '<h1 className="text-4xl">')]);
+		const { result } = await run(provider, projectFiles, undefined, editRequest);
+
+		expect(requests).toHaveLength(1);
+		expect(result.changes).toEqual([{ path: "screens/home.tsx", content: HOME.replace("text-2xl", "text-4xl") }]);
+		expect(result.attempts).toBe(1);
+		expect(result.editFallbacks).toBe(0);
+		expect(result.problems).toEqual([]);
+	});
+
+	test("a block that doesn't match asks once for the whole file", async () => {
+		const fixed = HOME.replace("text-2xl", "text-4xl");
+
+		const { provider, requests } = textProvider([
+			edit('<h1 className="text-xl">', '<h1 className="text-4xl">'),
+			`<rabisco-file path="screens/home.tsx">\n${fixed}</rabisco-file>`,
+		]);
+
+		const { result } = await run(provider, projectFiles, undefined, editRequest);
+
+		expect(requests).toHaveLength(2);
+		expect(requests[1]).toMatchObject({
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems: [{ path: "screens/home.tsx", message: EDIT_MISMATCH_PROBLEM }],
+		});
+		expect(requests[1]!.files.find((f) => f.path === "screens/home.tsx")?.content).toBe(HOME);
+		expect(result.changes).toEqual([{ path: "screens/home.tsx", content: fixed }]);
+		expect(result.problems).toEqual([]);
+		expect(result.attempts).toBe(2);
+		expect(result.editFallbacks).toBe(1);
+		expect(result.reply).toBe("Bigger.");
+	});
+
+	test("when the whole file never comes, the file is unchanged and the problem is reported", async () => {
+		const miss = edit("nope", "x");
+		const { provider, requests } = textProvider([miss, miss, miss]);
+		const { result } = await run(provider, projectFiles, undefined, editRequest);
+
+		expect(requests).toHaveLength(3);
+		expect(result.changes).toEqual([]);
+		expect(result.problems).toEqual([{ path: "screens/home.tsx", message: EDIT_MISMATCH_PROBLEM }]);
+		expect(result.editFallbacks).toBe(3);
 	});
 });

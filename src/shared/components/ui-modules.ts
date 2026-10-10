@@ -38,6 +38,7 @@ const MODULE_EXPORTS = {
 	input: ["Input"],
 	kbd: ["Kbd", "KbdGroup"],
 	label: ["Label"],
+	placeholder: ["Placeholder"],
 	popover: [
 		"Popover",
 		"PopoverTrigger",

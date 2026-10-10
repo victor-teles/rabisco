@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { GenerationRequest } from "../../shared/ai/contract";
+import type { GenerationPlan, GenerationRequest } from "../../shared/ai/contract";
 import { elementFocus } from "../../shared/ai/focus";
-import { numberedSnippet, PROMPT_VERSION, systemPrompt, UI_MODULES, userPrompt, varyPrompt } from "./prompt";
+import { numberedSnippet, planText, PROMPT_VERSION, systemPrompt, UI_MODULES, userPrompt, varyPrompt } from "./prompt";
 
 const root = join(import.meta.dir, "../../mainview");
 
@@ -48,10 +48,12 @@ describe("UI_MODULES", () => {
 			.map((f) => f.replace(/\.tsx$/, ""));
 
 		// Editor chrome only: screens never get a right-click, the breadcrumb is the inspector's, alert
-		// dialogs confirm editor actions (screens use `dialog`), and the switch is for settings
+		// dialogs confirm editor actions (screens use `dialog`), the switch is for settings and the checkbox
+		// for the plan card
 		expect(files.filter((f) => !(f in UI_MODULES)).sort()).toEqual([
 			"alert-dialog",
 			"breadcrumb",
+			"checkbox",
 			"context-menu",
 			"sonner",
 			"switch",
@@ -81,6 +83,9 @@ describe("systemPrompt", () => {
 		const prompt = systemPrompt(request(), "text");
 		expect(prompt).toContain("<rabisco-file");
 		expect(prompt).toContain("<rabisco-delete");
+		expect(prompt).toContain('<rabisco-edit path="screens/order-history.tsx">\n<<<<<<< SEARCH\n');
+		expect(prompt).toContain("=======\n");
+		expect(prompt).toContain(">>>>>>> REPLACE\n</rabisco-edit>");
 		expect(prompt).toContain('device="mobile"');
 		expect(prompt).toContain("390×844");
 		expect(prompt).toContain("@/components/ui/dropdown-menu: DropdownMenu");
@@ -96,6 +101,50 @@ describe("systemPrompt", () => {
 		expect(prompt).toContain("current directory");
 		expect(prompt).toContain("1280×800");
 		expect(prompt).not.toContain("<rabisco-file");
+		expect(prompt).not.toContain("<rabisco-edit");
+	});
+
+	test("a tablet frame gets its size and a layout that uses the width", () => {
+		const prompt = systemPrompt(request({ device: "tablet" }), "text");
+		expect(prompt).toContain("tablet, 834×1194 px");
+		expect(prompt).toContain('device="tablet"');
+		expect(prompt).toContain("about 24px at the top for the status bar");
+		expect(prompt).toContain("Never a single phone-width column");
+		expect(prompt).not.toContain("about 48px");
+	});
+
+	test("each device gets its layout pattern", () => {
+		const mobile = systemPrompt(request(), "text");
+		expect(mobile).toContain("bottom tab bar of 3–5");
+		expect(mobile).toContain("34px at the bottom for the home indicator");
+		expect(mobile).toContain("Touch targets at least 44px");
+
+		const desktop = systemPrompt(request({ device: "desktop" }), "agent");
+		expect(desktop).toContain("240–280px sidebar");
+		expect(desktop).toContain("max-w-3xl");
+		expect(desktop).not.toContain("tab bar of");
+	});
+
+	test("design rules: a focal point, a type scale, a spacing rhythm, contrast and states on request", () => {
+		const prompt = systemPrompt(request(), "agent");
+		expect(prompt).toContain("One focal point per screen");
+		expect(prompt).toContain("One primary button");
+		expect(prompt).toContain("Never nest cards");
+		expect(prompt).toContain("Type scale: text-xs captions");
+		expect(prompt).toContain("tabular-nums");
+		expect(prompt).toContain("gap-6–8 between sections");
+		expect(prompt).toContain("at least 4.5:1");
+		expect(prompt).toContain("States only when the request names them");
+		expect(
+			prompt.indexOf("Follow DESIGN.md when the project has one; it overrides the defaults below"),
+		).toBeGreaterThan(-1);
+	});
+
+	test("images are drawn with Placeholder, never loaded from the network", () => {
+		const prompt = systemPrompt(request(), "text");
+		expect(prompt).toContain("@/components/ui/placeholder: Placeholder");
+		expect(prompt).toContain('<Placeholder kind="photo" subject="food"');
+		expect(prompt).toContain("No network images");
 	});
 
 	test("teaches theme token classes", () => {
@@ -178,7 +227,11 @@ describe("userPrompt", () => {
 		);
 
 		expect(prompt).toContain("Task: edit");
+		expect(prompt).toContain("with <rabisco-edit> blocks (or the whole file when most of it changes)");
 		expect(prompt).toContain("- screens/home.tsx");
+		expect(
+			userPrompt(request({ task: "edit", files, targets: ["screens/home.tsx"], prompt: "x" }), "agent"),
+		).not.toContain("rabisco-edit");
 	});
 
 	test("repair lists the problems", () => {
@@ -194,6 +247,24 @@ describe("userPrompt", () => {
 
 		expect(prompt).toContain("Task: repair");
 		expect(prompt).toContain("- screens/home.tsx:3: Unexpected token");
+		expect(prompt).toContain("with <rabisco-edit> blocks, or write the whole file when a problem asks for it");
+	});
+
+	test("a repair with no problems is a review of its targets", () => {
+		const prompt = userPrompt(
+			request({
+				task: "repair",
+				files,
+				targets: ["screens/home.tsx"],
+				problems: [],
+				prompt: "Look at the screenshots",
+			}),
+			"text",
+		);
+
+		expect(prompt).toContain("Task: repair. Review these files as the request below asks");
+		expect(prompt).toContain("- screens/home.tsx");
+		expect(prompt).not.toContain("failed validation");
 	});
 
 	test("context is sent without its HTML comments; an untouched template is left out", () => {
@@ -411,7 +482,7 @@ describe("userPrompt", () => {
 			expect(prompt).toContain(`# Focus\nThe user selected one element in ${path}: <Button> “Get started”, lines 4–6.`);
 			expect(prompt).toContain("Keep the rest of screens/welcome.tsx exactly as it is");
 			expect(prompt).toContain("imports, or a small helper component");
-			expect(prompt).toContain("Still write the whole file in its <rabisco-file> tag");
+			expect(prompt).toContain("Send the change as <rabisco-edit> blocks");
 			expect(prompt).toContain(`4 | \t\t\t<Button size="lg">\n5 | \t\t\t\tGet started\n6 | \t\t\t</Button>`);
 			// Before the request, after the task
 			expect(prompt.indexOf("# Focus")).toBeGreaterThan(prompt.indexOf("Task: edit"));
@@ -471,5 +542,72 @@ describe("theme task", () => {
 		expect(text).not.toContain("<request>");
 		expect(text).not.toContain("Project components");
 		expect(userPrompt(theme(), "agent")).toContain("Don't write any file");
+	});
+});
+
+describe("plan", () => {
+	const PLAN: GenerationPlan = {
+		screens: [
+			{ path: "screens/home.tsx", name: "Home", purpose: "Today's habits.", content: "streak, habit rows" },
+			{ path: "screens/detail.tsx", name: "Detail", purpose: "One habit.", content: "" },
+		],
+		components: [
+			{ path: "components/tab-bar.tsx", name: "TabBar", purpose: "Bottom tabs.", usedBy: ["screens/home.tsx"] },
+		],
+		links: [{ from: "screens/home.tsx", to: "screens/detail.tsx", label: "A habit row" }],
+	};
+
+	const plan = (overrides: Partial<GenerationRequest> = {}) =>
+		request({ task: "plan", projectScreens: ["screens/welcome.tsx"], ...overrides });
+
+	test("the plan task has its own system prompt: a JSON block, no files", () => {
+		const system = systemPrompt(plan(), "text");
+		expect(system).toContain("```json");
+		expect(system).toContain('"usedBy"');
+		expect(system).toContain("at most 6");
+		expect(system).not.toContain("<rabisco-file");
+		expect(system).not.toContain("# Available UI modules");
+		expect(systemPrompt(plan(), "agent")).toBe(system);
+	});
+
+	test("the plan request lists existing screens, the components and the request", () => {
+		const components = [{ path: "components/row.tsx", signature: ["Row()"] }];
+		const text = userPrompt(plan({ components, context: { product: "# Product\n\nHabits for parents." } }), "text");
+		expect(text).toContain("Task: plan.");
+		expect(text).toContain("Existing screens (pick other paths; links may point at them): screens/welcome.tsx.");
+		expect(text).toContain("- components/row.tsx");
+		expect(text).toContain("Habits for parents");
+		expect(text).toContain("<request>\nA habit tracker\n</request>");
+		expect(userPrompt(plan(), "agent")).toContain("as text. Don't write any file");
+	});
+
+	test("planText lists screens, shared components and links", () => {
+		const text = planText(PLAN);
+		expect(text).toContain('- screens/home.tsx · "Home": Today\'s habits. Content: streak, habit rows.');
+		expect(text).toContain("- components/tab-bar.tsx · TabBar: Bottom tabs. Used by screens/home.tsx.");
+		expect(text).toContain("- screens/home.tsx → screens/detail.tsx (A habit row)");
+	});
+
+	test("the shell run writes only the components", () => {
+		const text = userPrompt(request({ plan: PLAN, writes: ["components/tab-bar.tsx"] }), "text");
+		expect(text).toContain("# Plan");
+		expect(text).toContain("Write the plan's shared components, and only these files:\n- components/tab-bar.tsx");
+		expect(text).toContain("No screens");
+	});
+
+	test("a screen run writes its one screen, imports the shared parts and adds its links", () => {
+		const text = userPrompt(request({ plan: PLAN, writes: ["screens/home.tsx"] }), "text");
+		expect(text).toContain('Write exactly one file: screens/home.tsx with name="Home"');
+		expect(text).toContain("Import the shared components (TabBar");
+		expect(text).toContain('- A habit row → data-link-to="screens/detail.tsx"');
+		expect(text.indexOf("# Plan")).toBeLessThan(text.indexOf("Task: create."));
+
+		const agent = userPrompt(request({ plan: PLAN, writes: ["screens/detail.tsx"] }), "agent");
+		expect(agent).toContain('Write exactly one file: screens/detail.tsx, the "Detail" screen');
+		expect(agent).not.toContain("data-link-to=");
+	});
+
+	test("a create without a plan is unchanged", () => {
+		expect(userPrompt(request(), "text")).not.toContain("# Plan");
 	});
 });

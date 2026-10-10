@@ -159,13 +159,13 @@ export type StreamPart =
 	/** `end`, `max_tokens`, `refusal` or the provider's own reason */
 	| { type: "stop"; reason: string };
 
-/** No files is `invalid_output`, except an edit answered with text only, which is a reply. */
+/** No files is `invalid_output`, except an edit answered with text only (a reply) and the text tasks: theme, plan, brief. */
 export async function* runTextGeneration(
 	request: GenerationRequest,
 	signal: AbortSignal,
 	stream: () => AsyncIterable<StreamPart>,
 ): AsyncGenerator<GenerationEvent> {
-	const parser = createTextProtocolParser();
+	const parser = createTextProtocolParser(request.files);
 	const usage: Usage = {};
 	let stop: string | undefined;
 
@@ -200,10 +200,12 @@ export async function* runTextGeneration(
 		return;
 	}
 
-	const changed = parser.written.length + parser.deleted.length;
+	const changed = parser.written.length + parser.deleted.length + parser.unmatched.length;
 
 	const textReply =
-		(request.task === "edit" || request.task === "theme") && parser.hasMessage && !parser.truncated.length;
+		(request.task === "edit" || request.task === "theme" || request.task === "plan" || request.task === "brief") &&
+		parser.hasMessage &&
+		!parser.truncated.length;
 
 	if (!changed && !textReply) {
 		const message =

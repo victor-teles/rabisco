@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transform } from "sucrase";
 import { generateMockScreens, mockThemeTokens } from "./mock-generator";
 import { FRAME_GAP, FRAME_SIZE, isComponentFile, isScreenFile } from "./project";
-import type { ProjectFiles } from "./types";
+import type { Device, ProjectFiles } from "./types";
 import { compileTsx } from "../bun/test-utils";
 
 const ALLOWED = new Set([
@@ -75,8 +75,14 @@ function render(entry: string, files: ProjectFiles) {
 	return renderToStaticMarkup(createElement(screen));
 }
 
+const SCREENS: Record<Device, string[]> = {
+	mobile: ["screens/welcome.tsx", "screens/home.tsx", "screens/details.tsx"],
+	tablet: ["screens/inbox.tsx"],
+	desktop: ["screens/landing.tsx", "screens/dashboard.tsx"],
+};
+
 describe("mock generator", () => {
-	for (const device of ["mobile", "desktop"] as const) {
+	for (const device of ["mobile", "tablet", "desktop"] as const) {
 		test(`${device} screens are valid TSX with allowed imports`, () => {
 			const prompt = 'A habit tracker for "busy" <parents> & {kids}';
 			const result = generateMockScreens({ prompt, device });
@@ -84,11 +90,7 @@ describe("mock generator", () => {
 			const screens = result.changes.filter((c) => isScreenFile(c.path));
 			const components = result.changes.filter((c) => isComponentFile(c.path));
 
-			expect(screens.map((c) => c.path)).toEqual(
-				device === "mobile"
-					? ["screens/welcome.tsx", "screens/home.tsx", "screens/details.tsx"]
-					: ["screens/landing.tsx", "screens/dashboard.tsx"],
-			);
+			expect(screens.map((c) => c.path)).toEqual(SCREENS[device]);
 			expect(components.length).toBeGreaterThan(0);
 			expect(result.frames.map((f) => f.x)).toEqual(screens.map((_, i) => i * (FRAME_SIZE[device].width + FRAME_GAP)));
 			expect(result.frames.every((f) => f.height === FRAME_SIZE[device].height && f.device === device)).toBe(true);

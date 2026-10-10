@@ -38,6 +38,8 @@ const STOP_WORDS = new Set([
 	"screen",
 	"screens",
 	"mobile",
+	"tablet",
+	"ipad",
 	"desktop",
 	"website",
 	"landing",
@@ -307,6 +309,88 @@ export default function Details() {
 	];
 }
 
+/** A list beside its detail, so the wide frame isn't a stretched phone layout */
+function tabletDrafts({ title, brief, accent }: Context): Draft[] {
+	return [
+		{
+			name: "Inbox",
+			source: `import { ListChecks, Plus, Search, Users } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { StatCard } from "../components/stat-card";
+
+const THREADS = [
+	{ initials: "AL", name: "Ana Lima", note: "Kickoff notes and the first sketches", time: "9:41" },
+	{ initials: "BC", name: "Bruno Costa", note: "Budget review for the spring launch", time: "Yesterday" },
+	{ initials: "CD", name: "Carla Dias", note: "Feedback on the onboarding flow", time: "Mon" },
+	{ initials: "DM", name: "Diego Martins", note: "Agenda for the weekly sync", time: "Sun" },
+];
+
+export default function Inbox() {
+	return (
+		<div className="flex h-full bg-background pt-6 text-foreground">
+			<aside className="flex w-80 shrink-0 flex-col border-r">
+				<header className="flex items-center justify-between px-5 pt-4 pb-3">
+					<h1 className="text-xl font-semibold tracking-tight">${jsxText(title)}</h1>
+					<Button size="icon" className="size-9 bg-${accent}-600 text-white hover:bg-${accent}-700">
+						<Plus />
+					</Button>
+				</header>
+				<div className="relative px-5 pb-3">
+					<Search className="absolute top-2.5 left-8 size-4 text-muted-foreground" />
+					<Input placeholder="Search" className="pl-9" />
+				</div>
+				<div className="flex-1 overflow-y-auto">
+					{THREADS.map((thread, index) => (
+						<div key={thread.name} className={cn("flex gap-3 border-b px-5 py-4", index === 0 && "bg-muted/60")}>
+							<Avatar>
+								<AvatarFallback>{thread.initials}</AvatarFallback>
+							</Avatar>
+							<div className="min-w-0 flex-1">
+								<div className="flex items-center justify-between gap-2 text-sm">
+									<span className="font-medium">{thread.name}</span>
+									<span className="text-xs text-muted-foreground">{thread.time}</span>
+								</div>
+								<p className="truncate text-sm text-muted-foreground">{thread.note}</p>
+							</div>
+						</div>
+					))}
+				</div>
+			</aside>
+
+			<main className="flex flex-1 flex-col gap-6 overflow-y-auto p-8">
+				<div className="flex items-center justify-between">
+					<Badge variant="outline" className="border-${accent}-200 text-${accent}-700">
+						New
+					</Badge>
+					<span className="text-sm text-muted-foreground">Today, 9:41</span>
+				</div>
+				<h2 className="text-3xl leading-tight font-semibold tracking-tight">Kickoff notes and the first sketches</h2>
+				<p className="max-w-prose text-base leading-relaxed text-muted-foreground">${jsxText(brief)}</p>
+				<Separator />
+				<div className="grid grid-cols-2 gap-4">
+					<StatCard label="Open tasks" value="14" change="3 due this week" icon={ListChecks} />
+					<StatCard label="Collaborators" value="6" change="2 joined today" icon={Users} />
+				</div>
+				<div className="mt-auto flex gap-3">
+					<Button className="h-11 flex-1 bg-${accent}-600 text-white hover:bg-${accent}-700">Reply</Button>
+					<Button variant="outline" className="h-11 flex-1">
+						Share
+					</Button>
+				</div>
+			</main>
+		</div>
+	);
+}
+`,
+		},
+	];
+}
+
 function desktopDrafts({ title, brief, accent }: Context): Draft[] {
 	return [
 		{
@@ -451,6 +535,12 @@ export default function Dashboard() {
 	];
 }
 
+const DRAFTS: Record<Device, (context: Context) => Draft[]> = {
+	mobile: mobileDrafts,
+	tablet: tabletDrafts,
+	desktop: desktopDrafts,
+};
+
 function importedComponents(source: string) {
 	return [...source.matchAll(/from "\.\.\/(components\/[a-z0-9-]+)"/g)].map((m) => `${m[1]}.tsx`);
 }
@@ -468,7 +558,7 @@ export function generateMockScreens(input: {
 		accent: ACCENTS[hash(input.prompt) % ACCENTS.length]!,
 	};
 
-	const drafts = input.device === "mobile" ? mobileDrafts(context) : desktopDrafts(context);
+	const drafts = DRAFTS[input.device](context);
 	const size = FRAME_SIZE[input.device];
 
 	const changes: FileChange[] = [];

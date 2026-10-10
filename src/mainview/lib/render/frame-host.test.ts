@@ -502,6 +502,41 @@ describe("FrameHost: image export", () => {
 		host.dispose();
 	});
 
+	test("lint pairs replies by id and passes on frame errors", async () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		const linting = host.lint();
+		const request = lastPosted(posted, "lint");
+		const finding = { rule: "overlap", severity: "warning", message: "x", path: "screens/a.tsx", start: 4 } as const;
+		host.receive({ type: "lint", id: request.id + 100, findings: [] });
+		host.receive({ type: "lint", id: request.id, findings: [finding] });
+		expect(await linting).toEqual([finding]);
+
+		const failing = host.lint();
+		host.receive({ type: "lint", id: lastPosted(posted, "lint").id, error: "detached" });
+		await expect(failing).rejects.toThrow("detached");
+		host.dispose();
+	});
+
+	test("lint replies are validated", () => {
+		const finding = { rule: "contrast", severity: "error", message: "low", path: "screens/a.tsx", start: 0, line: 1 };
+
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [finding] })).toBe(true);
+		expect(
+			isFrameMessage({ type: "lint", id: 1, findings: [{ rule: "font-sizes", severity: "warning", message: "" }] }),
+		).toBe(true);
+		expect(isFrameMessage({ type: "lint", id: 1, error: "boom" })).toBe(true);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, rule: "made-up" }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, severity: "info" }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, start: -1 }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, line: 0 }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, path: 3 }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: [{ ...finding, message: undefined }] })).toBe(false);
+		expect(isFrameMessage({ type: "lint", id: 1, findings: {} })).toBe(false);
+		expect(isFrameMessage({ type: "lint", findings: [] })).toBe(false);
+	});
+
 	test("pending requests end when the host is disposed", async () => {
 		const host = new FrameHost(fakeFrame().frame);
 		host.receive({ type: "ready" });

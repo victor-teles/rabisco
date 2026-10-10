@@ -55,6 +55,8 @@ export type PromptComposerProps = Omit<ComponentProps<"form">, "onSubmit" | "onC
 	defaultFiles?: File[];
 	/** Files pasted or dropped onto the composer that it takes; without it, pasting and dropping files is off */
 	acceptFile?: (file: File) => boolean;
+	/** Always put the field on its own row, above the controls, instead of only once the text overflows */
+	stacked?: boolean;
 };
 
 type Attachment = { id: string; file: File };
@@ -178,6 +180,7 @@ export function PromptComposer({
 	onSubmit,
 	defaultFiles,
 	acceptFile,
+	stacked = false,
 	className,
 	children,
 	...props
@@ -189,7 +192,8 @@ export function PromptComposer({
 	);
 
 	const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
-	const [expanded, setExpanded] = useState(false);
+	const [overflowing, setExpanded] = useState(false);
+	const expanded = stacked || overflowing;
 	const [dropping, setDropping] = useState(false);
 	const attachmentId = useRef(0);
 	const inputId = useId();
@@ -220,8 +224,8 @@ export function PromptComposer({
 		const inlineInputWidth = controls.clientWidth - reservedWidth;
 		const needsFullWidth = prompt.includes("\n") || measure.offsetWidth + 8 > inlineInputWidth;
 
-		if (needsFullWidth !== expanded) setExpanded(needsFullWidth);
-	}, [prompt, expanded, chrome.controlSize]);
+		if (needsFullWidth !== overflowing) setExpanded(needsFullWidth);
+	}, [prompt, overflowing, chrome.controlSize]);
 
 	const submit = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
