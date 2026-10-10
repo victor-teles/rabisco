@@ -22,6 +22,7 @@ import {
 } from "../../src/bun/project-folder";
 import type { ElementFocus, GenerationPlan } from "../../src/shared/ai/contract";
 import { elementFocus, focusNote } from "../../src/shared/ai/focus";
+import { plansFirst } from "../../src/shared/ai/plan";
 import { parseModelRef, toModelRef } from "../../src/shared/ai/settings";
 import { newChatId } from "../../src/shared/chats";
 import { isStyleId, styleDesign } from "../../src/shared/context/styles";
@@ -42,7 +43,8 @@ const USAGE = `Usage: hutch run bench:gen -- --model <provider:model> [options]
   --list               List the configured providers and their models, then exit
   --only <ids>         Comma-separated brief ids
   --style <id>         Start briefs without a DESIGN.md from this style (minimal, editorial, playful, dense, bold)
-  --no-plan            Create briefs run in one go, as before plans (decision 0015)
+  --plan               Plan create briefs first and accept the plan as it is (plan mode, decision 0020)
+  --no-plan            The default: create briefs run in one go
   --no-layout          Skip the layout checks in headless Chrome
   --rescore <dir>      Only run the layout checks on a previous run's projects and update its report.json
   --user-data <dir>    Folder with providers.json (default: the app's)
@@ -62,6 +64,7 @@ const { values: args } = parseArgs({
 		list: { type: "boolean", default: false },
 		only: { type: "string" },
 		style: { type: "string" },
+		plan: { type: "boolean", default: false },
 		"no-plan": { type: "boolean", default: false },
 		"no-layout": { type: "boolean", default: false },
 		rescore: { type: "string" },
@@ -290,7 +293,9 @@ async function planFor(params: GenerateParams) {
 	return result.ok && result.plan ? { plan: result.plan, usage: result.usage } : undefined;
 }
 
-const planning = !args["no-plan"];
+if (args.plan && args["no-plan"]) fail("Pass --plan or --no-plan, not both.");
+
+const planning = args.plan;
 
 const projectDirs = new Map<string, string>();
 
@@ -326,8 +331,9 @@ async function runBrief(brief: Brief): Promise<BriefScore> {
 	let plan: GenerationPlan | undefined;
 
 	try {
-		// Like the editor: a create of one variation is planned first
-		const planned = planning && params.task === "create" && !brief.variations ? await planFor(params) : undefined;
+		const planned = plansFirst({ planMode: planning, task: params.task ?? "create", variations: brief.variations ?? 1 })
+			? await planFor(params)
+			: undefined;
 
 		if (planned) {
 			plan = planned.plan;

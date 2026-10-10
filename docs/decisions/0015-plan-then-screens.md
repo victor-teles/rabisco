@@ -1,6 +1,6 @@
 # 0015 · Plan, then screens: a create is planned first, its shared parts are written before its screens
 
-- **Status:** accepted
+- **Status:** accepted. Planning every create, the auto-start and the skipped one-screen card are superseded by [0020](./0020-plan-mode.md)
 - **Date:** 2026-10-10
 - **Extends:** [0003](./0003-ai-provider-contract.md)
 - **Code:** [`src/shared/ai/plan.ts`](../../src/shared/ai/plan.ts), [`src/bun/ai/plan-run.ts`](../../src/bun/ai/plan-run.ts), [`src/bun/ai/prompt.ts`](../../src/bun/ai/prompt.ts), [`src/mainview/views/editor/plan-card.tsx`](../../src/mainview/views/editor/plan-card.tsx)

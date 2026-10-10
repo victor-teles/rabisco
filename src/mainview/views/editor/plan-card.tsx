@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { ArrowRight, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,9 +8,6 @@ import { cn } from "@/lib/utils";
 import type { GenerationPlan } from "../../../shared/ai/contract";
 import { renamePlanScreen, selectPlan } from "../../../shared/ai/plan";
 import type { ProjectFiles } from "../../../shared/types";
-
-/** Long enough to read the plan, short enough that a glance-and-go user isn't kept waiting */
-export const PLAN_COUNTDOWN_S = 5;
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
@@ -75,8 +72,8 @@ function ScreenName({
 }
 
 /**
- * The plan of a create, before anything is written (decision 0015). It starts by itself after a short countdown,
- * which stops for good as soon as the user touches the card; ↵ generates and Esc cancels while it has focus.
+ * The plan of a create, before anything is written (decisions 0015 and 0020). It waits for the user:
+ * ↵ generates and Esc cancels while it has focus.
  */
 export function PlanCard({
 	plan: proposed,
@@ -93,7 +90,6 @@ export function PlanCard({
 	const [plan, setPlan] = useState(proposed);
 	const [offScreens, setOffScreens] = useState<ReadonlySet<number>>(new Set());
 	const [offComponents, setOffComponents] = useState<ReadonlySet<number>>(new Set());
-	const [seconds, setSeconds] = useState<number | null>(PLAN_COUNTDOWN_S);
 
 	const chosen = selectPlan(plan, {
 		screens: plan.screens.flatMap((screen, index) => (offScreens.has(index) ? [] : [screen.path])),
@@ -101,29 +97,6 @@ export function PlanCard({
 	});
 
 	const ready = chosen.screens.length > 0;
-
-	// The timer reads the latest plan without restarting on every render of the editor
-	const latest = useRef({ chosen, ready, onGenerate });
-
-	useEffect(() => {
-		latest.current = { chosen, ready, onGenerate };
-	});
-
-	useEffect(() => {
-		if (seconds === null) return;
-
-		if (seconds <= 0) {
-			if (latest.current.ready) latest.current.onGenerate(latest.current.chosen);
-
-			return;
-		}
-
-		const timer = setTimeout(() => setSeconds((s) => (s === null ? null : s - 1)), 1000);
-
-		return () => clearTimeout(timer);
-	}, [seconds]);
-
-	const hold = () => setSeconds(null);
 
 	const toggle = (set: ReadonlySet<number>, index: number) => {
 		const next = new Set(set);
@@ -134,8 +107,6 @@ export function PlanCard({
 	};
 
 	const keys = (event: KeyboardEvent<HTMLElement>) => {
-		hold();
-
 		// A checkbox or button handles its own keys; ↵ elsewhere in the card generates
 		if (event.key === "Escape") {
 			event.preventDefault();
@@ -154,31 +125,29 @@ export function PlanCard({
 		<section
 			aria-label="Plan"
 			tabIndex={0}
-			onPointerDown={hold}
 			onKeyDown={keys}
 			className="min-w-0 rounded-xl border bg-card/60 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
 		>
 			<header className="flex min-h-10 items-center gap-2 px-3">
-				<h3 className="font-medium">Plan</h3>
-				<span className="truncate text-xs text-subtle-foreground">
+				<h3 className="shrink-0 font-medium">Plan</h3>
+				<span className="min-w-0 truncate text-xs text-subtle-foreground">
 					{plural(chosen.screens.length, "screen")}
 					{chosen.components.length ? ` · ${plural(chosen.components.length, "shared component")}` : ""}
 				</span>
 			</header>
 
-			<div className="grid gap-3 px-3 pb-3">
-				<ul aria-label="Screens" className="grid gap-1">
+			<div className="grid min-w-0 grid-cols-1 gap-3 px-3 pb-3">
+				<ul aria-label="Screens" className="grid min-w-0 gap-1">
 					{plan.screens.map((screen, index) => {
 						const off = offScreens.has(index);
 
 						return (
-							<li key={index} className="flex items-start gap-2.5">
+							<li key={index} className="flex min-w-0 items-start gap-2.5">
 								<Checkbox
 									className="mt-0.5"
 									checked={!off}
 									aria-label={`Include ${screen.name}`}
 									onCheckedChange={() => {
-										hold();
 										setOffScreens((set) => toggle(set, index));
 									}}
 								/>
@@ -187,7 +156,6 @@ export function PlanCard({
 										name={screen.name}
 										disabled={off}
 										onRename={(name) => {
-											hold();
 											setPlan((current) => renamePlanScreen(current, screen.path, name, files));
 										}}
 									/>
@@ -203,22 +171,21 @@ export function PlanCard({
 				</ul>
 
 				{plan.components.length ? (
-					<div className="grid gap-1">
+					<div className="grid min-w-0 gap-1">
 						<p className="text-xs text-subtle-foreground">Shared, written first so every screen matches</p>
-						<ul aria-label="Shared components" className="grid gap-1">
+						<ul aria-label="Shared components" className="grid min-w-0 gap-1">
 							{plan.components.map((component, index) => {
 								const off = offComponents.has(index);
 								// Only the screens still ticked
 								const users = component.usedBy.flatMap((path) => (ticked.has(path) ? [nameOf(path)] : [])).join(", ");
 
 								return (
-									<li key={component.path} className="flex items-start gap-2.5">
+									<li key={component.path} className="flex min-w-0 items-start gap-2.5">
 										<Checkbox
 											className="mt-0.5"
 											checked={!off}
 											aria-label={`Include ${component.name}`}
 											onCheckedChange={() => {
-												hold();
 												setOffComponents((set) => toggle(set, index));
 											}}
 										/>
@@ -244,25 +211,21 @@ export function PlanCard({
 				) : null}
 
 				{chosen.links.length ? (
-					<p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-subtle-foreground">
+					<p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-subtle-foreground">
 						{chosen.links.map((link) => (
-							<span key={`${link.from}>${link.to}`} className="inline-flex items-center gap-1">
-								{nameOf(link.from)}
-								<ArrowRight className="size-3" aria-label="to" />
-								{nameOf(link.to)}
+							<span key={`${link.from}>${link.to}`} className="inline-flex max-w-full min-w-0 items-center gap-1">
+								<span className="truncate">{nameOf(link.from)}</span>
+								<ArrowRight className="size-3 shrink-0" aria-label="to" />
+								<span className="truncate">{nameOf(link.to)}</span>
 							</span>
 						))}
 					</p>
 				) : null}
 			</div>
 
-			<footer className="flex items-center gap-1.5 border-t py-1.5 pr-1.5 pl-3">
+			<footer className="flex min-w-0 items-center gap-1.5 border-t py-1.5 pr-1.5 pl-3">
 				<span className="min-w-0 truncate text-xs text-subtle-foreground">
-					{!ready
-						? "Tick a screen to generate"
-						: seconds !== null
-							? `Starts in ${seconds} s`
-							: "Untick what you don't need"}
+					{ready ? "Waiting for you" : "Tick a screen to generate"}
 				</span>
 				<span className="ml-auto flex shrink-0 items-center gap-1">
 					<Button variant="ghost" size="xs" onClick={onCancel}>

@@ -61,3 +61,17 @@ export function sortChats(chats: ChatSummary[]) {
 export function withAppended(chats: ChatSummary[], id: string, all: ChatMessage[]) {
 	return sortChats([summarizeChat(id, all), ...chats.filter((chat) => chat.id !== id)]);
 }
+
+export function withMoreMessages(chats: ChatSummary[], id: string, messages: ChatMessage[]) {
+	const summary = chats.find((chat) => chat.id === id);
+
+	if (!summary) return withAppended(chats, id, messages);
+
+	const updated: ChatSummary = {
+		...summary,
+		updatedAt: messages.at(-1)?.createdAt ?? summary.updatedAt,
+		messageCount: summary.messageCount + messages.length,
+	};
+
+	return sortChats([updated, ...chats.filter((chat) => chat.id !== id)]);
+}

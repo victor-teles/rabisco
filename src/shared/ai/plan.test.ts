@@ -2,13 +2,15 @@ import { describe, expect, test } from "bun:test";
 import type { GenerationPlan } from "./contract";
 import {
 	fitPlan,
-	isTrivialPlan,
 	parsePlanReply,
 	pascalName,
 	PLAN_LIMITS,
 	planBlock,
 	planJsonOf,
+	planRevisionPrompt,
+	plansFirst,
 	renamePlanScreen,
+	revisedPrompt,
 	selectPlan,
 } from "./plan";
 
@@ -161,9 +163,23 @@ describe("editing a plan", () => {
 		expect(renamePlanScreen(PLAN, "screens/send.tsx", "Home", {}).screens[1]!.path).toBe("screens/home-2.tsx");
 	});
 
-	test("trivial: one screen, nothing shared", () => {
-		expect(isTrivialPlan(PLAN)).toBe(false);
-		expect(isTrivialPlan({ screens: [PLAN.screens[0]!], components: [], links: [] })).toBe(true);
+	test("plans first only in plan mode, for a create of one version", () => {
+		const create = { planMode: true, task: "create", variations: 1 };
+
+		expect(plansFirst(create)).toBe(true);
+		expect(plansFirst({ ...create, planMode: false })).toBe(false);
+		expect(plansFirst({ ...create, task: "edit" })).toBe(false);
+		expect(plansFirst({ ...create, variations: 3 })).toBe(false);
+		expect(plansFirst({ ...create, plan: PLAN })).toBe(false);
+	});
+
+	test("a revision carries the prompt, the plan and the feedback", () => {
+		const prompt = planRevisionPrompt("A banking app", PLAN, "Add a settings screen");
+
+		expect(prompt.startsWith("A banking app\n\n")).toBe(true);
+		expect(prompt).toContain(planBlock(PLAN));
+		expect(prompt.endsWith("Add a settings screen")).toBe(true);
+		expect(revisedPrompt(" A banking app ", "Add a settings screen ")).toBe("A banking app\n\nAdd a settings screen");
 	});
 
 	test("pascal names", () => {

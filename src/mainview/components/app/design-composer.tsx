@@ -1,5 +1,15 @@
 import { Fragment, useCallback, useRef } from "react";
-import { ChevronDown, Monitor, Settings2, Smartphone, Square, Tablet, Undo2, WandSparkles } from "lucide-react";
+import {
+	ChevronDown,
+	ListChecks,
+	Monitor,
+	Settings2,
+	Smartphone,
+	Square,
+	Tablet,
+	Undo2,
+	WandSparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -21,12 +31,14 @@ import {
 	PromptComposerSubmit,
 	type PromptComposerVariant,
 } from "@/components/ui/uai/prompt-composer";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
 import { StylePicker } from "@/components/app/style-picker";
 import type { ChatCommand } from "@/lib/chat-commands";
 import { IMPROVE_PROMPT_KEYS, isImprovePrompt, useImprovePrompt } from "@/hooks/use-improve-prompt";
+import { isPlanModeToggle, PLAN_MODE_KEYS } from "@/hooks/use-plan-mode";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
 import type { StyleChoice } from "../../../shared/context/styles";
@@ -58,6 +70,9 @@ export type DesignComposerProps = {
 	onVariationsChange?: (variations: number) => void;
 	/** Why the count doesn't apply right now; dims the picker. */
 	variationsHint?: string;
+	planMode?: boolean;
+	onPlanModeChange?: (on: boolean) => void;
+	planModeHint?: string;
 	/** The starting style of a new project; the picker shows only when `onDesignStyleChange` is set */
 	designStyle?: StyleChoice;
 	onDesignStyleChange?: (style: StyleChoice) => void;
@@ -89,6 +104,9 @@ export function DesignComposer({
 	variations = 1,
 	onVariationsChange,
 	variationsHint,
+	planMode = false,
+	onPlanModeChange,
+	planModeHint,
 	designStyle = null,
 	onDesignStyleChange,
 	inlineOptions = true,
@@ -156,7 +174,17 @@ export function DesignComposer({
 				onKeyDown={(event) => {
 					slashKeys.current?.(event);
 
-					if (event.defaultPrevented || !canImprove) return;
+					if (event.defaultPrevented) return;
+
+					if (onPlanModeChange && isPlanModeToggle(event)) {
+						event.preventDefault();
+
+						if (!planModeHint) onPlanModeChange(!planMode);
+
+						return;
+					}
+
+					if (!canImprove) return;
 
 					if (isImprovePrompt(event)) {
 						event.preventDefault();
@@ -176,6 +204,7 @@ export function DesignComposer({
 						{onVariationsChange ? (
 							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
 						) : null}
+						{onPlanModeChange ? <PlanModeToggle on={planMode} onChange={onPlanModeChange} hint={planModeHint} /> : null}
 						<ModelPicker className={cn(stacked && "ml-auto")} />
 					</>
 				) : null}
@@ -276,6 +305,47 @@ export function DeviceToggle({ device, onDeviceChange }: { device: Device; onDev
 				<Monitor className="size-3.5" />
 			</ToggleGroupItem>
 		</ToggleGroup>
+	);
+}
+
+export function PlanModeToggle({
+	on,
+	onChange,
+	hint,
+}: {
+	on: boolean;
+	onChange: (on: boolean) => void;
+	hint?: string;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Toggle
+					size="sm"
+					pressed={on}
+					onPressedChange={(next) => {
+						if (!hint) onChange(next);
+					}}
+					aria-label="Plan first"
+					aria-keyshortcuts="Shift+Meta+P"
+					aria-disabled={hint ? true : undefined}
+					className={cn(
+						"h-7 min-w-7 gap-1 px-1.5 text-xs text-muted-foreground data-[state=on]:text-foreground",
+						hint && "opacity-40 hover:bg-transparent",
+					)}
+				>
+					<ListChecks className="size-3.5" />
+					{on ? "Plan" : null}
+				</Toggle>
+			</TooltipTrigger>
+			<TooltipContent side="top" className="max-w-56">
+				{hint ?? (
+					<>
+						{on ? "Plan first is on" : "Plan first"} <Kbd>{PLAN_MODE_KEYS}</Kbd>
+					</>
+				)}
+			</TooltipContent>
+		</Tooltip>
 	);
 }
 

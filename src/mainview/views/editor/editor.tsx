@@ -291,15 +291,11 @@ export function EditorView({
 		cancelPlan,
 	} = useGeneration({
 		projectPath,
-		stateRef,
-		change,
-		addMessages,
 		files,
 		frames,
 		device,
 		onPlaced,
 		onResolved,
-		undo,
 	});
 
 	const generating = generation !== null;

@@ -46,6 +46,13 @@ export function useImprovePrompt({
 		[],
 	);
 
+	useEffect(
+		() => () => {
+			if (streamed.current.id) void api.stopGeneration({ generationId: streamed.current.id });
+		},
+		[],
+	);
+
 	const improve = useCallback(async () => {
 		const prompt = value.trim();
 

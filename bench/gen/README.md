@@ -22,7 +22,8 @@ hutch run bench:gen -- --rescore bench/gen/runs/<run>  # layout checks only, on 
 | `--list`            | Lists providers, their health and their models, then exits                                 |
 | `--only <ids>`      | Comma-separated brief ids                                                                  |
 | `--style <id>`      | Briefs without a DESIGN.md start from this style: minimal, editorial, playful, dense, bold |
-| `--no-plan`         | Create briefs run in one go, without the plan step, to compare with plans                  |
+| `--plan`            | Plans create briefs first and accepts each plan as it is, like plan mode in the editor     |
+| `--no-plan`         | The default: create briefs run in one go. Kept so older commands still work                |
 | `--no-layout`       | Skips the layout checks in headless Chrome                                                 |
 | `--rescore <dir>`   | Runs only the layout checks on the projects of an earlier run and updates its report.json  |
 | `--user-data <dir>` | Folder with `providers.json`. Default: the app's, the installed app before a dev run       |
@@ -52,7 +53,7 @@ Change the briefs only together with a new baseline. Scores compare across runs 
 
 Each brief becomes `<out>/<brief>.rabisco/`, with its files, `rabisco.json` (new frames placed as the editor places them) and a chat with the prompt and the reply. Open it in Rabisco to look at the screens.
 
-Like the editor, a create brief with one variation is planned first ([decision 0015](../../docs/decisions/0015-plan-then-screens.md)): the plan step runs, the plan is accepted as it is, then its shared components and its screens are written. Time, tokens and cost include the plan. `--no-plan` runs the old one-shot create.
+Like the editor with plan mode off ([decision 0020](../../docs/decisions/0020-plan-mode.md)), a create brief runs in one go. With `--plan`, a create brief with one variation is planned first ([decision 0015](../../docs/decisions/0015-plan-then-screens.md)): the plan step runs, the plan is accepted as it is, then its shared components and its screens are written. Time, tokens and cost include the plan.
 
 `<out>/report.json` holds `promptVersion`, `plan` (whether plans ran), `layout` (the browser, or why the checks were skipped), `model`, `date`, the scores of each brief and the totals. The run prints one row per brief and the totals, or the change against `--baseline`.
 

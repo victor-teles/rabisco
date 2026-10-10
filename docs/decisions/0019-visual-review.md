@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-10
 - **Extends:** [0003](./0003-ai-provider-contract.md), [0011](./0011-image-attachments-reach-every-provider.md), [0017](./0017-brief-task-and-fast-model.md)
-- **Code:** [`src/shared/design/polish.ts`](../../src/shared/design/polish.ts), `polish` in [`src/mainview/hooks/use-generation.ts`](../../src/mainview/hooks/use-generation.ts), [`src/mainview/views/editor/design-check.ts`](../../src/mainview/views/editor/design-check.ts), `generate` in [`src/bun/ai/service.ts`](../../src/bun/ai/service.ts)
+- **Code:** [`src/shared/design/polish.ts`](../../src/shared/design/polish.ts), `polish` in [`src/mainview/lib/generation-session.ts`](../../src/mainview/lib/generation-session.ts), [`src/mainview/views/editor/design-check.ts`](../../src/mainview/views/editor/design-check.ts), `generate` in [`src/bun/ai/service.ts`](../../src/bun/ai/service.ts)
 
 ## Context
 

@@ -183,8 +183,17 @@ export function fitPlan(plan: GenerationPlan, files: ProjectFiles): GenerationPl
 	return { screens, components, links };
 }
 
-/** One screen and nothing shared: there is nothing to review, so generation starts right away */
-export const isTrivialPlan = (plan: GenerationPlan) => plan.screens.length <= 1 && plan.components.length === 0;
+export const plansFirst = (request: { planMode: boolean; task: string; variations: number; plan?: GenerationPlan }) =>
+	request.planMode && request.task === "create" && request.variations === 1 && !request.plan;
+
+export const revisedPrompt = (prompt: string, feedback: string) => `${prompt.trim()}\n\n${feedback.trim()}`;
+
+export const planRevisionPrompt = (prompt: string, plan: GenerationPlan, feedback: string) =>
+	[
+		prompt.trim(),
+		`This plan was proposed for it:\n${planBlock(plan)}`,
+		`Revise the plan as this feedback asks, and keep what it doesn't mention:\n${feedback.trim()}`,
+	].join("\n\n");
 
 /** Keeps the ticked screens and components; links and users of a dropped screen go with it */
 export function selectPlan(plan: GenerationPlan, keep: { screens: Iterable<string>; components: Iterable<string> }) {

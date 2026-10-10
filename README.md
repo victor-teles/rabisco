@@ -30,6 +30,7 @@ src/
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback
+    lib/project-sessions.ts  open projects and their generations, kept while work runs (decision 0021)
     views/home.tsx      prompt hero and recent projects
     views/editor/       chat panel, infinite canvas, inspector
     components/ui/      shadcn primitives, uai blocks in ui/uai
@@ -61,6 +62,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘O`                                                   | New chat                                                                     |
 | `/` in the chat                                         | Chat commands: Rabisco's own and your CLI's commands                         |
 | `⌘I` in a prompt (Home or chat)                         | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back  |
+| `⇧⌘P` in a prompt (Home or chat)                        | Plan first: new screens wait as a plan you approve; a reply revises the plan |
 | `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                |
 | Double-click the title bar                              | Zoom the window (follows the macOS setting)                                  |
 | `⌥C`                                                    | Comments list                                                                |

@@ -1,6 +1,12 @@
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Crosshair, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, X } from "lucide-react";
-import { DesignComposer, DeviceToggle, ModelPicker, VariationsPicker } from "@/components/app/design-composer";
+import {
+	DesignComposer,
+	DeviceToggle,
+	ModelPicker,
+	PlanModeToggle,
+	VariationsPicker,
+} from "@/components/app/design-composer";
 import { Markdown } from "@/components/app/markdown";
 import { StyleChoices } from "@/components/app/style-picker";
 import { Button } from "@/components/ui/button";
@@ -56,6 +62,7 @@ import {
 	ToolCallSummary,
 	ToolCallTrigger,
 } from "@/components/ui/uai/tool-call";
+import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import type { Generation, WritingFile } from "@/hooks/use-generation";
@@ -198,6 +205,8 @@ export const ChatPanel = memo(function ChatPanel({
 	projectPath,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
+	const [planMode, setPlanMode] = usePlanMode();
+	const planHint = planModeHint({ editing: editingCount, variations });
 	const files = generation ? Object.entries(generation.writing) : [];
 
 	// Streaming output follows on its own; a new message brings the reader back down
@@ -296,7 +305,7 @@ export const ChatPanel = memo(function ChatPanel({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<ScrollArea ref={scrollRef} className="min-h-0 flex-1">
+			<ScrollArea ref={scrollRef} className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
 				<div className="flex flex-col gap-5 px-4 py-5">
 					{messages.length === 0 && !generation ? (
 						<EmptyState variant="plain" className={onPickStyle ? "pt-8" : "pt-16"}>
@@ -416,6 +425,9 @@ export const ChatPanel = memo(function ChatPanel({
 					onDeviceChange={onDeviceChange}
 					onSubmit={submit}
 					inlineOptions={false}
+					planMode={planMode}
+					onPlanModeChange={interview ? undefined : setPlanMode}
+					planModeHint={planHint}
 					commands={interview ? undefined : commands}
 					onRunCommand={(command) => onRunCommand(command, "")}
 					improve={interview ? undefined : { projectPath }}
@@ -426,7 +438,9 @@ export const ChatPanel = memo(function ChatPanel({
 								? `Change ${focusLabel}…`
 								: selectedScreenName
 									? `Change ${selectedScreenName}…`
-									: "Describe screens to add…"
+									: planCard
+										? "Reply to change the plan…"
+										: "Describe screens to add…"
 					}
 				/>
 				<div className="mt-1.5 flex items-center gap-1 px-0.5">
@@ -442,6 +456,7 @@ export const ChatPanel = memo(function ChatPanel({
 							}
 						/>
 					)}
+					{interview ? null : <PlanModeToggle on={planMode} onChange={setPlanMode} hint={planHint} />}
 					<ModelPicker />
 					{selectedScreenName && !(focusLabel && !interview) ? (
 						<span className="ml-auto truncate text-xs text-subtle-foreground">

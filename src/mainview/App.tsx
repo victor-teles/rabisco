@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/rpc";
+import { projectSessions } from "@/lib/sessions";
 import { EditorView } from "@/views/editor/editor";
 import { HomeView, type StartDesign } from "@/views/home";
 import { AUTO_FALLBACK_STYLE, AUTO_STYLE } from "../shared/context/styles";
@@ -35,6 +36,18 @@ export default function App() {
 	const [route, setRoute] = useState<Route>({ view: "home" });
 
 	useEffect(() => void loadProviders(), []);
+
+	useEffect(
+		() =>
+			projectSessions.onLanded(({ path, name, outcome }) => {
+				const action = { label: "Open", onClick: () => setRoute({ view: "editor", projectPath: path }) };
+
+				if (outcome === "ready") toast(`Screens for ${name} are ready`, { action });
+				else if (outcome === "failed") toast.error(`Couldn't finish ${name}`, { action });
+				else toast(`Plan for ${name} is ready to review`, { action });
+			}),
+		[],
+	);
 
 	// useProject resets the Tailwind build with the project's candidates once its files load
 	const openEditor = (next: Extract<Route, { view: "editor" }>) => setRoute(next);
