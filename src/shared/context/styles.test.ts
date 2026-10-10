@@ -3,13 +3,16 @@ import { contrastRatio } from "../design/layout-checks";
 import { parseColor } from "../export/color";
 import { contextBody } from "./body";
 import {
+	AUTO_STYLE,
 	STYLE_IDS,
 	STYLES,
+	autoDesignOf,
 	isStyleId,
 	lacksDesignDirection,
 	starterFiles,
 	styleById,
 	styleDesign,
+	withDesign,
 	withStyle,
 } from "./styles";
 import { CONTEXT_TEMPLATES } from "./templates";
@@ -124,5 +127,31 @@ describe("withStyle", () => {
 		const written = { ...project, files: { ...project.files, "DESIGN.md": "# Design\n\nWarm and quiet." } };
 
 		expect(withStyle(written, "bold")).toBe(written);
+	});
+});
+
+describe("Auto style", () => {
+	const DESIGN = "# Design\n\n## Tokens\n\n- primary: #0f766e\n- radius: 1rem\n\n## Visual direction\n\nSoft.\n";
+
+	test("is not a preset id", () => {
+		expect(isStyleId(AUTO_STYLE)).toBe(false);
+	});
+
+	test("a written DESIGN.md is kept only when it has tokens", () => {
+		expect(autoDesignOf(DESIGN)).toBe(DESIGN);
+		expect(autoDesignOf("# Design\n\nSoft and calm, no tokens.\n")).toBeNull();
+		expect(autoDesignOf("# Design\n\n## Tokens\n\n- primary: not-a-color\n")).toBeNull();
+		expect(autoDesignOf(undefined)).toBeNull();
+	});
+
+	test("withDesign writes DESIGN.md and applies its tokens, with their source, in one snapshot", () => {
+		const next = withDesign<StyledProject>(
+			{ frames: [], files: { "DESIGN.md": CONTEXT_TEMPLATES["DESIGN.md"] } },
+			DESIGN,
+		);
+
+		expect(next.files["DESIGN.md"]).toBe(DESIGN);
+		expect(next.theme?.light).toEqual({ primary: "#0f766e", radius: "1rem" });
+		expect(themeUpdateOf(next.theme!, DESIGN)).toBeNull();
 	});
 });

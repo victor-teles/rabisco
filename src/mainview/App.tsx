@@ -9,10 +9,18 @@ import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/rpc";
 import { EditorView } from "@/views/editor/editor";
 import { HomeView, type StartDesign } from "@/views/home";
+import { AUTO_FALLBACK_STYLE, AUTO_STYLE } from "../shared/context/styles";
 
 type Route =
 	| { view: "home" }
-	| { view: "editor"; projectPath: string; initialPrompt?: string; initialFiles?: File[]; initialVariations?: number };
+	| {
+			view: "editor";
+			projectPath: string;
+			initialPrompt?: string;
+			initialFiles?: File[];
+			initialVariations?: number;
+			initialAutoStyle?: boolean;
+	  };
 
 function projectNameFromPrompt(prompt: string) {
 	const words = prompt.trim().split(/\s+/).slice(0, 5).join(" ");
@@ -33,13 +41,21 @@ export default function App() {
 
 	const startDesign: StartDesign = async ({ prompt, device, files, variations, style }) => {
 		try {
-			const project = await api.createProject({ name: projectNameFromPrompt(prompt), device, style });
+			const auto = style === AUTO_STYLE && Boolean(prompt.trim());
+
+			const project = await api.createProject({
+				name: projectNameFromPrompt(prompt),
+				device,
+				style: auto ? null : style === AUTO_STYLE ? AUTO_FALLBACK_STYLE : style,
+			});
+
 			openEditor({
 				view: "editor",
 				projectPath: project.path,
 				initialPrompt: prompt || undefined,
 				initialFiles: files,
 				initialVariations: variations,
+				initialAutoStyle: auto || undefined,
 			});
 		} catch (error) {
 			toast.error("Couldn't create the project", { description: String(error) });
@@ -62,6 +78,7 @@ export default function App() {
 					initialPrompt={route.initialPrompt}
 					initialFiles={route.initialFiles}
 					initialVariations={route.initialVariations}
+					initialAutoStyle={route.initialAutoStyle}
 					theme={theme}
 					onToggleTheme={toggleTheme}
 					onBack={() => setRoute({ view: "home" })}

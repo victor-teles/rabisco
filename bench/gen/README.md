@@ -2,7 +2,7 @@
 
 Measures what the AI makes, so a prompt change (`src/bun/ai/prompt.ts`, `PROMPT_VERSION`) shows its effect. It is the "Measure first" step of Phase 16 ([ROADMAP](../../docs/ROADMAP.md)) and also covers the "Real providers" checks of Phase 8.
 
-The eval runs 12 fixed briefs (`briefs.ts`) through Rabisco's real AI layer (`createAiService`), with the same requests, repairs and validation as the app. Each result is written as a normal project folder, then scored from its files. Nothing is rendered here.
+The eval runs 12 fixed briefs (`briefs.ts`) through Rabisco's real AI layer (`createAiService`), with the same requests, repairs and validation as the app. Each result is written as a normal project folder, then scored from its files. Then the screens it wrote are rendered in headless Chrome for the layout checks.
 
 ## Run it
 
@@ -12,6 +12,7 @@ hutch run bench:gen -- --model claude-code:opus       # every brief against one 
 hutch run bench:gen -- --model codex:gpt-5 --only bank-home,pricing-focus
 hutch run bench:gen -- --mock                         # the mock provider: no AI, a smoke test of the eval
 hutch run bench:gen -- --model claude-code:opus --style minimal   # briefs without a DESIGN.md start from a style
+hutch run bench:gen -- --rescore bench/gen/runs/<run>  # layout checks only, on a run you already have
 ```
 
 | Flag                | What it does                                                                               |
@@ -22,6 +23,8 @@ hutch run bench:gen -- --model claude-code:opus --style minimal   # briefs witho
 | `--only <ids>`      | Comma-separated brief ids                                                                  |
 | `--style <id>`      | Briefs without a DESIGN.md start from this style: minimal, editorial, playful, dense, bold |
 | `--no-plan`         | Create briefs run in one go, without the plan step, to compare with plans                  |
+| `--no-layout`       | Skips the layout checks in headless Chrome                                                 |
+| `--rescore <dir>`   | Runs only the layout checks on the projects of an earlier run and updates its report.json  |
 | `--user-data <dir>` | Folder with `providers.json`. Default: the app's, the installed app before a dev run       |
 | `--out <dir>`       | Default `bench/gen/runs/<time>-<model>/` (ignored by git)                                  |
 | `--baseline <file>` | A previous `report.json`; prints each total's change                                       |
@@ -51,7 +54,7 @@ Each brief becomes `<out>/<brief>.rabisco/`, with its files, `rabisco.json` (new
 
 Like the editor, a create brief with one variation is planned first ([decision 0015](../../docs/decisions/0015-plan-then-screens.md)): the plan step runs, the plan is accepted as it is, then its shared components and its screens are written. Time, tokens and cost include the plan. `--no-plan` runs the old one-shot create.
 
-`<out>/report.json` holds `promptVersion`, `plan` (whether plans ran), `model`, `date`, the scores of each brief and the totals. The run prints one row per brief and the totals, or the change against `--baseline`.
+`<out>/report.json` holds `promptVersion`, `plan` (whether plans ran), `layout` (the browser, or why the checks were skipped), `model`, `date`, the scores of each brief and the totals. The run prints one row per brief and the totals, or the change against `--baseline`.
 
 ## What each score means
 
@@ -71,9 +74,25 @@ Like the editor, a create brief with one variation is planned first ([decision 0
 | custom token classes | Uses of those classes (`bg-brand`, `hover:text-brand/80`, `rounded-card`)                                   |
 | focus out            | Focus briefs: changed lines outside the focused element (`focus-guard.ts`). A deleted file counts all lines |
 | plan                 | Create briefs: a plan ran first, and how many of its shared components were written                         |
+| layout               | Layout findings on the written screens: errors (`e`), warnings (`w`) and screens that failed to render      |
 
-With `--baseline`, a metric is "better" when it moves the right way: fewer errors, repairs, raw colors and lines outside the focus; more reuse and token use. Wall time, tokens and cost vary between runs; compare them over a few runs.
+With `--baseline`, a metric is "better" when it moves the right way: fewer errors, repairs, raw colors, layout findings and lines outside the focus; more reuse and token use. A total that one of the two reports doesn't have (layout before this check, or a run with `--no-layout`) shows no change. Wall time, tokens and cost vary between runs; compare them over a few runs.
 
 ## Layout checks
 
-Overflow, clipped text, overlaps, contrast and the other layout checks need a browser, so this eval can't run them. Open a brief's folder in Rabisco and run "Check design" from the command palette (⌘K). It lists the layout and color findings for the selected screens, or every screen, and "Copy JSON" copies them per screen file.
+Overflow, clipped text, overlaps, contrast, empty containers and font sizes need a rendered screen. After the briefs run, the eval renders every screen the brief wrote (new screens, alternates and changed seeds) and runs the same checks as "Check design" in the app (`src/mainview/runtime/design-lint.ts`, `src/shared/design/layout-checks.ts`).
+
+How it works (`layout.ts`, `layout-page.ts`):
+
+1. It builds the screen runtime (`vite.runtime.config.ts`) into a temporary folder, so the checks match the current source.
+2. Bun compiles each screen and its imports with the app's compiler (Sucrase) and builds its Tailwind CSS and DESIGN.md theme, like the editor does.
+3. A local server serves a small page and the runtime. `playwright-core` opens the page in headless Chrome. The page puts each screen in a sandboxed frame at its frame size, sends it over the frame protocol (`modules`, then `measure` to grow it to its content, then `lint`), and returns the findings.
+4. Findings get their file and line. An edit, focus or vary brief also renders its seed screen; findings the seed already had don't count, so only what the model added is scored.
+
+Each brief's score has `layout`: the screens checked, the screens that failed to render (with the error), errors, warnings, counts by rule and every finding with its path and line. The totals add `layout errors`, `layout warnings` and one row per rule. Lower is better.
+
+It drives the Google Chrome you have installed (`channel: "chrome"`); it downloads no browser. Without Chrome, the eval prints why, skips the layout checks and keeps the other scores. `bun install` adds `playwright-core`.
+
+The app renders screens in WKWebView (WebKit), and the eval in Chrome (Blink). Text metrics, font fallback and some CSS details differ, so a clipped-text or overlap finding can show in one and not the other. Compare layout totals between runs of the eval, not with the app. To see a finding in the app, open the brief's folder in Rabisco and run "Check design" from the command palette (⌘K).
+
+`--rescore <run dir>` runs only the layout checks on an earlier run's projects. It adds `layout` to each brief in that run's `report.json` and the layout rows to its totals; nothing is generated again.

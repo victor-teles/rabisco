@@ -19,6 +19,7 @@ import { resolveFocus } from "../../shared/ai/focus";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
 import { focusNotes } from "./focus-guard";
+import { EDIT_MISMATCH_STATUS } from "./protocol";
 import { validateFiles, type ValidateOptions } from "./validate";
 
 /** The first attempt failed, or the run was aborted. */
@@ -63,11 +64,16 @@ export type RunResult = {
 	notes: string[];
 	usage?: Usage;
 	attempts: number;
+	editFallbacks: number;
 };
+
+export const EDIT_MISMATCH_PROBLEM =
+	"The <rabisco-edit> SEARCH blocks didn't match this file exactly once. Write the whole file in a <rabisco-file> tag.";
 
 type Attempt = {
 	written: Map<string, string>;
 	deleted: Set<string>;
+	unmatched: Set<string>;
 	reply: string;
 	usage?: Usage;
 	error?: { code: ProviderErrorCode; message: string; retryable: boolean; fix?: string };
@@ -82,7 +88,7 @@ async function collect(
 	signal: AbortSignal,
 	onEvent: (event: GenerationEvent) => void,
 ): Promise<Attempt> {
-	const attempt: Attempt = { written: new Map(), deleted: new Set(), reply: "" };
+	const attempt: Attempt = { written: new Map(), deleted: new Set(), unmatched: new Set(), reply: "" };
 
 	try {
 		for await (const event of provider.generate(request, signal)) {
@@ -93,9 +99,13 @@ async function collect(
 				case "message.delta":
 					attempt.reply += event.text;
 					break;
+				case "status":
+					if (event.label === EDIT_MISMATCH_STATUS && event.detail) attempt.unmatched.add(event.detail);
+					break;
 				case "file.end":
 					attempt.written.set(event.path, event.content);
 					attempt.deleted.delete(event.path);
+					attempt.unmatched.delete(event.path);
 					break;
 				case "file.delete":
 					attempt.deleted.add(event.path);
@@ -177,6 +187,8 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 
 	const written = first.written;
 	const deleted = first.deleted;
+	let unmatched = first.unmatched;
+	let editFallbacks = unmatched.size;
 	let usage = first.usage;
 	let attempts = 1;
 	const contextTarget = contextTargetOf(request);
@@ -187,12 +199,17 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 			? { alternates: options.alternates }
 			: {};
 
-	let problems = validateFiles(toFiles(written), projectFiles, [...deleted], validation);
+	const missedEdits = (): Problem[] =>
+		[...unmatched].flatMap((path) => (written.has(path) ? [] : [{ path, message: EDIT_MISMATCH_PROBLEM }]));
+
+	let problems = [...missedEdits(), ...validateFiles(toFiles(written), projectFiles, [...deleted], validation)];
 
 	while (problems.length && attempts <= FILE_RULES.maxRepairAttempts) {
 		// A context task only repairs its target; anything else it wrote is dropped
 		const targets = [...new Set(problems.map((p) => p.path))].filter(
-			(path) => written.has(path) && (!contextTarget || path === contextTarget),
+			(path) =>
+				(written.has(path) || (unmatched.has(path) && path in projectFiles)) &&
+				(!contextTarget || path === contextTarget),
 		);
 
 		if (!targets.length) break;
@@ -202,6 +219,8 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 		usage = addUsage(usage, result.usage);
 
 		if (result.error) break;
+		unmatched = result.unmatched;
+		editFallbacks += unmatched.size;
 
 		for (const [path, content] of result.written) {
 			written.set(path, content);
@@ -213,8 +232,11 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 			written.delete(path);
 		}
 
-		problems = validateFiles(toFiles(written), projectFiles, [...deleted], validation);
+		problems = [...missedEdits(), ...validateFiles(toFiles(written), projectFiles, [...deleted], validation)];
 	}
+
+	if (editFallbacks)
+		console.info(`Generation ${request.id}: ${editFallbacks} edit(s) didn't match, so whole files were asked for`);
 
 	const settled = problems.length
 		? settle(written, deleted, projectFiles, validation)
@@ -227,7 +249,15 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 
 	const notes = focusNotes(request.focus, projectFiles, changes);
 
-	return { changes, reply: first.reply.trim(), problems: dedupeProblems(settled.problems), notes, usage, attempts };
+	return {
+		changes,
+		reply: first.reply.trim(),
+		problems: dedupeProblems([...missedEdits(), ...settled.problems]),
+		notes,
+		usage,
+		attempts,
+		editFallbacks,
+	};
 }
 
 export type ThemeResult = { theme: AppliedTheme; reply: string; usage?: Usage };
@@ -331,7 +361,7 @@ function buildRepairRequest(
 ): GenerationRequest {
 	const files = new Map<string, string>();
 
-	for (const path of targets) files.set(path, written.get(path)!);
+	for (const path of targets) files.set(path, written.get(path) ?? project[path]!);
 	const components = { ...project, ...Object.fromEntries(written) };
 
 	for (const [path, content] of Object.entries(components)) {

@@ -7,7 +7,7 @@ import {
 	type DesignTokens,
 	type TokenKind,
 } from "../../src/shared/context/tokens";
-import type { DesignFinding } from "../../src/shared/design/findings";
+import type { DesignFinding, DesignRule } from "../../src/shared/design/findings";
 import { sourceFindings } from "../../src/shared/design/source-checks";
 import { readImports } from "../../src/shared/jsx/imports";
 import { resolveModule } from "../../src/shared/jsx/modules";
@@ -18,7 +18,7 @@ import type { FileChange, GenerateResult, ProjectFiles } from "../../src/shared/
 import { baseOf } from "../../src/shared/variations";
 import { changesOutside } from "../../src/bun/ai/focus-guard";
 import { objectOr, optionalNumber } from "../../src/bun/json";
-import type { BriefDevice, BriefTask } from "./briefs";
+import type { BriefDevice, BriefTask, SeedScreen } from "./briefs";
 
 export type BriefScore = {
 	id: string;
@@ -60,6 +60,29 @@ export type BriefScore = {
 	planned?: boolean;
 	/** Of the plan's shared components, how many were written */
 	sharedComponents?: number;
+	layout?: LayoutScore;
+};
+
+export const LAYOUT_RULES = [
+	"frame-overflow",
+	"text-clipped",
+	"overlap",
+	"contrast",
+	"empty-container",
+	"font-sizes",
+] as const satisfies readonly DesignRule[];
+
+export type LayoutRule = (typeof LAYOUT_RULES)[number];
+
+export type ScreenLayout = { path: string; findings: DesignFinding[] } | { path: string; error: string };
+
+export type LayoutScore = {
+	screens: number;
+	failed: { path: string; error: string }[];
+	errors: number;
+	warnings: number;
+	byRule: Partial<Record<DesignRule, number>>;
+	findings: DesignFinding[];
 };
 
 export type ScoreInput = {
@@ -259,6 +282,58 @@ export function focusOutside(focus: ElementFocus, before: ProjectFiles, changes:
 	return changesOutside(source, change.content, focus)?.length ?? null;
 }
 
+export function writtenScreens(files: ProjectFiles, seeds: SeedScreen[]): string[] {
+	const seeded = new Map(seeds.map((seed) => [seed.path, seed.source]));
+
+	return Object.keys(files)
+		.filter((path) => isScreenFile(path) && files[path] !== seeded.get(path))
+		.sort();
+}
+
+export function seedOf(path: string, seeds: SeedScreen[]) {
+	return seeds.find((seed) => seed.path === path || seed.path === baseOf(path));
+}
+
+const layoutKey = (finding: DesignFinding) => `${finding.rule}:${finding.message}`;
+
+export function withoutInherited(findings: DesignFinding[], inherited: DesignFinding[]) {
+	const seen = new Set(inherited.map(layoutKey));
+
+	return findings.filter((finding) => !seen.has(layoutKey(finding)));
+}
+
+export function layoutScoreOf(screens: ScreenLayout[]): LayoutScore {
+	const score: LayoutScore = { screens: screens.length, failed: [], errors: 0, warnings: 0, byRule: {}, findings: [] };
+
+	for (const screen of screens) {
+		if ("error" in screen) {
+			score.failed.push({ path: screen.path, error: screen.error });
+			continue;
+		}
+
+		for (const finding of screen.findings) {
+			score.findings.push(finding);
+			score.byRule[finding.rule] = (score.byRule[finding.rule] ?? 0) + 1;
+
+			if (finding.severity === "error") score.errors++;
+			else score.warnings++;
+		}
+	}
+
+	return score;
+}
+
+export function layoutCell(layout: LayoutScore | undefined) {
+	if (!layout) return "";
+	const failed = layout.failed.length ? ` ${layout.failed.length} failed` : "";
+
+	return `${layout.errors}e ${layout.warnings}w${failed}`;
+}
+
+export function ruleCell(layout: LayoutScore | undefined) {
+	return LAYOUT_RULES.flatMap((rule) => (layout?.byRule[rule] ? [`${rule} ${layout.byRule[rule]}`] : [])).join(", ");
+}
+
 export const METRICS = [
 	{ key: "ok", label: "ok", better: "higher" },
 	{ key: "errors", label: "errors", better: "lower" },
@@ -280,11 +355,23 @@ export const METRICS = [
 	{ key: "focusOutside", label: "lines changed outside focus", better: "lower" },
 	{ key: "planned", label: "briefs planned first", better: "none" },
 	{ key: "sharedComponents", label: "shared components from plans", better: "none" },
+	{ key: "layoutScreens", label: "screens checked for layout", better: "none" },
+	{ key: "layoutFailed", label: "screens that didn't render", better: "lower" },
+	{ key: "layoutErrors", label: "layout errors", better: "lower" },
+	{ key: "layoutWarnings", label: "layout warnings", better: "lower" },
+	{ key: "frame-overflow", label: "layout: wider than the screen", better: "lower" },
+	{ key: "text-clipped", label: "layout: clipped text", better: "lower" },
+	{ key: "overlap", label: "layout: overlap", better: "lower" },
+	{ key: "contrast", label: "layout: low contrast", better: "lower" },
+	{ key: "empty-container", label: "layout: empty container", better: "lower" },
+	{ key: "font-sizes", label: "layout: too many font sizes", better: "lower" },
 ] as const;
 
 export type Metric = (typeof METRICS)[number]["key"];
 
-export type Totals = Record<Metric, number>;
+export type LayoutMetric = "layoutScreens" | "layoutFailed" | "layoutErrors" | "layoutWarnings" | LayoutRule;
+
+export type Totals = Record<Exclude<Metric, LayoutMetric>, number> & Partial<Record<LayoutMetric, number>>;
 
 const sum = (scores: BriefScore[], pick: (score: BriefScore) => number | null | undefined) =>
 	scores.reduce((total, score) => total + (pick(score) ?? 0), 0);
@@ -328,7 +415,26 @@ export function totalsOf(scores: BriefScore[]): Totals {
 		focusOutside: sum(scores, (score) => score.focusOutside),
 		planned: scores.filter((score) => score.planned).length,
 		sharedComponents: sum(scores, (score) => score.sharedComponents),
+		...layoutTotalsOf(scores.map((score) => score.layout)),
 	};
+}
+
+export function layoutTotalsOf(layouts: (LayoutScore | undefined)[]): Partial<Record<LayoutMetric, number>> {
+	const checked = layouts.flatMap((layout) => (layout ? [layout] : []));
+
+	if (!checked.length) return {};
+
+	const totals: Partial<Record<LayoutMetric, number>> = {
+		layoutScreens: checked.reduce((total, layout) => total + layout.screens, 0),
+		layoutFailed: checked.reduce((total, layout) => total + layout.failed.length, 0),
+		layoutErrors: checked.reduce((total, layout) => total + layout.errors, 0),
+		layoutWarnings: checked.reduce((total, layout) => total + layout.warnings, 0),
+	};
+
+	for (const rule of LAYOUT_RULES)
+		totals[rule] = checked.reduce((total, layout) => total + (layout.byRule[rule] ?? 0), 0);
+
+	return totals;
 }
 
 /** Totals of a saved report; metrics it doesn't have are missing */
@@ -349,7 +455,7 @@ export type Delta = {
 	metric: Metric;
 	label: string;
 	base: number | null;
-	now: number;
+	now: number | null;
 	delta: number | null;
 	verdict: string;
 };
@@ -359,12 +465,14 @@ const round = (value: number) => Math.round(value * 10_000) / 10_000;
 export function deltasOf(base: Partial<Totals>, now: Totals): Delta[] {
 	return METRICS.map(({ key, label, better }) => {
 		const before = base[key];
+		const after = now[key];
 
-		if (before === undefined) return { metric: key, label, base: null, now: now[key], delta: null, verdict: "" };
-		const delta = round(now[key] - before);
+		if (before === undefined || after === undefined)
+			return { metric: key, label, base: before ?? null, now: after ?? null, delta: null, verdict: "" };
+		const delta = round(after - before);
 		const improved = better === "higher" ? delta > 0 : delta < 0;
 		const verdict = !delta || better === "none" ? "" : improved ? "better" : "worse";
 
-		return { metric: key, label, base: before, now: now[key], delta, verdict };
+		return { metric: key, label, base: before, now: after, delta, verdict };
 	});
 }

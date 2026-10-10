@@ -135,6 +135,21 @@ describe("runTextGeneration", () => {
 		});
 	});
 
+	test("an edit that doesn't match is not invalid_output, so the caller can ask for the whole file", async () => {
+		const events = await run("edit", [
+			{
+				type: "text",
+				text: '<rabisco-edit path="screens/a.tsx">\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n</rabisco-edit>',
+			},
+		]);
+
+		expect(events).toEqual([
+			{ type: "status", label: "Editing screens/a.tsx" },
+			{ type: "status", label: "Edit didn't match", detail: "screens/a.tsx" },
+			{ type: "done" },
+		]);
+	});
+
 	test("refusal is an error", async () => {
 		const events = await run("create", [
 			{ type: "text", text: file },

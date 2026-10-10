@@ -162,7 +162,10 @@ export type GenerateParams = {
 	command?: { name: string; args: string };
 	/** `create`: the plan the user accepted; its shared components are written first, then its screens in parallel */
 	plan?: GenerationPlan;
+	review?: VisualReview;
 };
+
+export type VisualReview = { prompt: string; attachments: Attachment[] };
 
 export type GenerationFailure = {
 	code: ProviderErrorCode;
@@ -190,8 +193,19 @@ export type GenerateResult =
 			theme?: AppliedTheme;
 			/** `plan` task: the plan, fitted to the project; nothing was written */
 			plan?: GenerationPlan;
+			withoutImages?: true;
 	  }
 	| { ok: false; error: GenerationFailure };
+
+export type ImprovePromptParams = {
+	generationId: string;
+	prompt: string;
+	device: Device;
+	model: string;
+	projectPath?: string;
+};
+
+export type ImprovePromptResult = { ok: true; brief: string; usage?: Usage } | { ok: false; error: GenerationFailure };
 
 /** `attempt` 1 is the first try, then repairs. */
 export type GenerationEventMessage = {

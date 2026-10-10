@@ -6,6 +6,7 @@ import { parsePlanReply } from "../../../shared/ai/plan";
 import {
 	createMockProvider,
 	mockProductMd,
+	mockRepair,
 	primaryFamilyOf,
 	restyleElement,
 	restyleForVariation,
@@ -153,6 +154,34 @@ describe("mock provider", () => {
 		);
 	});
 
+	test("context task: with no screens, DESIGN.md takes a color the prompt names", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "context", targets: ["DESIGN.md"], prompt: "A calm teal journal" },
+				new AbortController().signal,
+			),
+		);
+
+		const end = events.find((e) => e.type === "file.end");
+
+		if (end?.type !== "file.end") throw new Error("no file.end event");
+		expect(end.content).toContain("- primary: oklch(0.6 0.118 184.704)\n");
+	});
+
+	test("brief task: streams a brief built on the prompt and PRODUCT.md, and writes no file", async () => {
+		const events = await collect(
+			createMockProvider({ delayMs: 0 }).generate(
+				{ ...request, task: "brief", context: { product: "# Product\n\nFor busy parents.\n" } },
+				new AbortController().signal,
+			),
+		);
+
+		const text = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		expect(text.startsWith("Design a habit tracker, as mobile screens.\n- Product: For busy parents.")).toBe(true);
+		expect(events.some((e) => e.type.startsWith("file."))).toBe(false);
+		expect(events.at(-1)!.type).toBe("done");
+	});
+
 	test("primaryFamilyOf ignores neutrals and non-TSX files", () => {
 		expect(primaryFamilyOf([{ path: "screens/a.tsx", content: "bg-slate-900 text-gray-500" }])).toBeUndefined();
 		expect(primaryFamilyOf([{ path: "DESIGN.md", content: "bg-rose-500" }])).toBeUndefined();
@@ -279,5 +308,64 @@ describe("restyleElement", () => {
 			`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`,
 		);
 		expect(restyleElement(source.replace("New", "Old"), focus, 1)).toBeNull();
+	});
+});
+
+describe("mock repair", () => {
+	const home = `export default function Home() {\n\treturn (\n\t\t<div className="bg-orange-600 text-white">\n\t\t\t<p className="text-sm text-white/80">This week</p>\n\t\t\t<h1 className="text-2xl">72%</h1>\n\t\t</div>\n\t);\n}\n`;
+	const badge = `export function Badge() {\n\treturn <span className="text-orange-300">Pro</span>;\n}\n`;
+
+	const repair: GenerationRequest = {
+		...request,
+		task: "repair",
+		files: [
+			{ path: "screens/home.tsx", content: home },
+			{ path: "components/badge.tsx", content: badge },
+		],
+		targets: ["screens/home.tsx"],
+		problems: [
+			{
+				path: "screens/home.tsx",
+				line: 4,
+				message: "Low contrast: <p> “This week” has a contrast of 2.6:1, under 3:1",
+			},
+			{ path: "screens/home.tsx", line: 5, message: "Clipped text: <h1> “72%” is cut off" },
+			{ path: "components/badge.tsx", line: 2, message: "Low contrast: <span> “Pro” has a contrast of 1.9:1" },
+		],
+	};
+
+	test("fixes its targets in place, line by line, and writes nothing else", () => {
+		const result = mockRepair(repair);
+
+		expect(result.changes).toEqual([
+			{
+				path: "screens/home.tsx",
+				content: home
+					.replace(`text-sm text-white/80`, `text-sm text-white`)
+					.replace(`className="text-2xl"`, `className="text-2xl break-words"`),
+			},
+		]);
+		expect(result.reply).toBe("Fixed 2 problems in Home.");
+	});
+
+	test("streams the fixed file as a repair, with no new screens", async () => {
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(repair, new AbortController().signal));
+		const ends = events.flatMap((e) => (e.type === "file.end" ? [e.path] : []));
+
+		expect(ends).toEqual(["screens/home.tsx"]);
+	});
+
+	test("a review with nothing listed writes no files", async () => {
+		const review: GenerationRequest = {
+			...repair,
+			problems: [],
+			attachments: [{ name: "screens/home.tsx.jpg", mediaType: "image/jpeg", data: "AA==" }],
+		};
+
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(review, new AbortController().signal));
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+
+		expect(events.some((e) => e.type === "file.end")).toBe(false);
+		expect(reply).toBe("Nothing to fix.");
 	});
 });

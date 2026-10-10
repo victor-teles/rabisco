@@ -21,14 +21,26 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { useAutoPolish, useAutoReview } from "@/hooks/use-auto-polish";
 import { useAutoResolve } from "@/hooks/use-auto-resolve";
-import { closeSettings, loadProviders, removeStatus, upsertStatus, useProviders } from "@/hooks/use-providers";
+import {
+	closeSettings,
+	loadProviders,
+	modelLabel,
+	removeStatus,
+	selectFastModel,
+	upsertStatus,
+	useProviders,
+	type ModelOption,
+} from "@/hooks/use-providers";
 import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import {
@@ -105,6 +117,7 @@ export function SettingsDialog() {
 							))
 						)}
 					</div>
+					<FastModelSettings />
 					<CommentSettings />
 				</ScrollArea>
 
@@ -154,8 +167,71 @@ export function SettingsDialog() {
 	);
 }
 
+const SAME_MODEL = "same";
+
+function FastModelSettings() {
+	const { models, settings } = useProviders();
+	const fast = settings.fastModel ?? null;
+	const available = fast !== null && models.some((option) => option.id === fast);
+	const groups = new Map<string, ModelOption[]>();
+
+	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
+
+	return (
+		<div className="border-t px-6 py-4">
+			<div className="flex items-start justify-between gap-6">
+				<span className="flex flex-col gap-0.5">
+					<span className="text-sm font-medium">Fast model</span>
+					<span className="text-[13px] text-muted-foreground">
+						Runs edits, fixes, plans, DESIGN.md and theme reads, and Improve prompt. New screens and variations use the
+						model picked in the composer.
+					</span>
+					{fast && !available ? (
+						<span className="text-[13px] text-muted-foreground">
+							{modelLabel(fast)} isn’t available, so these use the picked model.
+						</span>
+					) : null}
+				</span>
+				<DropdownMenu modal={false}>
+					<DropdownMenuTrigger asChild>
+						<Button variant="outline" size="sm" className="max-w-52 shrink-0 font-normal" aria-label="Fast model">
+							<span className="truncate">{fast ? modelLabel(fast) : "Same as picked"}</span>
+							<ChevronDown className="text-muted-foreground" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="max-h-80 min-w-56">
+						<DropdownMenuRadioGroup
+							value={fast ?? SAME_MODEL}
+							onValueChange={(next) => selectFastModel(next === SAME_MODEL ? null : next)}
+						>
+							<DropdownMenuRadioItem value={SAME_MODEL} className="text-[13px]">
+								Same as picked
+							</DropdownMenuRadioItem>
+							{[...groups].map(([provider, options]) => (
+								<div key={provider}>
+									<DropdownMenuSeparator />
+									<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+										{provider}
+									</DropdownMenuLabel>
+									{options.map((option) => (
+										<DropdownMenuRadioItem key={option.id} value={option.id} className="text-[13px]">
+											{option.label}
+										</DropdownMenuRadioItem>
+									))}
+								</div>
+							))}
+						</DropdownMenuRadioGroup>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
+		</div>
+	);
+}
+
 function CommentSettings() {
 	const [autoResolve, setAutoResolve] = useAutoResolve();
+	const [autoPolish, setAutoPolish] = useAutoPolish();
+	const [autoReview, setAutoReview] = useAutoReview();
 
 	return (
 		<div className="border-t px-6 py-4">
@@ -167,6 +243,31 @@ function CommentSettings() {
 					</span>
 				</span>
 				<Switch className="mt-0.5" checked={autoResolve} onCheckedChange={setAutoResolve} />
+			</label>
+			<label className="mt-4 flex items-start justify-between gap-6">
+				<span className="flex flex-col gap-0.5">
+					<span className="text-sm font-medium">Polish after generating</span>
+					<span className="text-[13px] text-muted-foreground">
+						When the design check finds clipped text, low contrast or overflow in new screens, one more run fixes them.
+						Turn off to skip the polish and the review.
+					</span>
+				</span>
+				<Switch className="mt-0.5" checked={autoPolish} onCheckedChange={setAutoPolish} />
+			</label>
+			<label className={cn("mt-4 flex items-start justify-between gap-6", !autoPolish && "opacity-55")}>
+				<span className="flex flex-col gap-0.5">
+					<span className="text-sm font-medium">Review screenshots after generating</span>
+					<span className="text-[13px] text-muted-foreground">
+						The polish also looks at screenshots of new screens and fixes clear visual problems, even when the check
+						finds none. Adds one model call per generation.
+					</span>
+				</span>
+				<Switch
+					className="mt-0.5"
+					checked={autoPolish && autoReview}
+					disabled={!autoPolish}
+					onCheckedChange={setAutoReview}
+				/>
 			</label>
 		</div>
 	);

@@ -112,6 +112,30 @@ describe("settings store", () => {
 		expect((await store.get()).defaultModel).toBeUndefined();
 	});
 
+	test("fast model: saved, cleared, and dropped with its provider", async () => {
+		const { store } = setup();
+		const { id } = await store.add({ type: "ollama" });
+		await expect(store.setFastModel("nocolon")).rejects.toThrow("Invalid model");
+		await store.setFastModel(`${id}:qwen3`);
+		expect((await store.get()).fastModel).toBe(`${id}:qwen3`);
+		await store.setFastModel(null);
+		expect((await store.get()).fastModel).toBeUndefined();
+		await store.setFastModel(`${id}:qwen3`);
+		await store.remove(id);
+		expect((await store.get()).fastModel).toBeUndefined();
+	});
+
+	test("normalize keeps a valid fast model and tolerates files without one", () => {
+		expect(normalizeSettings({ providers: [], fastModel: "ollama:qwen3:4b" }).fastModel).toBe("ollama:qwen3:4b");
+		expect(normalizeSettings({ providers: [], fastModel: "nocolon" })).toEqual({ version: 1, providers: [] });
+		expect(normalizeSettings({ providers: [], fastModel: 3 })).toEqual({ version: 1, providers: [] });
+		expect(normalizeSettings({ providers: [], defaultModel: "a:b" })).toEqual({
+			version: 1,
+			providers: [],
+			defaultModel: "a:b",
+		});
+	});
+
 	test("concurrent adds don't lose writes", async () => {
 		const { store, file } = setup();
 		await Promise.all([store.add({ type: "openai" }), store.add({ type: "openai" }), store.add({ type: "openai" })]);

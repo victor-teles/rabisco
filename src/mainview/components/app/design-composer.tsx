@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useRef } from "react";
-import { ChevronDown, Monitor, Settings2, Smartphone, Square, Tablet } from "lucide-react";
+import { ChevronDown, Monitor, Settings2, Smartphone, Square, Tablet, Undo2, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -25,9 +26,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
 import { StylePicker } from "@/components/app/style-picker";
 import type { ChatCommand } from "@/lib/chat-commands";
+import { IMPROVE_PROMPT_KEYS, isImprovePrompt, useImprovePrompt } from "@/hooks/use-improve-prompt";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
-import type { StyleId } from "../../../shared/context/styles";
+import type { StyleChoice } from "../../../shared/context/styles";
 import { isDevice } from "../../../shared/project";
 import type { Device } from "../../../shared/types";
 import { MAX_VARIATIONS } from "../../../shared/variations";
@@ -57,8 +59,8 @@ export type DesignComposerProps = {
 	/** Why the count doesn't apply right now; dims the picker. */
 	variationsHint?: string;
 	/** The starting style of a new project; the picker shows only when `onDesignStyleChange` is set */
-	designStyle?: StyleId | null;
-	onDesignStyleChange?: (style: StyleId | null) => void;
+	designStyle?: StyleChoice;
+	onDesignStyleChange?: (style: StyleChoice) => void;
 	inlineOptions?: boolean;
 	/** The prompt on its own row, with the options in a toolbar under it (Home) */
 	stacked?: boolean;
@@ -67,7 +69,10 @@ export type DesignComposerProps = {
 	commands?: readonly ChatCommand[];
 	/** A command picked from the list; `false` keeps the prompt */
 	onRunCommand?: (command: ChatCommand) => boolean | void;
+	improve?: { projectPath?: string };
 };
+
+const keepValue = () => {};
 
 export function DesignComposer({
 	value,
@@ -91,17 +96,42 @@ export function DesignComposer({
 	className,
 	commands,
 	onRunCommand,
+	improve,
 }: DesignComposerProps) {
 	const slashKeys = useRef<SlashKeyHandler | null>(null);
+	const formRef = useRef<HTMLFormElement>(null);
 
 	const setSlashKeys = useCallback((handler: SlashKeyHandler | null) => {
 		slashKeys.current = handler;
 	}, []);
 
+	const focusPrompt = useCallback(() => {
+		requestAnimationFrame(() => {
+			const input = formRef.current?.querySelector("textarea");
+
+			if (!input) return;
+			input.focus();
+			input.setSelectionRange(input.value.length, input.value.length);
+			input.scrollTop = 0;
+		});
+	}, []);
+
+	const improver = useImprovePrompt({
+		value: value ?? "",
+		onChange: onValueChange ?? keepValue,
+		device,
+		projectPath: improve?.projectPath,
+		onDone: focusPrompt,
+	});
+
+	const canImprove = Boolean(improve && onValueChange && value !== undefined);
+	const stoppable = improver.improving || Boolean(busy && onStop);
+
 	return (
 		<PromptComposer
+			ref={formRef}
 			variant={variant}
-			busy={busy}
+			busy={busy || improver.improving}
 			value={value}
 			onValueChange={onValueChange}
 			defaultValue={defaultValue}
@@ -123,8 +153,20 @@ export function DesignComposer({
 			) : null}
 			<PromptComposerInput
 				placeholder={placeholder}
-				onKeyDown={(event) => slashKeys.current?.(event)}
-				className={cn(stacked && "min-h-14 px-2 pt-2 text-[15px]/6 md:text-[15px]/6")}
+				onKeyDown={(event) => {
+					slashKeys.current?.(event);
+
+					if (event.defaultPrevented || !canImprove) return;
+
+					if (isImprovePrompt(event)) {
+						event.preventDefault();
+						void improver.improve();
+					} else if (improver.improved && isUndo(event)) {
+						event.preventDefault();
+						improver.undo();
+					}
+				}}
+				className={cn(stacked && "max-h-60 min-h-14 px-2 pt-2 text-[15px]/6 md:text-[15px]/6")}
 			/>
 			<PromptComposerActions className={cn(stacked && "justify-self-stretch")}>
 				{inlineOptions ? (
@@ -137,12 +179,23 @@ export function DesignComposer({
 						<ModelPicker className={cn(stacked && "ml-auto")} />
 					</>
 				) : null}
-				{busy && onStop ? (
+				{canImprove ? (
+					<ImprovePromptButton
+						improved={improver.improved}
+						disabled={busy || improver.improving || !value?.trim()}
+						onImprove={() => void improver.improve()}
+						onUndo={() => {
+							improver.undo();
+							focusPrompt();
+						}}
+					/>
+				) : null}
+				{stoppable ? (
 					<Button
 						type="button"
 						size="icon"
-						aria-label="Stop generating"
-						onClick={onStop}
+						aria-label={improver.improving ? "Stop improving" : "Stop generating"}
+						onClick={improver.improving ? improver.stop : onStop}
 						className="size-8 rounded-full bg-foreground text-card hover:bg-foreground/90"
 					>
 						<Square className="size-3 fill-current" />
@@ -152,6 +205,52 @@ export function DesignComposer({
 				)}
 			</PromptComposerActions>
 		</PromptComposer>
+	);
+}
+
+const isUndo = (event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">) =>
+	event.code === "KeyZ" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+
+function ImprovePromptButton({
+	improved,
+	disabled,
+	onImprove,
+	onUndo,
+}: {
+	improved: boolean;
+	disabled: boolean;
+	onImprove: () => void;
+	onUndo: () => void;
+}) {
+	if (improved) {
+		return (
+			<Button type="button" variant="ghost" size="xs" className="h-7 gap-1 text-muted-foreground" onClick={onUndo}>
+				<Undo2 />
+				Undo improve
+			</Button>
+		);
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					aria-label="Improve prompt"
+					aria-keyshortcuts="Meta+I"
+					disabled={disabled}
+					onClick={onImprove}
+					className="size-7 rounded-lg text-muted-foreground"
+				>
+					<WandSparkles className="size-4" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent side="top">
+				Improve prompt <Kbd>{IMPROVE_PROMPT_KEYS}</Kbd>
+			</TooltipContent>
+		</Tooltip>
 	);
 }
 

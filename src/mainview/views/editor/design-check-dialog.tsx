@@ -12,20 +12,10 @@ import {
 	EmptyStateTitle,
 } from "@/components/ui/uai/empty-state";
 import { cn } from "@/lib/utils";
-import type { DesignFinding, DesignRule } from "../../../shared/design/findings";
+import { DESIGN_RULE_LABELS, type DesignFinding } from "../../../shared/design/findings";
 import { screenNameFromPath } from "../../../shared/project";
 import type { ElementRef } from "../../../shared/prototype/links";
 import { designReport, type ScreenCheck } from "./design-check";
-
-const RULE_LABELS: Record<DesignRule, string> = {
-	"frame-overflow": "Wider than the screen",
-	"text-clipped": "Clipped text",
-	overlap: "Overlap",
-	contrast: "Low contrast",
-	"raw-color": "Color without a token",
-	"empty-container": "Empty container",
-	"font-sizes": "Too many font sizes",
-};
 
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -52,7 +42,7 @@ function FindingRow({ finding, onSelect }: { finding: DesignFinding; onSelect: (
 				)}
 			/>
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span className="text-xs font-medium">{RULE_LABELS[finding.rule]}</span>
+				<span className="text-xs font-medium">{DESIGN_RULE_LABELS[finding.rule]}</span>
 				<span className="text-xs text-muted-foreground">{finding.message}</span>
 			</span>
 			{finding.path && (

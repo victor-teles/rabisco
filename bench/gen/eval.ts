@@ -31,7 +31,9 @@ import { FRAME_GAP } from "../../src/shared/project";
 import type { ChatMessage, GenerateParams, GenerateResult } from "../../src/shared/types";
 import { alternatesOf, placeNewFrames } from "../../src/shared/variations";
 import { BRIEFS, DEVICE_SIZE, type Brief } from "./briefs";
-import { deltasOf, METRICS, parseTotals, scoreGeneration, totalsOf, type BriefScore } from "./score";
+import { checkLayouts, type LayoutRun } from "./layout";
+import { rescoreRun } from "./rescore";
+import { deltasOf, layoutCell, METRICS, parseTotals, scoreGeneration, totalsOf, type BriefScore } from "./score";
 
 const USAGE = `Usage: hutch run bench:gen -- --model <provider:model> [options]
 
@@ -41,6 +43,8 @@ const USAGE = `Usage: hutch run bench:gen -- --model <provider:model> [options]
   --only <ids>         Comma-separated brief ids
   --style <id>         Start briefs without a DESIGN.md from this style (minimal, editorial, playful, dense, bold)
   --no-plan            Create briefs run in one go, as before plans (decision 0015)
+  --no-layout          Skip the layout checks in headless Chrome
+  --rescore <dir>      Only run the layout checks on a previous run's projects and update its report.json
   --user-data <dir>    Folder with providers.json (default: the app's)
   --out <dir>          Where to write projects and report.json (default: bench/gen/runs/<time>-<model>/)
   --baseline <file>    A previous report.json to compare totals with
@@ -59,6 +63,8 @@ const { values: args } = parseArgs({
 		only: { type: "string" },
 		style: { type: "string" },
 		"no-plan": { type: "boolean", default: false },
+		"no-layout": { type: "boolean", default: false },
+		rescore: { type: "string" },
 		"user-data": { type: "string" },
 		out: { type: "string" },
 		baseline: { type: "string" },
@@ -77,6 +83,8 @@ function fail(message: string): never {
 	console.error(`${message}\n\n${USAGE}`);
 	process.exit(2);
 }
+
+if (args.rescore) process.exit((await rescoreRun(args.rescore)) ? 0 : 1);
 
 /** Where Electrobun keeps the app's data: `<app data>/<identifier>/<channel>`, the installed app before a dev build */
 function appUserData() {
@@ -284,8 +292,11 @@ async function planFor(params: GenerateParams) {
 
 const planning = !args["no-plan"];
 
+const projectDirs = new Map<string, string>();
+
 async function runBrief(brief: Brief): Promise<BriefScore> {
 	const dir = createProject(brief);
+	projectDirs.set(brief.id, dir);
 	const before = readProjectFiles(dir);
 	const focus = focusOf(brief, dir);
 	const generationId = `${brief.id}-${crypto.randomUUID().slice(0, 8)}`;
@@ -392,12 +403,35 @@ async function worker() {
 
 await Promise.all(Array.from({ length: Math.min(parallel, briefs.length) }, worker));
 
+async function layoutRun(): Promise<LayoutRun> {
+	if (args["no-layout"]) return { skipped: "--no-layout" };
+
+	const projects = briefs.flatMap((brief, index) => {
+		const dir = projectDirs.get(brief.id);
+
+		return scores[index]?.ok && dir ? [{ dir, brief }] : [];
+	});
+
+	const { run, scores: layouts } = await checkLayouts(projects);
+
+	for (const score of scores) {
+		const layout = layouts.get(score.id);
+
+		if (layout) score.layout = layout;
+	}
+
+	return run;
+}
+
+const layout = await layoutRun();
+
 const totals = totalsOf(scores);
 
 const report = {
 	promptVersion: PROMPT_VERSION,
 	style,
 	plan: planning,
+	layout,
 	model,
 	date: date.toISOString(),
 	briefs: scores,
@@ -428,6 +462,7 @@ console.table(
 		"ui/uai": `${score.uiModules.length}/${score.uaiModules.length}`,
 		tokens: score.tokensDefined ? `${score.tokensUsed}/${score.tokensDefined}` : "",
 		"focus out": score.focusOutside === undefined ? "" : (score.focusOutside ?? "too large"),
+		layout: layoutCell(score.layout),
 	})),
 );
 
@@ -438,13 +473,13 @@ if (args.baseline) {
 		deltasOf(base, totals).map((d) => ({
 			metric: d.label,
 			baseline: d.base ?? "",
-			now: d.now,
+			now: d.now ?? "",
 			delta: d.delta === null ? "" : d.delta > 0 ? `+${d.delta}` : String(d.delta),
 			"": d.verdict,
 		})),
 	);
 } else {
-	console.table(METRICS.map(({ key, label }) => ({ metric: label, total: totals[key] })));
+	console.table(METRICS.flatMap(({ key, label }) => (key in totals ? [{ metric: label, total: totals[key] }] : [])));
 }
 
 console.log(`\nProjects and report.json in ${relative(process.cwd(), outDir) || "."}`);

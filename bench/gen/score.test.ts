@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { elementFocus } from "../../src/shared/ai/focus";
 import { designTokensOf } from "../../src/shared/context/tokens";
+import type { DesignFinding } from "../../src/shared/design/findings";
 import type { GenerateResult } from "../../src/shared/types";
 import {
+	layoutCell,
+	layoutScoreOf,
+	layoutTotalsOf,
+	ruleCell,
+	seedOf,
+	withoutInherited,
+	writtenScreens,
 	newFindings,
 	componentImports,
 	deltasOf,
@@ -298,5 +306,113 @@ describe("plans", () => {
 		expect(old.planned).toBeUndefined();
 		const deltas = new Map(deltasOf(old, totalsOf([scoreGeneration(input({ plan }))])).map((d) => [d.metric, d]));
 		expect(deltas.get("planned")).toMatchObject({ base: null, now: 1, delta: null });
+	});
+});
+
+describe("layout", () => {
+	const seed = { path: "screens/home.tsx", name: "Home", source: "seed" };
+
+	const contrast: DesignFinding = {
+		rule: "contrast",
+		severity: "error",
+		message: '<p> "Morning" has a contrast of 2.47:1, under 3:1',
+		path: "screens/home.tsx",
+		start: 120,
+		line: 9,
+	};
+
+	const fontSizes: DesignFinding = { rule: "font-sizes", severity: "warning", message: "The screen uses 7 font sizes" };
+	const overlap: DesignFinding = { rule: "overlap", severity: "warning", message: "<div> overlaps <p>" };
+
+	test("checks the screens the generation wrote: new ones, alternates and changed seeds", () => {
+		const files = {
+			"screens/home.tsx": "seed",
+			"screens/home.alt-1.tsx": "alt",
+			"screens/new.tsx": "new",
+			"components/row.tsx": "row",
+			"DESIGN.md": "",
+		};
+
+		expect(writtenScreens(files, [seed])).toEqual(["screens/home.alt-1.tsx", "screens/new.tsx"]);
+		expect(writtenScreens({ ...files, "screens/home.tsx": "edited" }, [seed])).toContain("screens/home.tsx");
+	});
+
+	test("an alternate compares with the seed it varies", () => {
+		expect(seedOf("screens/home.alt-2.tsx", [seed])).toBe(seed);
+		expect(seedOf("screens/new.tsx", [seed])).toBeUndefined();
+	});
+
+	test("drops what the seed already had, wherever it moved", () => {
+		const moved = { ...contrast, start: 300, line: 20 };
+
+		expect(withoutInherited([moved, overlap], [contrast])).toEqual([overlap]);
+	});
+
+	test("counts findings by severity and rule, and keeps screens that failed", () => {
+		const score = layoutScoreOf([
+			{ path: "screens/home.tsx", findings: [contrast, fontSizes, overlap] },
+			{ path: "screens/new.tsx", error: "screens/new.tsx:3: Unexpected token" },
+		]);
+
+		expect(score).toMatchObject({
+			screens: 2,
+			errors: 1,
+			warnings: 2,
+			byRule: { contrast: 1, "font-sizes": 1, overlap: 1 },
+			failed: [{ path: "screens/new.tsx", error: "screens/new.tsx:3: Unexpected token" }],
+		});
+		expect(score.findings[0]).toMatchObject({ path: "screens/home.tsx", line: 9 });
+		expect(layoutCell(score)).toBe("1e 2w 1 failed");
+		expect(ruleCell(score)).toBe("overlap 1, contrast 1, font-sizes 1");
+	});
+
+	test("totals add up the briefs that were checked and leave layout out when none were", () => {
+		const home = layoutScoreOf([{ path: "screens/home.tsx", findings: [contrast, overlap] }]);
+		const totals = layoutTotalsOf([home, undefined, home]);
+
+		expect(totals).toMatchObject({
+			layoutScreens: 2,
+			layoutFailed: 0,
+			layoutErrors: 2,
+			layoutWarnings: 2,
+			contrast: 2,
+			overlap: 2,
+			"text-clipped": 0,
+		});
+		expect(layoutTotalsOf([undefined])).toEqual({});
+		expect(totalsOf([scoreGeneration(input({}))]).layoutErrors).toBeUndefined();
+	});
+
+	test("a brief's layout reaches the totals", () => {
+		const score = scoreGeneration(input({}));
+		score.layout = layoutScoreOf([{ path: "screens/home.tsx", findings: [contrast] }]);
+
+		expect(totalsOf([score])).toMatchObject({ layoutErrors: 1, contrast: 1 });
+	});
+
+	test("an old report compares without layout, and a run without layout compares with a new report", () => {
+		const scored = scoreGeneration(input({}));
+		scored.layout = layoutScoreOf([{ path: "screens/home.tsx", findings: [contrast] }]);
+		const withLayout = totalsOf([scored]);
+		const old = parseTotals({ totals: { ok: 1, errors: 0 } });
+		const fromOld = new Map(deltasOf(old, withLayout).map((d) => [d.metric, d]));
+
+		expect(old.layoutErrors).toBeUndefined();
+		expect(fromOld.get("layoutErrors")).toMatchObject({ base: null, now: 1, delta: null, verdict: "" });
+
+		const skipped = new Map(
+			deltasOf(parseTotals({ totals: withLayout }), totalsOf([scoreGeneration(input({}))])).map((d) => [d.metric, d]),
+		);
+
+		expect(skipped.get("contrast")).toMatchObject({ base: 1, now: null, delta: null, verdict: "" });
+	});
+
+	test("fewer layout findings is better", () => {
+		const scored = scoreGeneration(input({}));
+		scored.layout = layoutScoreOf([{ path: "screens/home.tsx", findings: [] }]);
+		const deltas = new Map(deltasOf({ layoutWarnings: 3, overlap: 2 }, totalsOf([scored])).map((d) => [d.metric, d]));
+
+		expect(deltas.get("layoutWarnings")).toMatchObject({ delta: -3, verdict: "better" });
+		expect(deltas.get("overlap")).toMatchObject({ delta: -2, verdict: "better" });
 	});
 });

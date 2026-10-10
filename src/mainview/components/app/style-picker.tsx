@@ -1,4 +1,4 @@
-import { Ban, ChevronDown } from "lucide-react";
+import { Ban, ChevronDown, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -11,7 +11,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { isStyleId, STYLES, styleById, type DesignStyle, type StyleId } from "../../../shared/context/styles";
+import {
+	AUTO_STYLE,
+	isStyleId,
+	STYLES,
+	styleById,
+	type DesignStyle,
+	type StyleChoice,
+	type StyleId,
+} from "../../../shared/context/styles";
 
 const NONE = "none";
 
@@ -65,17 +73,21 @@ export function StyleChoices({ onPick, className }: { onPick: (id: StyleId) => v
 	);
 }
 
-/** The starting DESIGN.md of a new project; `null` keeps the template */
+const choiceOf = (value: string): StyleChoice => (value === AUTO_STYLE ? AUTO_STYLE : isStyleId(value) ? value : null);
+
+/** The starting DESIGN.md of a new project: a preset, Auto (written from the prompt), or `null` for the template */
 export function StylePicker({
 	value,
 	onChange,
 	className,
 }: {
-	value: StyleId | null;
-	onChange: (value: StyleId | null) => void;
+	value: StyleChoice;
+	onChange: (value: StyleChoice) => void;
 	className?: string;
 }) {
-	const current = value ? styleById(value) : null;
+	const auto = value === AUTO_STYLE;
+	const current = value && value !== AUTO_STYLE ? styleById(value) : null;
+	const label = auto ? "Auto" : (current?.label ?? "No style");
 
 	return (
 		<DropdownMenu modal={false}>
@@ -86,11 +98,17 @@ export function StylePicker({
 							type="button"
 							variant="ghost"
 							size="xs"
-							aria-label={`Style: ${current?.label ?? "None"}`}
+							aria-label={`Style: ${auto ? "Auto" : (current?.label ?? "None")}`}
 							className={cn("h-7 gap-1.5 px-1.5 text-muted-foreground", className)}
 						>
-							{current ? <StyleSwatch style={current} className="h-4 w-6" /> : <Ban className="size-3.5" />}
-							<span className="text-xs">{current?.label ?? "No style"}</span>
+							{current ? (
+								<StyleSwatch style={current} className="h-4 w-6" />
+							) : auto ? (
+								<Sparkles className="size-3.5" />
+							) : (
+								<Ban className="size-3.5" />
+							)}
+							<span className="text-xs">{label}</span>
 							<ChevronDown className="size-3 shrink-0" />
 						</Button>
 					</DropdownMenuTrigger>
@@ -101,13 +119,22 @@ export function StylePicker({
 				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
 					Starts DESIGN.md with tokens and rules
 				</DropdownMenuLabel>
-				<DropdownMenuRadioGroup value={value ?? NONE} onValueChange={(next) => onChange(isStyleId(next) ? next : null)}>
+				<DropdownMenuRadioGroup value={value ?? NONE} onValueChange={(next) => onChange(choiceOf(next))}>
 					{STYLES.map((style) => (
 						<DropdownMenuRadioItem key={style.id} value={style.id} className="gap-2.5 py-1.5">
 							<StyleOption style={style} />
 						</DropdownMenuRadioItem>
 					))}
 					<DropdownMenuSeparator />
+					<DropdownMenuRadioItem value={AUTO_STYLE} className="gap-2.5 py-1.5">
+						<span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-sm border">
+							<Sparkles className="size-3.5 text-muted-foreground" />
+						</span>
+						<span className="flex min-w-0 flex-col">
+							<span className="text-[13px]">Auto</span>
+							<span className="truncate text-xs text-muted-foreground">From your prompt, before the screens</span>
+						</span>
+					</DropdownMenuRadioItem>
 					<DropdownMenuRadioItem value={NONE} className="gap-2.5 py-1.5">
 						<span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-sm border border-dashed">
 							<Ban className="size-3.5 text-muted-foreground" />

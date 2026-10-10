@@ -60,6 +60,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘\`                                                   | Show or hide the chat and screens panel                                      |
 | `⇧⌘O`                                                   | New chat                                                                     |
 | `/` in the chat                                         | Chat commands: Rabisco's own and your CLI's commands                         |
+| `⌘I` in a prompt (Home or chat)                         | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back  |
 | `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                |
 | Double-click the title bar                              | Zoom the window (follows the macOS setting)                                  |
 | `⌥C`                                                    | Comments list                                                                |

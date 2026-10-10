@@ -66,7 +66,7 @@ import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import type { StyleId } from "../../../shared/context/styles";
 import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
-import { ChangeSummaryCard } from "./change-summary";
+import { ChangeSummaryCard, type DesignNoteActions } from "./change-summary";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
 function WrittenFile({ path, file }: { path: string; file: WritingFile }) {
@@ -142,6 +142,8 @@ type ChatPanelProps = {
 	onPickStyle?: ((id: StyleId) => void) | null;
 	/** A plan waiting for review, under the latest message (decision 0015) */
 	planCard?: ReactNode;
+	noteActions?: DesignNoteActions | null;
+	projectPath?: string;
 };
 
 const TASK_TITLE = {
@@ -192,6 +194,8 @@ export const ChatPanel = memo(function ChatPanel({
 	onRunCommand,
 	onPickStyle = null,
 	planCard = null,
+	noteActions = null,
+	projectPath,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
 	const files = generation ? Object.entries(generation.writing) : [];
@@ -330,6 +334,7 @@ export const ChatPanel = memo(function ChatPanel({
 						regenerate={regenerate ? { id: lastReply, run: regenerate } : null}
 						lastReply={lastReply}
 						undoableRun={undoableRun}
+						noteActions={noteActions}
 					/>
 
 					{planCard}
@@ -413,6 +418,7 @@ export const ChatPanel = memo(function ChatPanel({
 					inlineOptions={false}
 					commands={interview ? undefined : commands}
 					onRunCommand={(command) => onRunCommand(command, "")}
+					improve={interview ? undefined : { projectPath }}
 					placeholder={
 						interview
 							? "Type your answer…"
@@ -666,6 +672,7 @@ const MessageList = memo(function MessageList({
 	regenerate,
 	lastReply,
 	undoableRun,
+	noteActions,
 }: {
 	messages: ChatMessage[];
 	onOpenContext: ChatPanelProps["onOpenContext"];
@@ -676,6 +683,7 @@ const MessageList = memo(function MessageList({
 	/** Only the latest reply shows its summary, so the history stays a conversation */
 	lastReply: string | undefined;
 	undoableRun: { id: string; run: () => void } | null;
+	noteActions: DesignNoteActions | null;
 }) {
 	return messages.map((message) => {
 		const assistant = message.role === "assistant";
@@ -710,7 +718,11 @@ const MessageList = memo(function MessageList({
 				</Message>
 				{/* Full width: the file tree needs the room the bubble's indent would take */}
 				{summary ? (
-					<ChangeSummaryCard summary={summary} onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined} />
+					<ChangeSummaryCard
+						summary={summary}
+						onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined}
+						noteActions={noteActions}
+					/>
 				) : null}
 			</Fragment>
 		);

@@ -148,6 +148,22 @@ export default function Search() {
 		expect(project.warnings).toEqual([]);
 	});
 
+	test("ships the placeholder module when a screen draws one, with no extra packages", () => {
+		const gallery = `import { Placeholder } from "@/components/ui/placeholder";
+
+export default function Gallery() {
+	return <Placeholder kind="photo" subject="food" seed="brunch" className="aspect-[4/3] w-full rounded-lg" />;
+}
+`;
+
+		const project = viteProject({ ...input, files: { "screens/gallery.tsx": gallery }, frames: [] });
+		const placeholderOut = byPath(project);
+
+		expect(placeholderOut["src/components/ui/placeholder.tsx"]).toBe(uiSources.placeholder!);
+		expect(Object.keys(JSON.parse(placeholderOut["package.json"]!).dependencies)).not.toContain("radix-ui");
+		expect(project.warnings).toEqual([]);
+	});
+
 	test("package.json lists the packages the files import", () => {
 		const pkg = JSON.parse(out["package.json"]!);
 		expect(pkg.name).toBe("coffee-club");

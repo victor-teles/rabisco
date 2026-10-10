@@ -64,7 +64,13 @@ import {
 	type ThemeUpdate,
 	type TokenChange,
 } from "../../../shared/context/theme";
-import { lacksDesignDirection, styleById, withStyle, type StyleId } from "../../../shared/context/styles";
+import {
+	AUTO_FALLBACK_STYLE,
+	lacksDesignDirection,
+	styleById,
+	withStyle,
+	type StyleId,
+} from "../../../shared/context/styles";
 import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { designTokensOf } from "../../../shared/context/tokens";
 import { LINK_ATTRIBUTE } from "../../../shared/prototype/links";
@@ -92,8 +98,10 @@ import { ActionMenuItems, type MenuEntry, SEPARATOR } from "./action-menu";
 import { ELEMENT_MENU, elementActions } from "./element-actions";
 import { copyCode } from "./export/code-export";
 import { copyImage, exportFlowPdf, exportImages } from "./export/image-export";
+import { noteSelection } from "../../../shared/design/polish";
 import { checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog } from "./design-check-dialog";
+import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
 import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
@@ -122,6 +130,7 @@ type EditorProps = {
 	initialPrompt?: string;
 	initialFiles?: File[];
 	initialVariations?: number;
+	initialAutoStyle?: boolean;
 	theme: Theme;
 	onToggleTheme: () => void;
 	onBack: () => void;
@@ -157,6 +166,7 @@ export function EditorView({
 	initialPrompt,
 	initialFiles,
 	initialVariations,
+	initialAutoStyle,
 	theme,
 	onToggleTheme,
 	onBack,
@@ -267,6 +277,7 @@ export function EditorView({
 		send,
 		vary,
 		fix,
+		fixNote,
 		mix,
 		writeContext,
 		readTheme,
@@ -502,6 +513,19 @@ export function EditorView({
 			if (element) setTab((tab) => (tab === "context" || tab === "components" ? "design" : tab));
 		},
 		[stateRef, setSelection, selectNode],
+	);
+
+	const noteActions = useMemo<DesignNoteActions>(
+		() => ({
+			select: (note) => {
+				const target = noteSelection(note, stateRef.current?.files ?? {});
+
+				if (target) selectElement(target.screen, target.element);
+				else toast("That screen is no longer in the project");
+			},
+			fix: fixNote,
+		}),
+		[stateRef, selectElement, fixNote],
 	);
 
 	const editElementText = useCallback((element: ElementRef, text: string) => setChildren(element, text), [setChildren]);
@@ -770,12 +794,24 @@ export function EditorView({
 		if (!project || !initialPrompt || providersLoading || startedInitialPrompt.current) return;
 		startedInitialPrompt.current = true;
 
-		if (model) send(initialPrompt, { files: initialFiles, variations: initialVariations });
+		if (model)
+			send(initialPrompt, { files: initialFiles, variations: initialVariations, autoDesign: initialAutoStyle });
 		else {
+			if (initialAutoStyle) startFromStyle(AUTO_FALLBACK_STYLE);
 			setHeldPrompt({ prompt: initialPrompt, files: initialFiles });
 			openSettings();
 		}
-	}, [project, initialPrompt, initialFiles, initialVariations, providersLoading, model, send]);
+	}, [
+		project,
+		initialPrompt,
+		initialFiles,
+		initialVariations,
+		initialAutoStyle,
+		providersLoading,
+		model,
+		send,
+		startFromStyle,
+	]);
 
 	const draftCount = drafts?.frames.length ?? 0;
 	useEffect(() => {
@@ -1754,6 +1790,7 @@ export function EditorView({
 						}
 						chat={
 							<ChatPanel
+								projectPath={projectPath}
 								messages={messages}
 								generation={generation}
 								failure={failure}
@@ -1785,6 +1822,7 @@ export function EditorView({
 								commands={commands}
 								onRunCommand={onRunCommand}
 								onPickStyle={canStartStyle ? startFromStyle : null}
+								noteActions={noteActions}
 								planCard={
 									pendingPlan ? (
 										<PlanCard

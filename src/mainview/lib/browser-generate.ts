@@ -38,6 +38,8 @@ type BrowserGenerator = {
 			| "removeProvider"
 			| "testProvider"
 			| "setDefaultModel"
+			| "setFastModel"
+			| "improvePrompt"
 	]: Handler<K>;
 };
 
@@ -235,11 +237,12 @@ export function createBrowserGenerator(
 	readFiles: (path: string) => ProjectFiles,
 ): BrowserGenerator {
 	const running = new Map<string, AbortController>();
+	let fastModel: string | undefined;
 
 	return {
 		async listProviders() {
 			return {
-				settings: { version: 1, providers: [], defaultModel: "mock:mock" },
+				settings: { version: 1, providers: [], defaultModel: "mock:mock", fastModel },
 				statuses: import.meta.env.DEV ? [MOCK_STATUS] : [],
 			};
 		},
@@ -253,6 +256,53 @@ export function createBrowserGenerator(
 		},
 		async setDefaultModel() {
 			return { ok: true };
+		},
+		async setFastModel({ model }) {
+			fastModel = model ?? undefined;
+
+			return { ok: true };
+		},
+		async improvePrompt(params) {
+			if (!import.meta.env.DEV) {
+				return {
+					ok: false,
+					error: { code: "not_installed", message: "No AI provider in the browser.", retryable: false },
+				};
+			}
+
+			const [{ createMockProvider }, { buildBriefRequest, runBrief }] = await Promise.all([
+				import("../../bun/ai/providers/mock"),
+				import("../../bun/ai/brief"),
+			]);
+
+			const files = params.projectPath ? readFiles(params.projectPath) : {};
+			const controller = new AbortController();
+			running.set(params.generationId, controller);
+
+			try {
+				const result = await runBrief({
+					provider: createMockProvider(),
+					request: buildBriefRequest({
+						id: params.generationId,
+						model: "mock",
+						prompt: params.prompt,
+						device: params.device,
+						product: files["PRODUCT.md"],
+						design: files["DESIGN.md"],
+					}),
+					signal: controller.signal,
+					onEvent: (event) => emit({ generationId: params.generationId, attempt: 1, event }),
+				});
+
+				return { ok: true, brief: result.brief };
+			} catch (cause) {
+				if (controller.signal.aborted)
+					return { ok: false, error: { code: "aborted", message: "Generation stopped.", retryable: true } };
+
+				return { ok: false, error: failureOf(cause) };
+			} finally {
+				running.delete(params.generationId);
+			}
 		},
 		async stopGeneration({ generationId }) {
 			running.get(generationId)?.abort();
@@ -330,7 +380,7 @@ export function createBrowserGenerator(
 				id: params.generationId,
 				task: requestTask,
 				model: "mock",
-				prompt: params.prompt,
+				prompt: params.review?.prompt ?? params.prompt,
 				device: params.device,
 				context: { product: contextBody(files["PRODUCT.md"]), design: contextBody(files["DESIGN.md"]) },
 				files: Object.entries(files).map(([path, content]) => ({ path, content })),
@@ -338,11 +388,14 @@ export function createBrowserGenerator(
 
 			if (params.targets?.length) base.targets = params.targets;
 
+			if (requestTask === "repair") base.problems = params.problems ?? [];
+
 			if (references.length) base.references = references;
 
 			if (focus) base.focus = focus;
 
-			if (params.attachments?.length) base.attachments = params.attachments;
+			if (params.review) base.attachments = params.review.attachments;
+			else if (params.attachments?.length) base.attachments = params.attachments;
 
 			const run = async (variant: number, index: number): Promise<VariantRun> => {
 				const renamer = createVariantRenamer({ variant, taken: Object.keys(files), readOnly: references });
@@ -354,7 +407,11 @@ export function createBrowserGenerator(
 				const written = new Map<string, string>();
 				const screens: Record<string, ScreenMeta | undefined> = {};
 				let reply = "";
-				const events = task === "context" ? contextEvents(params) : await mockEvents(request, controller.signal);
+
+				const events =
+					task === "context" && !(import.meta.env.DEV && params.targets?.[0] === "DESIGN.md")
+						? contextEvents(params)
+						: await mockEvents(request, controller.signal);
 
 				for await (const raw of events) {
 					for (const event of renamer.transform(raw)) {

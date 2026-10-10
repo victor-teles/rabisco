@@ -54,7 +54,7 @@ import { arrangeRecents, isRecentsSort, RECENTS_SORTS, type RecentsSort } from "
 import { api, isDesktop } from "@/lib/rpc";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { StyleId } from "../../shared/context/styles";
+import type { StyleChoice } from "../../shared/context/styles";
 import type { Device, ProjectSummary, ScreenCover, ScreenSource } from "../../shared/types";
 
 const SUGGESTIONS: { label: string; prompt: string; device: Device }[] = [
@@ -99,7 +99,7 @@ export type StartDesign = (input: {
 	device: Device;
 	files?: File[];
 	variations?: number;
-	style?: StyleId | null;
+	style?: StyleChoice;
 }) => void;
 
 type HomeProps = {
@@ -239,6 +239,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								designStyle={designStyle}
 								onDesignStyleChange={setDesignStyle}
 								stacked
+								improve={{}}
 								placeholder="A meditation app with a soft, editorial feel…"
 								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations, style: designStyle })}
 							/>

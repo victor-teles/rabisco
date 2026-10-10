@@ -6,6 +6,8 @@ import type {
 	Provider,
 } from "../../../shared/ai/contract";
 import { pascalName, planBlock } from "../../../shared/ai/plan";
+import { contextBody } from "../../../shared/context/body";
+import { DESIGN_RULE_LABELS } from "../../../shared/design/findings";
 import { tokenBlock } from "../../../shared/context/theme";
 import { GENERATION_STEPS, generateMockScreens, mockThemeTokens } from "../../../shared/mock-generator";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
@@ -50,6 +52,8 @@ const THEME_STEPS = ["Reading DESIGN.md", "Mapping colors to theme tokens"];
 
 const PLAN_STEPS = ["Reading your brief", "Planning screens and shared parts"];
 
+const BRIEF_STEPS = ["Reading your prompt"];
+
 /** Development only. */
 export function createMockProvider(options: MockProviderOptions = {}): Provider {
 	const delay = options.delayMs ?? 300;
@@ -91,15 +95,35 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 			return;
 		}
 
+		if (request.task === "brief") {
+			for (const label of BRIEF_STEPS) {
+				if (signal.aborted) return yield aborted;
+				yield { type: "status", label };
+				await sleep(delay, signal);
+			}
+
+			for (const line of mockBrief(request).split(/(?<=\n)/)) {
+				if (signal.aborted) return yield aborted;
+				yield { type: "message.delta", text: line };
+				await sleep(delay / 4, signal);
+			}
+
+			yield { type: "done", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+
+			return;
+		}
+
 		const images = request.attachments?.length ?? 0;
 
 		if (images) yield { type: "status", label: `Looking at ${images === 1 ? "the image" : `${images} images`}` };
 
-		for (const step of GENERATION_STEPS) {
+		for (const step of request.task === "repair" ? [] : GENERATION_STEPS) {
 			if (signal.aborted) return yield aborted;
 			yield { type: "status", label: step.label };
 			await sleep(delay, signal);
 		}
+
+		if (request.task === "repair") await sleep(delay * 2, signal);
 
 		if (signal.aborted) return yield aborted;
 
@@ -112,13 +136,19 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 
 		const result: { changes: FileChange[]; frames: { file: string; name: string }[]; reply: string } = target
 			? mockContextFile(request, target)
-			: request.plan && request.writes
-				? mockPlanned(request, request.plan, request.writes)
-				: edits.length
-					? mockEdit(request, edits)
-					: mockCreate(request);
+			: request.task === "repair"
+				? mockRepair(request)
+				: request.plan && request.writes
+					? mockPlanned(request, request.plan, request.writes)
+					: edits.length
+						? mockEdit(request, edits)
+						: mockCreate(request);
 
-		const seen = images ? `I used the attached ${images === 1 ? "image" : "images"} as a reference. ` : "";
+		const seen =
+			images && request.task !== "repair"
+				? `I used the attached ${images === 1 ? "image" : "images"} as a reference. `
+				: "";
+
 		yield { type: "message.delta", text: seen + result.reply };
 
 		for (const change of result.changes) {
@@ -371,6 +401,67 @@ function mockEdit(request: GenerationRequest, targets: { path: string; content: 
 	return { changes, frames, reply: focus ? `Restyled ${focus.label} in ${names}.` : `Restyled ${names}.` };
 }
 
+const CONTRAST_FIXES: [RegExp, string][] = [
+	[/(?<![\w-])text-(white|black)\/\d+(?![\w-])/, "text-$1"],
+	[/(?<![\w-])text-muted-foreground(?![\w-])/, "text-foreground"],
+	[/(?<![\w-])text-[a-z]+-\d{2,3}(?![\w-])/, "text-foreground"],
+];
+
+const fixesFor = (message: string): [RegExp, string][] => {
+	if (message.startsWith(`${DESIGN_RULE_LABELS.contrast}:`)) return CONTRAST_FIXES;
+
+	const added = message.startsWith(`${DESIGN_RULE_LABELS["text-clipped"]}:`) ? "break-words" : "min-w-0";
+
+	return [[/className="([^"]*)"/, `className="$1 ${added}"`]];
+};
+
+function fixLine(line: string, message: string) {
+	for (const [pattern, replacement] of fixesFor(message)) {
+		const fixed = line.replace(pattern, replacement);
+
+		if (fixed !== line) return fixed;
+	}
+
+	return line;
+}
+
+export function mockRepair(request: GenerationRequest) {
+	const changes: FileChange[] = [];
+	let fixed = 0;
+
+	for (const file of request.files) {
+		if (!request.targets?.includes(file.path)) continue;
+		const lines = file.content.split("\n");
+
+		for (const problem of request.problems ?? []) {
+			const at = (problem.line ?? 0) - 1;
+			const line = lines[at];
+
+			if (problem.path !== file.path || line === undefined) continue;
+			const next = fixLine(line, problem.message);
+
+			if (next === line) continue;
+			lines[at] = next;
+			fixed++;
+		}
+
+		const content = lines.join("\n");
+
+		if (content !== file.content) changes.push({ path: file.path, content });
+	}
+
+	const frames = changes.map(({ path }) => ({ file: path, name: screenNameFromPath(path) }));
+	const names = frames.map((frame) => frame.name).join(", ");
+
+	const reply = fixed
+		? `Fixed ${fixed === 1 ? "1 problem" : `${fixed} problems`} in ${names}.`
+		: request.attachments?.length
+			? "Nothing to fix."
+			: "I couldn't find anything to change for these problems.";
+
+	return { changes, frames, reply };
+}
+
 /** Tailwind v4's 600 shade per chromatic family */
 const PALETTE_600 = new Map(
 	Object.entries({
@@ -409,8 +500,12 @@ export function primaryFamilyOf(files: { path: string; content: string }[]): str
 	return undefined;
 }
 
+function familyInText(text: string) {
+	return [...PALETTE_600.keys()].find((family) => new RegExp(`\\b${family}\\b`, "i").test(text));
+}
+
 function mockDesignMd(request: GenerationRequest): string {
-	const family = primaryFamilyOf(request.files);
+	const family = primaryFamilyOf(request.files) ?? familyInText(request.prompt);
 	const primary = (family && PALETTE_600.get(family)) || "oklch(0.205 0 0)";
 
 	const direction = family
@@ -486,4 +581,30 @@ function mockContextFile(request: GenerationRequest, target: string) {
 	const content = target === "DESIGN.md" ? mockDesignMd(request) : mockProductMd(request.prompt);
 
 	return { changes: [{ path: target, content }], frames: [], reply: `Wrote ${target}.` };
+}
+
+export function mockBrief(request: GenerationRequest): string {
+	const ask = request.prompt.trim().replace(/[.\s]+$/, "");
+	const what = ask ? ask.charAt(0).toLowerCase() + ask.slice(1) : "the main screens";
+
+	const product = contextBody(request.context.product)
+		?.split("\n")
+		.find((line) => line.trim() && !line.startsWith("#"))
+		?.trim();
+
+	const look = contextBody(request.context.design)
+		? "follow DESIGN.md: its tokens, type and spacing."
+		: "calm and clear, neutral surfaces with one accent color, generous spacing and a clear type scale.";
+
+	return [
+		`Design ${what}, as ${request.device} screens.`,
+		product ? `- Product: ${product}` : "",
+		"- Home: a greeting, the one number that matters today, and the main action as the primary button.",
+		"- List: 6 to 8 realistic rows with names, dates and amounts; a row opens its details.",
+		"- Details: a header with back, the item's key facts and one secondary action.",
+		"- An empty state on the list for a first-time user.",
+		`Look and feel: ${look}`,
+	]
+		.filter(Boolean)
+		.join("\n");
 }

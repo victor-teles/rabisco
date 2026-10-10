@@ -23,3 +23,13 @@ export type DesignFinding = {
 	start?: number;
 	line?: number;
 };
+
+export const DESIGN_RULE_LABELS: Record<DesignRule, string> = {
+	"frame-overflow": "Wider than the screen",
+	"text-clipped": "Clipped text",
+	overlap: "Overlap",
+	contrast: "Low contrast",
+	"raw-color": "Color without a token",
+	"empty-container": "Empty container",
+	"font-sizes": "Too many font sizes",
+};

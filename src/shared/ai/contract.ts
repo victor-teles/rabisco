@@ -59,7 +59,8 @@ export type GenerationTask =
 	/** Read the theme tokens from `context.design`; the reply holds them, and no file is written (decision 0009) */
 	| "theme"
 	/** Plan the screens and shared components of a `create`; the reply holds the plan, and no file is written (decision 0015) */
-	| "plan";
+	| "plan"
+	| "brief";
 
 export type ProjectFile = {
 	/** Project-relative, forward slashes */

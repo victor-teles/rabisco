@@ -70,4 +70,30 @@ describe("change summary", () => {
 		expect(parseChangeSummary({ files: [{ path: "a", change: "renamed" }], problems: 0 })).toBeUndefined();
 		expect(parseChangeSummary({ files: "nope", problems: 0 })).toBeUndefined();
 	});
+
+	test("keeps the design notes and drops a malformed note on its own", () => {
+		const saved: ChangeSummary = {
+			files: [{ path: "screens/home.tsx", change: "added", additions: 3, deletions: 0 }],
+			problems: 0,
+			design: [
+				{
+					rule: "text-clipped",
+					severity: "error",
+					message: "<p> is cut off",
+					screen: "screens/home.tsx",
+					path: "screens/home.tsx",
+					start: 12,
+					line: 2,
+					version: "abc",
+				},
+			],
+		};
+
+		expect(parseChangeSummary(saved)).toEqual(saved);
+
+		const mixed = { ...saved, design: [...(saved.design ?? []), { rule: "sparkle", message: "x" }, 4] };
+
+		expect(parseChangeSummary(mixed)).toEqual(saved);
+		expect(parseChangeSummary({ ...saved, design: [] })).toEqual({ files: saved.files, problems: 0 });
+	});
 });

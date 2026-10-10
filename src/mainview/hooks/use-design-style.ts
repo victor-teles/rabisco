@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { isStyleId, type StyleId } from "../../shared/context/styles";
+import { AUTO_STYLE, isStyleId, type StyleChoice, type StyleId } from "../../shared/context/styles";
 
 const STORAGE_KEY = "rabisco:design-style";
 
@@ -11,11 +11,13 @@ const DEFAULT_STYLE: StyleId = "minimal";
 
 const listeners = new Set<() => void>();
 
-function read(): StyleId | null {
+function read(): StyleChoice {
 	try {
 		const stored = localStorage.getItem(STORAGE_KEY);
 
 		if (stored === NONE) return null;
+
+		if (stored === AUTO_STYLE) return AUTO_STYLE;
 
 		return isStyleId(stored) ? stored : DEFAULT_STYLE;
 	} catch {
@@ -25,7 +27,7 @@ function read(): StyleId | null {
 
 let current = read();
 
-export function setDesignStyle(next: StyleId | null) {
+export function setDesignStyle(next: StyleChoice) {
 	current = next;
 
 	try {
@@ -43,6 +45,6 @@ const subscribe = (listener: () => void) => {
 	return () => listeners.delete(listener);
 };
 
-export function useDesignStyle(): [StyleId | null, (next: StyleId | null) => void] {
+export function useDesignStyle(): [StyleChoice, (next: StyleChoice) => void] {
 	return [useSyncExternalStore(subscribe, () => current), setDesignStyle];
 }

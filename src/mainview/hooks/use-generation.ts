@@ -14,11 +14,33 @@ import type {
 } from "../../shared/ai/contract";
 import { focusNote, focusOf } from "../../shared/ai/focus";
 import { isTrivialPlan } from "../../shared/ai/plan";
-import { changeSummaryOf } from "../../shared/change-summary";
+import { changeSummaryOf, type DesignNote } from "../../shared/change-summary";
 import type { AppliedTheme } from "../../shared/context/theme";
+import { AUTO_FALLBACK_STYLE, autoDesignOf, styleById, withDesign, withStyle } from "../../shared/context/styles";
 import { draftLayout, mixNote, mixPrompt, variantLabel, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
 import { renderCheckOf, renderRepairOf, type RenderCheck } from "@/lib/render-check";
 import { setResolved } from "../../shared/comments";
+import { DESIGN_RULE_LABELS } from "../../shared/design/findings";
+import {
+	APPLYING_REVIEW_STEP,
+	CHECKING_STEP,
+	designNotesOf,
+	isFreshNote,
+	mergeChanges,
+	noteProblem,
+	POLISH_PROMPT,
+	POLISHED_TASKS,
+	polishLabel,
+	polishProblems,
+	polishRequest,
+	polishWrites,
+	REVIEW_STEP,
+	reviewNote,
+	reviewRaster,
+	reviewRequest,
+	type PolishRequest,
+	type ScreenFindings,
+} from "../../shared/design/polish";
 import { isContextFile, isScreenFile } from "../../shared/project";
 import type {
 	ChatMessage,
@@ -30,6 +52,8 @@ import type {
 	ProjectFiles,
 } from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
+import { checkDesign } from "@/views/editor/design-check";
+import { polishMode } from "./use-auto-polish";
 import { openSettings, useProviders } from "./use-providers";
 import { flushProjectFiles, type ChangeOptions, type ProjectState } from "./use-project";
 import type { StructureNode } from "./use-structure";
@@ -45,6 +69,7 @@ export type Generation = {
 	reply: string;
 	attempt: number;
 	writing: Record<string, WritingFile>;
+	polishing?: boolean;
 };
 
 export type GenerationDrafts = {
@@ -68,12 +93,37 @@ type SendOptions = {
 	resolves?: string[];
 	/** An accepted plan: its shared components, then its screens in parallel (decision 0015) */
 	plan?: GenerationPlan;
+	autoDesign?: boolean;
 };
+
+const AUTO_DESIGN_STEP = "Writing DESIGN.md from your prompt";
 
 /** A plan waiting in the chat for the user to review it; its request runs when they accept it */
 export type PendingPlan = { id: string; plan: GenerationPlan; prompt: string; options: SendOptions };
 
 type LastRequest = { prompt: string; options: SendOptions };
+
+type Polishing = {
+	id: string;
+	key: string;
+	done: ChatMessage;
+	before: ProjectFiles;
+	changes: FileChange[];
+	problems: Problem[];
+	step: Snapshot;
+	screens: string[];
+	prompt: string;
+};
+
+type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: boolean };
+
+const NO_POLISH: PolishOutcome = { writes: [], reply: "", withoutImages: false, failed: false };
+
+const NO_IMAGES_NOTE = "This model can't see images, so the review used the design check only.";
+
+let toldWithoutImages = false;
+
+const NO_THEME: AppliedTheme = { light: {}, dark: {} };
 
 export type ThemeReading =
 	| { ok: true; theme: AppliedTheme }
@@ -134,7 +184,9 @@ function applyEvent(generation: Generation, attempt: number, event: GenerationEv
 
 		case "message.delta":
 			// Keep only the primary variation's first attempt; the others would interleave
-			return attempt <= 1 && !variant ? { ...generation, reply: generation.reply + event.text } : generation;
+			return attempt <= 1 && !variant && !generation.polishing
+				? { ...generation, reply: generation.reply + event.text }
+				: generation;
 		case "file.start":
 			return {
 				...generation,
@@ -210,6 +262,7 @@ export function useGeneration({
 	/** The reply whose result is an undo step, so its summary can offer Undo while that step is still the latest */
 	const [lastRun, setLastRun] = useState<{ messageId: string; step: Snapshot } | null>(null);
 	const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
+	const stopped = useRef<string | null>(null);
 
 	// Events arrive per token; batch them into one render per frame
 	useEffect(
@@ -256,6 +309,72 @@ export function useGeneration({
 		});
 	}, []);
 
+	const writeAutoDesign = useCallback(
+		async (prompt: string, options: SendOptions): Promise<"stopped" | null> => {
+			const current = stateRef.current;
+
+			if (!current || !model) return null;
+			const generationId = crypto.randomUUID();
+
+			live.current = {
+				id: generationId,
+				task: "context",
+				variations: 1,
+				steps: [{ label: AUTO_DESIGN_STEP }],
+				reply: "",
+				attempt: 1,
+				writing: {},
+			};
+
+			setGeneration(live.current);
+			let design: string | null = null;
+			let why = "";
+
+			try {
+				await flushProjectFiles();
+
+				const result = await api.generate({
+					generationId,
+					projectPath,
+					prompt,
+					device,
+					model,
+					task: "context",
+					targets: ["DESIGN.md"],
+					attachments: options.attachments,
+				});
+
+				if (!result.ok && result.error.code === "aborted") return "stopped";
+				design = result.ok ? autoDesignOf(result.changes.find((c) => c.path === "DESIGN.md")?.content) : null;
+
+				if (!design) why = result.ok ? "it came back without tokens" : result.error.message;
+			} catch (reason) {
+				why = String(reason);
+			} finally {
+				if (flush.current) cancelAnimationFrame(flush.current);
+				flush.current = 0;
+
+				if (live.current?.id === generationId) live.current = null;
+				setGeneration((g) => (g?.id === generationId ? null : g));
+			}
+
+			const fallback = styleById(AUTO_FALLBACK_STYLE).label;
+			change((snapshot) => (design ? withDesign(snapshot, design) : withStyle(snapshot, AUTO_FALLBACK_STYLE)));
+
+			addMessages([
+				design
+					? message("assistant", "Wrote DESIGN.md from your prompt and applied its tokens to the screens.")
+					: message(
+							"assistant",
+							`Couldn't write DESIGN.md from your prompt (${why.replace(/\.$/, "")}), so the project starts from the ${fallback} style.`,
+						),
+			]);
+
+			return null;
+		},
+		[stateRef, model, projectPath, device, change, addMessages],
+	);
+
 	/** The plan step of a create; `null` when it failed, so the request runs in one go instead (no dead end) */
 	const readPlan = useCallback(
 		async (prompt: string, options: SendOptions): Promise<GenerationPlan | "stopped" | null> => {
@@ -297,6 +416,163 @@ export function useGeneration({
 		[stateRef, model, projectPath, device],
 	);
 
+	const checkScreens = useCallback(
+		async (screens: string[], screenshots = false): Promise<ScreenFindings[]> => {
+			const current = stateRef.current;
+			const watched = new Set(screens);
+			const selected = current ? current.canvas.frames.filter((frame) => watched.has(frame.file)) : [];
+
+			if (!current || !selected.length) return [];
+
+			const results = await checkDesign(
+				{
+					frames: current.canvas.frames,
+					selected,
+					files: current.files,
+					theme: current.canvas.theme ?? NO_THEME,
+					raster: screenshots ? (frame) => reviewRaster(frame.width, frame.height) : undefined,
+				},
+				() => {},
+			);
+
+			return results.flatMap((result) =>
+				result.error ? [] : [{ screen: result.frame.file, findings: result.findings, image: result.image }],
+			);
+		},
+		[stateRef],
+	);
+
+	const polishRun = useCallback(
+		async (polishing: Polishing, request: PolishRequest): Promise<PolishOutcome> => {
+			const current = stateRef.current;
+
+			if (!current || !model || !live.current) return NO_POLISH;
+			const generationId = crypto.randomUUID();
+			const label = request.review ? REVIEW_STEP : polishLabel(request.problems.length);
+
+			live.current = {
+				...live.current,
+				id: generationId,
+				polishing: true,
+				steps: [...live.current.steps, { label }],
+			};
+
+			setGeneration(live.current);
+			await flushProjectFiles();
+
+			const result = await api.generate({
+				generationId,
+				projectPath,
+				prompt: request.prompt,
+				device,
+				model,
+				targets: request.targets,
+				task: "repair",
+				problems: request.problems,
+				chatId: current.chatId,
+				review: request.review,
+			});
+
+			const latest = stateRef.current;
+			const failed = !result.ok && result.error.code !== "aborted";
+			const writes = result.ok && latest ? polishWrites(result.changes, latest.files, request.targets) : [];
+
+			const outcome: PolishOutcome = {
+				writes: [],
+				reply: result.ok ? result.reply : "",
+				withoutImages: result.ok && result.withoutImages === true,
+				failed,
+			};
+
+			if (!latest || !writes.length) return outcome;
+
+			if (writes.some((write) => latest.files[write.path] !== polishing.step.files[write.path])) return outcome;
+
+			change((snapshot) => ({ ...snapshot, files: applyFileChanges(snapshot.files, writes) }), {
+				coalesce: polishing.key,
+			});
+
+			return { ...outcome, writes };
+		},
+		[stateRef, model, projectPath, device, change],
+	);
+
+	const polish = useCallback(
+		async (polishing: Polishing, renderFailed: boolean) => {
+			let checks: ScreenFindings[] = [];
+			let polished: FileChange[] = [];
+			let note = "";
+
+			try {
+				const mode = polishMode();
+
+				if (!renderFailed && stopped.current !== polishing.id)
+					checks = await checkScreens(polishing.screens, mode === "review");
+
+				const request =
+					mode === "review"
+						? reviewRequest(polishing.prompt, checks)
+						: polishRequest(mode === "polish" ? polishProblems(checks) : []);
+
+				if ((request.problems.length || request.review) && stopped.current !== polishing.id) {
+					let outcome = await polishRun(polishing, request);
+
+					if (outcome.failed && request.review && request.problems.length && stopped.current !== polishing.id)
+						outcome = { ...(await polishRun(polishing, polishRequest(request.problems))), withoutImages: true };
+
+					polished = outcome.writes;
+					const reviewed = request.review && !outcome.withoutImages;
+
+					if (polished.length) {
+						if (reviewed && live.current) {
+							live.current = { ...live.current, steps: [...live.current.steps, { label: APPLYING_REVIEW_STEP }] };
+							setGeneration(live.current);
+						}
+
+						checks = await checkScreens(polishing.screens);
+					}
+
+					if (reviewed) note = reviewNote(outcome.reply, polished);
+					else if (polished.length)
+						note = `Polished ${request.problems.length === 1 ? "1 design problem" : `${request.problems.length} design problems`} the check found.`;
+
+					if (outcome.withoutImages && !toldWithoutImages) {
+						toldWithoutImages = true;
+						note = [note, NO_IMAGES_NOTE].filter(Boolean).join(" ");
+					}
+				}
+			} catch {
+			} finally {
+				const latest = stateRef.current;
+				const step = polished.length ? (latest?.history.present ?? polishing.step) : polishing.step;
+				const notes = designNotesOf(checks, latest?.files ?? {});
+
+				const summary = changeSummaryOf(
+					polishing.before,
+					mergeChanges(polishing.changes, polished),
+					polishing.problems,
+				);
+
+				const done: ChatMessage = {
+					...polishing.done,
+					content: note ? `${polishing.done.content}\n\n${note}` : polishing.done.content,
+				};
+
+				if (summary) done.summary = notes.length ? { ...summary, design: notes } : summary;
+
+				addMessages([done]);
+				setLastRun(summary?.files.length ? { messageId: done.id, step } : null);
+				lastResult.current = step;
+
+				if (flush.current) cancelAnimationFrame(flush.current);
+				flush.current = 0;
+				live.current = null;
+				setGeneration(null);
+			}
+		},
+		[stateRef, checkScreens, polishRun, addMessages],
+	);
+
 	const run = useCallback(
 		async (prompt: string, request: SendOptions = {}): Promise<boolean> => {
 			let options = request;
@@ -324,6 +600,17 @@ export function useGeneration({
 			// A new request replaces a plan still waiting for review
 			setPendingPlan(null);
 
+			if (options.autoDesign) {
+				options = { ...options, autoDesign: undefined };
+				last.current = { prompt, options };
+
+				if ((await writeAutoDesign(prompt, options)) === "stopped") {
+					addMessages([message("assistant", "Stopped. Nothing was changed.")]);
+
+					return false;
+				}
+			}
+
 			// Decision 0015: a create of one variation is planned first, and the plan waits in the chat for review
 			if (task === "create" && variations === 1 && !options.plan) {
 				const plan = await readPlan(prompt, options);
@@ -350,6 +637,7 @@ export function useGeneration({
 			setGeneration(live.current);
 			let check: RenderCheck = { screens: [], via: new Map() };
 			let applied = false;
+			let polishing: Polishing | null = null;
 
 			try {
 				await flushProjectFiles();
@@ -397,19 +685,23 @@ export function useGeneration({
 					: [];
 
 				let step: Snapshot | null = null;
+				const screens = POLISHED_TASKS.has(task) ? writtenScreens(result.changes) : [];
+				const key = `generation:${generationId}`;
+				const changeOptions: ChangeOptions = {};
+
+				if (placed.length) changeOptions.select = placed.map((frame) => frame.file);
+
+				if (screens.length) changeOptions.coalesce = key;
 
 				if (result.changes.length) {
-					change(
-						(snapshot) => {
-							const files = applyFileChanges(snapshot.files, result.changes);
-							const frames = [...snapshot.frames, ...placed].filter((frame) => frame.file in files);
+					change((snapshot) => {
+						const files = applyFileChanges(snapshot.files, result.changes);
+						const frames = [...snapshot.frames, ...placed].filter((frame) => frame.file in files);
 
-							return resolving.length
-								? { files, frames, comments: setResolved(snapshot.comments ?? [], resolving, true) }
-								: { files, frames };
-						},
-						placed.length ? { select: placed.map((frame) => frame.file) } : undefined,
-					);
+						return resolving.length
+							? { files, frames, comments: setResolved(snapshot.comments ?? [], resolving, true) }
+							: { files, frames };
+					}, changeOptions);
 
 					step = stateRef.current?.history.present ?? null;
 
@@ -425,9 +717,23 @@ export function useGeneration({
 				const done: ChatMessage = { ...message("assistant", reply + leftOut), context: result.context ?? [] };
 				const summary = changeSummaryOf(latest.files, result.changes, result.problems);
 
-				if (summary) done.summary = summary;
-				addMessages([done]);
-				setLastRun(step && summary?.files.length ? { messageId: done.id, step } : null);
+				if (step && screens.length) {
+					polishing = {
+						id: generationId,
+						key,
+						done,
+						before: latest.files,
+						changes: result.changes,
+						problems: result.problems,
+						step,
+						screens,
+						prompt,
+					};
+				} else {
+					if (summary) done.summary = summary;
+					addMessages([done]);
+					setLastRun(step && summary?.files.length ? { messageId: done.id, step } : null);
+				}
 
 				if (placed.length) onPlaced(placed);
 
@@ -441,12 +747,19 @@ export function useGeneration({
 				if (flush.current) cancelAnimationFrame(flush.current);
 				flush.current = 0;
 
-				if (live.current?.id === generationId) live.current = null;
-				setGeneration((g) => (g?.id === generationId ? null : g));
+				if (polishing && live.current?.id === generationId) {
+					live.current = { ...live.current, steps: [...live.current.steps, { label: CHECKING_STEP }] };
+					setGeneration(live.current);
+				} else {
+					if (live.current?.id === generationId) live.current = null;
+					setGeneration((g) => (g?.id === generationId ? null : g));
+				}
 			}
 
 			// Decision 0003, check 5: one automatic repair, then the error stays in the frame.
 			const failures = await collectRenderErrors(check.screens);
+
+			if (polishing) await polish(polishing, failures.length > 0);
 
 			if (failures.length && !live.current) {
 				const failed = [...new Set(failures.map((f) => f.problem.path))];
@@ -459,7 +772,20 @@ export function useGeneration({
 		},
 		// `run` calls itself for the repair; the latest closure is fine there
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[stateRef, model, projectPath, device, change, addMessages, onPlaced, onResolved, collectRenderErrors, readPlan],
+		[
+			stateRef,
+			model,
+			projectPath,
+			device,
+			change,
+			addMessages,
+			onPlaced,
+			onResolved,
+			collectRenderErrors,
+			readPlan,
+			writeAutoDesign,
+			polish,
+		],
 	);
 
 	const ready = useCallback(() => {
@@ -524,6 +850,7 @@ export function useGeneration({
 				focus?: StructureNode | null;
 				command?: { name: string; args: string };
 				resolves?: string[];
+				autoDesign?: boolean;
 			} = {},
 		): boolean => {
 			if (!ready()) return false;
@@ -578,6 +905,37 @@ export function useGeneration({
 			addMessages([message("user", `Fix ${variationName(target, frames)} so it renders`)]);
 			const targets = [...new Set([target, problem.path])];
 			void run(`Fix ${target} so it renders.`, { targets, repair: { problems: [problem] } });
+		},
+		[ready, stateRef, addMessages, run],
+	);
+
+	const fixNote = useCallback(
+		(note: DesignNote) => {
+			if (!ready()) return;
+			const current = stateRef.current!;
+
+			if (!(note.path in current.files)) {
+				toast("That file is no longer in the project");
+
+				return;
+			}
+
+			const fresh = isFreshNote(note, current.files);
+
+			const focus =
+				fresh && note.start !== undefined ? focusOf(current.files, { file: note.path, start: note.start }) : null;
+
+			const where = variationName(note.screen, current.canvas.frames);
+			const label = DESIGN_RULE_LABELS[note.rule];
+
+			addMessages([
+				message("user", focus ? focusNote(focus.label, where, `fix “${label}”`) : `Fix “${label}” in ${where}`),
+			]);
+
+			const options: SendOptions = { targets: [note.path], repair: { problems: [noteProblem(note, fresh)] } };
+
+			if (focus) options.focus = focus;
+			void run(POLISH_PROMPT, options);
 		},
 		[ready, stateRef, addMessages, run],
 	);
@@ -654,7 +1012,9 @@ export function useGeneration({
 	const stop = useCallback(() => {
 		const id = live.current?.id;
 
-		if (id) void api.stopGeneration({ generationId: id });
+		if (!id) return;
+		stopped.current = id;
+		void api.stopGeneration({ generationId: id });
 	}, []);
 
 	const retry = useCallback(() => {
@@ -709,6 +1069,7 @@ export function useGeneration({
 		send,
 		vary,
 		fix,
+		fixNote,
 		mix,
 		writeContext,
 		readTheme,
@@ -722,6 +1083,9 @@ export function useGeneration({
 		cancelPlan,
 	};
 }
+
+const writtenScreens = (changes: FileChange[]) =>
+	changes.flatMap((change) => (change.content !== null && isScreenFile(change.path) ? [change.path] : []));
 
 function summarize(changes: FileChange[]) {
 	const written = changes.filter((c) => c.content !== null);

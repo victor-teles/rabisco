@@ -15,6 +15,8 @@ import type {
 	GenerateParams,
 	GenerateResult,
 	GenerationEventMessage,
+	ImprovePromptParams,
+	ImprovePromptResult,
 	Project,
 	ProjectSummary,
 	ScreenSource,
@@ -77,6 +79,8 @@ export type RabiscoRPC = {
 			removeProvider: { params: { id: string }; response: { ok: true } };
 			testProvider: { params: { id: string }; response: ProviderStatus };
 			setDefaultModel: { params: { model: string }; response: { ok: true } };
+			setFastModel: { params: { model: string | null }; response: { ok: true } };
+			improvePrompt: { params: ImprovePromptParams; response: ImprovePromptResult };
 			/** The model's provider commands, for the chat's `/` menu */
 			listCommands: { params: { model: string; projectPath: string }; response: ProviderCommand[] };
 			openExternal: { params: { url: string }; response: { ok: true } };

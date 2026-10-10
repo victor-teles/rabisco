@@ -1,7 +1,7 @@
 import type { ContextFileName, ProjectFiles } from "../types";
 import { contextBody } from "./body";
 import { CONTEXT_TEMPLATES } from "./templates";
-import { designSourceOf, type AppliedTheme } from "./theme";
+import { designSourceOf, hasTokens, type AppliedTheme } from "./theme";
 import { designTokensOf } from "./tokens";
 
 // Starting points for a new project's DESIGN.md (Phase 16). Generations follow DESIGN.md, and without one
@@ -13,6 +13,12 @@ export const STYLE_IDS = ["minimal", "editorial", "playful", "dense", "bold"] as
 export type StyleId = (typeof STYLE_IDS)[number];
 
 export const isStyleId = (value: string | null | undefined): value is StyleId => STYLE_IDS.some((id) => id === value);
+
+export const AUTO_STYLE = "auto";
+
+export type StyleChoice = StyleId | typeof AUTO_STYLE | null;
+
+export const AUTO_FALLBACK_STYLE: StyleId = "minimal";
 
 type Tokens = Record<string, string>;
 
@@ -385,8 +391,15 @@ export const lacksDesignDirection = (design: string | undefined) => contextBody(
 export function withStyle<T extends { files: ProjectFiles; theme?: AppliedTheme }>(snapshot: T, id: StyleId): T {
 	if (!lacksDesignDirection(snapshot.files["DESIGN.md"])) return snapshot;
 
-	const design = styleDesign(id);
+	return withDesign(snapshot, styleDesign(id));
+}
+
+export function withDesign<T extends { files: ProjectFiles; theme?: AppliedTheme }>(snapshot: T, design: string): T {
 	const theme: AppliedTheme = { ...designTokensOf(design), source: designSourceOf(design) };
 
 	return { ...snapshot, files: { ...snapshot.files, "DESIGN.md": design }, theme };
+}
+
+export function autoDesignOf(written: string | null | undefined): string | null {
+	return written && hasTokens(designTokensOf(written)) ? written : null;
 }
