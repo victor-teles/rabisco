@@ -114,6 +114,19 @@ async function copyText(text: string, field: HTMLInputElement | null) {
 	}
 }
 
+function copyLater(text: Promise<string>) {
+	try {
+		const blob = text.then((value) => new Blob([value], { type: "text/plain" }));
+
+		return navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]).then(
+			() => true,
+			() => false,
+		);
+	} catch {
+		return Promise.resolve(false);
+	}
+}
+
 function LinkSection({
 	context,
 	status,
@@ -139,14 +152,17 @@ function LinkSection({
 	const publish = async () => {
 		setBusy("publish");
 
+		const request = snapshot().then((built) => api.sharePublish({ path: projectPath, snapshot: built }));
+		const copying = status ? null : copyLater(request.then((next) => next.url));
+
 		try {
-			const next = await api.sharePublish({ path: projectPath, snapshot: await snapshot() });
+			const next = await request;
 			publishedFingerprints.set(projectPath, fingerprint);
 
 			if (status)
 				toast.success("Link updated", { description: "People with the link see the latest screens when they reload." });
 			else {
-				const done = await copyText(next.url, null);
+				const done = (await copying) ?? false;
 				toast.success(done ? "Link ready and copied" : "Link ready", { description: next.url });
 			}
 
