@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 
 const STORAGE_KEY = "rabisco:plan-mode";
 
@@ -36,7 +37,9 @@ export function setPlanMode(next: boolean) {
 
 	try {
 		localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-	} catch {}
+	} catch (error) {
+		toast.error("Couldn't save the setting", { id: "setting-save", description: String(error) });
+	}
 
 	for (const listener of listeners) listener();
 }

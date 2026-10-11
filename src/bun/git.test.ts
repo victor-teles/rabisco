@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { createGit, parsePorcelain } from "./git";
 import { resolveBinary } from "./ai/cli";
@@ -75,6 +75,20 @@ describe("without git", () => {
 
 		if (status.state === "unavailable") expect(status.error).toContain("Install it");
 		expect(await createGit({ bin: null }).sync(tempDir())).toMatchObject({ ok: false });
+	});
+
+	test.skipIf(process.platform === "win32")("status shows why git can't read a repository", async () => {
+		const bin = join(tempDir(), "git");
+		writeFileSync(
+			bin,
+			`#!/bin/sh\ncase "$*" in *--version*) echo "git version 2.0"; exit 0;; esac\necho "fatal: detected dubious ownership in repository" >&2\nexit 128\n`,
+		);
+		chmodSync(bin, 0o755);
+
+		expect(await createGit({ bin }).status(tempDir())).toEqual({
+			state: "unavailable",
+			error: "Git couldn't read the repository: fatal: detected dubious ownership in repository",
+		});
 	});
 });
 

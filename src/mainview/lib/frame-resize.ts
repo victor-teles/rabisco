@@ -13,10 +13,34 @@ export const handleSides = (handle: Handle) => ({
 	y: handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0,
 });
 
-/** Figma's modifiers: ⇧ keeps the aspect ratio, ⌥ resizes from the center */
-export type ResizeOptions = { keepRatio?: boolean; fromCenter?: boolean };
+export const HANDLE_CURSOR: Record<Handle, string> = {
+	n: "cursor-ns-resize",
+	s: "cursor-ns-resize",
+	e: "cursor-ew-resize",
+	w: "cursor-ew-resize",
+	ne: "cursor-nesw-resize",
+	sw: "cursor-nesw-resize",
+	nw: "cursor-nwse-resize",
+	se: "cursor-nwse-resize",
+};
 
-const clampSize = (size: number) => Math.min(MAX_FRAME_SIZE, Math.max(MIN_FRAME_SIZE, size));
+/** CSS lengths along one axis of the frame */
+export type HandleSpan = { start: string; length: string };
+
+/** Along one axis: a side handle spans between the corners, a corner sits across the edge */
+export function handleSpan(side: number): HandleSpan {
+	if (side === 0) return { start: "calc(5px * var(--unzoom))", length: "calc(100% - 10px * var(--unzoom))" };
+
+	return {
+		start: side === -1 ? "calc(-5px * var(--unzoom))" : "calc(100% - 5px * var(--unzoom))",
+		length: "calc(10px * var(--unzoom))",
+	};
+}
+
+/** Figma's modifiers: ⇧ keeps the aspect ratio, ⌥ resizes from the center */
+export type ResizeOptions = { keepRatio?: boolean; fromCenter?: boolean; maxSize?: number };
+
+const clampSize = (size: number, maxSize: number) => Math.min(maxSize, Math.max(MIN_FRAME_SIZE, size));
 
 /** Where the start side goes once the length changes from `before` to `after` */
 function place(start: number, before: number, after: number, side: number, fromCenter: boolean) {
@@ -31,7 +55,7 @@ export function resizeRect(
 	handle: Handle,
 	dx: number,
 	dy: number,
-	{ keepRatio = false, fromCenter = false }: ResizeOptions = {},
+	{ keepRatio = false, fromCenter = false, maxSize = MAX_FRAME_SIZE }: ResizeOptions = {},
 ): Rect {
 	const sides = handleSides(handle);
 	const factor = fromCenter ? 2 : 1;
@@ -46,8 +70,8 @@ export function resizeRect(
 		height = origin.height * scale;
 	}
 
-	width = Math.round(clampSize(width));
-	height = Math.round(clampSize(height));
+	width = Math.round(clampSize(width, maxSize));
+	height = Math.round(clampSize(height, maxSize));
 
 	return {
 		x: Math.round(place(origin.x, origin.width, width, sides.x, fromCenter)),

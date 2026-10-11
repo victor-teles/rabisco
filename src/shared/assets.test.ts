@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assetKey, assetType, rewriteCssUrls } from "./assets";
+import { assetKey, assetType, rewriteCssUrls, rewriteSrcset } from "./assets";
 
 describe("assetKey", () => {
 	test("gives the public path a screen points to", () => {
@@ -44,4 +44,24 @@ test("rewriteCssUrls points known images at their URLs and leaves the rest", () 
 		`.a{background-image:url("blob:null/a")}.b{background:url("blob:null/a") no-repeat}.c{background:url('/images/b.png')}.d{background:url(https://x.test/a.png)}`,
 	);
 	expect(rewriteCssUrls(".a{color:red}", () => "never")).toBe(".a{color:red}");
+});
+
+test("rewriteSrcset points each known image at its URL and keeps descriptors and separators", () => {
+	const urls = new Map([
+		["/images/a.png", "blob:null/a"],
+		["/images/a@2x.png", "blob:null/a2"],
+	]);
+
+	const resolve = (key: string) => urls.get(key);
+
+	expect(rewriteSrcset("/images/a.png 1x, ./images/a@2x.png?v=3 2x", resolve)).toBe("blob:null/a 1x, blob:null/a2 2x");
+	expect(rewriteSrcset("/images/a.png,, /images/b.png 640w", resolve)).toBe("blob:null/a,, /images/b.png 640w");
+	expect(rewriteSrcset(" images/a.png 100w,https://x.test/a.png 200w ", resolve)).toBe(
+		" blob:null/a 100w,https://x.test/a.png 200w ",
+	);
+	expect(rewriteSrcset("data:image/png;base64,AA== 1x, /images/a@2x.png 2x", resolve)).toBe(
+		"data:image/png;base64,AA== 1x, blob:null/a2 2x",
+	);
+	expect(rewriteSrcset("/images/a.png", resolve)).toBe("blob:null/a");
+	expect(rewriteSrcset("", resolve)).toBe("");
 });

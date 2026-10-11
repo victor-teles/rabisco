@@ -11,7 +11,7 @@ import {
 import type { RabiscoRPC } from "../../shared/rpc";
 import { contextBody } from "../../shared/context/body";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
-import { resolveFocus } from "../../shared/ai/focus";
+import { resolveFocused } from "../../shared/ai/focus";
 import { DESIGN_TEMPLATE } from "../../shared/context/templates";
 import type {
 	ContextFileName,
@@ -244,6 +244,7 @@ export function createBrowserGenerator(
 			return {
 				settings: { version: 1, providers: [], defaultModel: "mock:mock", fastModel },
 				statuses: import.meta.env.DEV ? [MOCK_STATUS] : [],
+				keyStorage: { ok: false, message: "API keys need the Rabisco desktop app." },
 			};
 		},
 		async testProvider() {
@@ -372,8 +373,8 @@ export function createBrowserGenerator(
 			const references = (params.references ?? []).filter((path) => path in files);
 
 			const focus =
-				requestTask === "edit" && !vary && params.targets?.includes(params.focus?.file ?? "")
-					? resolveFocus(params.focus, files)
+				requestTask === "edit" && !vary && params.targets?.includes(params.focus?.[0]?.file ?? "")
+					? resolveFocused(params.focus, files)
 					: null;
 
 			const base: GenerationRequest = {

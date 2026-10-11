@@ -27,6 +27,11 @@ describe("resizeRect", () => {
 		expect(resizeRect(origin, "w", 1000, 0)).toEqual({ x: 460, y: 100, width: 40, height: 200 });
 	});
 
+	test("stops at the frame size limit unless given another", () => {
+		expect(resizeRect(origin, "e", 20000, 0).width).toBe(8000);
+		expect(resizeRect(origin, "e", 20000, 0, { maxSize: Infinity }).width).toBe(20400);
+	});
+
 	test("rounds to whole pixels", () => {
 		expect(resizeRect(origin, "se", 10.4, 10.6)).toEqual({ x: 100, y: 100, width: 410, height: 211 });
 	});

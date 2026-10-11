@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { moveElement } from "../../shared/jsx";
-import { draggedElement, draggedEntry, entryOrder, entryPlacement, moveTarget } from "./element-move";
+import { draggedElement, draggedEntry, entryOrder, entryPlacement, moveAcross, moveTarget } from "./element-move";
 import type { DropLayout } from "./render/protocol";
 
 const SCREEN = `export default function Home() {
@@ -120,4 +120,45 @@ test("entryOrder moves one index", () => {
 	expect(entryOrder(4, 0, 3)).toEqual([1, 2, 3, 0]);
 	expect(entryOrder(4, 3, 1)).toEqual([0, 3, 1, 2]);
 	expect(entryOrder(3, 1, 1)).toEqual([0, 1, 2]);
+});
+
+describe("moveAcross", () => {
+	const from = `import { Button } from "@/components/ui/button";
+import { Star } from "lucide-react";
+
+export default function A() {
+	return (
+		<main>
+			<Button>
+				<Star />
+			</Button>
+			<Star />
+		</main>
+	);
+}
+`;
+
+	const to = `export default function B() {
+	return (
+		<main className="flex flex-col">
+			<h1>B</h1>
+		</main>
+	);
+}
+`;
+
+	test("moves the element into the other screen with its imports, and drops the ones left unused", () => {
+		const moved = moveAcross(from, from.indexOf("<Button"), to, to.indexOf("<main"), 1);
+
+		expect(moved?.to).toContain(`<h1>B</h1>\n\t\t\t<Button>\n\t\t\t\t<Star />\n\t\t\t</Button>`);
+		expect(moved?.to).toContain(`import { Button } from "@/components/ui/button";`);
+		expect(moved?.to).toContain(`import { Star } from "lucide-react";`);
+		expect(moved?.to.slice(moved.start)).toStartWith("<Button>");
+		expect(moved?.from).not.toContain("Button");
+		expect(moved?.from).toContain(`import { Star } from "lucide-react";`);
+	});
+
+	test("refuses a screen's root", () => {
+		expect(moveAcross(from, from.indexOf("<main"), to, to.indexOf("<main"), 0)).toBeNull();
+	});
 });

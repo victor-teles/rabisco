@@ -6,7 +6,7 @@ import {
 	type Outcome,
 } from "@/lib/generation-session";
 import { createProjectSession, type ProjectApi, type ProjectSession } from "@/lib/project-session";
-import type { AssetsChanged, FilesChanged, RabiscoApi } from "@/lib/rpc";
+import type { AssetsChanged, CanvasChanged, FilesChanged, RabiscoApi } from "@/lib/rpc";
 import type { GenerationEventMessage } from "../../shared/types";
 
 export type Hold = "editor" | "work" | "unseen";
@@ -23,8 +23,10 @@ export type SessionsOptions = {
 	api: SessionsApi;
 	onFilesChanged: Subscribe<FilesChanged>;
 	onAssetsChanged: Subscribe<AssetsChanged>;
+	onCanvasChanged?: Subscribe<CanvasChanged>;
 	onGenerationEvent: Subscribe<GenerationEventMessage>;
 	onSaveError: (cause: unknown) => void;
+	onBackup?: (dir: string) => void;
 	generation: Pick<ControllerEnv, "schedule" | "check" | "watchRenderErrors" | "polishMode" | "planMode">;
 	unseenLimit?: number;
 	writeDelay?: number;
@@ -55,6 +57,7 @@ export function createProjectSessions(options: SessionsOptions) {
 	options.onGenerationEvent((message) => routes.get(message.generationId)?.(message));
 	options.onFilesChanged((message) => entries.get(message.path)?.session.filesChanged(message.changes));
 	options.onAssetsChanged((message) => entries.get(message.path)?.session.assetsChanged(message.changes));
+	options.onCanvasChanged?.((message) => entries.get(message.path)?.session.canvasChanged(message.canvas));
 
 	const notify = () => {
 		for (const listener of listeners) listener();
@@ -131,6 +134,7 @@ export function createProjectSessions(options: SessionsOptions) {
 			path,
 			api,
 			onSaveError: options.onSaveError,
+			onBackup: options.onBackup,
 			writeDelay: options.writeDelay,
 			saveDelay: options.saveDelay,
 		});

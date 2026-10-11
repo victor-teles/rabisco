@@ -199,8 +199,13 @@ export function createGit(options: GitOptions = {}) {
 										? MISSING_GIT
 										: `Git doesn't work: ${output(version)}`,
 								};
-				} catch {
-					checked = { error: MISSING_GIT };
+				} catch (error) {
+					checked = {
+						error:
+							error instanceof Error && "code" in error && error.code === "ENOENT"
+								? MISSING_GIT
+								: `Git doesn't work: ${messageOf(error)}`,
+					};
 				}
 			}
 		}
@@ -264,9 +269,15 @@ export function createGit(options: GitOptions = {}) {
 		}
 
 		if (!existsSync(dir)) throw new GitError(`Folder not found: ${dir}`);
-		const root = await line(dir, ["rev-parse", "--show-toplevel"]);
+		const top = await run(dir, ["rev-parse", "--show-toplevel"]);
 
-		if (root === null) return { state: "none" };
+		if (top.code !== 0) {
+			return /not a git repository/i.test(output(top))
+				? { state: "none" }
+				: { state: "unavailable", error: `Git couldn't read the repository: ${output(top) || "it timed out"}` };
+		}
+
+		const root = top.stdout.trim();
 		const prefix = (await line(dir, ["rev-parse", "--show-prefix"])) ?? "";
 		const branch = await line(dir, ["symbolic-ref", "--short", "-q", "HEAD"]);
 		const hasCommits = await ok(dir, ["rev-parse", "--verify", "-q", "HEAD"]);

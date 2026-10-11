@@ -2,6 +2,9 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import { pasteCopy, type ElementCopy } from "@/lib/element-clipboard";
+import type { Arranged } from "@/lib/element-align";
+import { moveSteps } from "@/lib/element-flow";
+import { moveAcross } from "@/lib/element-move";
 import { adjacentRange, editEach, outermost, restyle, toggleStart, wrapRange } from "@/lib/element-selection";
 import { toggleLocks } from "@/lib/element-locks";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
@@ -362,11 +365,77 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[replaceNode],
 	);
 
+	const moveNodeBy = useCallback(
+		(steps: number) => replaceNode((source, start) => moveSteps(source, start, steps), null),
+		[replaceNode],
+	);
+
 	/** `index` counts the parent's slots before the move, as `dropTarget` reports them */
 	const moveNodeTo = useCallback(
 		(parentStart: number, index: number) =>
 			replaceNode((source, start) => moveElement(source, start, parentStart, index), "This element can't move there"),
 		[replaceNode],
+	);
+
+	const moveNodeAcross = useCallback(
+		(to: string, parentStart: number, index: number) => {
+			const current = stateRef.current?.files;
+			const source = node ? current?.[node.file] : undefined;
+			const target = current?.[to];
+
+			if (!node || source === undefined || target === undefined) return;
+
+			if (busyRef.current) {
+				toast(BUSY_MESSAGE);
+
+				return;
+			}
+
+			const moved = moveAcross(source, node.start, target, parentStart, index);
+
+			if (!moved) {
+				toast("This element can't move there");
+
+				return;
+			}
+
+			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [node.file]: moved.from, [to]: moved.to } }), {
+				select: [to],
+			});
+			setTracked({ file: to, start: moved.start, source: moved.to, extras: [] });
+		},
+		[node, stateRef, change],
+	);
+
+	const arrangeNodes = useCallback(
+		(arrange: (source: string, starts: number[]) => Arranged) => {
+			const source = node ? stateRef.current?.files[node.file] : undefined;
+
+			if (!node || source === undefined) return;
+
+			if (busyRef.current) {
+				toast(BUSY_MESSAGE);
+
+				return;
+			}
+
+			const result = arrange(source, outermost(source, [node.start, ...node.extras]));
+
+			if ("refusal" in result) {
+				toast(result.refusal);
+
+				return;
+			}
+
+			const [start, ...extras] = result.starts;
+
+			if (start === undefined) return;
+
+			if (result.source !== source)
+				change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [node.file]: result.source } }));
+			setTracked({ file: node.file, start, source: result.source, extras });
+		},
+		[node, stateRef, change],
 	);
 
 	/** For an item a `.map` renders: moves its array entry, so every item keeps its place in the selection */
@@ -441,6 +510,11 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[restyleNodes],
 	);
 
+	const restyleSelected = useCallback(
+		(edit: (classes: string) => string) => restyleNodes(() => edit, "Only elements with plain classes can be resized"),
+		[restyleNodes],
+	);
+
 	const pastePropertiesNodes = useCallback(
 		(copied: string) =>
 			restyleNodes(
@@ -498,10 +572,14 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		wrapInStackNode,
 		unwrapNode,
 		moveNodeAmongSiblings,
+		moveNodeBy,
 		moveNodeTo,
+		moveNodeAcross,
 		moveNodeEntry,
+		arrangeNodes,
 		pasteIntoNode,
 		toggleHiddenNodes,
+		restyleSelected,
 		pastePropertiesNodes,
 		toggleLockNodes,
 		editFile,

@@ -76,12 +76,17 @@ export function iconsFromSource(source: string) {
 /** Top-level `function Name` declarations, which the epilogue can rebind to stable components. */
 const DECLARED = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Z][\w$]*)\s*\(/gm;
 
+const ASSIGNED =
+	/^((?:export\s+)?)const(?=\s+([A-Z][\w$]*)\s*(?::(?:=>|[^=\n])*)?=\s*(?:async\s+)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>))/gm;
+
+const rebindable = (source: string) => source.replace(ASSIGNED, "$1let  ");
+
 /**
  * Rebinds the module's components to proxies that survive a new version (`runtime/refresh.ts`), so React
  * reconciles instead of remounting. The hook calls are the signature: when they change, the proxies are new.
  */
 function refreshEpilogue(path: string, source: string) {
-	const names = new Set([...source.matchAll(DECLARED)].map((match) => match[1]!));
+	const names = new Set([...source.matchAll(DECLARED), ...source.matchAll(ASSIGNED)].map((match) => match.at(-1)!));
 	const signature = hashString([...source.matchAll(/\buse[A-Z]\w*/g)].join(","));
 
 	const rebind = [...names].map(
@@ -99,7 +104,9 @@ export function compileSource(path: string, source: string): CompiledModule {
 	const candidates = extractCandidates(source);
 
 	try {
-		const { code } = transform(LOCATED.test(path) ? injectLocations(source, path) : source, {
+		const rebound = rebindable(source);
+
+		const { code } = transform(LOCATED.test(path) ? injectLocations(rebound, path) : rebound, {
 			transforms: ["typescript", "jsx", "imports"],
 			jsxRuntime: "automatic",
 			production: true,

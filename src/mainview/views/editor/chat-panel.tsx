@@ -62,12 +62,14 @@ import {
 	ToolCallSummary,
 	ToolCallTrigger,
 } from "@/components/ui/uai/tool-call";
+import { readStoredDraft, useComposerDraft } from "@/hooks/use-composer-draft";
 import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import type { Generation, WritingFile } from "@/hooks/use-generation";
 import type { Interview } from "@/hooks/use-interview";
 import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
+import { draftIdOf } from "@/lib/composer-drafts";
 import { api } from "@/lib/rpc";
 import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
@@ -151,6 +153,7 @@ type ChatPanelProps = {
 	planCard?: ReactNode;
 	noteActions?: DesignNoteActions | null;
 	projectPath?: string;
+	chatId?: string;
 };
 
 const TASK_TITLE = {
@@ -203,6 +206,7 @@ export const ChatPanel = memo(function ChatPanel({
 	planCard = null,
 	noteActions = null,
 	projectPath,
+	chatId,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
 	const [planMode, setPlanMode] = usePlanMode();
@@ -239,7 +243,9 @@ export const ChatPanel = memo(function ChatPanel({
 		if (waiting && model) composerRef.current?.querySelector("form")?.requestSubmit();
 	}, [waiting, model]);
 
-	const [text, setText] = useState(heldPrompt?.prompt ?? "");
+	const draftId = projectPath && chatId ? draftIdOf(projectPath, chatId) : null;
+	const [text, setText] = useState(() => heldPrompt?.prompt ?? readStoredDraft(draftId));
+	const clearStoredDraft = useComposerDraft(draftId, text);
 	const [shownHeld, setShownHeld] = useState(heldPrompt);
 
 	if (heldPrompt !== shownHeld) {
@@ -268,6 +274,14 @@ export const ChatPanel = memo(function ChatPanel({
 		if (draft) composerInput()?.focus();
 	}, [draft]);
 
+	const [shownDraftId, setShownDraftId] = useState(draftId);
+
+	if (draftId !== shownDraftId) {
+		setShownDraftId(draftId);
+		setDraft(null);
+		setText(readStoredDraft(draftId));
+	}
+
 	// Added after what is already typed, so a note and several comments go out as one prompt.
 	// Once per key: a remount must not add it again.
 	const [inserted, setInserted] = useState(insert?.key);
@@ -283,7 +297,10 @@ export const ChatPanel = memo(function ChatPanel({
 		if (parsed) {
 			const ran = onRunCommand(parsed.command, parsed.args, files);
 
-			if (ran) setDraft(null);
+			if (ran) {
+				setDraft(null);
+				clearStoredDraft();
+			}
 
 			return ran;
 		}
@@ -294,6 +311,7 @@ export const ChatPanel = memo(function ChatPanel({
 		if (sent) {
 			onHeldPromptSent?.();
 			setDraft(null);
+			clearStoredDraft();
 		}
 
 		return sent;
@@ -628,14 +646,11 @@ function FailureCard({
 	const type = settings.providers.find((p) => p.id === failure.providerId)?.type;
 	const providerType = PROVIDER_TYPES.find((t) => t.type === type);
 	const settingsFix = failure.code === "not_authenticated" || failure.code === "not_installed";
+	const stopped = failure.code === "aborted";
 	const action = "h-7 rounded-full px-3 text-[12.5px]";
 
 	return (
-		<ResponseStatus
-			variant="bar"
-			status={failure.code === "aborted" ? "stopped" : "failed"}
-			className="items-start py-2.5"
-		>
+		<ResponseStatus variant="bar" status={stopped ? "stopped" : "failed"} className="items-start py-2.5">
 			<ResponseStatusIndicator />
 			<div className="grid min-w-0 flex-1 gap-0.5">
 				<ResponseStatusLabel>{FAILURE_TITLE[failure.code]}</ResponseStatusLabel>
@@ -654,7 +669,7 @@ function FailureCard({
 						Try again
 					</ResponseStatusRetry>
 				) : null}
-				{settingsFix || !failure.retryable ? (
+				{settingsFix || (!failure.retryable && !stopped) ? (
 					<Button
 						size="sm"
 						variant={failure.retryable ? "secondary" : "default"}

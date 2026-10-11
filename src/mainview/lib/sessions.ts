@@ -4,7 +4,7 @@ import { planMode } from "@/hooks/use-plan-mode";
 import type { RenderFailure } from "@/lib/generation-session";
 import { createProjectSessions } from "@/lib/project-sessions";
 import { onFrameStatus } from "@/lib/render/frame-host";
-import { api, onAssetsChanged, onFilesChanged, onGenerationEvent } from "@/lib/rpc";
+import { api, onAssetsChanged, onCanvasChanged, onFilesChanged, onGenerationEvent } from "@/lib/rpc";
 import { checkDesign } from "@/views/editor/design-check";
 
 const RENDER_CHECK_MS = 2500;
@@ -35,6 +35,14 @@ function watchRenderErrors(screens: string[]) {
 	});
 }
 
+function reportBackup(dir: string) {
+	toast("Saved a backup of the project", {
+		id: `backup-${dir}`,
+		description: "Rabisco kept a copy before it changed the project or its undo history.",
+		action: { label: "Show", onClick: () => void api.revealProject({ path: dir }) },
+	});
+}
+
 function reportSaveError(cause: unknown) {
 	console.error("[rabisco] save failed", cause);
 	toast.error("Couldn’t save changes", { id: "save-error", description: String(cause) });
@@ -44,8 +52,10 @@ export const projectSessions = createProjectSessions({
 	api,
 	onFilesChanged,
 	onAssetsChanged,
+	onCanvasChanged,
 	onGenerationEvent,
 	onSaveError: reportSaveError,
+	onBackup: reportBackup,
 	generation: {
 		schedule: (callback) => {
 			const frame = requestAnimationFrame(callback);

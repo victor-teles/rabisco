@@ -12,6 +12,7 @@ import {
 	Plus,
 	Redo2,
 	Square,
+	SquareDashedTopSolid,
 	Type,
 	Undo2,
 } from "lucide-react";
@@ -53,15 +54,18 @@ import { setResolved } from "../../../shared/comments";
 import { useChatCommands } from "@/hooks/use-chat-commands";
 import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
+import { alignElements, distributeElements } from "@/lib/element-align";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { restoredSnapshot } from "@/lib/versions";
 import { sourceVersion } from "@/lib/render/protocol";
 import { themeCss } from "@/lib/render/styles";
 import { reorderFrames } from "@/lib/screen-list";
+import { styleState } from "@/lib/style-state";
 import { contextSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { useZoomPercent, viewportStore, type ViewportStore } from "@/lib/viewport";
-import { focusOf } from "../../../shared/ai/focus";
+import { persistViewport, rememberProject, savedViewport } from "@/lib/workspace";
+import { focusLabel, focusOf } from "../../../shared/ai/focus";
 import {
 	designSourceOf,
 	tokenBlock,
@@ -83,6 +87,7 @@ import { designTokensOf } from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
+import { sectionAt } from "../../../shared/sections";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import { Canvas, withMoves, type CanvasHandle, type ElementRef, type FrameMove, type Tool } from "./canvas";
@@ -95,6 +100,7 @@ import { CompareView } from "./compare-view";
 import { ComponentsPanel } from "./components-panel";
 import { ContextPanel } from "./context-panel";
 import { Inspector, type FramePatch, type InspectorTab } from "./inspector";
+import { linkActions } from "./link-actions";
 import { LinkControl } from "./link-control";
 import { NodeProps } from "./node-props";
 import { ElementBreadcrumb } from "./element-breadcrumb";
@@ -143,6 +149,7 @@ type EditorProps = {
 	initialFiles?: File[];
 	initialVariations?: number;
 	initialAutoStyle?: boolean;
+	initialChatId?: string;
 	theme: Theme;
 	onToggleTheme: () => void;
 	onBack: () => void;
@@ -179,6 +186,7 @@ export function EditorView({
 	initialFiles,
 	initialVariations,
 	initialAutoStyle,
+	initialChatId,
 	theme,
 	onToggleTheme,
 	onBack,
@@ -209,7 +217,8 @@ export function EditorView({
 	const [tab, setTab] = useState<InspectorTab>("design");
 	const sidePanel = useSidePanel();
 	const [contextFile, setContextFile] = useState<ContextFileName>("PRODUCT.md");
-	const [viewport] = useState(() => viewportStore({ x: 80, y: 80, zoom: 0.6 }));
+	const [restoredViewport] = useState(() => savedViewport(localStorage, projectPath));
+	const [viewport] = useState(() => viewportStore(restoredViewport ?? { x: 80, y: 80, zoom: 0.6 }));
 	/** By its base path */
 	const [compareBase, setCompareBase] = useState<string | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
@@ -227,7 +236,8 @@ export function EditorView({
 	const [variations, setVariations] = useVariations();
 	const canvasRef = useRef<CanvasHandle>(null);
 	const startedInitialPrompt = useRef(false);
-	const fittedOnLoad = useRef(false);
+	const fittedOnLoad = useRef(restoredViewport !== null);
+	const restoredChat = useRef(false);
 	const nudge = useRef({ key: "", at: 0 });
 
 	const frames = project?.canvas.frames ?? NO_FRAMES;
@@ -262,6 +272,23 @@ export function EditorView({
 		/** The history entry it made, so Undo can be a real undo */
 		step: Snapshot | undefined;
 	} | null>(null);
+
+	useEffect(() => persistViewport(projectPath, viewport, localStorage), [projectPath, viewport]);
+
+	const chatId = project?.chatId;
+	const chats = project?.chats;
+
+	useEffect(() => {
+		if (chatId) rememberProject(localStorage, { path: projectPath, chatId });
+	}, [projectPath, chatId]);
+
+	useEffect(() => {
+		if (!chats || restoredChat.current) return;
+		restoredChat.current = true;
+
+		if (initialChatId && initialChatId !== chatId && chats.some((chat) => chat.id === initialChatId))
+			openChat(initialChatId).catch((error) => console.warn("Could not reopen the last chat:", error));
+	}, [chats, chatId, initialChatId, openChat]);
 
 	// Before the first paint, so the frames mount for the fitted view only
 	useLayoutEffect(() => {
@@ -441,9 +468,14 @@ export function EditorView({
 	const { removeNode, editCode, editFile, setProp, setChildren, editClasses } = liveStructure;
 	const { startNaming, duplicateNode, wrapNode } = liveStructure;
 	const { wrapInStackNode, unwrapNode, moveNodeAmongSiblings, moveNodeTo, pasteIntoNode } = liveStructure;
-	const { moveNodeEntry } = liveStructure;
+	const { moveNodeEntry, moveNodeAcross, moveNodeBy, arrangeNodes, restyleSelected } = liveStructure;
 	const { selectMany, toggleHiddenNodes, pastePropertiesNodes, toggleLockNodes } = liveStructure;
 	const structureBusy = liveStructure.busy;
+	const hasNode = node !== null;
+
+	useEffect(() => {
+		if (!hasNode) styleState.set("");
+	}, [hasNode]);
 
 	// A new object every render otherwise, which would re-render the memoized panels
 	const structure = useMemo(
@@ -464,10 +496,14 @@ export function EditorView({
 			wrapInStackNode,
 			unwrapNode,
 			moveNodeAmongSiblings,
+			moveNodeBy,
 			moveNodeTo,
+			moveNodeAcross,
 			moveNodeEntry,
+			arrangeNodes,
 			pasteIntoNode,
 			toggleHiddenNodes,
+			restyleSelected,
 			pastePropertiesNodes,
 			toggleLockNodes,
 			editFile,
@@ -493,10 +529,14 @@ export function EditorView({
 			wrapInStackNode,
 			unwrapNode,
 			moveNodeAmongSiblings,
+			moveNodeBy,
 			moveNodeTo,
+			moveNodeAcross,
 			moveNodeEntry,
+			arrangeNodes,
 			pasteIntoNode,
 			toggleHiddenNodes,
+			restyleSelected,
 			pastePropertiesNodes,
 			toggleLockNodes,
 			editFile,
@@ -512,7 +552,7 @@ export function EditorView({
 	/** Bumped by Go to source to scroll the code to the element */
 	const [sourceReveal, setSourceReveal] = useState(0);
 
-	const focus = useMemo(() => focusOf(files, structure.node), [files, structure.node]);
+	const focus = useMemo(() => structure.nodes.flatMap((node) => focusOf(files, node) ?? []), [files, structure.nodes]);
 
 	/** Comments put in the composer, by id, with the text that shows they are still in the prompt */
 	const commentsInComposer = useRef(new Map<string, string>());
@@ -534,7 +574,7 @@ export function EditorView({
 				targets: selection,
 				files: attachments,
 				variations,
-				focus: structure.node,
+				focus: structure.nodes,
 				resolves,
 			});
 
@@ -542,7 +582,7 @@ export function EditorView({
 
 			return sent;
 		},
-		[interview, answer, autoResolve, send, selection, variations, structure.node],
+		[interview, answer, autoResolve, send, selection, variations, structure.nodes],
 	);
 
 	const selectElement = useCallback(
@@ -594,15 +634,23 @@ export function EditorView({
 
 	/** The drop was placed in the source at `target.version`; a newer edit makes its offsets stale */
 	const moveElementTo = useCallback(
-		(element: ElementRef, target: { parent: number; index: number; version: string }) => {
-			const source = stateRef.current?.files[element.file];
+		(element: ElementRef, target: { file: string; parent: number; index: number; version: string }) => {
+			const source = stateRef.current?.files[target.file];
 
 			if (source === undefined || sourceVersion(source) !== target.version) return;
 
 			if (node?.file !== element.file || node.start !== element.start) return;
-			moveNodeTo(target.parent, target.index);
+
+			if (target.file === element.file) moveNodeTo(target.parent, target.index);
+			else moveNodeAcross(target.file, target.parent, target.index);
 		},
-		[stateRef, node, moveNodeTo],
+		[stateRef, node, moveNodeTo, moveNodeAcross],
+	);
+
+	const editHandleClasses = useCallback(
+		(element: ElementRef, edit: (classes: string) => string) =>
+			nodes.length > 1 ? restyleSelected(edit) : editClasses(element, edit),
+		[nodes.length, restyleSelected, editClasses],
 	);
 
 	const moveEntryTo = useCallback(
@@ -1056,12 +1104,18 @@ export function EditorView({
 	const resetZoom = useCallback(() => canvasRef.current?.resetZoom(), []);
 	const fitAll = useCallback(() => canvasRef.current?.fitTo(frames), [frames]);
 
+	const changeLink = useCallback(
+		(element: ElementRef, edit: LinkEdit) => editFile(element.file, (source) => editLink(source, element.start, edit)),
+		[editFile],
+	);
+
 	/** The selected element, when it is in the one selected screen */
 	const element =
 		structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
 
 	/** The elements ⇧-click added to `element` */
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
+	const elementWidth = (element && frames.find((frame) => frame.file === element.file)?.width) ?? null;
 
 	const zoomToSelection = () => {
 		const rect = element && canvasRef.current?.selectedElementRect(element);
@@ -1160,6 +1214,7 @@ export function EditorView({
 		...elementActions({
 			element,
 			extras: extraElements,
+			width: elementWidth,
 			files,
 			locks,
 			structure,
@@ -1172,6 +1227,7 @@ export function EditorView({
 			},
 			pasteScreens: () => actionById(screenActions(screenContext), "paste-screens")?.run(),
 		}),
+		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		{
 			id: "send-comments",
 			label: "Send comments to chat",
@@ -1269,16 +1325,22 @@ export function EditorView({
 			label: item.label,
 			group: "Arrange",
 			chords: [{ code: item.code, alt: true }],
-			enabled: selected.length > 1,
-			run: () => alignSelection(item.alignment),
+			enabled: element !== null || selected.length > 1,
+			run: () =>
+				element
+					? arrangeNodes((source, starts) => alignElements(source, starts, item.alignment, elementWidth))
+					: alignSelection(item.alignment),
 		})),
 		...DISTRIBUTE_SHORTCUTS.map((item): Action => ({
 			id: `distribute-${item.axis}`,
 			label: item.label,
 			group: "Arrange",
 			chords: [{ code: item.code, ctrl: true, alt: true }],
-			enabled: selected.length > 2,
-			run: () => distributeSelection(item.axis),
+			enabled: element ? extraElements.length > 0 : selected.length > 2,
+			run: () =>
+				element
+					? arrangeNodes((source, starts) => distributeElements(source, starts, item.axis, elementWidth))
+					: distributeSelection(item.axis),
 		})),
 		{
 			id: "zoom-in",
@@ -1578,7 +1640,7 @@ export function EditorView({
 				targets: selection,
 				files,
 				variations,
-				focus: structure.node,
+				focus: structure.nodes,
 				command: { name: command.name, args },
 			});
 		}
@@ -1708,11 +1770,6 @@ export function EditorView({
 	const latestElementMenu = useRef(elementMenu);
 	latestElementMenu.current = elementMenu;
 	const treeMenu = useCallback(() => latestElementMenu.current(), []);
-
-	const changeLink = useCallback(
-		(element: ElementRef, edit: LinkEdit) => editFile(element.file, (source) => editLink(source, element.start, edit)),
-		[editFile],
-	);
 
 	const codePanel = useMemo(
 		() => (
@@ -1968,6 +2025,7 @@ export function EditorView({
 						chat={
 							<ChatPanel
 								projectPath={projectPath}
+								chatId={project?.chatId}
 								messages={messages}
 								generation={generation}
 								failure={failure}
@@ -1985,7 +2043,7 @@ export function EditorView({
 									interview ? undefined : selected.length === 1 ? selected[0]!.name : selectedComponent?.name
 								}
 								editingCount={interview ? 0 : selection.length}
-								focusLabel={interview ? undefined : focus?.label}
+								focusLabel={interview || !focus.length ? undefined : focusLabel(focus)}
 								onClearFocus={clearFocus}
 								composeKey={composeKey}
 								insert={chatInsert}
@@ -2037,6 +2095,7 @@ export function EditorView({
 							drafts={drafts}
 							selection={selection}
 							onSelectionChange={setSelection}
+							onClickEmpty={(point) => sections.select(sectionAt(point.x, point.y, sections.sections)?.id ?? null)}
 							onMoveFrames={moveFrames}
 							onMoveEnd={endStep}
 							tool={tool}
@@ -2052,7 +2111,7 @@ export function EditorView({
 							onEditText={editElementText}
 							onMoveElement={moveElementTo}
 							onMoveEntry={moveEntryTo}
-							onEditClasses={editClasses}
+							onEditClasses={editHandleClasses}
 							locks={locks}
 							onEditTextElsewhere={editTextElsewhere}
 							onPlaceComment={comments.startDraft}
@@ -2074,6 +2133,7 @@ export function EditorView({
 									onSelect={sections.select}
 									onMove={sections.move}
 									onMoveEnd={endStep}
+									onResize={sections.resize}
 									onStartRename={sections.startRename}
 									onRename={sections.rename}
 									onRecolor={sections.recolor}
@@ -2115,7 +2175,16 @@ export function EditorView({
 
 						<Toolbar
 							tool={tool}
-							onToolChange={setTool}
+							onToolChange={(next) => {
+								sections.cancelDrawing();
+								setTool(next);
+							}}
+							drawingSection={sections.drawing}
+							onSection={() => {
+								if (sections.drawing) return sections.cancelDrawing();
+								setTool("move");
+								sections.create();
+							}}
 							onPlaceImage={() => void insertTools.placeImage()}
 							canUndo={canUndo}
 							canRedo={canRedo}
@@ -2254,6 +2323,8 @@ const floatingBar =
 function Toolbar({
 	tool,
 	onToolChange,
+	drawingSection,
+	onSection,
 	onPlaceImage,
 	canUndo,
 	canRedo,
@@ -2264,6 +2335,8 @@ function Toolbar({
 }: {
 	tool: Tool;
 	onToolChange: (tool: Tool) => void;
+	drawingSection: boolean;
+	onSection: () => void;
 	onPlaceImage: () => void;
 	canUndo: boolean;
 	canRedo: boolean;
@@ -2297,10 +2370,12 @@ function Toolbar({
 							variant="ghost"
 							size="icon-sm"
 							aria-label={t.label}
-							aria-pressed={tool === t.id}
+							aria-pressed={tool === t.id && !drawingSection}
 							onClick={() => onToolChange(t.id)}
 							className={cn(
-								tool === t.id && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+								tool === t.id &&
+									!drawingSection &&
+									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
 							)}
 						>
 							<t.icon />
@@ -2322,6 +2397,25 @@ function Toolbar({
 				</TooltipContent>
 			</Tooltip>
 			{newScreen}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						aria-label="Section"
+						aria-pressed={drawingSection}
+						onClick={onSection}
+						className={cn(
+							drawingSection && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+						)}
+					>
+						<SquareDashedTopSolid />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="top">
+					Section <Kbd>⇧S</Kbd>
+				</TooltipContent>
+			</Tooltip>
 			{comments}
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />
 			{history.map((h) => (

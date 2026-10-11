@@ -162,3 +162,27 @@ describe("gap", () => {
 		expect(gapPreview(["x"], 24)).toEqual({ "column-gap": "24px" });
 	});
 });
+
+describe("handles in a state", () => {
+	test("write the state's classes and leave the default ones", () => {
+		expect(setFixedSize("w-32 p-2", "width", "64", null, "hover")).toBe("w-32 p-2 hover:w-64");
+		expect(setPadding("p-2", ["top"], "4", "md")).toBe("p-2 md:pt-4");
+		expect(setGap("flex gap-2", ["x", "y"], "6", "hover")).toBe("flex gap-2 hover:gap-6");
+	});
+
+	test("label the classes with the state", () => {
+		expect(sizeLabel({ width: "64" }, "hover")).toBe("hover:w-64");
+		expect(paddingLabel(["left", "right"], "4", "md")).toBe("md:px-4");
+		expect(gapLabel("gap-2", ["x", "y"], "6", "hover")).toBe("hover:gap-6");
+	});
+
+	test("stop a default grow along the main axis with flex-none", () => {
+		expect(setFixedSize("flex-1", "width", "64", "row", "md")).toBe("flex-1 md:flex-none md:w-64");
+	});
+
+	test("read the default size where the state sets none", () => {
+		expect(sizeMode("w-64", "width", null, "hover")).toBe("fixed");
+		expect(sizeMode("w-64 hover:w-full", "width", null, "hover")).toBe("fill");
+		expect(setSizeMode("w-64", "width", "hug", null, 0, "hover")).toBe("w-64 hover:w-fit");
+	});
+});

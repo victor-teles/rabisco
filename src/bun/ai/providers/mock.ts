@@ -385,20 +385,39 @@ export function restyleElement(content: string, focus: ElementFocus, shift: numb
 	return content.slice(0, focus.start) + next + content.slice(focus.end);
 }
 
+export function restyleElements(content: string, focus: ElementFocus[], shift: number): string | null {
+	let restyled: string | null = null;
+
+	for (const element of [...focus].sort((a, b) => b.start - a.start))
+		restyled = restyleElement(restyled ?? content, element, shift) ?? restyled;
+
+	return restyled;
+}
+
 function mockEdit(request: GenerationRequest, targets: { path: string; content: string }[]) {
 	const shift = (request.variation?.index ?? 0) + 1;
-	const focus = request.focus;
+	const focus = request.focus ?? [];
 
 	const changes = targets.map(({ path, content }) => ({
 		path,
 		content:
-			(focus?.file === path ? restyleElement(content, focus, shift) : null) ?? restyleForVariation(content, shift),
+			restyleElements(
+				content,
+				focus.filter((element) => element.file === path),
+				shift,
+			) ?? restyleForVariation(content, shift),
 	}));
 
 	const frames = targets.map(({ path }) => ({ file: path, name: screenNameFromPath(path) }));
 	const names = frames.map((f) => f.name).join(", ");
 
-	return { changes, frames, reply: focus ? `Restyled ${focus.label} in ${names}.` : `Restyled ${names}.` };
+	return {
+		changes,
+		frames,
+		reply: focus.length
+			? `Restyled ${focus.map((element) => element.label).join(", ")} in ${names}.`
+			: `Restyled ${names}.`,
+	};
 }
 
 const CONTRAST_FIXES: [RegExp, string][] = [

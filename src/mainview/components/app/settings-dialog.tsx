@@ -55,7 +55,7 @@ const KIND_LABEL = { api: "API", cli: "CLI", sdk: "SDK" } as const;
 const typeInfo = (type: string) => PROVIDER_TYPES.find((t) => t.type === type);
 
 export function SettingsDialog() {
-	const { settingsOpen, focusProvider, settings, statuses, loading } = useProviders();
+	const { settingsOpen, focusProvider, settings, statuses, keyStorage, loading } = useProviders();
 	const [expanded, setExpanded] = useState(settingsOpen ? focusProvider : null);
 	const [refreshing, setRefreshing] = useState(false);
 	// Opening (or asking for another provider while open) expands the provider asked for
@@ -92,9 +92,12 @@ export function SettingsDialog() {
 				<DialogHeader className="border-b px-6 pt-6 pb-4">
 					<DialogTitle>AI providers</DialogTitle>
 					<DialogDescription>
-						Bring your own AI: an API key, a CLI you are already logged in to, or a local model. Keys stay in your
-						system keychain.
+						Bring your own AI: an API key, a CLI you are already logged in to, or a local model.{" "}
+						{keyStorage?.ok === false ? null : `Keys stay in ${keyStorage?.name ?? "your system keychain"}.`}
 					</DialogDescription>
+					{keyStorage?.ok === false ? (
+						<p className="mt-2 rounded-lg bg-destructive/8 px-3 py-2.5 text-[13px]">{keyStorage.message}</p>
+					) : null}
 				</DialogHeader>
 
 				<ScrollArea className="min-h-0 flex-1">
@@ -318,6 +321,9 @@ function ProviderCard({
 	const [label, setLabel] = useState(config.label);
 	const keyRef = useRef<HTMLInputElement>(null);
 	const health = status?.health;
+	const { keyStorage } = useProviders();
+	const keysBlocked = keyStorage?.ok === false ? keyStorage.message : null;
+	const keyHome = keyStorage?.ok ? keyStorage.name : "your keychain";
 
 	useEffect(() => {
 		if (open && info?.needsKey && !config.hasKey) requestAnimationFrame(() => keyRef.current?.focus());
@@ -408,7 +414,7 @@ function ProviderCard({
 					{info?.needsKey || config.type === "openai-compatible" ? (
 						<Field
 							label="API key"
-							hint={config.hasKey ? "Stored in your keychain. Type a new key to replace it." : undefined}
+							hint={config.hasKey ? `Stored in ${keyHome}. Type a new key to replace it.` : (keysBlocked ?? undefined)}
 						>
 							<div className="flex gap-2">
 								<Input
@@ -416,6 +422,7 @@ function ProviderCard({
 									type="password"
 									autoComplete="off"
 									spellCheck={false}
+									disabled={Boolean(keysBlocked)}
 									placeholder={config.hasKey ? "••••••••••••" : info?.needsKey ? "Paste your key" : "Optional"}
 									value={key}
 									onChange={(e) => setKey(e.target.value)}

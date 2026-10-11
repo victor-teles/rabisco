@@ -11,6 +11,7 @@ import {
 	ContextMenuSubTrigger,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { HANDLE_CURSOR, HANDLES, handleSides, handleSpan, resizeRect, type Handle } from "@/lib/frame-resize";
 import { cn } from "@/lib/utils";
 import type { ViewportStore } from "@/lib/viewport";
 import { MIN_SECTION_SIZE, membersOf, SECTION_COLORS } from "../../../shared/sections";
@@ -47,6 +48,27 @@ const tint = (color: SectionColor, percent: number) =>
 
 type Drag = { id: string; dragId: string; startX: number; startY: number; moved: boolean; targets: HTMLElement[] };
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+type Resize = {
+	id: string;
+	handle: Handle;
+	startX: number;
+	startY: number;
+	origin: Rect;
+	rect: Rect;
+	target: HTMLElement;
+};
+
+const place = (target: HTMLElement, rect: Rect) => {
+	target.style.left = `${rect.x}px`;
+	target.style.top = `${rect.y}px`;
+	target.style.width = `${rect.width}px`;
+	target.style.height = `${rect.height}px`;
+};
+
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
 type SectionsLayerProps = {
 	sections: CanvasSection[];
 	frames: Frame[];
@@ -57,6 +79,7 @@ type SectionsLayerProps = {
 	onSelect: (id: string) => void;
 	onMove: (id: string, dx: number, dy: number, dragId: string) => void;
 	onMoveEnd: () => void;
+	onResize: (id: string, rect: Rect) => void;
 	onStartRename: (id: string) => void;
 	onRename: (id: string, name: string | null) => void;
 	onRecolor: (id: string, color: SectionColor) => void;
@@ -65,8 +88,9 @@ type SectionsLayerProps = {
 };
 
 export function SectionsLayer(props: SectionsLayerProps) {
-	const { sections, frames, viewport, onMove, onMoveEnd } = props;
+	const { sections, frames, viewport, onMove, onMoveEnd, onResize } = props;
 	const drag = useRef<Drag | null>(null);
+	const resizing = useRef<Resize | null>(null);
 
 	const translate = (targets: HTMLElement[], dx: number, dy: number) => {
 		for (const target of targets) target.style.translate = dx || dy ? `${dx}px ${dy}px` : "";
@@ -131,6 +155,51 @@ export function SectionsLayer(props: SectionsLayerProps) {
 		translate(current.targets, 0, 0);
 	};
 
+	const startResize = (event: React.PointerEvent, section: CanvasSection, handle: Handle) => {
+		const target = event.currentTarget.closest<HTMLElement>("[data-section-id]");
+
+		if (!target) return;
+		const origin = { x: section.x, y: section.y, width: section.width, height: section.height };
+
+		resizing.current = {
+			id: section.id,
+			handle,
+			startX: event.clientX,
+			startY: event.clientY,
+			origin,
+			rect: origin,
+			target,
+		};
+	};
+
+	const onResizeMove = (event: React.PointerEvent) => {
+		const current = resizing.current;
+
+		if (!current) return;
+		event.stopPropagation();
+		const { zoom } = viewport.get();
+
+		current.rect = resizeRect(
+			current.origin,
+			current.handle,
+			(event.clientX - current.startX) / zoom,
+			(event.clientY - current.startY) / zoom,
+			{ keepRatio: event.shiftKey, fromCenter: event.altKey, maxSize: Infinity },
+		);
+		place(current.target, current.rect);
+	};
+
+	const onResizeEnd = (event: React.PointerEvent) => {
+		const current = resizing.current;
+
+		if (!current) return;
+		event.stopPropagation();
+		resizing.current = null;
+		place(current.target, current.origin);
+
+		if (!sameRect(current.rect, current.origin)) onResize(current.id, current.rect);
+	};
+
 	return (
 		<div data-sections-layer className="contents">
 			{sections.map((section) => (
@@ -141,6 +210,9 @@ export function SectionsLayer(props: SectionsLayerProps) {
 					onPressLabel={start}
 					onPointerMove={onPointerMove}
 					onPointerUp={onPointerUp}
+					onPressHandle={startResize}
+					onResizeMove={onResizeMove}
+					onResizeEnd={onResizeEnd}
 				/>
 			))}
 		</div>
@@ -163,11 +235,17 @@ function SectionView({
 	onPressLabel,
 	onPointerMove,
 	onPointerUp,
+	onPressHandle,
+	onResizeMove,
+	onResizeEnd,
 }: SectionsLayerProps & {
 	section: CanvasSection;
 	onPressLabel: (event: React.PointerEvent, section: CanvasSection) => void;
 	onPointerMove: (event: React.PointerEvent) => void;
 	onPointerUp: (event: React.PointerEvent) => void;
+	onPressHandle: (event: React.PointerEvent, section: CanvasSection, handle: Handle) => void;
+	onResizeMove: (event: React.PointerEvent) => void;
+	onResizeEnd: (event: React.PointerEvent) => void;
 }) {
 	const selected = selectedId === section.id;
 
@@ -186,6 +264,42 @@ function SectionView({
 					: `0 0 0 calc(1px * var(--unzoom)) ${tint(section.color, 45)}`,
 			}}
 		>
+			{selected && interactive
+				? HANDLES.map((handle) => {
+						const sides = handleSides(handle);
+						const x = handleSpan(sides.x);
+						const y = handleSpan(sides.y);
+
+						return (
+							<div
+								key={handle}
+								data-section-handle={handle}
+								className={cn("pointer-events-auto absolute", HANDLE_CURSOR[handle])}
+								style={{ left: x.start, width: x.length, top: y.start, height: y.length }}
+								onPointerDown={(event) => {
+									if (event.button !== 0) return;
+									event.stopPropagation();
+									event.currentTarget.setPointerCapture(event.pointerId);
+									onPressHandle(event, section, handle);
+								}}
+								onPointerMove={onResizeMove}
+								onPointerUp={onResizeEnd}
+								onPointerCancel={onResizeEnd}
+							>
+								{sides.x && sides.y ? (
+									<span
+										className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[1px] border-primary bg-background"
+										style={{
+											width: "calc(8px * var(--unzoom))",
+											height: "calc(8px * var(--unzoom))",
+											borderWidth: "calc(1px * var(--unzoom))",
+										}}
+									/>
+								) : null}
+							</div>
+						);
+					})
+				: null}
 			<div
 				className="absolute top-0 left-0 flex origin-top-left"
 				style={{

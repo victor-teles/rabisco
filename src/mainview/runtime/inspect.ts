@@ -7,6 +7,7 @@ import {
 	locationOf,
 	type Box,
 	type DropLayout,
+	type LinkBox,
 } from "../lib/render/protocol";
 import {
 	gapRects,
@@ -169,6 +170,37 @@ export function instancesOf(container: Element, loc: string): Element[][] {
 export const boxesOf = (instances: Element[][]) => instances.flatMap((elements) => unionBox(elements) ?? []);
 
 export const boxOf = (elements: Element[]) => unionBox(elements);
+
+export function linkBoxesOf(container: Element, entry: string, starts: readonly number[]): LinkBox[] {
+	const wanted = new Map(starts.map((start) => [locationOf(entry, start), start]));
+	const found = new Map<number, Box>();
+	const root = rootFiber(container);
+
+	const add = (start: number | undefined, elements: () => Element[]) => {
+		if (start === undefined || found.has(start)) return;
+		const box = unionBox(elements());
+
+		if (box) found.set(start, box);
+	};
+
+	if (!root) {
+		for (const element of container.querySelectorAll(`[${LOC_ATTRIBUTE}]`))
+			add(wanted.get(element.getAttribute(LOC_ATTRIBUTE) ?? ""), () => [element]);
+	} else {
+		const visit = (fiber: Fiber | null) => {
+			for (let node = fiber; node; node = node.sibling) {
+				const loc = locOf(node);
+
+				if (loc !== null) add(wanted.get(loc), () => hostElements(node));
+				visit(node.child);
+			}
+		};
+
+		visit(root.child);
+	}
+
+	return [...found].map(([start, box]) => ({ start, box }));
+}
 
 const contains = (box: Box, x: number, y: number) =>
 	x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;

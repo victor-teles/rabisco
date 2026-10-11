@@ -40,8 +40,9 @@ const params = (projectPath: string, generationId = "g1") => ({
 describe("ai service", () => {
 	test("lists the mock provider in development", async () => {
 		const { ai } = setup();
-		const { statuses } = await ai.listProviders();
+		const { statuses, keyStorage } = await ai.listProviders();
 		expect(statuses.map((s) => s.id)).toEqual(["mock"]);
+		expect(keyStorage).toEqual({ ok: true, name: "memory" });
 		expect(statuses[0]!.health?.ok).toBe(true);
 	});
 
@@ -400,7 +401,7 @@ describe("point and prompt", () => {
 			...params(projectPath),
 			task: "edit",
 			targets: [path],
-			focus,
+			focus: [focus],
 			prompt: "Bigger",
 		});
 
@@ -410,6 +411,28 @@ describe("point and prompt", () => {
 		expect(content.slice(0, focus.start)).toBe(source.slice(0, focus.start));
 		expect(content.endsWith(source.slice(focus.end))).toBe(true);
 		expect(result.reply).toBe("Restyled <h1> “Welcome” in Welcome.");
+	});
+
+	test("with several elements selected, the provider gets and changes all of them", async () => {
+		const body = elementFocus(source, path, source.indexOf("<p>"))!;
+		const { ai, projectPath } = setup();
+		put(projectPath, path, source);
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "edit",
+			targets: [path],
+			focus: [focus, body],
+			prompt: "Bigger",
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		const content = result.changes.find((c) => c.path === path)!.content!;
+		expect(content.slice(0, focus.start)).toBe(source.slice(0, focus.start));
+		expect(content).not.toContain(focus.snippet);
+		expect(content).not.toContain(body.snippet);
+		expect(content.endsWith(source.slice(body.end))).toBe(true);
+		expect(result.reply).toBe("Restyled <h1> “Welcome”, <p> “Body” in Welcome.");
 	});
 
 	test("a change outside the element is applied with a note; the focus note isn't history", async () => {
@@ -434,13 +457,13 @@ describe("point and prompt", () => {
 			...params(projectPath),
 			task: "edit",
 			targets: [path],
-			focus,
+			focus: [focus],
 			prompt: "Say hello",
 			chatId: "c1",
 		});
 
 		if (!result.ok) throw new Error(result.error.message);
-		expect(requests[0]!.focus).toEqual(focus);
+		expect(requests[0]!.focus).toEqual([focus]);
 		expect(requests[0]!.history?.map((turn) => turn.content)).toEqual(["A welcome screen", "Made it."]);
 		expect(result.changes).toEqual([{ path, content: outside }]);
 		expect(result.reply).toBe(
@@ -472,7 +495,7 @@ describe("point and prompt", () => {
 	test("a stale focus is dropped: the request is a plain edit of the file", async () => {
 		const { ai, requests, projectPath } = setupFake(() => events(...write(path, source), { type: "done" }));
 		put(projectPath, path, source.replace("Welcome</h1>", "Hi</h1>"));
-		const result = await ai.generate({ ...params(projectPath), task: "edit", targets: [path], focus });
+		const result = await ai.generate({ ...params(projectPath), task: "edit", targets: [path], focus: [focus] });
 		expect(result.ok).toBe(true);
 		expect(requests[0]!.focus).toBeUndefined();
 		expect(requests[0]!.targets).toEqual([path]);

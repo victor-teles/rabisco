@@ -480,7 +480,7 @@ describe("userPrompt", () => {
 			task: "edit",
 			targets: [path],
 			files: [{ path, content: source }],
-			focus,
+			focus: [focus],
 			prompt: "Make it outline",
 		});
 
@@ -510,6 +510,25 @@ describe("userPrompt", () => {
 			expect(userPrompt({ ...edit, task: "repair", targets: ["components/row.tsx"] }, "text")).not.toContain(
 				"one element of",
 			);
+		});
+
+		test("several elements are all listed and quoted, and the edit keeps to them", () => {
+			const main = elementFocus(source, path, source.indexOf("<main"))!;
+			const both = { ...edit, focus: [focus, main] };
+			const prompt = userPrompt(both, "text");
+			expect(prompt).toContain(
+				`# Focus\nThe user selected 2 elements in ${path}. Apply the request to each of them, and only to them:\n  - <Button> “Get started”, lines 4–6\n  - <main>, lines 3–7\n`,
+			);
+			expect(prompt).toContain("- Change those elements and what they contain.");
+			expect(prompt).toContain("outside their lines don't change");
+			expect(prompt).toContain(
+				`4 | \t\t\t<Button size="lg">\n5 | \t\t\t\tGet started\n6 | \t\t\t</Button>\n\n3 | \t\t<main>`,
+			);
+			expect(userPrompt(both, "agent")).toContain("leave everything outside the elements as it is");
+
+			expect(
+				userPrompt({ ...both, task: "repair", problems: [{ path, message: "Unexpected token" }] }, "text"),
+			).toContain("The request was about 2 elements of screens/welcome.tsx: <Button> “Get started”, <main>.");
 		});
 
 		test("ignored when its file isn't a target", () => {

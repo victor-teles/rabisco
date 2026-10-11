@@ -2,6 +2,7 @@
 // declarations are allowed; lines only added right next to the element count as part of it.
 
 import type { ElementFocus } from "../../shared/ai/contract";
+import { focusLabel } from "../../shared/ai/focus";
 import type { FileChange, ProjectFiles } from "../../shared/types";
 
 /** LCS table cells; roughly two ~2000-line files after trimming common ends */
@@ -164,21 +165,30 @@ export function lineRanges(lines: number[]): string {
 }
 
 export function focusNotes(
-	focus: ElementFocus | undefined,
+	focus: ElementFocus[] | undefined,
 	projectFiles: ProjectFiles,
 	changes: FileChange[],
 ): string[] {
-	const before = focus ? projectFiles[focus.file] : undefined;
-	const change = focus && changes.find((c) => c.path === focus.file);
+	const file = focus?.[0]?.file;
+	const before = file === undefined ? undefined : projectFiles[file];
+	const change = changes.find((c) => c.path === file);
 
-	if (!focus || before === undefined || !change) return [];
+	if (!focus || file === undefined || before === undefined || !change) return [];
+	const label = focus.length === 1 ? focusLabel(focus) : `the ${focusLabel(focus)}`;
 
-	if (change.content === null) return [`Note: this deleted ${focus.file}, not just ${focus.label}. Undo reverts it.`];
-	const lines = changesOutside(before, change.content, focus);
+	if (change.content === null) return [`Note: this deleted ${file}, not just ${label}. Undo reverts it.`];
+	const outside: number[][] = [];
 
-	if (!lines?.length) return [];
+	for (const element of focus) {
+		const lines = changesOutside(before, change.content, element);
 
-	return [
-		`Note: this also changed ${focus.file} outside ${focus.label} (${lineRanges(lines)}). Undo reverts the whole edit.`,
-	];
+		if (!lines) return [];
+		outside.push(lines);
+	}
+
+	const lines = (outside[0] ?? []).filter((line) => outside.every((other) => other.includes(line)));
+
+	if (!lines.length) return [];
+
+	return [`Note: this also changed ${file} outside ${label} (${lineRanges(lines)}). Undo reverts the whole edit.`];
 }

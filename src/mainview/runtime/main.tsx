@@ -9,12 +9,12 @@ import {
 	type FrameMessage,
 	type HostMessage,
 } from "../lib/render/protocol";
-import { frameAssets } from "./assets";
+import { frameAssets, resolveImageSources } from "./assets";
 import { lintScreen } from "./design-lint";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
 import { preloadIcons } from "./icons";
-import { boxesOf, boxOf, dropLayoutOf, instancesOf, layoutOf, locatedAt, spacingOf } from "./inspect";
+import { boxesOf, boxOf, dropLayoutOf, instancesOf, layoutOf, linkBoxesOf, locatedAt, spacingOf } from "./inspect";
 import { createPlay } from "./play";
 import { colorAt } from "./pick-color";
 import { clearOrder, previewOrder } from "./reorder";
@@ -24,6 +24,10 @@ import { captureScene, contentHeight, settle } from "./snapshot";
 import { startTextEdit, type TextEdit } from "./text-edit";
 
 const registry = new ModuleRegistry(externals);
+
+resolveImageSources(HTMLImageElement.prototype);
+
+resolveImageSources(HTMLSourceElement.prototype);
 
 const style = document.getElementById("rabisco-css") ?? document.head.appendChild(document.createElement("style"));
 
@@ -45,6 +49,8 @@ let version = 0;
 let renderedVersion: string | null = null;
 
 let tracked: { start: number; version: string; sent: string } | null = null;
+
+let linked: { starts: number[]; version: string; sent: string } | null = null;
 
 let textEdit: TextEdit | null = null;
 
@@ -87,6 +93,17 @@ function reportBoxes() {
 	post({ type: "boxes", start: tracked.start, version: tracked.version, boxes, spacing, layout });
 }
 
+function reportLinks() {
+	if (!linked || !entry || linked.version !== renderedVersion) return;
+	const links = linkBoxesOf(rootElement, entry, linked.starts);
+	const width = window.innerWidth;
+	const sent = JSON.stringify([width, links]);
+
+	if (sent === linked.sent) return;
+	linked.sent = sent;
+	post({ type: "link-boxes", version: linked.version, width, links });
+}
+
 type PreviewedProperty = {
 	style: CSSStyleDeclaration;
 	property: string;
@@ -113,10 +130,10 @@ function clearPreview() {
 const hasStyle = (element: Element): element is HTMLElement | SVGElement =>
 	element instanceof HTMLElement || element instanceof SVGElement;
 
-function previewStyle(start: number, styles: Record<string, string>) {
+function previewStyle(starts: number[], styles: Record<string, string>) {
 	clearPreview();
 
-	for (const elements of instancesOf(rootElement, locationOf(entry, start))) {
+	for (const elements of starts.flatMap((start) => instancesOf(rootElement, locationOf(entry, start)))) {
 		for (const element of elements) {
 			if (!hasStyle(element)) continue;
 			const { style } = element;
@@ -145,6 +162,7 @@ const scheduleMeasure = () => {
 	measuring = requestAnimationFrame(() => {
 		measure();
 		reportBoxes();
+		reportLinks();
 
 		if (play.playing) play.refresh();
 	});
@@ -345,11 +363,14 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	} else if (message?.type === "track") {
 		tracked = message.start === null ? null : { start: message.start, version: message.version, sent: "" };
 		reportBoxes();
+	} else if (message?.type === "links") {
+		linked = message.starts.length ? { starts: message.starts, version: message.version, sent: "" } : null;
+		reportLinks();
 	} else if (message?.type === "preview-style") {
 		if (message.style === null) {
 			clearPreview();
 			scheduleMeasure();
-		} else if (entry && message.version === renderedVersion) previewStyle(message.start, message.style);
+		} else if (entry && message.version === renderedVersion) previewStyle(message.starts, message.style);
 	} else if (message?.type === "preview-order") {
 		if (message.preview === null) clearOrder(true);
 		else if (entry && message.version === renderedVersion)

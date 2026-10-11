@@ -1,10 +1,12 @@
 import type { CSSProperties } from "react";
-import { assetKey, rewriteCssUrls } from "../../shared/assets";
+import { assetKey, rewriteCssUrls, rewriteSrcset } from "../../shared/assets";
 import { isString } from "../../shared/guards";
 import type { AssetPayload } from "../lib/render/protocol";
 
-const hasSrc = <P>(props: P): props is P & { src: string } =>
-	typeof props === "object" && props !== null && "src" in props && typeof props.src === "string";
+const hasString = <P, K extends string>(props: P, name: K): props is P & Record<K, string> =>
+	typeof props === "object" && props !== null && isString(Object.getOwnPropertyDescriptor(props, name)?.value);
+
+const SRCSET_PROPS = ["srcSet", "srcset"] as const;
 
 const hasStyle = <P>(props: P): props is P & { style: CSSProperties } =>
 	typeof props === "object" && props !== null && "style" in props && typeof props.style === "object";
@@ -63,15 +65,26 @@ export class FrameAssets {
 		return this.#urls.size ? rewriteCssUrls(css, (key) => this.#urls.get(key)) : css;
 	}
 
-	/** Element props with `src` and background `url()`s pointed at the images; the same object when nothing changes */
+	srcset(srcset: string): string {
+		return this.#urls.size ? rewriteSrcset(srcset, (key) => this.#urls.get(key)) : srcset;
+	}
+
+	/** Element props with `src`, `srcSet` and background `url()`s pointed at the images; the same object when nothing changes */
 	props<P>(props: P): P {
 		if (!this.#urls.size) return props;
 		let next = props;
 
-		if (hasSrc(next)) {
+		if (hasString(next, "src")) {
 			const url = this.url(next.src);
 
 			if (url) next = { ...next, src: url };
+		}
+
+		for (const name of SRCSET_PROPS) {
+			if (!hasString(next, name)) continue;
+			const srcset = this.srcset(next[name]);
+
+			if (srcset !== next[name]) next = { ...next, [name]: srcset };
 		}
 
 		if (hasStyle(next) && next.style) {
@@ -99,3 +112,24 @@ export class FrameAssets {
 }
 
 export const frameAssets = new FrameAssets();
+
+type ImageSource = { src: string; srcset: string };
+
+function rewriteSetter(prototype: ImageSource, name: keyof ImageSource, rewrite: (value: string) => string) {
+	const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
+	const set = descriptor?.set;
+
+	if (!descriptor || !set) return;
+
+	Object.defineProperty(prototype, name, {
+		...descriptor,
+		set(this: ImageSource, value: string) {
+			set.call(this, rewrite(String(value)));
+		},
+	});
+}
+
+export function resolveImageSources(prototype: ImageSource, assets = frameAssets) {
+	rewriteSetter(prototype, "src", (value) => assets.url(value) ?? value);
+	rewriteSetter(prototype, "srcset", (value) => assets.srcset(value));
+}

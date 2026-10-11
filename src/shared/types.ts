@@ -120,6 +120,7 @@ export type Project = {
 	chats: ChatSummary[];
 	/** Images under `public/`, pushed to frames as bytes (decision 0010). Not files: they stay out of history */
 	assets?: ProjectAssets;
+	backup?: string;
 };
 
 /** Everything to render one screen on its own (thumbnails) */
@@ -172,7 +173,7 @@ export type GenerateParams = {
 	/** Read but must not change, e.g. the variation a "Mix" takes a section from */
 	references?: string[];
 	/** Dropped by the main process when the element is gone from the file on disk */
-	focus?: ElementFocus;
+	focus?: ElementFocus[];
 	problems?: Problem[];
 	attachments?: Attachment[];
 	/** The chat session whose messages are the history. Missing: no history */

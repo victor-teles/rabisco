@@ -4,7 +4,7 @@ import { canRedo, canUndo } from "@/lib/history";
 import { projectAssets } from "@/lib/render/assets";
 import { projectCandidates } from "@/lib/render/candidates";
 import { screenStyles } from "@/lib/render/styles";
-import { onAssetsChanged } from "@/lib/rpc";
+import { api, onAssetsChanged } from "@/lib/rpc";
 import { projectSessions } from "@/lib/sessions";
 import type { ChatMessage } from "../../shared/types";
 
@@ -50,10 +50,15 @@ export function useProject(path: string) {
 
 		if (!reloaded) return;
 
+		const { backup } = reloaded;
+
 		if (reloaded.hadHistory)
 			toast("Reloaded the project from disk", {
 				id: "reloaded-from-disk",
-				description: "Undo history starts again from here.",
+				description: backup
+					? "Undo history starts again from here. A backup keeps the version before."
+					: "Undo history starts again from here.",
+				action: backup ? { label: "Show backup", onClick: () => void api.revealProject({ path: backup }) } : undefined,
 			});
 
 		screenStyles.add(projectCandidates(reloaded.files));

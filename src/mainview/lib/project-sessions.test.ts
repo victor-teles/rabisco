@@ -4,6 +4,7 @@ import { createProjectSessions, type Landed, type SessionsApi } from "./project-
 import type { GenerationPlan } from "../../shared/ai/contract";
 import type { PolishMode } from "../../shared/design/polish";
 import { emptyCanvas } from "../../shared/project";
+import type { SavedHistory } from "../../shared/saved-history";
 import type {
 	CanvasDoc,
 	ChatMessage,
@@ -39,6 +40,8 @@ function memoryApi() {
 	const stored = new Map<string, Stored>();
 	const calls: GenerateParams[] = [];
 	const gates = new Map<string, Gate>();
+	const histories = new Map<string, SavedHistory>();
+	const backups: string[] = [];
 
 	const project = (path: string) => {
 		let found = stored.get(path);
@@ -98,6 +101,19 @@ function memoryApi() {
 		async deleteChat() {
 			return ok;
 		},
+		async readHistory({ path }) {
+			return histories.get(path) ?? null;
+		},
+		async writeHistory({ path, history }) {
+			histories.set(path, history);
+
+			return ok;
+		},
+		async backupProject({ path, reason }) {
+			backups.push(`${reason} ${path}`);
+
+			return { dir: `/backups/${backups.length}` };
+		},
 		generate(params) {
 			calls.push(params);
 
@@ -113,7 +129,7 @@ function memoryApi() {
 
 	const finish = (params: GenerateParams, result: GenerateResult) => gates.get(params.generationId)?.resolve(result);
 
-	return { api, log, calls, stored: project, finish };
+	return { api, log, calls, stored: project, finish, histories, backups };
 }
 
 function created(path = "screens/home.tsx", content = SCREEN): GenerateResult {
@@ -211,6 +227,43 @@ function setup({ polish = "off", plan = false }: { polish?: PolishMode; plan?: b
 }
 
 describe("project sessions", () => {
+	test("an outside edit of the canvas file lands in every undo step and isn't saved back", async () => {
+		const { open, stored, log } = setup();
+		const { session } = await open("/p/a");
+
+		const home = {
+			file: "screens/home.tsx",
+			name: "Home",
+			device: "mobile" as const,
+			x: 0,
+			y: 0,
+			width: 390,
+			height: 844,
+		};
+
+		session.change((snapshot) => ({
+			...snapshot,
+			files: { ...snapshot.files, "screens/home.tsx": SCREEN },
+			frames: [home],
+		}));
+		await session.flushCanvas();
+		const saves = log.filter((line) => line.startsWith("save")).length;
+
+		session.canvasChanged({ ...stored("/p/a").canvas, name: "Pulled", frames: [{ ...home, x: 500 }] });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(session.state()!.canvas.name).toBe("Pulled");
+		expect(session.state()!.canvas.frames.map((frame) => frame.x)).toEqual([500]);
+		expect(log.filter((line) => line.startsWith("save")).length).toBe(saves);
+
+		session.undo();
+		expect(session.state()!.canvas.frames).toEqual([]);
+		expect(session.state()!.canvas.name).toBe("Pulled");
+
+		session.redo();
+		expect(session.state()!.canvas.frames.map((frame) => frame.x)).toEqual([500]);
+	});
+
 	test("a run keeps going after the editor detaches and lands as one undo step", async () => {
 		const { sessions, open, nextCall, finish, log, landed, stored } = setup();
 		const { session, controller, close } = await open("/p/a");
@@ -274,8 +327,49 @@ describe("project sessions", () => {
 		await running;
 
 		expect(log.filter((entry) => entry === "stop")).toHaveLength(1);
-		expect(again.session.state()!.messages.map((m) => m.content)).toEqual(["Stopped. Nothing was changed."]);
+		expect(again.session.state()!.messages).toEqual([]);
+		expect(again.controller.get().failure).toMatchObject({ code: "aborted", retryable: true });
 		expect(again.controller.get().generation).toBe(null);
+	});
+
+	test("a failed write is written again by the next flush", async () => {
+		const { open, api, stored } = setup();
+		const { session } = await open("/p/a");
+		const write = api.writeFiles;
+		let failing = true;
+
+		api.writeFiles = async (params) => {
+			if (!failing) return write(params);
+			failing = false;
+			throw new Error("Disk full");
+		};
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "screens/home.tsx": SCREEN } }));
+
+		expect(await session.flushCanvas()).toBe(false);
+		expect(await session.flushCanvas()).toBe(true);
+		expect(stored("/p/a").files["screens/home.tsx"]).toBe(SCREEN);
+	});
+
+	test("a plan that fails says so, then runs in one go", async () => {
+		const { open, nextCall, finish } = setup({ plan: true });
+		const { session, controller } = await open("/p/a");
+		const running = controller.run("A habit tracker", {}, MODEL);
+
+		finish(await nextCall(1), {
+			ok: false,
+			error: { code: "network", message: "The provider is offline.", retryable: true },
+		});
+		const params = await nextCall(2);
+
+		expect(params.task).toBe("create");
+		finish(params, created());
+		await running;
+
+		expect(session.state()!.messages.map((m) => m.content)).toEqual([
+			"Couldn't plan this first (The provider is offline), so it ran in one go.",
+			"Made the home screen.",
+		]);
 	});
 
 	test("a plan that arrives while detached waits for approval", async () => {
@@ -413,6 +507,24 @@ describe("project sessions", () => {
 		expect(session.state()!.history.past.length).toBe(steps + 1);
 		expect(stored("/p/a").files["screens/home.tsx"]).toBe(POLISHED);
 		expect(session.state()!.messages.at(-1)?.content).toContain("Polished 1 design problem");
+	});
+
+	test("a polish that fails says so in the reply", async () => {
+		const { open, nextCall, finish } = setup({ polish: "polish" });
+		const { session, controller } = await open("/p/a");
+		const running = controller.run("Habits", {}, MODEL);
+		finish(await nextCall(1), created());
+
+		finish(await nextCall(2), {
+			ok: false,
+			error: { code: "rate_limited", message: "Too many requests.", retryable: true },
+		});
+		await running;
+
+		expect(session.state()!.files["screens/home.tsx"]).toBe(SCREEN);
+		expect(session.state()!.messages.at(-1)?.content).toBe(
+			"Made the home screen.\n\nCouldn't polish the screens (Too many requests), so they are as generated.",
+		);
 	});
 
 	test("an AI change is a version in the session, recorded after its polish", async () => {

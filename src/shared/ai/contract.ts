@@ -168,8 +168,8 @@ export type GenerationRequest = {
 	/** One of several parallel generations of the same task; `index` is 0-based. */
 	variation?: { index: number; count: number };
 
-	/** For an `edit` of `focus.file`: the one element to change, keeping the rest of the file. */
-	focus?: ElementFocus;
+	/** For an `edit` of the file they are in (one file for all): the elements to change, keeping the rest of the file. */
+	focus?: ElementFocus[];
 
 	attachments?: Attachment[];
 

@@ -93,17 +93,20 @@ const holdsRect = (outer: Rect, inner: Rect) =>
 	inner.x + inner.width <= outer.x + outer.width &&
 	inner.y + inner.height <= outer.y + outer.height;
 
-export function sectionOf(frame: Frame, sections: CanvasSection[]): CanvasSection | undefined {
+export function sectionAt(x: number, y: number, sections: CanvasSection[]): CanvasSection | undefined {
 	let found: CanvasSection | undefined;
 
 	for (const section of sections) {
-		if (!holdsFrame(section, frame)) continue;
+		if (!holdsPoint(section, x, y)) continue;
 
 		if (!found || section.width * section.height < found.width * found.height) found = section;
 	}
 
 	return found;
 }
+
+export const sectionOf = (frame: Frame, sections: CanvasSection[]) =>
+	sectionAt(frame.x + frame.width / 2, frame.y + frame.height / 2, sections);
 
 export function moveSection(
 	sections: CanvasSection[],

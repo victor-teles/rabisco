@@ -30,6 +30,8 @@ afterAll(() => {
 
 const { FrameHost } = await import("./frame-host");
 
+const { linkBoxes } = await import("./link-boxes");
+
 const fakeFrame = () => {
 	const posted: HostMessage[] = [];
 
@@ -267,6 +269,30 @@ describe("hit testing", () => {
 		host.dispose();
 	});
 
+	test("sends the linked elements of the entry and stores where they render", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		const source = `export default function A() {\n\treturn <main><a data-link-to="screens/b.tsx">B</a></main>;\n}\n`;
+		const version = sourceVersion(source);
+		const start = source.indexOf("<a");
+
+		host.update("screens/linked.tsx", { "screens/linked.tsx": source }, "");
+		host.receive({ type: "ready" });
+		expect(lastPosted(posted, "links")).toEqual({ type: "links", starts: [start], version });
+
+		const box = { x: 1, y: 2, width: 3, height: 4 };
+		host.receive({ type: "link-boxes", version: "old", width: 390, links: [{ start, box }] });
+		expect(linkBoxes().get("screens/linked.tsx")).toBeUndefined();
+		host.receive({ type: "link-boxes", version, width: 390, links: [{ start, box }] });
+		expect(linkBoxes().get("screens/linked.tsx")?.boxes.get(start)).toEqual(box);
+
+		const unlinked = source.replace(` data-link-to="screens/b.tsx"`, "");
+		host.update("screens/linked.tsx", { "screens/linked.tsx": unlinked }, "");
+		expect(lastPosted(posted, "links")).toEqual({ type: "links", starts: [], version: sourceVersion(unlinked) });
+		expect(isFrameMessage({ type: "link-boxes", version, width: 390, links: [{ start: -1, box }] })).toBe(false);
+		host.dispose();
+	});
+
 	test("dropLayout resolves null when the frame doesn't answer or the host is disposed", async () => {
 		const host = new FrameHost(fakeFrame().frame);
 		host.receive({ type: "ready" });
@@ -343,13 +369,18 @@ describe("hit testing", () => {
 	test("previewStyle posts once ready and restores with null", () => {
 		const { frame, posted } = fakeFrame();
 		const host = new FrameHost(frame);
-		host.previewStyle(40, "v1", { width: "256px" });
+		host.previewStyle([40, 52], "v1", { width: "256px" });
 		expect(posted).toEqual([]);
 		host.receive({ type: "ready" });
-		host.previewStyle(40, "v1", { width: "256px" });
-		expect(posted.at(-1)).toEqual({ type: "preview-style", start: 40, version: "v1", style: { width: "256px" } });
-		host.previewStyle(40, "v1", null);
-		expect(posted.at(-1)).toEqual({ type: "preview-style", start: 40, version: "v1", style: null });
+		host.previewStyle([40, 52], "v1", { width: "256px" });
+		expect(posted.at(-1)).toEqual({
+			type: "preview-style",
+			starts: [40, 52],
+			version: "v1",
+			style: { width: "256px" },
+		});
+		host.previewStyle([40, 52], "v1", null);
+		expect(posted.at(-1)).toEqual({ type: "preview-style", starts: [40, 52], version: "v1", style: null });
 		host.dispose();
 	});
 

@@ -1,4 +1,5 @@
 import {
+	ContextMenuCheckboxItem,
 	ContextMenuItem,
 	ContextMenuSeparator,
 	ContextMenuShortcut,
@@ -12,7 +13,7 @@ export const SEPARATOR = "-";
 
 type Submenu<Item> = { label: string; items: Item[] };
 
-/** An action id, `SEPARATOR`, or a submenu */
+/** An action id, an id prefix ending in `*` for every action that has it, `SEPARATOR`, or a submenu */
 export type MenuEntry = string | { label: string; items: MenuEntry[] };
 
 type MenuItem = Action | typeof SEPARATOR | { label: string; items: MenuItem[] };
@@ -33,6 +34,9 @@ function resolve(actions: readonly Action[], entries: readonly MenuEntry[]): Men
 			if (items.length) kept.push({ label: entry.label, items });
 		} else if (entry === SEPARATOR) {
 			if (last !== undefined && last !== SEPARATOR) kept.push(SEPARATOR);
+		} else if (entry.endsWith("*")) {
+			const prefix = entry.slice(0, -1);
+			kept.push(...actions.filter((action) => action.id.startsWith(prefix)));
 		} else {
 			const action = actionById(actions, entry);
 
@@ -50,7 +54,11 @@ export function ActionMenuItems({ actions, entries }: { actions: readonly Action
 	return <MenuItems items={resolve(actions, entries)} />;
 }
 
+const isCheckable = (item: MenuItem) => item !== SEPARATOR && !isSubmenu(item) && item.checked !== undefined;
+
 function MenuItems({ items }: { items: MenuItem[] }) {
+	const inset = items.some(isCheckable);
+
 	return items.map((item, i) => {
 		if (item === SEPARATOR) return <ContextMenuSeparator key={`separator-${i}`} />;
 
@@ -67,9 +75,18 @@ function MenuItems({ items }: { items: MenuItem[] }) {
 
 		const shortcut = shortcutOf(item);
 
+		if (item.checked !== undefined) {
+			return (
+				<ContextMenuCheckboxItem key={item.id} checked={item.checked} disabled={!item.enabled} onSelect={item.run}>
+					<span className="truncate">{item.label}</span>
+				</ContextMenuCheckboxItem>
+			);
+		}
+
 		return (
 			<ContextMenuItem
 				key={item.id}
+				inset={inset}
 				disabled={!item.enabled}
 				variant={item.destructive ? "destructive" : "default"}
 				onSelect={item.run}

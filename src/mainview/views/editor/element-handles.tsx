@@ -92,7 +92,14 @@ const samePreview = (a: PreviewStyle | undefined, b: PreviewStyle) => !!a && JSO
 
 const px = (value: number) => String(Math.round(value));
 
-function pending(drag: HandleDrag, classes: string, layout: ElementLayout, delta: Point, event: PointerEvent): Pending {
+function pending(
+	drag: HandleDrag,
+	classes: string,
+	layout: ElementLayout,
+	variant: string,
+	delta: Point,
+	event: PointerEvent,
+): Pending {
 	if (drag.kind === "size") {
 		const sizes = resizedSize(drag.handle, drag.start, delta);
 		const values: Partial<Record<Dimension, string>> = {};
@@ -105,7 +112,7 @@ function pending(drag: HandleDrag, classes: string, layout: ElementLayout, delta
 		}
 
 		return {
-			label: sizeLabel(values),
+			label: sizeLabel(values, variant),
 			preview: sizePreview(snapped, layout.parent),
 			edit: (current) => {
 				let next = current;
@@ -113,7 +120,7 @@ function pending(drag: HandleDrag, classes: string, layout: ElementLayout, delta
 				for (const dimension of handleDimensions(drag.handle)) {
 					const value = values[dimension];
 
-					if (value !== undefined) next = setFixedSize(next, dimension, value, layout.parent);
+					if (value !== undefined) next = setFixedSize(next, dimension, value, layout.parent, variant);
 				}
 
 				return next;
@@ -126,19 +133,19 @@ function pending(drag: HandleDrag, classes: string, layout: ElementLayout, delta
 		const value = spacingValue(draggedPadding(drag.side, drag.start, delta));
 
 		return {
-			label: paddingLabel(sides, value),
+			label: paddingLabel(sides, value, variant),
 			preview: paddingPreview(sides, spacingPixels(value) ?? 0),
-			edit: (current) => setPadding(current, sides, value),
+			edit: (current) => setPadding(current, sides, value, variant),
 		};
 	}
 
-	const parts = gapParts(classes, drag.part, layout.flow);
+	const parts = gapParts(classes, drag.part, layout.flow, variant);
 	const value = spacingValue(draggedGap(drag.part, drag.start, delta));
 
 	return {
-		label: gapLabel(classes, parts, value),
+		label: gapLabel(classes, parts, value, variant),
 		preview: gapPreview(parts, spacingPixels(value) ?? 0),
-		edit: (current) => setGap(current, parts, value),
+		edit: (current) => setGap(current, parts, value, variant),
 	};
 }
 
@@ -149,6 +156,7 @@ type ElementHandlesProps = {
 	spacing: Spacing | null;
 	/** The element's classes, which the handles can write */
 	classes: string;
+	variant: string;
 	zoom: () => number;
 	/** Inline styles on the live frame while a handle drags; `null` restores the element */
 	onPreview: (style: PreviewStyle | null) => void;
@@ -160,17 +168,26 @@ type ElementHandlesProps = {
  * Resize handles on the edges and corners, padding handles inside each side, gap handles between the children, and
  * the size pill below with Figma's fixed, hug and fill. Drags preview on the live frame and commit once, on release.
  */
-export function ElementHandles({ box, layout, spacing, classes, zoom, onPreview, onCommit }: ElementHandlesProps) {
+export function ElementHandles({
+	box,
+	layout,
+	spacing,
+	classes,
+	variant,
+	zoom,
+	onPreview,
+	onCommit,
+}: ElementHandlesProps) {
 	const dragging = useRef<Dragging | null>(null);
 	const [label, setLabel] = useState<string | null>(null);
 	const fallback = useRef(0);
 	/** Takes the pointer for the whole drag: the handle that was pressed can go away as it drags (a gap down to 0) */
 	const captureRef = useRef<HTMLDivElement>(null);
 	const lastPress = useRef<{ handle: ResizeHandle; at: number } | null>(null);
-	const latest = useRef({ classes, layout, onPreview, onCommit });
+	const latest = useRef({ classes, layout, variant, onPreview, onCommit });
 
 	useEffect(() => {
-		latest.current = { classes, layout, onPreview, onCommit };
+		latest.current = { classes, layout, variant, onPreview, onCommit };
 	});
 
 	const cancel = useCallback(() => {
@@ -226,8 +243,8 @@ export function ElementHandles({ box, layout, spacing, classes, zoom, onPreview,
 		if (!drag.pending && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
 		lastPress.current = null;
 		const scale = zoom();
-		const { classes: current, layout: shown, onPreview: preview } = latest.current;
-		const next = pending(drag, current, shown, { x: dx / scale, y: dy / scale }, event.nativeEvent);
+		const { classes: current, layout: shown, variant: state, onPreview: preview } = latest.current;
+		const next = pending(drag, current, shown, state, { x: dx / scale, y: dy / scale }, event.nativeEvent);
 
 		// The frame hears about the snapped value only when it changes
 		if (!samePreview(drag.pending?.preview, next.preview)) preview(next.preview);
@@ -254,7 +271,7 @@ export function ElementHandles({ box, layout, spacing, classes, zoom, onPreview,
 
 	const setMode = (dimension: Dimension, mode: SizeMode) => {
 		const rendered = dimension === "width" ? box.width : box.height;
-		const edit = (current: string) => setSizeMode(current, dimension, mode, layout.parent, rendered);
+		const edit = (current: string) => setSizeMode(current, dimension, mode, layout.parent, rendered, variant);
 
 		if (edit(classes) !== classes) onCommit(edit);
 	};
@@ -266,7 +283,7 @@ export function ElementHandles({ box, layout, spacing, classes, zoom, onPreview,
 		const edit = (current: string) => {
 			let next = current;
 
-			for (const dimension of dimensions) next = setSizeMode(next, dimension, "hug", layout.parent, 0);
+			for (const dimension of dimensions) next = setSizeMode(next, dimension, "hug", layout.parent, 0, variant);
 
 			return next;
 		};
@@ -342,16 +359,17 @@ export function ElementHandles({ box, layout, spacing, classes, zoom, onPreview,
 					<span className="px-1 font-mono">{label}</span>
 				) : (
 					<>
+						{variant ? <span className="pl-1 font-mono opacity-80">{variant}:</span> : null}
 						<SizeMenu
 							dimension="width"
-							mode={sizeMode(classes, "width", layout.parent)}
+							mode={sizeMode(classes, "width", layout.parent, variant)}
 							size={box.width}
 							onChange={setMode}
 						/>
 						<span className="opacity-80">×</span>
 						<SizeMenu
 							dimension="height"
-							mode={sizeMode(classes, "height", layout.parent)}
+							mode={sizeMode(classes, "height", layout.parent, variant)}
 							size={box.height}
 							onChange={setMode}
 						/>

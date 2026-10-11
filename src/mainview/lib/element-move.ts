@@ -1,5 +1,8 @@
-import { findElement, mappedEntries, parseJsx } from "../../shared/jsx";
-import { dropTarget, type DropTarget } from "./component-drop";
+import { findElement, mappedEntries, parseJsx, removeElement, removeUnusedImports } from "../../shared/jsx";
+import { dedent, indentAt } from "../../shared/jsx/text";
+import { parseFile } from "../../shared/jsx/tree";
+import { dropTarget, insertDrop, type DropTarget } from "./component-drop";
+import { usedImports } from "./element-clipboard";
 import { dropPlacement } from "./drop-placement";
 import type { Box, DropLayout } from "./render/protocol";
 
@@ -75,4 +78,23 @@ export function entryOrder(count: number, from: number, to: number) {
 	if (moved !== undefined) order.splice(to, 0, moved);
 
 	return order;
+}
+
+export type MovedAcross = { from: string; to: string; start: number };
+
+export function moveAcross(from: string, start: number, to: string, parent: number, index: number): MovedAcross | null {
+	const dragged = draggedElement(from, start);
+
+	if (!dragged) return null;
+
+	const snippet = dedent(from.slice(dragged.start, dragged.end), indentAt(from, dragged.start));
+	const imports = usedImports(from, snippet);
+	const inserted = insertDrop(to, parent, index, { snippet, imports });
+	const removed = removeElement(from, dragged.start);
+
+	if (!inserted || removed === null || !parseFile(inserted.source).ok || !parseFile(removed).ok) return null;
+
+	const names = imports.flatMap((item) => item.names);
+
+	return { from: removeUnusedImports(removed, names), to: inserted.source, start: inserted.start };
 }

@@ -408,4 +408,35 @@ describe("refresh", () => {
 		const second = load(registry, `export const Screen = () => "b";\nexport default Screen;\n`);
 		expect(second.default).toBe(first.default);
 	});
+
+	test("const arrow and function components inside the module keep their identity", () => {
+		const registry = new ModuleRegistry<unknown>(externals);
+
+		const version = (text: string) =>
+			`const Card = ({ label }: { label: string }) => label + "${text}";\nconst Row: (props: {}) => string = function () { return "${text}"; };\nexport const Pill = async () => "${text}";\nexport default function Screen() { return [Card, Row, Pill]; }\n`;
+
+		const first = load(registry, version("a"), true);
+
+		if (!(first.default instanceof Function)) throw new Error("No default export");
+		const [card, row, pill] = first.default();
+		const second = load(registry, version("b"));
+		const screen = second.default;
+
+		if (!(screen instanceof Function)) throw new Error("No default export");
+		const [nextCard, nextRow, nextPill] = screen();
+		expect(nextPill).toBe(pill);
+		expect(nextCard).toBe(card);
+		expect(nextRow).toBe(row);
+		expect(nextCard({ label: "x" })).toBe("xb");
+		expect(nextRow()).toBe("b");
+	});
+
+	test("rebinding keeps every offset, so locations and errors still match the source", () => {
+		const source = `const Card = () => <p>a</p>;\nconst NAME = "x";\nexport default function Screen() { return <Card />; }\n`;
+		const compiled = compileSource("screens/r.tsx", source);
+		expect(compiled.code).toContain(`let   Card = () =>`);
+		expect(compiled.code).toContain(`const NAME = "x"`);
+		expect(compiled.code).toContain(`"screens/r.tsx:${source.indexOf("<p>")}"`);
+		expect(compiled.code).toContain(`"screens/r.tsx:${source.indexOf("<Card />")}"`);
+	});
 });
