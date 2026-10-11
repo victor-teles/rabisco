@@ -26,19 +26,35 @@ export function useStickToBottom<T extends HTMLElement>() {
 		const content = viewport?.firstElementChild;
 
 		if (!viewport || !content) return;
+		let height = viewport.scrollHeight;
 
 		const onScroll = () => {
+			const resized = viewport.scrollHeight !== height;
+			height = viewport.scrollHeight;
+
+			if (resized && stuck.current) {
+				follow();
+
+				return;
+			}
+
 			stuck.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < THRESHOLD;
+		};
+
+		const onWheel = (event: WheelEvent) => {
+			if (event.deltaY < 0) stuck.current = false;
 		};
 
 		const observer = new ResizeObserver(follow);
 		observer.observe(content);
 		viewport.addEventListener("scroll", onScroll, { passive: true });
+		viewport.addEventListener("wheel", onWheel, { passive: true });
 		follow();
 
 		return () => {
 			observer.disconnect();
 			viewport.removeEventListener("scroll", onScroll);
+			viewport.removeEventListener("wheel", onWheel);
 		};
 	}, [follow]);
 

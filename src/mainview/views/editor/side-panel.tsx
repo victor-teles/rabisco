@@ -15,7 +15,7 @@ const TAB_KEY = "rabisco:side-tab";
 
 const OPEN_KEY = "rabisco:side-open";
 
-const WIDTH = { key: "rabisco:side-width", initial: 340, min: 280, max: 560 };
+const WIDTH = { key: "rabisco:side-width", initial: 340, min: 328, max: 560 };
 
 const isSideTab = (value: string | null): value is SideTab =>
 	value === "chat" || value === "screens" || value === "history";

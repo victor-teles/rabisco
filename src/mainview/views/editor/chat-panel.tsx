@@ -490,9 +490,9 @@ export const ChatPanel = memo(function ChatPanel({
 						/>
 					)}
 					{interview ? null : <PlanModeToggle on={planMode} onChange={setPlanMode} hint={planHint} />}
-					<ModelPicker />
+					<ModelPicker className="min-w-0 shrink" />
 					{selectedScreenName && !(focusLabel && !interview) ? (
-						<span className="ml-auto truncate text-xs text-subtle-foreground">
+						<span className="ml-auto min-w-0 truncate text-xs text-subtle-foreground">
 							Editing <span className="font-medium text-muted-foreground">{selectedScreenName}</span>
 						</span>
 					) : null}
