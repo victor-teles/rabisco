@@ -1,7 +1,46 @@
-# Rabisco
+<p align="center">
+  <img src="docs/media/logo.svg" width="64" height="64" alt="">
+</p>
 
-An AI-first design canvas: describe an app, get editable screens on an infinite canvas.
-Built with [Electrobun](https://framework.blackboard.sh/electrobun/) 2.x (Hutch + Cottontail), React 19, Tailwind v4, shadcn/ui and the [uai](https://uaiblocks.vercel.app) theme and blocks.
+<h1 align="center">Rabisco</h1>
+
+<p align="center">
+  <strong>Describe an app. Get React screens you can edit, own and ship.</strong><br>
+  An AI design canvas that runs on your Mac, writes real React + Tailwind, and uses the AI you already pay for.
+</p>
+
+<p align="center">
+  <a href="https://github.com/victor-teles/rabisco/releases/latest"><img src="https://img.shields.io/badge/Download-macOS%20(Apple%20silicon)-black?style=for-the-badge&logo=apple" alt="Download for macOS"></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/victor-teles/rabisco" alt="MIT license"></a>
+  <a href="https://github.com/victor-teles/rabisco/releases"><img src="https://img.shields.io/github/v/release/victor-teles/rabisco?include_prereleases" alt="Latest release"></a>
+</p>
+
+<p align="center">
+  <img src="docs/media/hero.gif" width="960" alt="A prompt turns into three variations of a habit-tracker app on an infinite canvas. One is picked, and the code view shows plain React with Tailwind.">
+</p>
+
+## Why Rabisco
+
+- **Local-first.** A project is a folder on your disk. No account, no cloud. Your designs never leave your machine unless you push them.
+- **Real React/TSX.** Every screen is a React component styled with Tailwind and shadcn/ui. What you see is what you ship. There's no conversion step.
+- **Bring your own AI.** Use Claude Code, Codex CLI, Gemini CLI, Ollama, or an API key for Anthropic, OpenAI or OpenRouter. No credits: your Claude Code plan already covers it.
+- **Git-friendly.** Screens are `.tsx` files and `DESIGN.md` is plain Markdown. Review a design change in a pull request.
+- **Undoable.** Every AI edit goes through history, and history survives restarts. Every AI change is one ⌘Z away.
+
+## How it works
+
+1. **Describe** the app on the Home screen. Pick mobile, tablet or desktop, and how many variations.
+2. **Refine** on the canvas: select any element and say what to change, or edit it directly. Classes, text and layout are written back to the TSX.
+3. **Ship**: copy the code, or export a runnable Vite + React + Tailwind project.
+
+Free and open source (MIT). The app works with no AI configured: you can open and edit any project without a provider.
+
+|                                                                               |                                                                                  |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ![Point at an element, say what to change, undo with ⌘Z](docs/media/undo.gif) | ![Change DESIGN.md, apply, and every screen re-themes](docs/media/design-md.gif) |
 
 See [docs/PRINCIPLES.md](docs/PRINCIPLES.md) for how Rabisco makes decisions and [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next. Finished work is in [docs/ROADMAP-ARCHIVE.md](docs/ROADMAP-ARCHIVE.md).
 
