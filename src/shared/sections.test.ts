@@ -7,6 +7,7 @@ import {
 	normalizeSections,
 	SECTION_PADDING,
 	sectionAround,
+	sectionAt,
 	sectionOf,
 } from "./sections";
 import type { CanvasSection, Frame } from "./types";
@@ -79,6 +80,15 @@ describe("sections", () => {
 		expect(sectionOf(frame("b", 500, 500), [outer, inner])?.id).toBe("outer");
 		expect(sectionOf(frame("c", 260, 0), [inner])).toBeUndefined();
 		expect(sectionOf(frame("d", 2000, 0), [outer])).toBeUndefined();
+	});
+
+	test("a point picks the innermost section under it", () => {
+		const outer = section("outer", 0, 0, 1000, 1000);
+		const inner = section("inner", 100, 100, 300, 300);
+
+		expect(sectionAt(200, 200, [outer, inner])?.id).toBe("inner");
+		expect(sectionAt(600, 600, [outer, inner])?.id).toBe("outer");
+		expect(sectionAt(1200, 0, [outer, inner])).toBeUndefined();
 	});
 
 	test("moving a section moves its screens and the sections inside it", () => {

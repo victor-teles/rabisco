@@ -28,7 +28,15 @@ import {
 	type DraggedElement,
 	type DraggedEntry,
 } from "@/lib/element-move";
-import { HANDLES, handleSides, resizeRect, snapResize, type Handle } from "@/lib/frame-resize";
+import {
+	HANDLE_CURSOR,
+	HANDLES,
+	handleSides,
+	handleSpan,
+	resizeRect,
+	snapResize,
+	type Handle,
+} from "@/lib/frame-resize";
 import { isInsertTool, type CanvasInsert, type InsertTarget, type InsertTool } from "@/lib/insert-tools";
 import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
@@ -141,6 +149,7 @@ type CanvasProps = {
 	drafts?: GenerationDrafts | null;
 	selection: string[];
 	onSelectionChange: (selection: string[]) => void;
+	onClickEmpty?: (point: Point) => void;
 	/** Once per drag, on release; `dragId` is stable for one drag */
 	onMoveFrames: (moves: FrameMove[], dragId: string) => void;
 	onMoveEnd: () => void;
@@ -340,6 +349,7 @@ export function Canvas({
 	drafts,
 	selection,
 	onSelectionChange,
+	onClickEmpty,
 	onMoveFrames,
 	onMoveEnd,
 	tool,
@@ -1631,6 +1641,8 @@ export function Canvas({
 				: drag.selection;
 
 			if (!sameSelection(next, selection)) onSelectionChange(next);
+
+			if (!drag.moved && !drag.additive) onClickEmpty?.(drag.start);
 		} else if (drag?.kind === "insert") {
 			cancelAnimationFrame(pendingInsert.current);
 			finishInsert(drag, event.clientX, event.clientY);
@@ -2133,31 +2145,7 @@ const FrameView = memo(function FrameView({
 	);
 });
 
-const HANDLE_CURSOR: Record<Handle, string> = {
-	n: "cursor-ns-resize",
-	s: "cursor-ns-resize",
-	e: "cursor-ew-resize",
-	w: "cursor-ew-resize",
-	ne: "cursor-nesw-resize",
-	sw: "cursor-nesw-resize",
-	nw: "cursor-nwse-resize",
-	se: "cursor-nwse-resize",
-};
-
 const isHandle = (value: string | undefined): value is Handle => HANDLES.some((handle) => handle === value);
-
-/** CSS lengths along one axis of the frame */
-type HandleSpan = { start: string; length: string };
-
-/** Along one axis: a side handle spans between the corners, a corner sits across the edge */
-function handleSpan(side: number): HandleSpan {
-	if (side === 0) return { start: "calc(5px * var(--unzoom))", length: "calc(100% - 10px * var(--unzoom))" };
-
-	return {
-		start: side === -1 ? "calc(-5px * var(--unzoom))" : "calc(100% - 5px * var(--unzoom))",
-		length: "calc(10px * var(--unzoom))",
-	};
-}
 
 /** Corner squares and side strips that resize the selected screen, as in Figma; the canvas runs the drag */
 function FrameHandles({ frame, resizing }: { frame: Frame; resizing: boolean }) {

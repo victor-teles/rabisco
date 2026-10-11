@@ -12,6 +12,7 @@ import {
 	Plus,
 	Redo2,
 	Square,
+	SquareDashedTopSolid,
 	Type,
 	Undo2,
 } from "lucide-react";
@@ -86,6 +87,7 @@ import { designTokensOf } from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
+import { sectionAt } from "../../../shared/sections";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import { Canvas, withMoves, type CanvasHandle, type ElementRef, type FrameMove, type Tool } from "./canvas";
@@ -2093,6 +2095,7 @@ export function EditorView({
 							drafts={drafts}
 							selection={selection}
 							onSelectionChange={setSelection}
+							onClickEmpty={(point) => sections.select(sectionAt(point.x, point.y, sections.sections)?.id ?? null)}
 							onMoveFrames={moveFrames}
 							onMoveEnd={endStep}
 							tool={tool}
@@ -2130,6 +2133,7 @@ export function EditorView({
 									onSelect={sections.select}
 									onMove={sections.move}
 									onMoveEnd={endStep}
+									onResize={sections.resize}
 									onStartRename={sections.startRename}
 									onRename={sections.rename}
 									onRecolor={sections.recolor}
@@ -2171,7 +2175,16 @@ export function EditorView({
 
 						<Toolbar
 							tool={tool}
-							onToolChange={setTool}
+							onToolChange={(next) => {
+								sections.cancelDrawing();
+								setTool(next);
+							}}
+							drawingSection={sections.drawing}
+							onSection={() => {
+								if (sections.drawing) return sections.cancelDrawing();
+								setTool("move");
+								sections.create();
+							}}
 							onPlaceImage={() => void insertTools.placeImage()}
 							canUndo={canUndo}
 							canRedo={canRedo}
@@ -2310,6 +2323,8 @@ const floatingBar =
 function Toolbar({
 	tool,
 	onToolChange,
+	drawingSection,
+	onSection,
 	onPlaceImage,
 	canUndo,
 	canRedo,
@@ -2320,6 +2335,8 @@ function Toolbar({
 }: {
 	tool: Tool;
 	onToolChange: (tool: Tool) => void;
+	drawingSection: boolean;
+	onSection: () => void;
 	onPlaceImage: () => void;
 	canUndo: boolean;
 	canRedo: boolean;
@@ -2353,10 +2370,12 @@ function Toolbar({
 							variant="ghost"
 							size="icon-sm"
 							aria-label={t.label}
-							aria-pressed={tool === t.id}
+							aria-pressed={tool === t.id && !drawingSection}
 							onClick={() => onToolChange(t.id)}
 							className={cn(
-								tool === t.id && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+								tool === t.id &&
+									!drawingSection &&
+									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
 							)}
 						>
 							<t.icon />
@@ -2378,6 +2397,25 @@ function Toolbar({
 				</TooltipContent>
 			</Tooltip>
 			{newScreen}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						aria-label="Section"
+						aria-pressed={drawingSection}
+						onClick={onSection}
+						className={cn(
+							drawingSection && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+						)}
+					>
+						<SquareDashedTopSolid />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="top">
+					Section <Kbd>⇧S</Kbd>
+				</TooltipContent>
+			</Tooltip>
 			{comments}
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />
 			{history.map((h) => (

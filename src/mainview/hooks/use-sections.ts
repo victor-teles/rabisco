@@ -100,6 +100,11 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		[change],
 	);
 
+	const resize = useCallback(
+		(id: string, rect: Rect) => change((snapshot) => patchSection(snapshot, id, rect)),
+		[change],
+	);
+
 	const move = useCallback(
 		(id: string, dx: number, dy: number, dragId: string) =>
 			change(
@@ -161,6 +166,8 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		recolor,
 		remove,
 		move,
+		resize,
+		create,
 		cancelDrawing: () => setDrawing(false),
 	};
 }

@@ -44,68 +44,69 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 
 ## Canvas shortcuts
 
-| Key                                                     | Action                                                                            |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `V` / `H` / `C`                                         | Move / hand / comment tool                                                        |
-| `R`, `O`, `T`                                           | Rectangle, ellipse, text tool: click or drag inside a screen to add               |
-| `⇧⌘K`                                                   | Place an image from a file at the pointer (copied into `public/images/`)          |
-| `Esc` (insert tool on)                                  | Back to the move tool                                                             |
-| `Space` + drag                                          | Pan                                                                               |
-| Scroll / ⌘ + scroll                                     | Pan / zoom                                                                        |
-| `⇧1`                                                    | Zoom to fit                                                                       |
-| `⇧2`                                                    | Zoom to selection: the selected element, else the selected screens                |
-| `⇧0` or `⌘0`, `⌘+`, `⌘-`                                | Zoom to 100%, zoom in, zoom out                                                   |
-| `⌥` + hover                                             | Measure: distances from the selection to the hovered element or its parent        |
-| `⌃G`                                                    | Show or hide layout grids (add one to a screen in the inspector)                  |
-| `I` (element selected)                                  | Eyedropper: pick a fill from any screen, or for the open color field              |
-| `⌘D`, `⌫`                                               | Duplicate, delete the selected screen                                             |
-| `⌘R`                                                    | Rename the selected screen                                                        |
-| `⌥N`                                                    | New blank screen (presets in the toolbar and the canvas menu)                     |
-| `⇧S`                                                    | Section around the selected screens, or drag on the canvas to draw one            |
-| Drag a section's name / double-click it                 | Move it with its screens / rename it; right-click for color and delete            |
-| `⌫`, `⌘R` (section selected)                            | Delete the section (keeps its screens), rename it                                 |
-| `⌘F` (canvas)                                           | Find and replace text across screens; `↵` steps through the results               |
-| Double-click a screen's label                           | Rename it in place                                                                |
-| Drag a selected screen's edge or corner                 | Resize the screen (`⇧` keeps the ratio, `⌥` from the center)                      |
-| `⌥1`                                                    | Screens list, or back to the chat                                                 |
-| `⌥↑` / `⌥↓` (Screens list)                              | Move the focused screen up / down                                                 |
-| `⇧⌘\`                                                   | Show or hide the chat and screens panel                                           |
-| `⇧⌘O`                                                   | New chat                                                                          |
-| `/` in the chat                                         | Chat commands: Rabisco's own and your CLI's commands                              |
-| `⌘I` in a prompt (Home or chat)                         | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back       |
-| `⇧⌘P` in a prompt (Home or chat)                        | Plan first: new screens wait as a plan you approve; a reply revises the plan      |
-| `↵` / `Esc` (plan card focused)                         | Generate the plan's screens / cancel the plan                                     |
-| Double-click the title bar                              | Zoom the window (follows the macOS setting)                                       |
-| `⌥C`                                                    | Comments list                                                                     |
-| `⌥⌘S`                                                   | Save a checkpoint in version history (a git commit when git is set up)            |
-| `⌘C`, `⌘V`                                              | Copy the selected screens, paste screens or screen code as new screens            |
-| Right-click a screen, element or the canvas             | Every action for what's under the pointer, with its shortcut                      |
-| `⌘K`                                                    | Command palette: every action, searchable                                         |
-| `?`                                                     | Keyboard shortcuts                                                                |
-| Click inside the selected screen, or `⌘`-click          | Select the element under the pointer (hover shows its name and size)              |
-| `⇧`-click (element selected), `⇧`/`⌘`-click (Layers)    | Add or remove an element from the selection; style edits apply to all             |
-| Double-click, or `Enter` on an element without children | Edit its text in place (`Enter` keeps it, `Esc` cancels)                          |
-| `Enter` / `⇧↵` or `Esc`                                 | Select the first child / the parent (`Esc` first goes back to one element)        |
-| `⇥` / `⇧⇥`                                              | Select the next / previous sibling                                                |
-| Arrow keys (element selected)                           | Move it earlier / later along the parent's direction (by row in a grid)           |
-| `⌥A` `⌥H` `⌥D`, `⌥W` `⌥V` `⌥S`                          | Align the selected elements, or screens, left, center, right, top, middle, bottom |
-| `⌃⌥H`, `⌃⌥V`                                            | Distribute the selected elements, or screens, horizontally, vertically            |
-| Drag an element in the selected screen                  | Move it within its parent, into another container or into another screen          |
-| Drag an item of a list (`.map`) in the selected screen  | Reorder it among the list's items                                                 |
-| Drag an edge or corner handle                           | Resize (`w-*`/`h-*`, snapped); double-click a handle to hug                       |
-| Drag a padding or gap bar                               | Change padding or gap (`⌥` all sides, `⇧` both opposite sides)                    |
-| `⌫` (element selected)                                  | Delete it                                                                         |
-| `⌘D`, `⌘C`, `⌘X`, `⌘V` (element selected)               | Duplicate, copy, cut, paste after it (between screens too)                        |
-| `⌥⌘G`, `⇧A`, `⇧⌘G` (element selected)                   | Wrap in a div, wrap in a flex stack, unwrap                                       |
-| `⌥⌘C` / `⌥⌘V` (element selected)                        | Copy its classes without `md:`/`hover:` variants / paste onto the selection       |
-| `⇧⌘H` (element selected, or the eye in Layers)          | Hide or show: writes `hidden` in the TSX                                          |
-| `⇧⌘L` (element selected, or the lock in Layers)         | Lock or unlock: the canvas can't select, move or resize it; Layers still can      |
-| `⌥⌘A` (element selected)                                | Select matching: the same component, or the same classes, in the screen           |
-| Prompt with elements selected                           | Change only those elements (point and prompt)                                     |
-| `⌥2`                                                    | Components panel: project components, the shadcn library and suggestions          |
-| `/` or `⌘F` (Components panel open)                     | Search components                                                                 |
-| Drag from the Components panel                          | Add the component to the screen under the pointer                                 |
-| `⇧D`                                                    | Code tab: the selected screen's or component's structure and editable source      |
-| `↑` `↓` / `←` `→` (Structure)                           | Move through elements / collapse, expand                                          |
-| `⌥⌘K` or `Enter` (Structure)                            | Make component from the selected element, and replace its repeats                 |
-| `⌫` (Structure)                                         | Delete the selected element                                                       |
+| Key                                                       | Action                                                                            |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `V` / `H` / `C`                                           | Move / hand / comment tool                                                        |
+| `R`, `O`, `T`                                             | Rectangle, ellipse, text tool: click or drag inside a screen to add               |
+| `⇧⌘K`                                                     | Place an image from a file at the pointer (copied into `public/images/`)          |
+| `Esc` (insert tool on)                                    | Back to the move tool                                                             |
+| `Space` + drag                                            | Pan                                                                               |
+| Scroll / ⌘ + scroll                                       | Pan / zoom                                                                        |
+| `⇧1`                                                      | Zoom to fit                                                                       |
+| `⇧2`                                                      | Zoom to selection: the selected element, else the selected screens                |
+| `⇧0` or `⌘0`, `⌘+`, `⌘-`                                  | Zoom to 100%, zoom in, zoom out                                                   |
+| `⌥` + hover                                               | Measure: distances from the selection to the hovered element or its parent        |
+| `⌃G`                                                      | Show or hide layout grids (add one to a screen in the inspector)                  |
+| `I` (element selected)                                    | Eyedropper: pick a fill from any screen, or for the open color field              |
+| `⌘D`, `⌫`                                                 | Duplicate, delete the selected screen                                             |
+| `⌘R`                                                      | Rename the selected screen                                                        |
+| `⌥N`                                                      | New blank screen (presets in the toolbar and the canvas menu)                     |
+| `⇧S`, or Section in the toolbar                           | Section around the selected screens, or drag on the canvas to draw one            |
+| Drag a section's name / double-click it                   | Move it with its screens / rename it; right-click for color and delete            |
+| `⌫`, `⌘R` (section selected)                              | Delete the section (keeps its screens), rename it                                 |
+| Click a section's empty area, then drag an edge or corner | Select it, then resize it; screens whose center ends up inside join it            |
+| `⌘F` (canvas)                                             | Find and replace text across screens; `↵` steps through the results               |
+| Double-click a screen's label                             | Rename it in place                                                                |
+| Drag a selected screen's edge or corner                   | Resize the screen (`⇧` keeps the ratio, `⌥` from the center)                      |
+| `⌥1`                                                      | Screens list, or back to the chat                                                 |
+| `⌥↑` / `⌥↓` (Screens list)                                | Move the focused screen up / down                                                 |
+| `⇧⌘\`                                                     | Show or hide the chat and screens panel                                           |
+| `⇧⌘O`                                                     | New chat                                                                          |
+| `/` in the chat                                           | Chat commands: Rabisco's own and your CLI's commands                              |
+| `⌘I` in a prompt (Home or chat)                           | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back       |
+| `⇧⌘P` in a prompt (Home or chat)                          | Plan first: new screens wait as a plan you approve; a reply revises the plan      |
+| `↵` / `Esc` (plan card focused)                           | Generate the plan's screens / cancel the plan                                     |
+| Double-click the title bar                                | Zoom the window (follows the macOS setting)                                       |
+| `⌥C`                                                      | Comments list                                                                     |
+| `⌥⌘S`                                                     | Save a checkpoint in version history (a git commit when git is set up)            |
+| `⌘C`, `⌘V`                                                | Copy the selected screens, paste screens or screen code as new screens            |
+| Right-click a screen, element or the canvas               | Every action for what's under the pointer, with its shortcut                      |
+| `⌘K`                                                      | Command palette: every action, searchable                                         |
+| `?`                                                       | Keyboard shortcuts                                                                |
+| Click inside the selected screen, or `⌘`-click            | Select the element under the pointer (hover shows its name and size)              |
+| `⇧`-click (element selected), `⇧`/`⌘`-click (Layers)      | Add or remove an element from the selection; style edits apply to all             |
+| Double-click, or `Enter` on an element without children   | Edit its text in place (`Enter` keeps it, `Esc` cancels)                          |
+| `Enter` / `⇧↵` or `Esc`                                   | Select the first child / the parent (`Esc` first goes back to one element)        |
+| `⇥` / `⇧⇥`                                                | Select the next / previous sibling                                                |
+| Arrow keys (element selected)                             | Move it earlier / later along the parent's direction (by row in a grid)           |
+| `⌥A` `⌥H` `⌥D`, `⌥W` `⌥V` `⌥S`                            | Align the selected elements, or screens, left, center, right, top, middle, bottom |
+| `⌃⌥H`, `⌃⌥V`                                              | Distribute the selected elements, or screens, horizontally, vertically            |
+| Drag an element in the selected screen                    | Move it within its parent, into another container or into another screen          |
+| Drag an item of a list (`.map`) in the selected screen    | Reorder it among the list's items                                                 |
+| Drag an edge or corner handle                             | Resize (`w-*`/`h-*`, snapped); double-click a handle to hug                       |
+| Drag a padding or gap bar                                 | Change padding or gap (`⌥` all sides, `⇧` both opposite sides)                    |
+| `⌫` (element selected)                                    | Delete it                                                                         |
+| `⌘D`, `⌘C`, `⌘X`, `⌘V` (element selected)                 | Duplicate, copy, cut, paste after it (between screens too)                        |
+| `⌥⌘G`, `⇧A`, `⇧⌘G` (element selected)                     | Wrap in a div, wrap in a flex stack, unwrap                                       |
+| `⌥⌘C` / `⌥⌘V` (element selected)                          | Copy its classes without `md:`/`hover:` variants / paste onto the selection       |
+| `⇧⌘H` (element selected, or the eye in Layers)            | Hide or show: writes `hidden` in the TSX                                          |
+| `⇧⌘L` (element selected, or the lock in Layers)           | Lock or unlock: the canvas can't select, move or resize it; Layers still can      |
+| `⌥⌘A` (element selected)                                  | Select matching: the same component, or the same classes, in the screen           |
+| Prompt with elements selected                             | Change only those elements (point and prompt)                                     |
+| `⌥2`                                                      | Components panel: project components, the shadcn library and suggestions          |
+| `/` or `⌘F` (Components panel open)                       | Search components                                                                 |
+| Drag from the Components panel                            | Add the component to the screen under the pointer                                 |
+| `⇧D`                                                      | Code tab: the selected screen's or component's structure and editable source      |
+| `↑` `↓` / `←` `→` (Structure)                             | Move through elements / collapse, expand                                          |
+| `⌥⌘K` or `Enter` (Structure)                              | Make component from the selected element, and replace its repeats                 |
+| `⌫` (Structure)                                           | Delete the selected element                                                       |
