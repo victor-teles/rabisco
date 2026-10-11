@@ -54,7 +54,8 @@ import { setResolved } from "../../../shared/comments";
 import { useChatCommands } from "@/hooks/use-chat-commands";
 import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
-import { alignElements, distributeElements } from "@/lib/element-align";
+import { alignElements, distributeElements, type Arranged } from "@/lib/element-align";
+import { outermost } from "@/lib/element-selection";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { restoredSnapshot } from "@/lib/versions";
 import { sourceVersion } from "@/lib/render/protocol";
@@ -99,7 +100,7 @@ import { CommandPalette } from "./command-palette";
 import { CompareView } from "./compare-view";
 import { ComponentsPanel } from "./components-panel";
 import { ContextPanel } from "./context-panel";
-import { Inspector, type FramePatch, type InspectorTab } from "./inspector";
+import { ElementArrange, Inspector, type ArrangeRefusals, type FramePatch, type InspectorTab } from "./inspector";
 import { linkActions } from "./link-actions";
 import { LinkControl } from "./link-control";
 import { NodeProps } from "./node-props";
@@ -1117,6 +1118,47 @@ export function EditorView({
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
 	const elementWidth = (element && frames.find((frame) => frame.file === element.file)?.width) ?? null;
 
+	const alignElementSelection = useCallback(
+		(alignment: Alignment) => arrangeNodes((source, starts) => alignElements(source, starts, alignment, elementWidth)),
+		[arrangeNodes, elementWidth],
+	);
+
+	const distributeElementSelection = useCallback(
+		(axis: Axis) => arrangeNodes((source, starts) => distributeElements(source, starts, axis, elementWidth)),
+		[arrangeNodes, elementWidth],
+	);
+
+	const elementSource = element ? files[element.file] : undefined;
+
+	const arrangeRefusals = useMemo((): ArrangeRefusals | null => {
+		if (!element || elementSource === undefined) return null;
+
+		const starts = outermost(
+			elementSource,
+			structure.nodes.map((selected) => selected.start),
+		);
+
+		const refusal = (arranged: Arranged) => ("refusal" in arranged ? arranged.refusal : null);
+
+		const align = (alignment: Alignment) => refusal(alignElements(elementSource, starts, alignment, elementWidth));
+
+		const distribute = (axis: Axis) =>
+			starts.length < 2
+				? "Select two or more elements to distribute them"
+				: refusal(distributeElements(elementSource, starts, axis, elementWidth));
+
+		return {
+			left: align("left"),
+			"h-center": align("h-center"),
+			right: align("right"),
+			top: align("top"),
+			"v-middle": align("v-middle"),
+			bottom: align("bottom"),
+			horizontal: distribute("horizontal"),
+			vertical: distribute("vertical"),
+		};
+	}, [element, structure.nodes, elementSource, elementWidth]);
+
 	const zoomToSelection = () => {
 		const rect = element && canvasRef.current?.selectedElementRect(element);
 		canvasRef.current?.fitTo(rect ? [rect] : selected, Infinity);
@@ -1326,10 +1368,7 @@ export function EditorView({
 			group: "Arrange",
 			chords: [{ code: item.code, alt: true }],
 			enabled: element !== null || selected.length > 1,
-			run: () =>
-				element
-					? arrangeNodes((source, starts) => alignElements(source, starts, item.alignment, elementWidth))
-					: alignSelection(item.alignment),
+			run: () => (element ? alignElementSelection(item.alignment) : alignSelection(item.alignment)),
 		})),
 		...DISTRIBUTE_SHORTCUTS.map((item): Action => ({
 			id: `distribute-${item.axis}`,
@@ -1337,10 +1376,7 @@ export function EditorView({
 			group: "Arrange",
 			chords: [{ code: item.code, ctrl: true, alt: true }],
 			enabled: element ? extraElements.length > 0 : selected.length > 2,
-			run: () =>
-				element
-					? arrangeNodes((source, starts) => distributeElements(source, starts, item.axis, elementWidth))
-					: distributeSelection(item.axis),
+			run: () => (element ? distributeElementSelection(item.axis) : distributeSelection(item.axis)),
 		})),
 		{
 			id: "zoom-in",
@@ -1827,6 +1863,16 @@ export function EditorView({
 					frames={frames}
 					projectPath={projectPath}
 					tokens={appliedTokens}
+					arrange={
+						arrangeRefusals ? (
+							<ElementArrange
+								refusals={arrangeRefusals}
+								disabled={structure.busy}
+								onAlign={alignElementSelection}
+								onDistribute={distributeElementSelection}
+							/>
+						) : null
+					}
 				/>
 				<LinkControl
 					files={files}
@@ -1849,6 +1895,9 @@ export function EditorView({
 			appliedTokens,
 			changeLink,
 			selectAncestor,
+			arrangeRefusals,
+			alignElementSelection,
+			distributeElementSelection,
 		],
 	);
 

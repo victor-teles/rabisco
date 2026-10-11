@@ -31,6 +31,8 @@ type NodePropsProps = {
 	projectPath?: string;
 	/** The applied theme, for the style pickers */
 	tokens?: DesignTokens;
+	/** Below the selected elements' heading */
+	arrange?: React.ReactNode;
 };
 
 /** `src` on an `img`, or `src`/`image` on a component */
@@ -52,6 +54,7 @@ export const NodeProps = memo(function NodeProps({
 	frames,
 	projectPath,
 	tokens,
+	arrange,
 }: NodePropsProps) {
 	const { node, nodes } = structure;
 
@@ -64,6 +67,7 @@ export const NodeProps = memo(function NodeProps({
 				structure={structure}
 				onEndStep={onEndStep}
 				tokens={tokens}
+				arrange={arrange}
 			/>
 		);
 	}
@@ -80,6 +84,7 @@ export const NodeProps = memo(function NodeProps({
 				frames={frames}
 				projectPath={projectPath}
 				tokens={tokens}
+				arrange={arrange}
 			/>
 		);
 	}
@@ -100,6 +105,7 @@ function ElementProps({
 	frames = [],
 	projectPath,
 	tokens,
+	arrange,
 }: Omit<NodePropsProps, "file"> & { file: string; start: number }) {
 	const source = files[file]!;
 	const element = findElement(parseJsx(source), start);
@@ -245,6 +251,7 @@ function ElementProps({
 					/>
 				)}
 			</section>
+			{element.name === null ? null : arrange}
 			{element.name === null ? null : (
 				<ElementStyle
 					key={`${file}:${start}`}
@@ -273,6 +280,7 @@ function SeveralElements({
 	structure,
 	onEndStep,
 	tokens,
+	arrange,
 }: {
 	source: string;
 	file: string;
@@ -280,6 +288,7 @@ function SeveralElements({
 	structure: Structure;
 	onEndStep: () => void;
 	tokens?: DesignTokens;
+	arrange?: React.ReactNode;
 }) {
 	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
 	const tree = parseJsx(source);
@@ -300,6 +309,7 @@ function SeveralElements({
 				</p>
 				{structure.busy ? <p className="text-xs text-subtle-foreground">Read-only while generating</p> : null}
 			</section>
+			{arrange}
 			{start === undefined ? null : (
 				<ElementStyle
 					key={file}

@@ -89,7 +89,7 @@ Open items from phases 6, 9, 11 and 12.
 - ✅ Point and prompt with several elements selected sends all of them, not only the first ([0025](./decisions/0025-focus-on-several-elements.md))
 - ✅ Align and distribute elements inside a screen, not only screens. Aligning some children along a row or column, and distributing only some of them, are refused
 - ⬜ Check it in the packaged app: dragging an element between screens, handles in a state and with several elements, arrow keys in a row, column and grid, element align and distribute, the Link to menu, connectors from elements, a ⌘-click on a snapshot frame, and a multi-element point and prompt
-- ⬜ Align buttons in the element inspector (the keys and menus work today)
+- ✅ Align and distribute buttons in the element inspector. They run the same actions as the keys and menus, and a refused one is off with the reason in its tooltip
 
 **Done when** a user can build a simple card from components with the mouse only, and the TSX reads like a developer wrote it.
 

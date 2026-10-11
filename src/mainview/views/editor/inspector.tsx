@@ -565,16 +565,64 @@ function SelectionActions({
 	);
 }
 
+export type ArrangeRefusals = Record<Alignment | Axis, string | null>;
+
+/** The selected elements' align and distribute buttons; a refused one is off and its tooltip says why */
+export const ElementArrange = memo(function ElementArrange({
+	refusals,
+	disabled,
+	onAlign,
+	onDistribute,
+}: {
+	refusals: ArrangeRefusals;
+	disabled: boolean;
+	onAlign: (alignment: Alignment) => void;
+	onDistribute: (axis: Axis) => void;
+}) {
+	return (
+		<section className="flex items-center gap-2 border-b px-4 py-3" aria-label="Align and distribute">
+			<div className="flex flex-1 items-center justify-between rounded-md border p-0.5">
+				{ALIGN_SHORTCUTS.map((item) => (
+					<IconAction
+						key={item.alignment}
+						icon={ALIGN_ICONS[item.alignment]}
+						label={item.label}
+						keys={item.keys}
+						reason={refusals[item.alignment]}
+						disabled={disabled || refusals[item.alignment] !== null}
+						onClick={() => onAlign(item.alignment)}
+					/>
+				))}
+			</div>
+			<div className="flex items-center gap-0.5 rounded-md border p-0.5">
+				{DISTRIBUTE_SHORTCUTS.map((item) => (
+					<IconAction
+						key={item.axis}
+						icon={DISTRIBUTE_ICONS[item.axis]}
+						label={item.label}
+						keys={item.keys}
+						reason={refusals[item.axis]}
+						disabled={disabled || refusals[item.axis] !== null}
+						onClick={() => onDistribute(item.axis)}
+					/>
+				))}
+			</div>
+		</section>
+	);
+});
+
 function IconAction({
 	icon: Icon,
 	label,
 	keys,
+	reason,
 	disabled,
 	onClick,
 }: {
 	icon: LucideIcon;
 	label: string;
 	keys: string;
+	reason?: string | null;
 	disabled?: boolean;
 	onClick: () => void;
 }) {
@@ -595,8 +643,11 @@ function IconAction({
 					</Button>
 				</span>
 			</TooltipTrigger>
-			<TooltipContent side="bottom">
-				{label} <Kbd>{keys}</Kbd>
+			<TooltipContent side="bottom" className={cn(reason && "flex max-w-56 flex-col items-start gap-0.5")}>
+				<span>
+					{label} <Kbd>{keys}</Kbd>
+				</span>
+				{reason ? <span className="text-background/70">{reason}</span> : null}
 			</TooltipContent>
 		</Tooltip>
 	);
