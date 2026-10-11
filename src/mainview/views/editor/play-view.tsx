@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useSta
 import { ArrowLeft, ArrowRight, ChevronDown, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
+import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import { currentVisit, pushVisit, startHistory, stepBack, stepForward, type PlayStep } from "@/lib/play-history";
 import type { LinkOptions } from "@/lib/render/protocol";
 import { cn } from "@/lib/utils";
@@ -259,6 +260,12 @@ export function PlayView({
 		return () => window.removeEventListener("keydown", listener, { capture: true });
 	}, []);
 
+	useEffect(() => {
+		const el = rootRef.current;
+
+		if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+	}, []);
+
 	// The canvas listens to the wheel natively: keep ours to ourselves
 	useEffect(() => {
 		const el = rootRef.current;
@@ -275,11 +282,12 @@ export function PlayView({
 			ref={rootRef}
 			role="dialog"
 			aria-label={`Play ${name}`}
-			className="fixed inset-0 z-50 flex flex-col bg-muted motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150"
+			tabIndex={-1}
+			className="fixed inset-0 z-50 flex flex-col bg-muted outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150"
 			onPointerDown={(event) => event.stopPropagation()}
 		>
-			<header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-3">
-				<div className="flex items-center gap-0.5">
+			<TitleBar className="gap-3">
+				<NoDrag className="flex items-center gap-0.5">
 					<BarButton label="Back" keys={PLAY_BACK_KEYS} disabled={!canBack && !overlayOpen} onClick={back}>
 						<ArrowLeft />
 					</BarButton>
@@ -294,43 +302,47 @@ export function PlayView({
 					>
 						<RotateCcw />
 					</BarButton>
-				</div>
+				</NoDrag>
 				<Separator orientation="vertical" className="h-5!" />
 				<div className="min-w-0 flex-1">
-					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="max-w-full gap-1 px-2 text-[13px] font-medium"
-								aria-label="Go to screen"
-							>
-								<span className="truncate">{name}</span>
-								<ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="start" className="max-h-80 min-w-48">
-							<DropdownMenuRadioGroup value={current} onValueChange={(file) => go(file)}>
-								{screens.map((screen) => (
-									<DropdownMenuRadioItem key={screen.file} value={screen.file} className="text-[13px]">
-										<span className="truncate">{screen.name || screenNameFromPath(screen.file)}</span>
-										{screen.file === start ? (
-											<span className="ml-auto pl-3 text-xs text-subtle-foreground">start</span>
-										) : null}
-									</DropdownMenuRadioItem>
-								))}
-							</DropdownMenuRadioGroup>
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<NoDrag className="inline-flex max-w-full">
+						<DropdownMenu modal={false}>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="max-w-full gap-1 px-2 text-[13px] font-medium"
+									aria-label="Go to screen"
+								>
+									<span className="truncate">{name}</span>
+									<ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="start" className="max-h-80 min-w-48">
+								<DropdownMenuRadioGroup value={current} onValueChange={(file) => go(file)}>
+									{screens.map((screen) => (
+										<DropdownMenuRadioItem key={screen.file} value={screen.file} className="text-[13px]">
+											<span className="truncate">{screen.name || screenNameFromPath(screen.file)}</span>
+											{screen.file === start ? (
+												<span className="ml-auto pl-3 text-xs text-subtle-foreground">start</span>
+											) : null}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</NoDrag>
 				</div>
 				<div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
 					<span>Click links to move between screens</span>
 				</div>
 				<Separator orientation="vertical" className="h-5!" />
-				<BarButton label="Close" keys="Esc" onClick={onClose}>
-					<X />
-				</BarButton>
-			</header>
+				<NoDrag>
+					<BarButton label="Close" keys="Esc" onClick={onClose}>
+						<X />
+					</BarButton>
+				</NoDrag>
+			</TitleBar>
 
 			<div ref={stageRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
 				{exists ? (

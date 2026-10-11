@@ -44,6 +44,8 @@ export function SlashMenu({
 	const query = slashQuery(composer.prompt);
 	/** The prompt Escape closed the menu at; typing on opens it again */
 	const [dismissedAt, setDismissedAt] = useState<string | null>(null);
+
+	if (query === null && dismissedAt !== null) setDismissedAt(null);
 	const matching = query === null ? [] : commands.filter((command) => matchesCommand(query, command));
 
 	if (query === null || composer.locked || dismissedAt === composer.prompt || !matching.length) return null;
@@ -79,6 +81,7 @@ export function SlashMenu({
 								key={`${command.kind}:${command.name}`}
 								value={command.name}
 								keywords={commandKeywords(command)}
+								className="min-w-0"
 								// The textarea keeps the focus, so a click doesn't close the menu first
 								onPointerDown={(event) => event.preventDefault()}
 								onSelect={() => choose(command)}

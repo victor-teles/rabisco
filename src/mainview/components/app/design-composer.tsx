@@ -10,6 +10,7 @@ import {
 	Undo2,
 	WandSparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -182,7 +183,8 @@ export function DesignComposer({
 					if (onPlanModeChange && isPlanModeToggle(event)) {
 						event.preventDefault();
 
-						if (!planModeHint) onPlanModeChange(!planMode);
+						if (planModeHint) toast(planModeHint, { id: "plan-mode" });
+						else onPlanModeChange(!planMode);
 
 						return;
 					}

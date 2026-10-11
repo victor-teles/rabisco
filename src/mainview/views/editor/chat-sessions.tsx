@@ -99,7 +99,7 @@ export function ChatSessions({
 								</CommandMenuItem>
 							))}
 						</CommandMenuList>
-						<CommandMenuEmpty />
+						<CommandMenuEmpty>{chats.length ? undefined : "No chats yet."}</CommandMenuEmpty>
 					</CommandMenu>
 				</PopoverContent>
 			</Popover>
