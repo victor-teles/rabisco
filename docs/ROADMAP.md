@@ -28,10 +28,10 @@ Phases 1–17 were checked mostly in Chrome and unit tests. This phase runs ever
 - ✅ Frames: the swap between a live frame and its snapshot, observer pausing offscreen, lazy covers on Home, `--zoom` counter-scaling of labels, outlines and link arrows. Bugs: [LIT-69](/LIT/issues/LIT-69), [LIT-70](/LIT/issues/LIT-70), [LIT-81](/LIT/issues/LIT-81), [LIT-82](/LIT/issues/LIT-82)
 - ✅ Drop preview: the line, label and empty drop zone, "Can't drop here" on a broken screen, Esc mid-drag, a button dropped between two specific cards. Bugs: [LIT-67](/LIT/issues/LIT-67), [LIT-68](/LIT/issues/LIT-68), [LIT-82](/LIT/issues/LIT-82)
 - ✅ Context menus: the element menu after the async hit-test, focus after Rename, Ask AI and Make component from a menu, the clipboard prompt on ⌘V, ⌘R doesn't reload. Bugs: [LIT-64](/LIT/issues/LIT-64), [LIT-65](/LIT/issues/LIT-65), [LIT-66](/LIT/issues/LIT-66)
-- ⬜ Element editing: drag, resize, padding and gap handles, ⇧-click multi-select, Layers hover sync, Tab between siblings, ⌘C/⌘V of elements, picked images on the canvas
-- ⬜ Chat: the `/` menu's keys, ⇧⌘O from the composer, deleting a chat to the Trash, a real Claude Code command run
-- ⬜ Tokens: adding a token restarts the compiler and re-styles open frames; the token editor's Enter, Esc and blur
-- ⬜ uai blocks: chat cards and popovers in a narrow panel, blocks under a DESIGN.md theme and in dark mode, snapshots that catch entry animations half-drawn
+- ✅ Element editing: drag, resize, padding and gap handles, ⇧-click multi-select, Layers hover sync, Tab between siblings, ⌘C/⌘V of elements, picked images on the canvas. Fixed: stale handles stayed on the canvas after a ⇧-click removal
+- ✅ Chat: the `/` menu's keys, ⇧⌘O from the composer, deleting a chat to the Trash, a real Claude Code command run. Fixed: the `/` menu didn't open again after Esc, `/play` left the keys in the composer, Play's controls sat under the traffic lights
+- ✅ Tokens: adding a token restarts the compiler and re-styles open frames; the token editor's Enter, Esc and blur
+- ✅ uai blocks: chat cards and popovers in a narrow panel, blocks under a DESIGN.md theme and in dark mode, snapshots that catch entry animations half-drawn. Fixed: the panel overflowed at its minimum width (now 328 px), the chat didn't scroll to a new plan card. Snapshots drop the step indicator's inset track: [LIT-83](/LIT/issues/LIT-83)
 
 **Git and share**
 
