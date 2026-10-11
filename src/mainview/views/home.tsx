@@ -592,7 +592,7 @@ function LazyCover({ project, cover }: { project: ProjectSummary; cover: ScreenC
 	const scale = Math.min(maxWidth / cover.width, 150 / cover.height);
 
 	useEffect(() => {
-		const observer = new IntersectionObserver(([entry]) => setNear(entry?.isIntersecting ?? false), {
+		const observer = new IntersectionObserver((entries) => setNear(entries.at(-1)?.isIntersecting ?? false), {
 			rootMargin: "300px",
 		});
 

@@ -282,7 +282,9 @@ function useNearViewport<T extends Element>() {
 		const element = ref.current;
 
 		if (!element) return;
-		const observer = new IntersectionObserver(([entry]) => setNear(entry!.isIntersecting), { rootMargin: "200px 0px" });
+		const observer = new IntersectionObserver((entries) => setNear(entries.at(-1)?.isIntersecting ?? false), {
+			rootMargin: "200px 0px",
+		});
 		observer.observe(element);
 
 		return () => observer.disconnect();

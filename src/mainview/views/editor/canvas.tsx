@@ -1238,6 +1238,16 @@ export function Canvas({
 	// Escape drops nothing and keeps the selection
 	const draggingElement = drag?.kind === "element";
 
+	const cancelElementDrag = useCallback(() => {
+		const moving = movingElement.current;
+
+		if (moving?.entry) hostFor(moving.file)?.previewOrder(moving.entry.start, moving.version, null);
+		movingElement.current = null;
+		entryOffset.current = null;
+		clearDrop();
+		setDrag(null);
+	}, [clearDrop, hostFor]);
+
 	useEffect(() => {
 		if (!draggingElement) return;
 
@@ -1245,19 +1255,13 @@ export function Canvas({
 			if (event.key !== "Escape") return;
 			event.preventDefault();
 			event.stopPropagation();
-			const moving = movingElement.current;
-
-			if (moving?.entry) hostFor(moving.file)?.previewOrder(moving.entry.start, moving.version, null);
-			movingElement.current = null;
-			entryOffset.current = null;
-			clearDrop();
-			setDrag(null);
+			cancelElementDrag();
 		};
 
 		window.addEventListener("keydown", onKey, true);
 
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [draggingElement, clearDrop, hostFor]);
+	}, [draggingElement, cancelElementDrag]);
 
 	const zoomOf = useCallback(() => view.get().zoom, [view]);
 
@@ -1787,7 +1791,7 @@ export function Canvas({
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={endDrag}
-				onPointerCancel={endDrag}
+				onPointerCancel={(event) => (drag?.kind === "element" ? cancelElementDrag() : endDrag(event))}
 				onPointerLeave={hover ? clearHover : undefined}
 				onDoubleClick={onDoubleClick}
 				onContextMenu={onContextMenu}

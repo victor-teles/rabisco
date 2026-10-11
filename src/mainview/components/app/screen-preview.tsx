@@ -118,7 +118,7 @@ export function ScreenFrame({
 			if (status.frame === host.frame && (status.status === "rendered" || status.status === "error")) setPainted(true);
 		});
 
-		const visibility = new IntersectionObserver(([change]) => host.setPaused(!change?.isIntersecting));
+		const visibility = new IntersectionObserver((changes) => host.setPaused(!changes.at(-1)?.isIntersecting));
 		visibility.observe(wrapperRef.current!);
 
 		return () => {
