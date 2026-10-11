@@ -24,6 +24,8 @@ export type FilesChanged = RabiscoRPC["webview"]["messages"]["filesChanged"];
 
 export type AssetsChanged = RabiscoRPC["webview"]["messages"]["assetsChanged"];
 
+export type CanvasChanged = RabiscoRPC["webview"]["messages"]["canvasChanged"];
+
 function listenerSet<T>() {
 	const listeners = new Set<(value: T) => void>();
 
@@ -45,11 +47,15 @@ const fileChanges = listenerSet<FilesChanged>();
 
 const assetChanges = listenerSet<AssetsChanged>();
 
+const canvasChanges = listenerSet<CanvasChanged>();
+
 export const onGenerationEvent = generationEvents.add;
 
 export const onFilesChanged = fileChanges.add;
 
 export const onAssetsChanged = assetChanges.add;
+
+export const onCanvasChanged = canvasChanges.add;
 
 function createElectrobunApi(): RabiscoApi {
 	const rpc = Electroview.defineRPC<RabiscoRPC>({
@@ -61,6 +67,7 @@ function createElectrobunApi(): RabiscoApi {
 				generationEvent: generationEvents.emit,
 				filesChanged: fileChanges.emit,
 				assetsChanged: assetChanges.emit,
+				canvasChanged: canvasChanges.emit,
 			},
 		},
 	});
@@ -238,6 +245,15 @@ function createBrowserApi(): RabiscoApi {
 			write(path, { ...stored, chats });
 
 			return ok;
+		},
+		async readHistory() {
+			return null;
+		},
+		async writeHistory() {
+			return ok;
+		},
+		async backupProject() {
+			throw new Error("Backups need the Rabisco desktop app.");
 		},
 		async removeRecent({ path }) {
 			forget(path);

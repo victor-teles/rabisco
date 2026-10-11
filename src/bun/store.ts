@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import type { AssetChange } from "../shared/assets";
+import type { BackupReason, SavedHistory } from "../shared/saved-history";
 import type { StyleId } from "../shared/context/styles";
 import type {
 	CanvasDoc,
@@ -8,6 +9,7 @@ import type {
 	Device,
 	FileChange,
 	Project,
+	ProjectFiles,
 	ProjectSummary,
 	ScreenSource,
 } from "../shared/types";
@@ -21,6 +23,7 @@ import {
 	chatPath,
 	createProjectFolder,
 	loadProject,
+	readCanvas,
 	readChat,
 	writeCanvas,
 	writeProjectFiles,
@@ -35,6 +38,7 @@ import {
 	touchRecent,
 	writeRecents,
 } from "./recents";
+import { backupProject, deleteSavedHistory, readSavedHistory, writeSavedHistory } from "./saved-history";
 import { ProjectWatcher } from "./watcher";
 
 export type StoreOptions = {
@@ -47,6 +51,7 @@ export type StoreOptions = {
 	pickFolder: () => Promise<string[]>;
 	onFilesChanged: (path: string, changes: FileChange[]) => void;
 	onAssetsChanged?: (path: string, changes: AssetChange[]) => void;
+	onCanvasChanged?: (path: string, canvas: CanvasDoc) => void;
 	watchOptions?: ConstructorParameters<typeof ProjectWatcher>[3];
 };
 
@@ -73,6 +78,16 @@ export function createProjectStore(options: StoreOptions) {
 		assetTrackers.delete(path);
 	}
 
+	function pushCanvas(path: string) {
+		try {
+			const canvas = readCanvas(path);
+
+			if (canvas) options.onCanvasChanged?.(path, canvas);
+		} catch (error) {
+			console.warn(`Ignored an unreadable ${CANVAS_FILE} change: ${error instanceof Error ? error.message : error}`);
+		}
+	}
+
 	function pushAssets(path: string) {
 		const changes = assetTrackers.get(path)?.changes() ?? [];
 
@@ -81,7 +96,7 @@ export function createProjectStore(options: StoreOptions) {
 
 	function openProject(rawPath: string): Project {
 		const path = normalize(rawPath);
-		const project = loadProject(path);
+		const project = loadProject(path, () => backupProject(options.userDataDir, path, "migration"));
 		const watcher = watchers.get(path);
 		const assets = assetTrackers.get(path) ?? new AssetTracker(path);
 		assetTrackers.set(path, assets);
@@ -93,6 +108,7 @@ export function createProjectStore(options: StoreOptions) {
 				new ProjectWatcher(path, project.files, (changes) => options.onFilesChanged(path, changes), {
 					...options.watchOptions,
 					onAssets: () => pushAssets(path),
+					onCanvas: () => pushCanvas(path),
 				}),
 			);
 		writeRecents(recentsFile, touchRecent(recents(), path));
@@ -149,7 +165,8 @@ export function createProjectStore(options: StoreOptions) {
 
 		saveCanvas(path: string, canvas: CanvasDoc) {
 			assertProject(path);
-			writeCanvas(path, { ...canvas, updatedAt: new Date().toISOString() });
+			const text = writeCanvas(path, { ...canvas, updatedAt: new Date().toISOString() });
+			watchers.get(normalize(path))?.noteCanvas(text);
 		},
 
 		writeFiles(path: string, changes: FileChange[]) {
@@ -190,6 +207,21 @@ export function createProjectStore(options: StoreOptions) {
 			if (existsSync(file) && !options.moveToTrash(file)) throw new Error(`Could not move ${file} to the trash`);
 		},
 
+		readHistory(path: string): SavedHistory | null {
+			return readSavedHistory(options.userDataDir, normalize(path));
+		},
+
+		writeHistory(path: string, history: SavedHistory) {
+			assertProject(path);
+			writeSavedHistory(options.userDataDir, normalize(path), history);
+		},
+
+		backupProject(path: string, reason: BackupReason, files: ProjectFiles, canvas: CanvasDoc) {
+			assertProject(path);
+
+			return backupProject(options.userDataDir, normalize(path), reason, { files, canvas });
+		},
+
 		removeRecent(path: string) {
 			stopWatching(normalize(path));
 			writeRecents(recentsFile, forgetRecent(recents(), normalize(path)));
@@ -203,6 +235,8 @@ export function createProjectStore(options: StoreOptions) {
 
 				if (!options.moveToTrash(path)) throw new Error(`Could not move ${path} to the trash`);
 			}
+
+			deleteSavedHistory(options.userDataDir, normalize(path));
 
 			writeRecents(recentsFile, forgetRecent(recents(), normalize(path)));
 		},

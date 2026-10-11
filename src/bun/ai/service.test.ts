@@ -40,8 +40,9 @@ const params = (projectPath: string, generationId = "g1") => ({
 describe("ai service", () => {
 	test("lists the mock provider in development", async () => {
 		const { ai } = setup();
-		const { statuses } = await ai.listProviders();
+		const { statuses, keyStorage } = await ai.listProviders();
 		expect(statuses.map((s) => s.id)).toEqual(["mock"]);
+		expect(keyStorage).toEqual({ ok: true, name: "memory" });
 		expect(statuses[0]!.health?.ok).toBe(true);
 	});
 

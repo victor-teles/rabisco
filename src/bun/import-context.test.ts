@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { findContextFiles, MAX_CONTEXT_FILE_BYTES } from "./import-context";
 import { tempDir } from "./test-utils";
@@ -50,5 +50,16 @@ describe("findContextFiles", () => {
 		const dir = repo({ "file.txt": "" });
 		expect(() => findContextFiles(join(dir, "nope"))).toThrow(/Folder not found/);
 		expect(() => findContextFiles(join(dir, "file.txt"))).toThrow(/Not a folder/);
+	});
+
+	test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("throws when a match can't be read", () => {
+		const dir = repo({ "docs/DESIGN.md": "locked" });
+		chmodSync(join(dir, "docs/DESIGN.md"), 0o000);
+
+		try {
+			expect(() => findContextFiles(dir)).toThrow(/Couldn't read docs\/DESIGN.md/);
+		} finally {
+			chmodSync(join(dir, "docs/DESIGN.md"), 0o644);
+		}
 	});
 });

@@ -46,7 +46,9 @@ export const ShareButton = memo(function ShareButton(props: ExportContext) {
 		api
 			.shareStatus({ path: projectPath })
 			.then((next) => !cancelled && setStatus(next))
-			.catch(() => {});
+			.catch((error) => {
+				if (!cancelled) toast.error("Couldn't check the share link", { description: errorMessage(error) });
+			});
 
 		return () => {
 			cancelled = true;

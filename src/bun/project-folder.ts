@@ -218,7 +218,10 @@ export function readCanvas(dir: string): CanvasDoc | null {
 }
 
 export function writeCanvas(dir: string, canvas: CanvasDoc) {
-	writeFileSync(join(dir, CANVAS_FILE), `${JSON.stringify(canvas, null, "\t")}\n`);
+	const text = `${JSON.stringify(canvas, null, "\t")}\n`;
+	writeFileSync(join(dir, CANVAS_FILE), text);
+
+	return text;
 }
 
 /** Malformed lines are skipped. Images load only with `readAttachment`; the AI history doesn't need them. */
@@ -357,11 +360,14 @@ function readAttachment(dir: string, path: string) {
 }
 
 /** Writes `rabisco.json` when missing or when frames had to be reconciled with the files on disk. */
-export function loadProject(dir: string): Project {
+export function loadProject(dir: string, backup?: () => string): Project {
 	assertProjectDir(dir);
 	const files = readProjectFiles(dir);
 	const stored = readCanvas(dir);
 	const canvas = reconcileFrames(stored ?? emptyCanvas(projectNameFromPath(dir), "mobile"), files);
+	const dropsFrames = stored !== null && stored.frames.some((frame) => !(frame.file in files));
+	const migrates = dropsFrames || existsSync(join(dir, LEGACY_CHAT_FILE));
+	const backedUp = backup && migrates ? backup() : undefined;
 
 	if (!stored || canvas !== stored) writeCanvas(dir, canvas);
 	migrateChat(dir);
@@ -369,7 +375,11 @@ export function loadProject(dir: string): Project {
 	// The latest chat opens; a project without one starts a new one
 	const chatId = chats[0]?.id ?? newChatId();
 
-	return { path: dir, canvas, files, chatId, messages: readChat(dir, chatId), chats };
+	const project: Project = { path: dir, canvas, files, chatId, messages: readChat(dir, chatId), chats };
+
+	if (backedUp) project.backup = backedUp;
+
+	return project;
 }
 
 /** Validates every path first, so a bad path writes nothing. */

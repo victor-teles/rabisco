@@ -120,6 +120,7 @@ export type Project = {
 	chats: ChatSummary[];
 	/** Images under `public/`, pushed to frames as bytes (decision 0010). Not files: they stay out of history */
 	assets?: ProjectAssets;
+	backup?: string;
 };
 
 /** Everything to render one screen on its own (thumbnails) */

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { polishModeOf } from "../../shared/design/polish";
 
 const STORAGE_KEY = "rabisco:generation:auto-polish";
@@ -22,7 +23,9 @@ function toggle(key: string) {
 
 		try {
 			localStorage.setItem(key, next ? "1" : "0");
-		} catch {}
+		} catch (error) {
+			toast.error("Couldn't save the setting", { id: "setting-save", description: String(error) });
+		}
 
 		for (const listener of listeners) listener();
 	};

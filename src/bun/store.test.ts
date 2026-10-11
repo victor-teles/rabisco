@@ -4,7 +4,7 @@ import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import type { AssetChange } from "../shared/assets";
 import type { ChangeSummary } from "../shared/change-summary";
-import type { FileChange } from "../shared/types";
+import type { CanvasDoc, FileChange } from "../shared/types";
 import {
 	appendChat,
 	assertProjectFilePath,
@@ -282,6 +282,7 @@ describe("project store", () => {
 		const root = tempDir();
 		const events: { path: string; changes: FileChange[] }[] = [];
 		const assetEvents: { path: string; changes: AssetChange[] }[] = [];
+		const canvasEvents: { path: string; canvas: CanvasDoc }[] = [];
 		const trashed: string[] = [];
 		store = createProjectStore({
 			documentsDir: join(root, "Documents"),
@@ -296,10 +297,11 @@ describe("project store", () => {
 			pickFolder: async () => [""],
 			onFilesChanged: (path, changes) => events.push({ path, changes }),
 			onAssetsChanged: (path, changes) => assetEvents.push({ path, changes }),
+			onCanvasChanged: (path, canvas) => canvasEvents.push({ path, canvas }),
 			watchOptions: { poll, pollMs: 40, debounceMs: 20 },
 		});
 
-		return { store, root, events, assetEvents, trashed };
+		return { store, root, events, assetEvents, canvasEvents, trashed };
 	}
 
 	const settle = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -408,6 +410,32 @@ describe("project store", () => {
 			writeFileSync(join(p.path, "screens/home.tsx"), "v3");
 			await settle();
 			expect(events).toEqual([]);
+		});
+	}
+
+	for (const poll of [false, true]) {
+		test(`outside edits of rabisco.json are pushed, own saves are not (${poll ? "polling" : "fs.watch"})`, async () => {
+			const { store, canvasEvents, events } = setup(poll);
+			const p = store.createProject("Layout", "mobile");
+			store.saveCanvas(p.path, { ...p.canvas, name: "Saved" });
+			await settle();
+			expect(canvasEvents).toEqual([]);
+
+			const pulled = { ...p.canvas, name: "Pulled" };
+			writeFileSync(join(p.path, "rabisco.json"), JSON.stringify(pulled));
+			await settle();
+			expect(canvasEvents.map((e) => [e.path, e.canvas.name])).toEqual([[p.path, "Pulled"]]);
+			expect(events).toEqual([]);
+
+			canvasEvents.length = 0;
+			writeFileSync(join(p.path, "rabisco.json"), "{ <<<<<<< HEAD");
+			await settle();
+			expect(canvasEvents).toEqual([]);
+
+			store.closeProject(p.path);
+			writeFileSync(join(p.path, "rabisco.json"), JSON.stringify({ ...pulled, name: "Late" }));
+			await settle();
+			expect(canvasEvents).toEqual([]);
 		});
 	}
 

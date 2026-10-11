@@ -58,6 +58,13 @@ const store = createProjectStore({
 			console.warn("Could not push assetsChanged:", error);
 		}
 	},
+	onCanvasChanged: (path, canvas) => {
+		try {
+			mainWindow.webview.rpc?.send.canvasChanged({ path, canvas });
+		} catch (error) {
+			console.warn("Could not push canvasChanged:", error);
+		}
+	},
 });
 
 const channel = await Updater.localInfo.channel();
@@ -145,6 +152,11 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			appendMessages: ({ path, chatId, messages }) => (store.appendMessages(path, chatId, messages), ok),
 			openChat: ({ path, chatId }) => store.openChat(path, chatId),
 			deleteChat: ({ path, chatId }) => (store.deleteChat(path, chatId), ok),
+			readHistory: ({ path }) => store.readHistory(path),
+			writeHistory: ({ path, history }) => (store.writeHistory(path, history), ok),
+			backupProject: ({ path, reason, files, canvas }) => ({
+				dir: store.backupProject(path, reason, files, canvas),
+			}),
 			pickImage: async ({ path }) => {
 				const [file] = (
 					await Utils.openFileDialog({

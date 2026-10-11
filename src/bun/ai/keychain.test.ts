@@ -4,6 +4,7 @@ import {
 	createMacSecretStore,
 	createMemorySecretStore,
 	createSecretStore,
+	createWindowsSecretStore,
 	type RunCommand,
 } from "./keychain";
 
@@ -91,8 +92,79 @@ describe("Linux secret store", () => {
 	});
 });
 
-test("unsupported platforms throw", () => {
-	expect(() => createSecretStore("win32")).toThrow("isn't supported on win32");
+const decodeScript = (argv: string[]) => Buffer.from(argv.at(-1) ?? "", "base64").toString("utf16le");
+
+describe("Windows secret store", () => {
+	test("set passes the secret through stdin and the script carries only names", async () => {
+		const { calls, run } = recorder(() => ({ exitCode: 0 }));
+		await createWindowsSecretStore(run).set("provider:anthropic", "sk-ant-secret");
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.argv.slice(0, -1)).toEqual([
+			"powershell.exe",
+			"-NoProfile",
+			"-NonInteractive",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-EncodedCommand",
+		]);
+		expect(calls[0]!.stdin).toBe("sk-ant-secret");
+
+		const script = decodeScript(calls[0]!.argv);
+		expect(script).not.toContain("sk-ant-secret");
+		expect(script).toContain("[Console]::In.ReadToEnd()");
+		expect(script).toContain("PasswordCredential('app.rabisco.desktop', 'provider:anthropic', $secret)");
+	});
+
+	test("get reads stdout; a missing item is null", async () => {
+		const found = recorder(() => ({ exitCode: 0, stdout: "sk-1\r\n" }));
+		expect(await createWindowsSecretStore(found.run).get("provider:openai")).toBe("sk-1");
+		expect(decodeScript(found.calls[0]!.argv)).toContain("Find-Key 'app.rabisco.desktop' 'provider:openai'");
+
+		const missing = recorder(() => ({ exitCode: 3 }));
+		expect(await createWindowsSecretStore(missing.run).get("provider:openai")).toBeNull();
+	});
+
+	test("failures name Credential Manager; a missing item deletes quietly", async () => {
+		const { run } = recorder(() => ({ exitCode: 1, stderr: "Access denied" }));
+		await expect(createWindowsSecretStore(run).set("provider:x", "k")).rejects.toThrow("Windows Credential Manager");
+		await expect(createWindowsSecretStore(run).get('x" ; rm')).rejects.toThrow("Invalid keychain account");
+
+		const ok = recorder(() => ({ exitCode: 0 }));
+		await createWindowsSecretStore(ok.run).delete("provider:x");
+		expect(decodeScript(ok.calls[0]!.argv)).toContain("if ($null -ne $found) { $vault.Remove($found) }");
+	});
+
+	test("check reports whether PowerShell can reach the vault", async () => {
+		const ok = recorder(() => ({ exitCode: 0 }));
+		expect(await createWindowsSecretStore(ok.run).check()).toEqual({ ok: true, name: "Windows Credential Manager" });
+
+		const broken = createWindowsSecretStore(async () => {
+			throw new Error("ENOENT");
+		});
+
+		expect(await broken.check()).toMatchObject({ ok: false });
+	});
+});
+
+describe("platforms", () => {
+	test("win32 gets Credential Manager", async () => {
+		expect(createSecretStore("win32")).toHaveProperty("check");
+	});
+
+	test("other platforms can't store keys and say so", async () => {
+		const store = createSecretStore("freebsd");
+		expect(await store.get("provider:x")).toBeNull();
+		await expect(store.set("provider:x", "k")).rejects.toThrow("can't store API keys on freebsd");
+		expect(await store.check()).toMatchObject({ ok: false, message: expect.stringContaining("freebsd") });
+	});
+
+	test("Linux without secret-tool says so", async () => {
+		const store = createLinuxSecretStore(async () => {
+			throw new Error("ENOENT");
+		});
+
+		expect(await store.check()).toMatchObject({ ok: false, message: expect.stringContaining("secret-tool") });
+	});
 });
 
 test("memory store", async () => {

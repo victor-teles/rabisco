@@ -8,6 +8,7 @@ import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/rpc";
 import { projectSessions } from "@/lib/sessions";
+import { forgetProject, readLastProject } from "@/lib/workspace";
 import { EditorView } from "@/views/editor/editor";
 import { HomeView, type StartDesign } from "@/views/home";
 import { AUTO_FALLBACK_STYLE, AUTO_STYLE } from "../shared/context/styles";
@@ -21,6 +22,7 @@ type Route =
 			initialFiles?: File[];
 			initialVariations?: number;
 			initialAutoStyle?: boolean;
+			initialChatId?: string;
 	  };
 
 function projectNameFromPrompt(prompt: string) {
@@ -33,7 +35,14 @@ function projectNameFromPrompt(prompt: string) {
 
 export default function App() {
 	const { theme, toggleTheme } = useTheme();
-	const [route, setRoute] = useState<Route>({ view: "home" });
+
+	const [route, setRoute] = useState<Route>(() => {
+		const last = readLastProject(localStorage);
+
+		return last
+			? { view: "editor", projectPath: last.path, initialChatId: last.chatId ?? undefined }
+			: { view: "home" };
+	});
 
 	useEffect(() => void loadProviders(), []);
 
@@ -92,9 +101,13 @@ export default function App() {
 					initialFiles={route.initialFiles}
 					initialVariations={route.initialVariations}
 					initialAutoStyle={route.initialAutoStyle}
+					initialChatId={route.initialChatId}
 					theme={theme}
 					onToggleTheme={toggleTheme}
-					onBack={() => setRoute({ view: "home" })}
+					onBack={() => {
+						forgetProject(localStorage);
+						setRoute({ view: "home" });
+					}}
 				/>
 			)}
 			<SettingsDialog />

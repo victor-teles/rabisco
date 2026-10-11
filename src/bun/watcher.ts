@@ -3,7 +3,7 @@ import { join } from "path";
 import { PUBLIC_DIR } from "../shared/assets";
 import { isProjectFile } from "../shared/project";
 import type { FileChange, ProjectFiles } from "../shared/types";
-import { readFileIfExists, readProjectFiles } from "./project-folder";
+import { CANVAS_FILE, readFileIfExists, readProjectFiles } from "./project-folder";
 
 type Options = {
 	debounceMs?: number;
@@ -12,11 +12,14 @@ type Options = {
 	poll?: boolean;
 	/** Something under `public/` may have changed; images aren't project files (decision 0010) */
 	onAssets?: () => void;
+	onCanvas?: (text: string) => void;
 };
 
 /** Rabisco's own writes go through `noteWrite` first, so they are never echoed back. */
 export class ProjectWatcher {
 	private known = new Map<string, string>();
+	private canvasText: string | null = null;
+	private canvasPending = false;
 	private pending = new Set<string>();
 	private rescan = false;
 	private assetsChanged = false;
@@ -25,6 +28,7 @@ export class ProjectWatcher {
 	private poller: ReturnType<typeof setInterval> | null = null;
 	private readonly debounceMs: number;
 	private readonly onAssets: (() => void) | undefined;
+	private readonly onCanvas: ((text: string) => void) | undefined;
 
 	constructor(
 		readonly dir: string,
@@ -34,6 +38,7 @@ export class ProjectWatcher {
 	) {
 		this.debounceMs = options.debounceMs ?? 50;
 		this.onAssets = options.onAssets;
+		this.onCanvas = options.onCanvas;
 		this.reset(files);
 
 		if (!options.poll) {
@@ -52,6 +57,11 @@ export class ProjectWatcher {
 
 	reset(files: ProjectFiles) {
 		this.known = new Map(Object.entries(files));
+		this.canvasText = readFileIfExists(join(this.dir, CANVAS_FILE));
+	}
+
+	noteCanvas(text: string) {
+		this.canvasText = text;
 	}
 
 	noteWrite(path: string, content: string | null) {
@@ -82,7 +92,8 @@ export class ProjectWatcher {
 	private onEvent(name: string | null) {
 		const path = name?.replace(/\\/g, "/");
 
-		if (path && isProjectFile(path)) this.pending.add(path);
+		if (path === CANVAS_FILE) this.canvasPending = true;
+		else if (path && isProjectFile(path)) this.pending.add(path);
 		else if (path === PUBLIC_DIR || path?.startsWith(`${PUBLIC_DIR}/`)) this.assetsChanged = true;
 		// A null name, or a whole folder moved or deleted: compare everything
 		else if (!path || path === "screens" || path === "components") this.rescan = true;
@@ -95,7 +106,9 @@ export class ProjectWatcher {
 	flush() {
 		this.timer = null;
 		const paths = new Set(this.pending);
+		const checkCanvas = this.canvasPending || this.rescan;
 		this.pending.clear();
+		this.canvasPending = false;
 
 		if (this.assetsChanged || this.rescan) {
 			this.assetsChanged = false;
@@ -121,5 +134,15 @@ export class ProjectWatcher {
 		}
 
 		if (changes.length) this.onChange(changes);
+
+		if (checkCanvas) this.flushCanvas();
+	}
+
+	private flushCanvas() {
+		const text = readFileIfExists(join(this.dir, CANVAS_FILE));
+
+		if (text === null || text === this.canvasText) return;
+		this.canvasText = text;
+		this.onCanvas?.(text);
 	}
 }

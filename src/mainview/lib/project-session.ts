@@ -13,7 +13,9 @@ import {
 	type History,
 	type Snapshot,
 } from "@/lib/history";
+import { rebaseCanvas } from "@/lib/canvas-rebase";
 import type { RabiscoApi } from "@/lib/rpc";
+import { packHistory, resumeHistory, unpackHistory } from "@/lib/saved-history";
 import { sameSelection } from "@/lib/selection";
 import { type SessionVersion, withVersion } from "@/lib/versions";
 import type { AssetChange, ProjectAssets } from "../../shared/assets";
@@ -26,6 +28,8 @@ import type { CanvasDoc, ChatMessage, Device, FileChange, Project, ProjectFiles 
 const SAVE_DELAY_MS = 400;
 
 const WRITE_DELAY_MS = 300;
+
+const HISTORY_DELAY_MS = 2000;
 
 export type ProjectState = {
 	path: string;
@@ -51,18 +55,30 @@ export type SessionView = { state: ProjectState | null; error: string | null };
 
 export type ProjectApi = Pick<
 	RabiscoApi,
-	"openProject" | "writeFiles" | "saveCanvas" | "appendMessages" | "openChat" | "deleteChat"
+	| "openProject"
+	| "writeFiles"
+	| "saveCanvas"
+	| "appendMessages"
+	| "openChat"
+	| "deleteChat"
+	| "readHistory"
+	| "writeHistory"
+	| "backupProject"
 >;
 
 export type SessionOptions = {
 	path: string;
 	api: ProjectApi;
 	onSaveError: (cause: unknown) => void;
+	onBackup?: (dir: string) => void;
 	writeDelay?: number;
 	saveDelay?: number;
+	historyDelay?: number;
 };
 
-export type Reloaded = { files: ProjectFiles; assets: ProjectAssets; hadHistory: boolean };
+export type Reloaded = { files: ProjectFiles; assets: ProjectAssets; hadHistory: boolean; backup: string | null };
+
+type Steps = { history: History; versions: SessionVersion[] };
 
 export type ProjectSession = ReturnType<typeof createProjectSession>;
 
@@ -70,8 +86,10 @@ export function createProjectSession({
 	path,
 	api,
 	onSaveError,
+	onBackup,
 	writeDelay = WRITE_DELAY_MS,
 	saveDelay = SAVE_DELAY_MS,
+	historyDelay = HISTORY_DELAY_MS,
 }: SessionOptions) {
 	let view: SessionView = { state: null, error: null };
 	let diskFiles: ProjectFiles = {};
@@ -79,6 +97,9 @@ export function createProjectSession({
 	let assets: ProjectAssets = {};
 	let writeTimer: ReturnType<typeof setTimeout> | undefined;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	let historyTimer: ReturnType<typeof setTimeout> | undefined;
+	let seenSteps: Steps | null = null;
+	let savedSteps: Steps | null = null;
 	let loading: Promise<void> | null = null;
 	let closed = false;
 	const listeners = new Set<() => void>();
@@ -106,6 +127,7 @@ export function createProjectSession({
 		const changes = diffFiles(diskFiles, current.files);
 
 		if (!changes.length) return true;
+		const before = diskFiles;
 		diskFiles = current.files;
 
 		try {
@@ -113,6 +135,7 @@ export function createProjectSession({
 
 			return true;
 		} catch (cause) {
+			if (diskFiles === current.files) diskFiles = before;
 			onSaveError(cause);
 
 			return false;
@@ -122,10 +145,12 @@ export function createProjectSession({
 	/** Writes pending files too, so a git commit sees both. Both requests go out synchronously. */
 	async function flushCanvas(): Promise<boolean> {
 		const files = flushFiles();
+		void flushHistory();
 		clearTimeout(saveTimer);
 		const current = view.state;
 
 		if (closed || !current || current.canvas === savedCanvas) return files;
+		const before = savedCanvas;
 		savedCanvas = current.canvas;
 
 		const canvas = {
@@ -137,6 +162,7 @@ export function createProjectSession({
 		const saved = api.saveCanvas({ path, canvas }).then(
 			() => true,
 			(cause) => {
+				if (savedCanvas === current.canvas) savedCanvas = before;
 				onSaveError(cause);
 
 				return false;
@@ -148,10 +174,51 @@ export function createProjectSession({
 		return filesSaved && canvasSaved;
 	}
 
+	function flushHistory(): Promise<boolean> {
+		clearTimeout(historyTimer);
+		const current = view.state;
+
+		if (closed || !current || (savedSteps && sameSteps(savedSteps, current))) return Promise.resolve(true);
+		const steps = { history: current.history, versions: current.versions };
+
+		savedSteps = steps;
+
+		return api.writeHistory({ path, history: packHistory(steps.history, steps.versions, new Date()) }).then(
+			() => true,
+			(cause) => {
+				if (savedSteps === steps) savedSteps = null;
+				onSaveError(cause);
+
+				return false;
+			},
+		);
+	}
+
+	function scheduleHistory(next: Steps) {
+		if (closed || (seenSteps && seenSteps.history === next.history && seenSteps.versions === next.versions)) return;
+		seenSteps = { history: next.history, versions: next.versions };
+		clearTimeout(historyTimer);
+		historyTimer = setTimeout(flushHistory, historyDelay);
+	}
+
+	function backupOf(state: ProjectState, snapshot: Snapshot): Promise<string | null> {
+		const canvas = { ...state.canvas, ...canvasFields(snapshot) };
+
+		return api.backupProject({ path, reason: "reload", files: snapshot.files, canvas }).then(
+			({ dir }) => dir,
+			(cause) => {
+				onSaveError(cause);
+
+				return null;
+			},
+		);
+	}
+
 	function apply(next: ProjectState) {
 		publish({ ...view, state: next });
 
 		if (closed) return;
+		scheduleHistory(next);
 
 		if (next.files !== diskFiles) {
 			clearTimeout(writeTimer);
@@ -173,21 +240,35 @@ export function createProjectSession({
 	}
 
 	function load() {
-		loading ??= api.openProject({ path }).then(
-			(project) => {
+		loading ??= Promise.all([api.openProject({ path }), api.readHistory({ path }).catch(() => null)]).then(
+			([project, saved]) => {
 				if (closed) return;
 				const canvas = opened(project);
+				const disk = snapshotOf(canvas, project.files);
+				const restored = saved && unpackHistory(saved);
+				const resumed = restored && resumeHistory(restored.history, disk, reconcileWith(canvas));
+				const history = resumed ? resumed.history : createHistory(disk);
+				const versions = restored ? restored.versions : [];
 
-				apply({
+				const next: ProjectState = {
 					path: project.path,
 					canvas,
 					files: project.files,
 					chatId: project.chatId,
 					messages: project.messages,
 					chats: project.chats,
-					history: createHistory(snapshotOf(canvas, project.files)),
-					versions: [],
-				});
+					history,
+					versions,
+				};
+
+				seenSteps = { history, versions };
+				savedSteps = seenSteps;
+				apply(next);
+
+				if (project.backup) onBackup?.(project.backup);
+
+				if (restored && resumed?.dropped)
+					void backupOf(next, restored.history.present).then((dir) => dir && onBackup?.(dir));
 			},
 			(reason) => {
 				if (!closed) publish({ ...view, error: reason instanceof Error ? reason.message : String(reason) });
@@ -203,20 +284,17 @@ export function createProjectSession({
 
 		if (closed || !current) return;
 		diskFiles = applyFileChanges(diskFiles, changes);
+		apply(withHistory(current, rebase(current.history, changes, reconcileWith(current.canvas))));
+	}
 
-		const reconcile = (snapshot: Snapshot): Snapshot => {
-			const canvas = reconcileFrames({ ...current.canvas, frames: snapshot.frames, selection: [] }, snapshot.files);
+	function canvasChanged(disk: CanvasDoc) {
+		const current = view.state;
 
-			if (canvas.frames === snapshot.frames) return snapshot;
-
-			return {
-				...snapshot,
-				frames: canvas.frames,
-				comments: detachComments(snapshot.comments ?? [], snapshot.frames, canvas.frames),
-			};
-		};
-
-		apply(withHistory(current, rebase(current.history, changes, reconcile)));
+		if (closed || !current || !savedCanvas) return;
+		const clean = current.canvas === savedCanvas;
+		const next = withHistory(current, rebaseCanvas(current.history, savedCanvas, disk, reconcileWith(current.canvas)));
+		savedCanvas = clean ? next.canvas : disk;
+		apply(next);
 	}
 
 	/** Images aren't project files: they never enter history (decision 0010) */
@@ -324,31 +402,31 @@ export function createProjectSession({
 		else apply({ ...current, chats });
 	}
 
-	/** The folder watcher doesn't watch the canvas file, so external replacements (git pull) need this. */
+	/** After a git pull: the files, canvas and images all come back from the folder at once. */
 	async function reloadFromDisk(): Promise<Reloaded | null> {
 		await flushFiles();
 		clearTimeout(saveTimer);
+		await flushHistory();
 		const project = await api.openProject({ path });
 		const current = view.state;
 
 		if (!current) return null;
 		const canvas = opened(project);
-		const hadHistory = canUndo(current.history) || canRedo(current.history);
+		const resumed = resumeHistory(current.history, snapshotOf(canvas, project.files), reconcileWith(canvas));
+		const backup = resumed.dropped ? backupOf(current, current.history.present) : null;
 
-		apply({
-			...current,
-			canvas,
-			files: project.files,
-			history: createHistory(snapshotOf(canvas, project.files)),
-		});
+		apply({ ...current, canvas, files: project.files, history: resumed.history });
 
-		return { files: project.files, assets, hadHistory };
+		if (project.backup) onBackup?.(project.backup);
+
+		return { files: project.files, assets, hadHistory: resumed.dropped, backup: await backup };
 	}
 
 	function close() {
 		closed = true;
 		clearTimeout(writeTimer);
 		clearTimeout(saveTimer);
+		clearTimeout(historyTimer);
 	}
 
 	return {
@@ -364,9 +442,11 @@ export function createProjectSession({
 		load,
 		assets: () => assets,
 		filesChanged,
+		canvasChanged,
 		assetsChanged,
 		flushFiles,
 		flushCanvas,
+		flushHistory,
 		change,
 		endStep,
 		undo: undoStep,
@@ -389,6 +469,39 @@ function openedCanvas(stored: CanvasDoc, files: ProjectFiles): CanvasDoc {
 
 	return canvas.theme ? canvas : { ...canvas, theme: appliedTheme(canvas, files) };
 }
+
+function reconcileWith(current: CanvasDoc) {
+	return (snapshot: Snapshot): Snapshot => {
+		const canvas = reconcileFrames({ ...current, frames: snapshot.frames, selection: [] }, snapshot.files);
+
+		if (canvas.frames === snapshot.frames) return snapshot;
+
+		return {
+			...snapshot,
+			frames: canvas.frames,
+			comments: detachComments(snapshot.comments ?? [], snapshot.frames, canvas.frames),
+		};
+	};
+}
+
+function canvasFields(snapshot: Snapshot) {
+	const { frames, comments, theme, name, device, locks, sections } = snapshot;
+	const fields: Partial<CanvasDoc> = { frames, comments, theme, locks, sections };
+
+	if (name !== undefined) fields.name = name;
+
+	if (device !== undefined) fields.device = device;
+
+	return fields;
+}
+
+const sameSteps = (saved: Steps, current: Steps) =>
+	saved.versions === current.versions &&
+	saved.history.present === current.history.present &&
+	saved.history.past.length === current.history.past.length &&
+	saved.history.future.length === current.history.future.length &&
+	saved.history.past.at(-1) === current.history.past.at(-1) &&
+	saved.history.future[0] === current.history.future[0];
 
 function snapshotOf(canvas: CanvasDoc, files: ProjectFiles): Snapshot {
 	return {

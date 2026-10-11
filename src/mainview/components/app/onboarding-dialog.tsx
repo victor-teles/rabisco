@@ -49,7 +49,7 @@ function statusLine(status: ProviderStatus | undefined) {
 
 /** Shown once, on the first launch without a default model. Every path out of it, Esc included, counts as seen. */
 export function OnboardingDialog() {
-	const { loading, settings, statuses, settingsOpen } = useProviders();
+	const { loading, settings, statuses, keyStorage, settingsOpen } = useProviders();
 	const [seen, setSeen] = useState(wasSeen);
 	const [picked, setPicked] = useState<Choice | null>(null);
 	const [working, setWorking] = useState(false);
@@ -59,6 +59,7 @@ export function OnboardingDialog() {
 	const choice: Choice | null = picked ?? (preselected ? `config:${preselected}` : null);
 	const added = new Set(settings.providers.map((p) => p.type));
 	const addable = PROVIDER_TYPES.filter((t) => t.type === "openai-compatible" || !added.has(t.type));
+	const keysBlocked = keyStorage?.ok === false ? keyStorage.message : null;
 
 	const finish = () => {
 		markSeen();
@@ -143,16 +144,23 @@ export function OnboardingDialog() {
 							</>
 						) : null}
 						<GroupLabel>{settings.providers.length ? "Or connect another" : "Connect a provider"}</GroupLabel>
-						{addable.map((info) => (
-							<Option
-								key={info.type}
-								label={info.label}
-								kind={info.kind}
-								hint={info.description}
-								checked={choice === `type:${info.type}`}
-								onSelect={() => setPicked(`type:${info.type}`)}
-							/>
-						))}
+						{keysBlocked ? <p className="px-2 pb-1 text-xs text-muted-foreground">{keysBlocked}</p> : null}
+						{addable.map((info) => {
+							const blocked = Boolean(keysBlocked) && info.needsKey;
+
+							return (
+								<Option
+									key={info.type}
+									label={info.label}
+									kind={info.kind}
+									hint={blocked ? "Needs an API key, which Rabisco can't store here" : info.description}
+									warn={blocked}
+									disabled={blocked}
+									checked={choice === `type:${info.type}`}
+									onSelect={() => setPicked(`type:${info.type}`)}
+								/>
+							);
+						})}
 					</div>
 				</ScrollArea>
 
@@ -179,6 +187,7 @@ function Option({
 	kind,
 	hint,
 	warn = false,
+	disabled = false,
 	checked,
 	onSelect,
 }: {
@@ -186,6 +195,7 @@ function Option({
 	kind?: keyof typeof KIND_LABEL;
 	hint: string;
 	warn?: boolean;
+	disabled?: boolean;
 	checked: boolean;
 	onSelect: () => void;
 }) {
@@ -194,9 +204,10 @@ function Option({
 			type="button"
 			role="radio"
 			aria-checked={checked}
+			disabled={disabled}
 			onClick={onSelect}
 			className={cn(
-				"flex items-center gap-3 rounded-lg border border-transparent px-2.5 py-2 text-left outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+				"flex items-center gap-3 rounded-lg border border-transparent px-2.5 py-2 text-left outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60",
 				checked && "border-border-strong bg-accent",
 			)}
 		>

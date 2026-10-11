@@ -2,8 +2,9 @@ import type { RPCSchema } from "electrobun";
 import type { AssetChange } from "./assets";
 import type { StyleId } from "./context/styles";
 import type { ProviderCommand } from "./ai/contract";
-import type { ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
+import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
+import type { BackupReason, SavedHistory } from "./saved-history";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
 	CanvasDoc,
@@ -18,6 +19,7 @@ import type {
 	ImprovePromptParams,
 	ImprovePromptResult,
 	Project,
+	ProjectFiles,
 	ProjectSummary,
 	ScreenSource,
 } from "./types";
@@ -47,6 +49,12 @@ export type RabiscoRPC = {
 			openChat: { params: { path: string; chatId: string }; response: ChatMessage[] };
 			/** Moves the chat's file to the trash */
 			deleteChat: { params: { path: string; chatId: string }; response: { ok: true } };
+			readHistory: { params: { path: string }; response: SavedHistory | null };
+			writeHistory: { params: { path: string; history: SavedHistory }; response: { ok: true } };
+			backupProject: {
+				params: { path: string; reason: BackupReason; files: ProjectFiles; canvas: CanvasDoc };
+				response: { dir: string };
+			};
 			/** Opens a file dialog and copies the image into `public/images/`; `src` is what a screen writes. `null` when cancelled. */
 			pickImage: { params: { path: string }; response: { src: string } | null };
 			removeRecent: { params: { path: string }; response: { ok: true } };
@@ -60,7 +68,7 @@ export type RabiscoRPC = {
 
 			listProviders: {
 				params: { refresh?: boolean };
-				response: { settings: ProviderSettings; statuses: ProviderStatus[] };
+				response: { settings: ProviderSettings; statuses: ProviderStatus[]; keyStorage: KeyStorage };
 			};
 			/** `apiKey` goes to the OS keychain. */
 			addProvider: {
@@ -134,6 +142,7 @@ export type RabiscoRPC = {
 			filesChanged: { path: string; changes: FileChange[] };
 			/** Images under `public/` changed: picked in the inspector or edited outside Rabisco (decision 0010) */
 			assetsChanged: { path: string; changes: AssetChange[] };
+			canvasChanged: { path: string; canvas: CanvasDoc };
 		};
 	}>;
 };

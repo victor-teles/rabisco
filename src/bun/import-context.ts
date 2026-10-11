@@ -18,15 +18,17 @@ const NAMES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 /** Bigger files aren't context, and would blow up every prompt */
 export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 
-function entries(dir: string) {
+function readable<T>(source: string, read: () => T): T {
 	try {
-		return readdirSync(dir);
-	} catch {
-		return [];
+		return read();
+	} catch (error) {
+		throw new Error(`Couldn't read ${source}: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 
-/** Case-insensitive; first match wins per file. Throws when `dir` isn't a folder. */
+const entries = (dir: string, source: string) => (isDirectory(dir) ? readable(source, () => readdirSync(dir)) : []);
+
+/** Case-insensitive; first match wins per file. Throws when `dir` isn't a folder or a match can't be read. */
 export function findContextFiles(dir: string): FoundContextFile[] {
 	if (!dir || !existsSync(dir)) throw new Error(`Folder not found: ${dir || "(empty path)"}`);
 
@@ -35,17 +37,15 @@ export function findContextFiles(dir: string): FoundContextFile[] {
 
 	for (const name of NAMES) {
 		search: for (const sub of CONTEXT_SEARCH_DIRS) {
-			for (const entry of entries(join(dir, sub)).sort()) {
+			for (const entry of entries(join(dir, sub), sub || "the folder").sort()) {
 				if (entry.toLowerCase() !== name.toLowerCase()) continue;
 				const full = join(dir, sub, entry);
+				const source = sub ? `${sub}/${entry}` : entry;
+				const stat = readable(source, () => statSync(full));
 
-				try {
-					const stat = statSync(full);
-
-					if (!stat.isFile() || stat.size > MAX_CONTEXT_FILE_BYTES) continue;
-					found.push({ path: name, content: readFileSync(full, "utf-8"), source: sub ? `${sub}/${entry}` : entry });
-					break search;
-				} catch {}
+				if (!stat.isFile() || stat.size > MAX_CONTEXT_FILE_BYTES) continue;
+				found.push({ path: name, content: readable(source, () => readFileSync(full, "utf-8")), source });
+				break search;
 			}
 		}
 	}

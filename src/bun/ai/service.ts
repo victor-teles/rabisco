@@ -1,4 +1,4 @@
-import { modelForTask, type ProviderStatus } from "../../shared/ai/settings";
+import { modelForTask, type KeyStorage, type ProviderStatus } from "../../shared/ai/settings";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
 import type {
 	GenerateParams,
@@ -66,6 +66,7 @@ export function createAiService(options: AiServiceOptions) {
 
 	const running = new Map<string, AbortController>();
 	let statuses: ProviderStatus[] | null = null;
+	let keyStorage: KeyStorage | null = null;
 
 	async function sync() {
 		registry.setConfigs(await store.list());
@@ -93,11 +94,17 @@ export function createAiService(options: AiServiceOptions) {
 			await sync();
 
 			if (!statuses || refresh) statuses = await registry.statuses();
+
+			if (!keyStorage || refresh) keyStorage = await options.secrets.check();
 			const settings = await store.get();
 			// Keep the order of the settings file; the mock goes last
 			const order = registry.configs().map((c) => c.id);
 
-			return { settings, statuses: [...statuses].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) };
+			return {
+				settings,
+				statuses: [...statuses].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)),
+				keyStorage,
+			};
 		},
 
 		async addProvider({ apiKey, ...input }: NewProvider & { apiKey?: string }) {

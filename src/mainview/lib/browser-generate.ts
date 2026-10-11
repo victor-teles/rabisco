@@ -244,6 +244,7 @@ export function createBrowserGenerator(
 			return {
 				settings: { version: 1, providers: [], defaultModel: "mock:mock", fastModel },
 				statuses: import.meta.env.DEV ? [MOCK_STATUS] : [],
+				keyStorage: { ok: false, message: "API keys need the Rabisco desktop app." },
 			};
 		},
 		async testProvider() {

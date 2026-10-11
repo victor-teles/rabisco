@@ -5,6 +5,7 @@ import type { RabiscoApi } from "@/lib/rpc";
 import { draftLayout, variantLabel } from "@/lib/variations";
 import { aiVersion } from "@/lib/versions";
 import type { DesignCheckInput, ScreenCheck } from "@/views/editor/design-check";
+import { errorMessage } from "@/views/editor/export/share-utils";
 import type {
 	Attachment,
 	ElementFocus,
@@ -143,17 +144,27 @@ type Polishing = {
 	prompt: string;
 };
 
-type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: boolean };
+type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: string | null };
 
 type RunResult = { applied: boolean; outcome: Outcome | null };
 
-const NO_POLISH: PolishOutcome = { writes: [], reply: "", withoutImages: false, failed: false };
+const NO_POLISH: PolishOutcome = { writes: [], reply: "", withoutImages: false, failed: null };
 
 const NO_IMAGES_NOTE = "This model can't see images, so the review used the design check only.";
 
 const AUTO_DESIGN_STEP = "Writing DESIGN.md from your prompt";
 
-const STOPPED = "Stopped. Nothing was changed.";
+const STOPPED: GenerationFailure = { code: "aborted", message: "Nothing was changed.", retryable: true };
+
+const PLAN_STOPPED: GenerationFailure = { code: "aborted", message: "The plan is unchanged.", retryable: false };
+
+export const polishFailedNote = (why: string) =>
+	`Couldn't polish the screens (${why.replace(/\.$/, "")}), so they are as generated.`;
+
+export const planFailedNote = (why: string) =>
+	`Couldn't plan this first (${why.replace(/\.$/, "")}), so it ran in one go.`;
+
+type PlanReading = { plan: GenerationPlan } | { stopped: true } | { failed: string };
 
 const NO_THEME: AppliedTheme = { light: {}, dark: {} };
 
@@ -298,16 +309,11 @@ export function createGenerationController(session: ProjectSession, env: Control
 		return null;
 	}
 
-	/** The plan step of a create; `null` when it failed, so the request runs in one go instead (no dead end) */
-	async function readPlan(
-		prompt: string,
-		options: RunOptions,
-		model: string,
-		chatId: string,
-	): Promise<GenerationPlan | "stopped" | null> {
+	/** The plan step of a create; when it fails, the request runs in one go instead (no dead end) */
+	async function readPlan(prompt: string, options: RunOptions, model: string, chatId: string): Promise<PlanReading> {
 		const current = session.state();
 
-		if (!current) return null;
+		if (!current) return { failed: "the project is closed" };
 		const generationId = crypto.randomUUID();
 		show({ id: generationId, task: "plan", variations: 1, steps: [], reply: "", attempt: 1, writing: {} });
 
@@ -324,11 +330,11 @@ export function createGenerationController(session: ProjectSession, env: Control
 				command: options.command,
 			});
 
-			if (result.ok) return result.plan ?? null;
+			if (result.ok) return result.plan ? { plan: result.plan } : { failed: "no plan came back" };
 
-			return result.error.code === "aborted" ? "stopped" : null;
-		} catch {
-			return null;
+			return result.error.code === "aborted" ? { stopped: true } : { failed: result.error.message };
+		} catch (reason) {
+			return { failed: errorMessage(reason) };
 		} finally {
 			clearLive(generationId);
 		}
@@ -377,7 +383,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 		});
 
 		const latest = session.state();
-		const failed = !result.ok && result.error.code !== "aborted";
+		const failed = !result.ok && result.error.code !== "aborted" ? result.error.message : null;
 		const writes = result.ok && latest && !disposed ? polishWrites(result.changes, latest.files, request.targets) : [];
 
 		const outcome: PolishOutcome = {
@@ -428,7 +434,8 @@ export function createGenerationController(session: ProjectSession, env: Control
 					checks = await checkScreens(polishing.screens);
 				}
 
-				if (reviewed) note = reviewNote(outcome.reply, polished);
+				if (outcome.failed) note = polishFailedNote(outcome.failed);
+				else if (reviewed) note = reviewNote(outcome.reply, polished);
 				else if (polished.length)
 					note = `Polished ${request.problems.length === 1 ? "1 design problem" : `${request.problems.length} design problems`} the check found.`;
 
@@ -437,7 +444,8 @@ export function createGenerationController(session: ProjectSession, env: Control
 					note = [note, NO_IMAGES_NOTE].filter(Boolean).join(" ");
 				}
 			}
-		} catch {
+		} catch (reason) {
+			note = [note, polishFailedNote(errorMessage(reason))].filter(Boolean).join(" ");
 		} finally {
 			const latest = session.state();
 			const step = polished.length ? (latest?.history.present ?? polishing.step) : polishing.step;
@@ -486,26 +494,28 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 		if (options.autoDesign) {
 			options = { ...options, autoDesign: undefined };
-			last = { prompt, options };
 
 			if ((await writeAutoDesign(prompt, options, model, chatId)) === "stopped") {
-				say(chatId, STOPPED);
+				set({ failure: STOPPED });
 
 				return nothing;
 			}
+
+			last = { prompt, options };
 		}
 
 		if (plansFirst({ planMode: env.planMode(), task, variations, plan: options.plan })) {
 			const plan = await readPlan(prompt, options, model, chatId);
 
-			if (plan === "stopped") {
-				say(chatId, STOPPED);
+			if ("stopped" in plan) {
+				set({ failure: STOPPED });
 
 				return nothing;
 			}
 
-			if (plan && !disposed) {
-				set({ pendingPlan: { id: generationId, plan, prompt, options } });
+			if ("failed" in plan) say(chatId, planFailedNote(plan.failed));
+			else if (!disposed) {
+				set({ pendingPlan: { id: generationId, plan: plan.plan, prompt, options } });
 
 				return { applied: false, outcome: "plan" };
 			}
@@ -541,7 +551,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			if (!latest || disposed) return nothing;
 
 			if (!result.ok) {
-				if (result.error.code === "aborted") say(chatId, STOPPED);
+				if (result.error.code === "aborted") set({ failure: STOPPED });
 				else {
 					set({ failure: result.error });
 					outcome = "failed";
@@ -708,7 +718,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 		const chatId = session.state()?.chatId;
 
 		if (!chatId) return { applied: false, outcome: null };
-		set({ pendingPlan: null });
+		set({ pendingPlan: null, failure: null });
 
 		const options = attachments.length
 			? { ...pending.options, attachments: [...(pending.options.attachments ?? []), ...attachments] }
@@ -718,18 +728,26 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 		if (disposed) return { applied: false, outcome: null };
 
-		if (plan === "stopped" || !plan) {
+		if ("stopped" in plan) {
+			set({ pendingPlan: pending, failure: PLAN_STOPPED });
+
+			return { applied: false, outcome: "plan" as const };
+		}
+
+		if ("failed" in plan) {
 			set({ pendingPlan: pending });
-			say(
-				chatId,
-				plan === "stopped" ? "Stopped. The plan is unchanged." : "Couldn't revise the plan, so it is unchanged.",
-			);
+			say(chatId, `Couldn't revise the plan (${plan.failed.replace(/\.$/, "")}), so it is unchanged.`);
 
 			return { applied: false, outcome: "plan" as const };
 		}
 
 		set({
-			pendingPlan: { id: crypto.randomUUID(), plan, prompt: revisedPrompt(pending.prompt, feedback), options },
+			pendingPlan: {
+				id: crypto.randomUUID(),
+				plan: plan.plan,
+				prompt: revisedPrompt(pending.prompt, feedback),
+				options,
+			},
 		});
 
 		return { applied: false, outcome: "plan" as const };
@@ -745,7 +763,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 		const chatId = session.state()?.chatId;
 
 		if (!view.pendingPlan || !chatId) return;
-		set({ pendingPlan: null });
+		set({ pendingPlan: null, failure: null });
 		say(chatId, "Cancelled the plan. Nothing was changed.");
 	}
 

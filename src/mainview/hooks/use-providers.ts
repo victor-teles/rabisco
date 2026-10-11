@@ -3,6 +3,7 @@ import { api } from "@/lib/rpc";
 import {
 	parseModelRef,
 	toModelRef,
+	type KeyStorage,
 	type ModelRef,
 	type ProviderSettings,
 	type ProviderStatus,
@@ -20,6 +21,7 @@ type ProvidersState = {
 	loading: boolean;
 	settings: ProviderSettings;
 	statuses: ProviderStatus[];
+	keyStorage: KeyStorage | null;
 	models: ModelOption[];
 	model: ModelRef | null;
 	settingsOpen: boolean;
@@ -32,6 +34,7 @@ let state: ProvidersState = {
 	loading: true,
 	settings: EMPTY_SETTINGS,
 	statuses: [],
+	keyStorage: null,
 	models: [],
 	model: null,
 	settingsOpen: false,
@@ -69,9 +72,9 @@ function pickModel(settings: ProviderSettings, models: ModelOption[], current: M
 	return available(current) ?? available(settings.defaultModel) ?? firstDefault ?? models[0]?.id ?? null;
 }
 
-function apply(settings: ProviderSettings, statuses: ProviderStatus[]) {
+function apply(settings: ProviderSettings, statuses: ProviderStatus[], keyStorage = state.keyStorage) {
 	const models = modelsOf(statuses);
-	set({ loading: false, settings, statuses, models, model: pickModel(settings, models, state.model) });
+	set({ loading: false, settings, statuses, keyStorage, models, model: pickModel(settings, models, state.model) });
 }
 
 let inflight: Promise<void> | null = null;
@@ -79,7 +82,7 @@ let inflight: Promise<void> | null = null;
 export function loadProviders(refresh = false) {
 	if (inflight && !refresh) return inflight;
 	inflight = api.listProviders({ refresh }).then(
-		({ settings, statuses }) => apply(settings, statuses),
+		({ settings, statuses, keyStorage }) => apply(settings, statuses, keyStorage),
 		(error) => {
 			console.warn("Could not load providers:", error);
 			set({ loading: false });

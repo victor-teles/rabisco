@@ -1,6 +1,6 @@
 # 0023 · Version history: checkpoints are git commits; AI changes are session snapshots
 
-- **Status:** accepted
+- **Status:** accepted, partly superseded by [0024](./0024-history-in-app-data.md) (history and session versions are saved in app data)
 - **Date:** 2026-10-10
 - **Extends:** [0008](./0008-share-link-and-git-sync.md), [0021](./0021-generations-outlive-the-editor.md)
 - **Code:** [`src/bun/git.ts`](../../src/bun/git.ts), [`src/shared/git.ts`](../../src/shared/git.ts), [`src/mainview/lib/versions.ts`](../../src/mainview/lib/versions.ts), [`src/mainview/views/editor/history-panel.tsx`](../../src/mainview/views/editor/history-panel.tsx)

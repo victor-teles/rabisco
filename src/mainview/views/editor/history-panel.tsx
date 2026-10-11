@@ -8,7 +8,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Snapshot } from "@/lib/history";
 import { themeCss } from "@/lib/render/styles";
-import { api } from "@/lib/rpc";
+import { api, isDesktop } from "@/lib/rpc";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
@@ -36,6 +36,10 @@ const NO_TOKENS: AppliedTheme = { light: {}, dark: {} };
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
+const LOCAL_NOTE = isDesktop
+	? "Checkpoints are kept on this computer with the undo history. Set up git in Export to share them."
+	: "Checkpoints last until you close the project. Set up git in Export to keep them.";
+
 function iconOf(version: Version): LucideIcon {
 	if (version.kind === "ai") return Sparkles;
 
@@ -43,7 +47,10 @@ function iconOf(version: Version): LucideIcon {
 }
 
 function metaOf(version: Version) {
-	const parts = [formatWhen(version.at), version.source === "git" ? version.short : "This session"];
+	const parts = [
+		formatWhen(version.at),
+		version.source === "git" ? version.short : isDesktop ? "On this computer" : "This session",
+	];
 
 	if (version.source === "session" && version.changed.length) parts.push(plural(version.changed.length, "file"));
 
@@ -142,7 +149,7 @@ export function HistoryPanel({
 			onCheckpoint(checkpointVersion(label, present, new Date()));
 			setName("");
 			toast.success(`Saved “${label}”`, {
-				description: "It lasts until you close the project. Set up git in Export to keep checkpoints.",
+				description: LOCAL_NOTE,
 			});
 
 			return;
@@ -211,7 +218,7 @@ export function HistoryPanel({
 						? "Checking git…"
 						: repo
 							? `Checkpoints are commits${repo.branch ? ` on ${repo.branch}` : ""}.`
-							: "Checkpoints last until you close the project. Set up git in Export to keep them."}
+							: LOCAL_NOTE}
 				</p>
 			</div>
 			<div role="list" aria-label="Versions" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">

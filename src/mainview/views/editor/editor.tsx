@@ -61,6 +61,7 @@ import { reorderFrames } from "@/lib/screen-list";
 import { contextSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { useZoomPercent, viewportStore, type ViewportStore } from "@/lib/viewport";
+import { persistViewport, rememberProject, savedViewport } from "@/lib/workspace";
 import { focusOf } from "../../../shared/ai/focus";
 import {
 	designSourceOf,
@@ -143,6 +144,7 @@ type EditorProps = {
 	initialFiles?: File[];
 	initialVariations?: number;
 	initialAutoStyle?: boolean;
+	initialChatId?: string;
 	theme: Theme;
 	onToggleTheme: () => void;
 	onBack: () => void;
@@ -179,6 +181,7 @@ export function EditorView({
 	initialFiles,
 	initialVariations,
 	initialAutoStyle,
+	initialChatId,
 	theme,
 	onToggleTheme,
 	onBack,
@@ -209,7 +212,8 @@ export function EditorView({
 	const [tab, setTab] = useState<InspectorTab>("design");
 	const sidePanel = useSidePanel();
 	const [contextFile, setContextFile] = useState<ContextFileName>("PRODUCT.md");
-	const [viewport] = useState(() => viewportStore({ x: 80, y: 80, zoom: 0.6 }));
+	const [restoredViewport] = useState(() => savedViewport(localStorage, projectPath));
+	const [viewport] = useState(() => viewportStore(restoredViewport ?? { x: 80, y: 80, zoom: 0.6 }));
 	/** By its base path */
 	const [compareBase, setCompareBase] = useState<string | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
@@ -227,7 +231,8 @@ export function EditorView({
 	const [variations, setVariations] = useVariations();
 	const canvasRef = useRef<CanvasHandle>(null);
 	const startedInitialPrompt = useRef(false);
-	const fittedOnLoad = useRef(false);
+	const fittedOnLoad = useRef(restoredViewport !== null);
+	const restoredChat = useRef(false);
 	const nudge = useRef({ key: "", at: 0 });
 
 	const frames = project?.canvas.frames ?? NO_FRAMES;
@@ -262,6 +267,23 @@ export function EditorView({
 		/** The history entry it made, so Undo can be a real undo */
 		step: Snapshot | undefined;
 	} | null>(null);
+
+	useEffect(() => persistViewport(projectPath, viewport, localStorage), [projectPath, viewport]);
+
+	const chatId = project?.chatId;
+	const chats = project?.chats;
+
+	useEffect(() => {
+		if (chatId) rememberProject(localStorage, { path: projectPath, chatId });
+	}, [projectPath, chatId]);
+
+	useEffect(() => {
+		if (!chats || restoredChat.current) return;
+		restoredChat.current = true;
+
+		if (initialChatId && initialChatId !== chatId && chats.some((chat) => chat.id === initialChatId))
+			openChat(initialChatId).catch((error) => console.warn("Could not reopen the last chat:", error));
+	}, [chats, chatId, initialChatId, openChat]);
 
 	// Before the first paint, so the frames mount for the fitted view only
 	useLayoutEffect(() => {
@@ -1968,6 +1990,7 @@ export function EditorView({
 						chat={
 							<ChatPanel
 								projectPath={projectPath}
+								chatId={project?.chatId}
 								messages={messages}
 								generation={generation}
 								failure={failure}

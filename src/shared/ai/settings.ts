@@ -38,6 +38,8 @@ export type ProviderSettings = {
 	fastModel?: string;
 };
 
+export type KeyStorage = { ok: true; name: string } | { ok: false; message: string };
+
 export type ProviderTypeInfo = {
 	type: ProviderType;
 	kind: ProviderKind;

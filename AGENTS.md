@@ -92,7 +92,7 @@ The formatter and linter enforce most style. Run them; do not argue with them.
 ## Docs
 
 - Update `README.md` when you change commands, layout or shortcuts.
-- Update `docs/ROADMAP.md` when you finish or change a planned item.
+- Update `docs/ROADMAP.md` when you finish or change a planned item. Move a finished phase to `docs/ROADMAP-ARCHIVE.md`.
 - Write in plain, short sentences.
 
 ## Git
