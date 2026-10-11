@@ -45,6 +45,17 @@ export type CanvasSection = {
 	height: number;
 };
 
+export type CanvasImage = {
+	id: string;
+	/** A project asset under `public/moodboard/` */
+	src: string;
+	name: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
+
 /** Derived from file names (decision 0004) */
 export type AlternateGroup = {
 	picked: string;
@@ -68,6 +79,7 @@ export type CanvasDoc = {
 	theme?: AppliedTheme;
 	locks?: ElementLock[];
 	sections?: CanvasSection[];
+	images?: CanvasImage[];
 };
 
 export type ElementLock = { file: string; path: number[]; name: string };

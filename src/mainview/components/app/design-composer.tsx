@@ -57,6 +57,7 @@ export type DesignComposerProps = {
 	/** Uncontrolled starting prompt and images */
 	defaultValue?: string;
 	defaultFiles?: File[];
+	onFilesChange?: (files: File[]) => void;
 	device: Device;
 	onDeviceChange: (device: Device) => void;
 	/** `false` keeps the prompt in the composer */
@@ -94,6 +95,7 @@ export function DesignComposer({
 	onValueChange,
 	defaultValue,
 	defaultFiles,
+	onFilesChange,
 	device,
 	onDeviceChange,
 	onSubmit,
@@ -156,6 +158,7 @@ export function DesignComposer({
 			defaultFiles={defaultFiles}
 			onSubmit={(prompt, files) => onSubmit(prompt, files)}
 			acceptFile={isPromptImage}
+			onFilesChange={onFilesChange}
 			stacked={stacked}
 			className={className}
 		>

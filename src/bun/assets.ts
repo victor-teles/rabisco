@@ -1,6 +1,17 @@
-import { copyFileSync, type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "fs";
+import {
+	copyFileSync,
+	type Dirent,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "fs";
 import { basename, extname, join } from "path";
+import type { Attachment } from "../shared/ai/contract";
 import { assetKey, PUBLIC_DIR, type AssetChange, type ProjectAssets } from "../shared/assets";
+import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../shared/moodboard";
 import { assertProjectDir } from "./project-folder";
 
 /** Vite serves `public/` at the root, so the exported app finds `/images/…` as written */
@@ -43,6 +54,33 @@ export function importImage(projectDir: string, file: string): string {
 		if (!existsSync(target)) copyFileSync(file, target);
 
 		return `/images/${name}`;
+	}
+}
+
+export function saveMoodboardImage(
+	projectDir: string,
+	name: string,
+	mediaType: Attachment["mediaType"],
+	data: string,
+): string {
+	assertProjectDir(projectDir);
+	const bytes = Buffer.from(data, "base64");
+
+	if (bytes.length > MAX_ASSET_BYTES) throw new Error(`${name} is over ${MAX_ASSET_BYTES / 1024 / 1024} MB.`);
+	const dir = join(projectDir, PUBLIC_DIR, MOODBOARD_PREFIX);
+	const base = slug(basename(name, extname(name)));
+	const extension = MOODBOARD_EXTENSIONS[mediaType];
+	mkdirSync(dir, { recursive: true });
+
+	for (let n = 1; ; n++) {
+		const file = `${base}${n === 1 ? "" : `-${n}`}.${extension}`;
+		const target = join(dir, file);
+
+		if (existsSync(target) && !readFileSync(target).equals(bytes)) continue;
+
+		if (!existsSync(target)) writeFileSync(target, bytes);
+
+		return `${MOODBOARD_PREFIX}${file}`;
 	}
 }
 

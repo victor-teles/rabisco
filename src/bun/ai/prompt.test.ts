@@ -316,14 +316,19 @@ describe("userPrompt", () => {
 		expect(prompt.endsWith("<request>\nWho is it for?\nParents\n</request>")).toBe(true);
 	});
 
-	test("mentions attachments", () => {
+	test("numbers attachments in order and marks moodboard images", () => {
 		const prompt = userPrompt(
-			request({ attachments: [{ name: "sketch.png", mediaType: "image/png", data: "AA==" }] }),
+			request({
+				attachments: [
+					{ name: "sketch.png", mediaType: "image/png", data: "AA==" },
+					{ name: "hero.jpg", mediaType: "image/jpeg", data: "AA==", source: "moodboard" },
+				],
+			}),
 			"text",
 		);
 
-		expect(prompt).toContain("sketch.png");
-		expect(prompt).toContain("sent with this message");
+		expect(prompt).toContain("sent with this message in this order");
+		expect(prompt).toContain("- Image 1: sketch.png\n- Image 2: hero.jpg (moodboard)");
 	});
 
 	test("points agents at the staged copies of the attachments", () => {
@@ -337,8 +342,8 @@ describe("userPrompt", () => {
 			"agent",
 		);
 
-		expect(prompt).toContain("- .rabisco/attachments/1-sketch-1.png (Sketch 1.PNG)");
-		expect(prompt).toContain("- .rabisco/attachments/2-mood.jpg (mood.jpeg)");
+		expect(prompt).toContain("- Image 1: Sketch 1.PNG, at .rabisco/attachments/1-sketch-1.png");
+		expect(prompt).toContain("- Image 2: mood.jpeg, at .rabisco/attachments/2-mood.jpg");
 		expect(prompt).toContain("Open each one with your file tools");
 	});
 

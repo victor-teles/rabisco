@@ -1,6 +1,7 @@
 import type { GenerationRequest, Provider, ProviderModel } from "../../../shared/ai/contract";
 import type { JsonObject } from "../../../shared/json";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
+import { imageLabel } from "../attachments";
 import { systemPrompt, userPrompt } from "../prompt";
 import {
 	type ApiProviderOptions,
@@ -42,10 +43,10 @@ export function anthropicMessages(request: GenerationRequest): Message[] {
 	while (history[0]?.role === "assistant") history.shift();
 	const messages: Message[] = history.map((turn) => ({ role: turn.role, content: turn.content }));
 
-	const content: ContentBlock[] = (request.attachments ?? []).map((image) => ({
-		type: "image",
-		source: { type: "base64", media_type: image.mediaType, data: image.data },
-	}));
+	const content: ContentBlock[] = (request.attachments ?? []).flatMap((image, index): ContentBlock[] => [
+		{ type: "text", text: imageLabel(image, index) },
+		{ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } },
+	]);
 
 	content.push({ type: "text", text: userPrompt(request, "text") });
 	messages.push({ role: "user", content });

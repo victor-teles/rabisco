@@ -1,5 +1,5 @@
 import type { AppliedTheme } from "./context/theme";
-import type { CanvasComment, CanvasSection, Device, ElementLock, Frame } from "./types";
+import type { CanvasComment, CanvasImage, CanvasSection, Device, ElementLock, Frame } from "./types";
 
 export type SavedSnapshot = {
 	frames: Frame[];
@@ -10,6 +10,7 @@ export type SavedSnapshot = {
 	device: Device;
 	locks: ElementLock[];
 	sections: CanvasSection[];
+	images?: CanvasImage[];
 };
 
 export type SavedVersionKind = "checkpoint" | "ai";

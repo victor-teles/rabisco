@@ -73,6 +73,7 @@ export type Attachment = {
 	mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 	/** Base64 */
 	data: string;
+	source?: "moodboard";
 };
 
 export type Problem = {

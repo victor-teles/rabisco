@@ -36,3 +36,7 @@ export function stagedAttachments(request: GenerationRequest): StagedAttachment[
 		attachment,
 	}));
 }
+
+export function imageLabel(attachment: Attachment, index: number) {
+	return `Image ${index + 1}: ${attachment.name}${attachment.source === "moodboard" ? " (moodboard)" : ""}`;
+}

@@ -3,6 +3,7 @@ import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import { isString } from "../../../shared/guards";
 import type { JsonObject } from "../../../shared/json";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString, parseJson } from "../../json";
+import { imageLabel } from "../attachments";
 import { systemPrompt, userPrompt } from "../prompt";
 import {
 	type ApiProviderOptions,
@@ -40,10 +41,10 @@ export function openAIMessages(request: GenerationRequest): ChatMessage[] {
 			role: "user",
 			content: [
 				{ type: "text", text },
-				...request.attachments.map((image): ContentPart => ({
-					type: "image_url",
-					image_url: { url: `data:${image.mediaType};base64,${image.data}` },
-				})),
+				...request.attachments.flatMap((image, index): ContentPart[] => [
+					{ type: "text", text: imageLabel(image, index) },
+					{ type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.data}` } },
+				]),
 			],
 		});
 	} else {

@@ -31,6 +31,7 @@ function packSnapshot(packer: Packer, snapshot: Snapshot): SavedSnapshot {
 		device: snapshot.device ?? "mobile",
 		locks: snapshot.locks ?? [],
 		sections: snapshot.sections ?? [],
+		images: snapshot.images ?? [],
 	};
 
 	if (snapshot.theme) saved.theme = snapshot.theme;
@@ -115,6 +116,7 @@ function unpackSnapshot(contents: string[], saved: SavedSnapshot): Snapshot {
 		device: saved.device,
 		locks: saved.locks,
 		sections: saved.sections,
+		images: saved.images ?? [],
 	};
 }
 
@@ -153,6 +155,7 @@ const canvasKey = (snapshot: Snapshot) =>
 			device: snapshot.device ?? null,
 			locks: snapshot.locks ?? [],
 			sections: snapshot.sections ?? [],
+			images: snapshot.images ?? [],
 		},
 		sortKeys,
 	);

@@ -2,6 +2,7 @@ import { detachComments } from "../../shared/comments";
 import type { AppliedTheme } from "../../shared/context/theme";
 import type {
 	CanvasComment,
+	CanvasImage,
 	CanvasSection,
 	Device,
 	ElementLock,
@@ -23,6 +24,7 @@ export type Snapshot = {
 	device?: Device;
 	locks?: ElementLock[];
 	sections?: CanvasSection[];
+	images?: CanvasImage[];
 };
 
 /** Pins on removed frames are detached in the same step, so undo puts them back on their frame. */
@@ -33,6 +35,7 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	const name = update.name ?? present.name;
 	const device = update.device ?? present.device;
 	const sections = update.sections ?? present.sections;
+	const images = update.images ?? present.images;
 
 	const locks =
 		update.locks === undefined || update.locks === present.locks
@@ -45,11 +48,12 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 		name === update.name &&
 		device === update.device &&
 		locks === update.locks &&
-		sections === update.sections
+		sections === update.sections &&
+		images === update.images
 	)
 		return update;
 
-	return { ...update, comments, theme, name, device, locks, sections };
+	return { ...update, comments, theme, name, device, locks, sections, images };
 }
 
 export type History = {

@@ -88,7 +88,8 @@ describe("openai-compatible provider", () => {
 		expect(init.headers).toMatchObject({ "X-Title": "Rabisco", "HTTP-Referer": expect.any(String) });
 		const content = body.messages.at(-1).content;
 		expect(content[0].type).toBe("text");
-		expect(content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } });
+		expect(content[1]).toEqual({ type: "text", text: "Image 1: a.png" });
+		expect(content[2]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } });
 		expect(provider.capabilities.images).toBe(true);
 	});
 

@@ -28,6 +28,15 @@ describe("AssetStore", () => {
 		expect(await store.dataUrls()).toEqual({ "/b.svg": `data:image/svg+xml;base64,${base64("<svg/>")}` });
 	});
 
+	test("exports leave out moodboard images", async () => {
+		const store = new AssetStore();
+		store.reset({ "/images/a.png": base64("a"), "/moodboard/ref.png": base64("ref") });
+
+		expect(store.get("/moodboard/ref.png")?.type).toBe("image/png");
+		expect(Object.keys(await store.base64())).toEqual(["/images/a.png"]);
+		expect(Object.keys(await store.dataUrls())).toEqual(["/images/a.png"]);
+	});
+
 	test("delta sends each Blob once and deletes what's gone", () => {
 		const store = new AssetStore();
 		store.reset({ "/a.png": base64("a"), "/b.png": base64("b") });

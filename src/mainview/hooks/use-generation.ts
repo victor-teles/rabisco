@@ -130,10 +130,12 @@ export function useGeneration({
 			{
 				focus: nodes = [],
 				files,
+				references = Promise.resolve([]),
 				...options
 			}: {
 				targets?: string[];
 				files?: File[];
+				references?: Promise<Attachment[]>;
 				variations?: number;
 				focus?: StructureNode[];
 				command?: { name: string; args: string };
@@ -143,8 +145,9 @@ export function useGeneration({
 		): boolean => {
 			if (!ready() || !model) return false;
 
-			void toAttachments(files).then(
-				(attachments) => {
+			void Promise.all([toAttachments(files), references]).then(
+				([attached, referenced]) => {
+					const attachments = [...attached, ...referenced];
 					const current = session.state();
 
 					if (!current) return;

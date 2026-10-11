@@ -80,6 +80,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥C`                                                      | Comments list                                                                     |
 | `⌥⌘S`                                                     | Save a checkpoint in version history (a git commit when git is set up)            |
 | `⌘C`, `⌘V`                                                | Copy the selected screens, paste screens or screen code as new screens            |
+| Drop or paste (`⌘V`) an image on the canvas               | Add it to the moodboard; it goes with prompts about the screen it sits next to    |
+| `⌫` (moodboard image selected)                            | Delete the image; drag a corner to resize it (`⇧` frees the ratio)                |
 | Right-click a screen, element or the canvas               | Every action for what's under the pointer, with its shortcut                      |
 | `⌘K`                                                      | Command palette: every action, searchable                                         |
 | `?`                                                       | Keyboard shortcuts                                                                |

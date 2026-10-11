@@ -164,6 +164,7 @@ type CanvasProps = {
 		data: string;
 		target: { parent: number; index: number; version: string } | null;
 	}) => void;
+	onDropFiles?: (files: File[], point: Point) => void;
 	element?: ElementRef | null;
 	/** Click on a selected screen, or ⌘-click; `null` clears the element. `file` becomes the selection */
 	onSelectElement?: (file: string, element: ElementRef | null) => void;
@@ -358,6 +359,7 @@ export function Canvas({
 	onCompare,
 	onPick,
 	onDropItem,
+	onDropFiles,
 	element = null,
 	onSelectElement,
 	elements = NO_ELEMENTS,
@@ -1072,8 +1074,18 @@ export function Canvas({
 		void run();
 	};
 
+	const isFileDrag = (event: React.DragEvent) =>
+		!!onDropFiles && !isComponentDrag(event) && event.dataTransfer.types.includes("Files");
+
 	// WebKit accepts a drop only when both dragenter and dragover are cancelled
 	const onDragOver = (event: React.DragEvent) => {
+		if (isFileDrag(event)) {
+			event.preventDefault();
+			event.dataTransfer.dropEffect = "copy";
+
+			return;
+		}
+
 		if (!isComponentDrag(event)) return;
 		event.preventDefault();
 		const file = frameAt(event.clientX, event.clientY)?.file ?? null;
@@ -1091,6 +1103,12 @@ export function Canvas({
 	};
 
 	const onDrop = (event: React.DragEvent) => {
+		if (isFileDrag(event)) {
+			event.preventDefault();
+
+			return onDropFiles!(Array.from(event.dataTransfer.files), toCanvas(event.clientX, event.clientY));
+		}
+
 		if (!isComponentDrag(event)) return;
 		event.preventDefault();
 		const data = componentDrag.current() ?? event.dataTransfer.getData(COMPONENT_MIME);

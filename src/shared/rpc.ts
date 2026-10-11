@@ -1,7 +1,7 @@
 import type { RPCSchema } from "electrobun";
 import type { AssetChange } from "./assets";
 import type { StyleId } from "./context/styles";
-import type { ProviderCommand } from "./ai/contract";
+import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
 import type { BackupReason, SavedHistory } from "./saved-history";
@@ -57,6 +57,10 @@ export type RabiscoRPC = {
 			};
 			/** Opens a file dialog and copies the image into `public/images/`; `src` is what a screen writes. `null` when cancelled. */
 			pickImage: { params: { path: string }; response: { src: string } | null };
+			addMoodboardImage: {
+				params: { path: string; name: string; mediaType: Attachment["mediaType"]; data: string };
+				response: { src: string };
+			};
 			removeRecent: { params: { path: string }; response: { ok: true } };
 			/** Moves the folder to the trash */
 			deleteProject: { params: { path: string }; response: { ok: true } };

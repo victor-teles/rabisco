@@ -1,8 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "fs";
 import { join } from "path";
-import { AssetTracker, importImage, listAssets } from "./assets";
+import { AssetTracker, importImage, listAssets, saveMoodboardImage } from "./assets";
 import { tempDir } from "./test-utils";
+
+describe("saveMoodboardImage", () => {
+	test("writes the bytes into public/moodboard, once per content", () => {
+		const project = tempDir();
+		const data = Buffer.from("png-bytes").toString("base64");
+		expect(saveMoodboardImage(project, "Hero Shot.PNG", "image/png", data)).toBe("/moodboard/hero-shot.png");
+		expect(saveMoodboardImage(project, "Hero Shot.PNG", "image/png", data)).toBe("/moodboard/hero-shot.png");
+		expect(readFileSync(join(project, "public/moodboard/hero-shot.png"), "utf8")).toBe("png-bytes");
+		const other = Buffer.from("other").toString("base64");
+		expect(saveMoodboardImage(project, "hero shot.jpeg", "image/jpeg", other)).toBe("/moodboard/hero-shot.jpg");
+		expect(saveMoodboardImage(project, "hero-shot.png", "image/png", other)).toBe("/moodboard/hero-shot-2.png");
+		expect(listAssets(project).has("/moodboard/hero-shot-2.png")).toBe(true);
+	});
+});
 
 describe("importImage", () => {
 	test("copies into public/images under a clean name", () => {

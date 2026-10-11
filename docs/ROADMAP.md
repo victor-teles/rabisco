@@ -102,12 +102,12 @@ _Principles: UX first · Screens are React_
 Every competitor starts from a reference: a screenshot, a live site or a Figma file. Rabisco can attach images to a prompt ([0011](./decisions/0011-image-attachments-reach-every-provider.md)), but it can't turn them into an editable screen on purpose.
 
 - ⬜ "Recreate from screenshot": drop an image on the canvas, get a screen that matches it, then compare the two side by side with an overlay and a difference score
-- ⬜ Numbered image references in the composer, so a prompt can say "the layout from image 2"
+- ✅ Numbered image references in the composer, so a prompt can say "the layout from image 2"
 - ⬜ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes 🧭
 - ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it 🧭
 - ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens 🧭
 - ⬜ Attach a PRD or any Markdown file, and plan every screen from it
-- ⬜ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
+- ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
 - ⬜ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo
 
 **Done when** a user can drop a screenshot of an existing app and get an editable screen in its style on the first try.

@@ -64,11 +64,12 @@ describe("anthropic provider", () => {
 		expect(init.headers).toMatchObject({ "x-api-key": "sk-test", "anthropic-version": "2023-06-01" });
 		expect(body).toMatchObject({ model: "claude-sonnet-5-5", stream: true, max_tokens: 32000 });
 		expect(body.system[0].text).toContain("<rabisco-file");
-		// Leading assistant turn dropped; history kept in order; request last with the image first
+		// Leading assistant turn dropped; history kept in order; request last with the numbered image first
 		expect(body.messages.map((m: { role: string }) => m.role)).toEqual(["user", "assistant", "user"]);
 		const last = body.messages[2].content;
-		expect(last[0]).toEqual({ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } });
-		expect(last[1].text).toContain("<product>");
+		expect(last[0]).toEqual({ type: "text", text: "Image 1: sketch.png" });
+		expect(last[1]).toEqual({ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } });
+		expect(last[2].text).toContain("<product>");
 
 		expect(events[0]).toEqual({ type: "status", label: "Thinking" });
 		expect(events.filter((e) => e.type === "file.end")).toEqual([

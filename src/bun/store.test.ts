@@ -219,8 +219,10 @@ describe("project files", () => {
 			data: Buffer.from("png bytes").toString("base64"),
 		};
 
+		const mood = { ...png, name: "mood.png", source: "moodboard" as const };
+
 		appendChat(dir, "c1", [
-			{ id: "m1", role: "user", content: "Like this", createdAt: "t", attachments: [png] },
+			{ id: "m1", role: "user", content: "Like this", createdAt: "t", attachments: [png, mood] },
 			{ id: "m2", role: "assistant", content: "Done", createdAt: "t" },
 		]);
 
@@ -228,7 +230,7 @@ describe("project files", () => {
 		const stored = readFileSync(join(dir, "chats/c1.jsonl"), "utf-8");
 		expect(stored).not.toContain(png.data);
 		expect(stored).toContain('"path":"attachments/m1-0.png"');
-		expect(loadProject(dir).messages.map((m) => m.attachments)).toEqual([[png], undefined]);
+		expect(loadProject(dir).messages.map((m) => m.attachments)).toEqual([[png, mood], undefined]);
 		// The AI history reads the chat without the images
 		expect(parseChat(stored)[0]!.attachments).toBeUndefined();
 	});

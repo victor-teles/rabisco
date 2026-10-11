@@ -5,11 +5,11 @@ import { contextBody } from "../../shared/context/body";
 import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
-import { stagedAttachments } from "./attachments";
+import { imageLabel, stagedAttachments } from "./attachments";
 import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 19;
+export const PROMPT_VERSION = 20;
 
 export type PromptMode = "text" | "agent";
 
@@ -465,14 +465,19 @@ function variationText(variation: NonNullable<GenerationRequest["variation"]>) {
 /** API models get the images in the message; agents open the copies in their staging directory. */
 function attachmentsText(request: GenerationRequest, mode: PromptMode) {
 	if (!request.attachments?.length) return null;
+	const numbering = `The user refers to them by number ("image 2"). Moodboard images were placed on the canvas next to the screens: take their style, not their content, unless the request says otherwise.`;
 
 	if (mode === "text") {
-		return `Attached images, sent with this message: ${request.attachments.map((a) => a.name).join(", ")}. Use them as reference for the request.`;
+		const labels = request.attachments.map((attachment, index) => `- ${imageLabel(attachment, index)}`);
+
+		return `Attached images, sent with this message in this order. Use them as reference for the request. ${numbering}\n${labels.join("\n")}`;
 	}
 
-	const paths = stagedAttachments(request).map((staged) => `- ${staged.path} (${staged.attachment.name})`);
+	const paths = stagedAttachments(request).map(
+		(staged, index) => `- ${imageLabel(staged.attachment, index)}, at ${staged.path}`,
+	);
 
-	return `Attached images, in the current directory. Open each one with your file tools before you start, and use them as reference for the request. Don't change, move or copy them:\n${paths.join("\n")}`;
+	return `Attached images, in the current directory. Open each one with your file tools before you start, and use them as reference for the request. Don't change, move or copy them. ${numbering}\n${paths.join("\n")}`;
 }
 
 export function userPrompt(request: GenerationRequest, mode: PromptMode): string {

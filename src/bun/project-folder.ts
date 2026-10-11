@@ -20,6 +20,7 @@ import { normalizeLocks } from "../shared/locks";
 import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import { parseLayoutGrid } from "../shared/layout-grid";
+import { normalizeImages } from "../shared/moodboard";
 import { normalizeSections } from "../shared/sections";
 import {
 	emptyCanvas,
@@ -183,6 +184,9 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 	const sections = normalizeSections(raw.sections);
 
 	if (sections.length) canvas.sections = sections;
+	const images = normalizeImages(raw.images);
+
+	if (images.length) canvas.images = images;
 
 	return canvas;
 }
@@ -267,7 +271,11 @@ function loadAttachment(ref: Json, read: (path: string) => string | null): Attac
 	if (!isImageType(stored.mediaType) || !path || !ATTACHMENT_PATH.test(path)) return [];
 	const data = read(path);
 
-	return data === null ? [] : [{ name, mediaType: stored.mediaType, data }];
+	if (data === null) return [];
+
+	return stored.source === "moodboard"
+		? [{ name, mediaType: stored.mediaType, data, source: "moodboard" }]
+		: [{ name, mediaType: stored.mediaType, data }];
 }
 
 export function isChatMessage(value: unknown): value is ChatMessage {
@@ -306,7 +314,7 @@ export function appendChat(dir: string, chatId: string, messages: ChatMessage[])
 			const path = `${ATTACHMENTS_DIR}/${id}-${index}.${IMAGE_EXTENSIONS[image.mediaType]}`;
 			writeFileSync(join(dir, path), Buffer.from(image.data, "base64"));
 
-			return { name: image.name, mediaType: image.mediaType, path };
+			return { name: image.name, mediaType: image.mediaType, path, source: image.source };
 		});
 
 		return JSON.stringify({ ...message, attachments });

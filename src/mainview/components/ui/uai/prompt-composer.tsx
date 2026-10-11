@@ -55,6 +55,7 @@ export type PromptComposerProps = Omit<ComponentProps<"form">, "onSubmit" | "onC
 	defaultFiles?: File[];
 	/** Files pasted or dropped onto the composer that it takes; without it, pasting and dropping files is off */
 	acceptFile?: (file: File) => boolean;
+	onFilesChange?: (files: File[]) => void;
 	/** Always put the field on its own row, above the controls, instead of only once the text overflows */
 	stacked?: boolean;
 };
@@ -180,6 +181,7 @@ export function PromptComposer({
 	onSubmit,
 	defaultFiles,
 	acceptFile,
+	onFilesChange,
 	stacked = false,
 	className,
 	children,
@@ -206,6 +208,8 @@ export function PromptComposer({
 	const locked = busy || disabled;
 	const canSend = !locked && (prompt.trim().length > 0 || attachments.length > 0);
 	const chrome = composerChrome(variant);
+
+	useEffect(() => onFilesChange?.(attachments.map((item) => item.file)), [attachments, onFilesChange]);
 
 	const setPrompt = (nextValue: string) => {
 		if (value === undefined) setInternalPrompt(nextValue);
@@ -342,14 +346,19 @@ export function PromptComposer({
 
 					{attachments.length > 0 ? (
 						<div className={cn("flex flex-wrap gap-1.5 pt-0.5", chrome.pill ? "px-1" : "px-0.5")}>
-							{attachments.map((item) => (
+							{attachments.map((item, index) => (
 								<span
 									key={item.id}
+									title={`Image ${index + 1}: ${item.file.name}`}
 									className={cn(
-										"flex items-center gap-1.5 bg-muted py-1 pr-1 pl-1.5 text-muted-foreground",
+										"flex items-center gap-1.5 bg-muted py-1 pr-1 pl-1 text-muted-foreground",
 										chrome.chipClass,
 									)}
 								>
+									<span className="grid h-4 min-w-4 place-items-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-card-foreground tabular-nums ring-1 ring-border">
+										<span className="sr-only">Image </span>
+										{index + 1}
+									</span>
 									<FileIcon file={item.file} />
 									<span className="max-w-36 truncate text-card-foreground">{item.file.name}</span>
 									<Button

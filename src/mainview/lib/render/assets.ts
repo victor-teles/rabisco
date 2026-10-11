@@ -1,4 +1,5 @@
 import { assetType, type AssetChange, type ProjectAssets } from "../../../shared/assets";
+import { isMoodboardSrc } from "../../../shared/moodboard";
 
 function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
 	const binary = atob(data);
@@ -9,7 +10,7 @@ function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
 	return bytes;
 }
 
-async function encodeBase64(blob: Blob): Promise<string> {
+export async function encodeBase64(blob: Blob): Promise<string> {
 	const bytes = new Uint8Array(await blob.arrayBuffer());
 	let binary = "";
 
@@ -26,6 +27,7 @@ async function encodeBase64(blob: Blob): Promise<string> {
 export class AssetStore {
 	#blobs = new Map<string, Blob>();
 	#listeners = new Set<() => void>();
+	#srcs: ReadonlySet<string> | null = null;
 	version = 0;
 
 	get size() {
@@ -34,6 +36,12 @@ export class AssetStore {
 
 	get(src: string): Blob | undefined {
 		return this.#blobs.get(src);
+	}
+
+	srcs(): ReadonlySet<string> {
+		this.#srcs ??= new Set(this.#blobs.keys());
+
+		return this.#srcs;
 	}
 
 	reset(assets: ProjectAssets) {
@@ -84,7 +92,7 @@ export class AssetStore {
 	async base64(): Promise<ProjectAssets> {
 		const assets: ProjectAssets = {};
 
-		for (const [src, blob] of this.#blobs) assets[src] = await encodeBase64(blob);
+		for (const [src, blob] of this.#exported()) assets[src] = await encodeBase64(blob);
 
 		return assets;
 	}
@@ -93,9 +101,13 @@ export class AssetStore {
 	async dataUrls(): Promise<Record<string, string>> {
 		const urls: Record<string, string> = {};
 
-		for (const [src, blob] of this.#blobs) urls[src] = `data:${blob.type};base64,${await encodeBase64(blob)}`;
+		for (const [src, blob] of this.#exported()) urls[src] = `data:${blob.type};base64,${await encodeBase64(blob)}`;
 
 		return urls;
+	}
+
+	*#exported() {
+		for (const entry of this.#blobs) if (!isMoodboardSrc(entry[0])) yield entry;
 	}
 
 	#set(src: string, data: string) {
@@ -106,6 +118,7 @@ export class AssetStore {
 
 	#changed() {
 		this.version++;
+		this.#srcs = null;
 
 		for (const listener of this.#listeners) listener();
 	}

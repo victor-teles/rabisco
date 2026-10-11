@@ -485,8 +485,8 @@ function reconcileWith(current: CanvasDoc) {
 }
 
 function canvasFields(snapshot: Snapshot) {
-	const { frames, comments, theme, name, device, locks, sections } = snapshot;
-	const fields: Partial<CanvasDoc> = { frames, comments, theme, locks, sections };
+	const { frames, comments, theme, name, device, locks, sections, images } = snapshot;
+	const fields: Partial<CanvasDoc> = { frames, comments, theme, locks, sections, images };
 
 	if (name !== undefined) fields.name = name;
 
@@ -513,13 +513,14 @@ function snapshotOf(canvas: CanvasDoc, files: ProjectFiles): Snapshot {
 		device: canvas.device,
 		locks: canvas.locks,
 		sections: canvas.sections,
+		images: canvas.images,
 	};
 }
 
 function withHistory(current: ProjectState, history: History, selection?: string[]): ProjectState {
 	const { frames, files, comments = current.canvas.comments, theme = current.canvas.theme } = history.present;
 	const { name = current.canvas.name, device = current.canvas.device } = history.present;
-	const { locks, sections = current.canvas.sections } = history.present;
+	const { locks, sections = current.canvas.sections, images = current.canvas.images } = history.present;
 
 	// Selection may also hold component files picked in the components panel
 	const nextSelection = (selection ?? current.canvas.selection).filter(
@@ -534,9 +535,10 @@ function withHistory(current: ProjectState, history: History, selection?: string
 		device === current.canvas.device &&
 		locks === current.canvas.locks &&
 		sections === current.canvas.sections &&
+		images === current.canvas.images &&
 		sameSelection(nextSelection, current.canvas.selection)
 			? current.canvas
-			: { ...current.canvas, frames, comments, theme, name, device, locks, sections, selection: nextSelection };
+			: { ...current.canvas, frames, comments, theme, name, device, locks, sections, images, selection: nextSelection };
 
 	return { ...current, history, files, canvas };
 }

@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Attachment as AttachmentCard,
 	AttachmentDetails,
+	AttachmentMeta,
 	AttachmentName,
 	AttachmentThumbnail,
 } from "@/components/ui/uai/attachment";
@@ -65,16 +66,18 @@ import {
 import { readStoredDraft, useComposerDraft } from "@/hooks/use-composer-draft";
 import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { openSettings, useProviders } from "@/hooks/use-providers";
+import { useAssetImage } from "@/hooks/use-asset-image";
 import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import type { Generation, WritingFile } from "@/hooks/use-generation";
 import type { Interview } from "@/hooks/use-interview";
 import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
 import { draftIdOf } from "@/lib/composer-drafts";
 import { api } from "@/lib/rpc";
+import { cn } from "@/lib/utils";
 import type { Attachment } from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import type { StyleId } from "../../../shared/context/styles";
-import type { ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
+import type { CanvasImage, ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
 import { ChangeSummaryCard, type DesignNoteActions } from "./change-summary";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
@@ -154,7 +157,12 @@ type ChatPanelProps = {
 	noteActions?: DesignNoteActions | null;
 	projectPath?: string;
 	chatId?: string;
+	moodboard?: CanvasImage[];
+	attachedCount?: number;
+	onAttachedCountChange?: (count: number) => void;
 };
+
+const NO_IMAGES: CanvasImage[] = [];
 
 const TASK_TITLE = {
 	create: "Designing",
@@ -207,11 +215,16 @@ export const ChatPanel = memo(function ChatPanel({
 	noteActions = null,
 	projectPath,
 	chatId,
+	moodboard = NO_IMAGES,
+	attachedCount = 0,
+	onAttachedCountChange,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
 	const [planMode, setPlanMode] = usePlanMode();
 	const planHint = planModeHint({ editing: editingCount, variations });
 	const files = generation ? Object.entries(generation.writing) : [];
+
+	const onFilesChange = useCallback((files: File[]) => onAttachedCountChange?.(files.length), [onAttachedCountChange]);
 
 	// Streaming output follows on its own; a new message brings the reader back down
 	useEffect(pin, [messages.length, pin]);
@@ -264,7 +277,7 @@ export const ChatPanel = memo(function ChatPanel({
 			setDraft((current) => ({
 				key: (current?.key ?? 0) + 1,
 				prompt: message.content,
-				files: message.attachments?.map(attachmentFile),
+				files: message.attachments?.flatMap((image) => (image.source === "moodboard" ? [] : [attachmentFile(image)])),
 			}));
 		},
 		[setDraft],
@@ -431,12 +444,14 @@ export const ChatPanel = memo(function ChatPanel({
 						Set up a model and this prompt will be sent.
 					</p>
 				) : null}
+				{moodboard.length && !interview ? <MoodboardStrip images={moodboard} first={attachedCount + 1} /> : null}
 				<DesignComposer
 					// Remount so the held or edited prompt's images fill the composer
 					key={heldPrompt ? "held" : draft ? `draft-${draft.key}` : "empty"}
 					value={text}
 					onValueChange={setText}
 					defaultFiles={filled?.files}
+					onFilesChange={onFilesChange}
 					busy={generation !== null}
 					onStop={onStop}
 					device={device}
@@ -513,14 +528,58 @@ function AttachedImages({ images }: { images: Attachment[] }) {
 	return (
 		<div className="flex flex-wrap justify-end gap-1.5">
 			{images.map((image, index) => (
-				<AttachmentCard key={index} variant="card" mimeType={image.mediaType} className="w-32">
+				<AttachmentCard key={index} variant="card" mimeType={image.mediaType} className="relative w-32">
 					<AttachmentThumbnail src={`data:${image.mediaType};base64,${image.data}`} alt={image.name} className="h-20" />
+					<ImageNumber number={index + 1} className="absolute top-1.5 left-1.5" />
 					<AttachmentDetails>
 						<AttachmentName title={image.name}>{image.name}</AttachmentName>
+						{image.source === "moodboard" ? <AttachmentMeta>From the moodboard</AttachmentMeta> : null}
 					</AttachmentDetails>
 				</AttachmentCard>
 			))}
 		</div>
+	);
+}
+
+function ImageNumber({ number, className }: { number: number; className?: string }) {
+	return (
+		<span
+			className={cn(
+				"grid h-4 min-w-4 place-items-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-foreground tabular-nums ring-1 ring-border",
+				className,
+			)}
+		>
+			<span className="sr-only">Image </span>
+			{number}
+		</span>
+	);
+}
+
+function MoodboardStrip({ images, first }: { images: CanvasImage[]; first: number }) {
+	const last = first + images.length - 1;
+
+	return (
+		<div className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-subtle-foreground">
+			<span>Sends moodboard {images.length === 1 ? `image ${first}` : `images ${first}–${last}`}</span>
+			<ul className="flex items-center gap-1">
+				{images.map((image, index) => (
+					<MoodboardThumb key={image.id} image={image} number={first + index} />
+				))}
+			</ul>
+		</div>
+	);
+}
+
+function MoodboardThumb({ image, number }: { image: CanvasImage; number: number }) {
+	const { found, show } = useAssetImage(image.src);
+
+	return (
+		<li
+			title={`Image ${number}: ${image.name}`}
+			className="size-5 overflow-hidden rounded-[4px] bg-muted ring-1 ring-border"
+		>
+			{found ? <img ref={show} alt={image.name} className="size-full object-cover" /> : null}
+		</li>
 	);
 }
 

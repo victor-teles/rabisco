@@ -81,6 +81,7 @@ export function versionSnapshot(canvas: CanvasDoc, files: ProjectFiles): Snapsho
 		theme: appliedTheme(canvas, files),
 		locks: canvas.locks ?? [],
 		sections: canvas.sections ?? [],
+		images: canvas.images ?? [],
 	};
 }
 
@@ -92,6 +93,7 @@ export function restoredSnapshot(present: Snapshot, version: Snapshot): Snapshot
 		theme: version.theme ?? present.theme,
 		locks: version.locks ?? [],
 		sections: version.sections ?? [],
+		images: version.images ?? [],
 	};
 }
 

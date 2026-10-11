@@ -41,6 +41,7 @@ export type ScreenActionsContext = {
 	reveal: (frames: Frame[]) => void;
 	/** Where ⌘V pastes: the pointer, when it is over the canvas */
 	pointer: () => Point | null;
+	pasteImages: (at: Point | null) => Promise<boolean>;
 };
 
 /** Screen and canvas actions; with `point` (a right-click on the canvas) new screens and comments land there */
@@ -84,7 +85,8 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 		const screens = await readScreens(device);
 
 		if (screens.length) add(screens, under ? centeredOn(screens, under) : undefined);
-		else toast("Nothing to paste", { description: "Copy screens, or the TSX of a screen, first." });
+		else if (!(await context.pasteImages(under)))
+			toast("Nothing to paste", { description: "Copy screens, the TSX of a screen, or an image first." });
 	};
 
 	return [

@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view";
 import { normalizeComments } from "../../shared/comments";
 import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
 import { starterFiles } from "../../shared/context/styles";
+import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
 import type { RabiscoRPC } from "../../shared/rpc";
 import type {
@@ -226,6 +227,10 @@ function createBrowserApi(): RabiscoApi {
 		// Nowhere to copy a file to: the inspector says so
 		async pickImage() {
 			return null;
+		},
+		// Nowhere to copy a file to: the webview keeps the bytes for the session
+		async addMoodboardImage({ mediaType }) {
+			return { src: `${MOODBOARD_PREFIX}${crypto.randomUUID()}.${MOODBOARD_EXTENSIONS[mediaType]}` };
 		},
 		async appendMessages({ path, chatId, messages }) {
 			const stored = mustRead(path);

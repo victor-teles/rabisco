@@ -170,6 +170,9 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 
 				return file ? { src: store.importImage(path, file) } : null;
 			},
+			addMoodboardImage: ({ path, name, mediaType, data }) => ({
+				src: store.addMoodboardImage(path, name, mediaType, data),
+			}),
 			removeRecent: ({ path }) => (store.removeRecent(path), ok),
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),

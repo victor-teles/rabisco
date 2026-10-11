@@ -42,6 +42,7 @@ import { useInsertTools } from "@/hooks/use-insert-tools";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useProject } from "@/hooks/use-project";
 import { useShowFps } from "@/hooks/use-show-fps";
+import { referenceAttachments, useMoodboard } from "@/hooks/use-moodboard";
 import { useSections } from "@/hooks/use-sections";
 import { useStructure } from "@/hooks/use-structure";
 import type { Theme } from "@/hooks/use-theme";
@@ -126,6 +127,7 @@ import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
 import { ScreensPanel } from "./screens-panel";
+import { MoodboardLayer } from "./moodboard-layer";
 import { SectionDraw, SectionsLayer } from "./sections-layer";
 import { FindPanel } from "./find-panel";
 import { ChatSessions } from "./chat-sessions";
@@ -250,6 +252,27 @@ export function EditorView({
 	const selected = useMemo(() => selectedFrames(frames, selection), [frames, selection]);
 	const sections = useSections({ stateRef, sections: project?.canvas.sections, change, selected, setSelection });
 	const selectSection = sections.select;
+
+	const moodboard = useMoodboard({
+		projectPath,
+		stateRef,
+		images: project?.canvas.images,
+		frames,
+		targets: selection,
+		change,
+		screensSelected: selected.length > 0,
+		sectionSelected: sections.selectedId !== null,
+		setSelection,
+		reveal: (rects) => canvasRef.current?.fitTo(rects),
+	});
+
+	const [attachedCount, setAttachedCount] = useState(0);
+
+	const moodboardNumbers = useMemo(
+		() => new Map(moodboard.referenced.map((image, index) => [image.id, attachedCount + index + 1])),
+		[moodboard.referenced, attachedCount],
+	);
+
 	/** Screens render with this until the user applies DESIGN.md's theme (decision 0009) */
 	const appliedTokens = project?.canvas.theme ?? NO_TOKENS;
 	const design = files["DESIGN.md"];
@@ -574,6 +597,7 @@ export function EditorView({
 			const sent = send(prompt, {
 				targets: selection,
 				files: attachments,
+				references: referenceAttachments(moodboard.referenced),
 				variations,
 				focus: structure.nodes,
 				resolves,
@@ -583,7 +607,7 @@ export function EditorView({
 
 			return sent;
 		},
-		[interview, answer, autoResolve, send, selection, variations, structure.nodes],
+		[interview, answer, autoResolve, send, selection, variations, structure.nodes, moodboard.referenced],
 	);
 
 	const selectElement = useCallback(
@@ -1205,6 +1229,7 @@ export function EditorView({
 		commentTool: () => setTool("comment"),
 		reveal: (shown) => canvasRef.current?.fitTo(shown),
 		pointer: () => canvasRef.current?.pointer() ?? null,
+		pasteImages: moodboard.paste,
 	};
 
 	/** Every editor action: the keyboard, the right-click menus and the command palette all run these */
@@ -1591,6 +1616,7 @@ export function EditorView({
 			run: () => setSheetOpen(true),
 		},
 		...sections.actions,
+		...moodboard.actions,
 		{
 			id: "find-text",
 			label: "Find and replace text…",
@@ -2081,6 +2107,9 @@ export function EditorView({
 								device={device}
 								onDeviceChange={changeDevice}
 								onSend={sendPrompt}
+								moodboard={interview ? undefined : moodboard.referenced}
+								attachedCount={attachedCount}
+								onAttachedCountChange={setAttachedCount}
 								heldPrompt={heldPrompt}
 								onHeldPromptSent={clearHeldPrompt}
 								onStop={stop}
@@ -2144,7 +2173,10 @@ export function EditorView({
 							drafts={drafts}
 							selection={selection}
 							onSelectionChange={setSelection}
-							onClickEmpty={(point) => sections.select(sectionAt(point.x, point.y, sections.sections)?.id ?? null)}
+							onClickEmpty={(point) => {
+								moodboard.select(null);
+								sections.select(sectionAt(point.x, point.y, sections.sections)?.id ?? null);
+							}}
 							onMoveFrames={moveFrames}
 							onMoveEnd={endStep}
 							tool={tool}
@@ -2153,6 +2185,7 @@ export function EditorView({
 							onCompare={setCompareBase}
 							onPick={pick}
 							onDropItem={dropComponent}
+							onDropFiles={(dropped, point) => void moodboard.add(dropped, point)}
 							element={structure.node}
 							elements={extraElements}
 							onSelectElement={selectElement}
@@ -2172,23 +2205,40 @@ export function EditorView({
 							onFixRender={busy ? undefined : fix}
 							overlay={overlay}
 							underlay={
-								<SectionsLayer
-									sections={sections.sections}
-									frames={frames}
-									viewport={viewport}
-									selectedId={sections.selectedId}
-									renaming={sections.renaming}
-									interactive={tool === "move"}
-									onSelect={sections.select}
-									onMove={sections.move}
-									onMoveEnd={endStep}
-									onResize={sections.resize}
-									onStartRename={sections.startRename}
-									onRename={sections.rename}
-									onRecolor={sections.recolor}
-									onDelete={sections.remove}
-									onSelectScreens={setSelection}
-								/>
+								<>
+									<SectionsLayer
+										sections={sections.sections}
+										frames={frames}
+										viewport={viewport}
+										selectedId={sections.selectedId}
+										renaming={sections.renaming}
+										interactive={tool === "move"}
+										onSelect={sections.select}
+										onMove={sections.move}
+										onMoveEnd={endStep}
+										onResize={sections.resize}
+										onStartRename={sections.startRename}
+										onRename={sections.rename}
+										onRecolor={sections.recolor}
+										onDelete={sections.remove}
+										onSelectScreens={setSelection}
+									/>
+									<MoodboardLayer
+										images={moodboard.images}
+										viewport={viewport}
+										selectedId={moodboard.selectedId}
+										interactive={tool === "move"}
+										numbers={moodboardNumbers}
+										onSelect={(id) => {
+											sections.select(null);
+											moodboard.select(id);
+										}}
+										onMove={moodboard.move}
+										onMoveEnd={endStep}
+										onResize={moodboard.resize}
+										onDelete={moodboard.remove}
+									/>
+								</>
 							}
 						>
 							{sections.drawing ? (

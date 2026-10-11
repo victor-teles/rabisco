@@ -25,6 +25,7 @@ const base: Snapshot = {
 	device: "mobile",
 	locks: [],
 	sections: [],
+	images: [],
 };
 
 const edit = (snapshot: Snapshot, content: string): Snapshot => ({
