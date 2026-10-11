@@ -74,16 +74,27 @@ test("lineRanges", () => {
 describe("focusNotes", () => {
 	test("a note when the file changed outside the element, none otherwise", () => {
 		const outside = BEFORE.replace("Welcome back", "Hello again");
-		expect(focusNotes(focus, { [PATH]: BEFORE }, [{ path: PATH, content: outside }])).toEqual([
+		expect(focusNotes([focus], { [PATH]: BEFORE }, [{ path: PATH, content: outside }])).toEqual([
 			`Note: this also changed ${PATH} outside <Button> “Get started” (line 6). Undo reverts the whole edit.`,
 		]);
 		const inside = BEFORE.replace("Get started", "Start now");
-		expect(focusNotes(focus, { [PATH]: BEFORE }, [{ path: PATH, content: inside }])).toEqual([]);
-		expect(focusNotes(focus, { [PATH]: BEFORE }, [{ path: "components/cta.tsx", content: "x" }])).toEqual([]);
+		expect(focusNotes([focus], { [PATH]: BEFORE }, [{ path: PATH, content: inside }])).toEqual([]);
+		expect(focusNotes([focus], { [PATH]: BEFORE }, [{ path: "components/cta.tsx", content: "x" }])).toEqual([]);
 		expect(focusNotes(undefined, { [PATH]: BEFORE }, [{ path: PATH, content: outside }])).toEqual([]);
+		expect(focusNotes([], { [PATH]: BEFORE }, [{ path: PATH, content: outside }])).toEqual([]);
+	});
+
+	test("with several elements, only a change outside all of them is noted", () => {
+		const heading = elementFocus(BEFORE, PATH, BEFORE.indexOf("<h1"))!;
+		const both = BEFORE.replace("Welcome back", "Hello again").replace("Get started", "Start now");
+		expect(focusNotes([heading, focus], { [PATH]: BEFORE }, [{ path: PATH, content: both }])).toEqual([]);
+		const terms = both.replace("Terms apply", "No terms");
+		expect(focusNotes([heading, focus], { [PATH]: BEFORE }, [{ path: PATH, content: terms }])).toEqual([
+			`Note: this also changed ${PATH} outside the 2 elements (line 8). Undo reverts the whole edit.`,
+		]);
 	});
 
 	test("deleting the file is a note too", () => {
-		expect(focusNotes(focus, { [PATH]: BEFORE }, [{ path: PATH, content: null }])[0]).toContain("deleted");
+		expect(focusNotes([focus], { [PATH]: BEFORE }, [{ path: PATH, content: null }])[0]).toContain("deleted");
 	});
 });

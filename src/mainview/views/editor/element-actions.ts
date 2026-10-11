@@ -3,9 +3,10 @@ import type { Structure } from "@/hooks/use-structure";
 import type { Action } from "@/lib/actions";
 import { readElement, usedImports, writeElement } from "@/lib/element-clipboard";
 import { isLocked, lockedStarts } from "@/lib/element-locks";
+import { arrowSteps, moveSteps, parentOf, type ArrowKey } from "@/lib/element-flow";
 import { siblingStart } from "@/lib/element-nav";
 import { outermost } from "@/lib/element-selection";
-import { findElement, moveAmongSiblings, parseJsx, type JsxElement } from "../../../shared/jsx";
+import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import { matchingStarts } from "../../../shared/jsx/matching";
 import { dedent, indentAt } from "../../../shared/jsx/text";
 import { readClassName } from "../../../shared/tailwind/classes";
@@ -13,6 +14,7 @@ import { baseClasses, isHidden } from "../../../shared/tailwind/properties";
 import type { ElementLock, ProjectFiles } from "../../../shared/types";
 import { type MenuEntry, SEPARATOR } from "./action-menu";
 import type { ElementRef } from "./canvas";
+import { LINK_MENU } from "./link-actions";
 
 /** Right-click on an element, on the canvas or in the structure tree */
 export const ELEMENT_MENU: MenuEntry[] = [
@@ -33,6 +35,8 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	"toggle-hidden",
 	"toggle-locked",
 	SEPARATOR,
+	LINK_MENU,
+	SEPARATOR,
 	"wrap-element",
 	"wrap-element-in-stack",
 	"unwrap-element",
@@ -40,6 +44,11 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	SEPARATOR,
 	"move-element-earlier",
 	"move-element-later",
+	{
+		label: "Align",
+		items: ["align-left", "align-h-center", "align-right", SEPARATOR, "align-top", "align-v-middle", "align-bottom"],
+	},
+	{ label: "Distribute", items: ["distribute-horizontal", "distribute-vertical"] },
 	SEPARATOR,
 	"copy-element-code",
 	"go-to-source",
@@ -158,6 +167,8 @@ type Options = {
 	element: ElementRef | null;
 	/** Elements ⇧-click added to it: actions that make sense for one only are off */
 	extras: ElementRef[];
+	/** The width of the element's screen, for the breakpoints its parent's layout uses */
+	width: number | null;
 	files: ProjectFiles;
 	locks?: ElementLock[];
 	structure: Structure;
@@ -170,9 +181,12 @@ type Options = {
 };
 
 /** Go after the editor's hidden Escape action, which wins the Esc key that `select-parent` only shows */
+const ARROW_KEYS: readonly ArrowKey[] = ["ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
+
 export function elementActions({
 	element,
 	extras,
+	width,
 	files,
 	locks,
 	structure,
@@ -203,8 +217,13 @@ export function elementActions({
 		toast(matching.length === 1 ? "No other matching elements" : `Selected ${matching.length} matching elements`);
 	};
 
-	const canMove = (delta: -1 | 1) =>
-		one && element !== null && source !== undefined && moveAmongSiblings(source, element.start, delta) !== null;
+	const flow = one && source !== undefined ? (parentOf(source, element.start, width)?.flow ?? null) : null;
+	const rows = flow?.kind === "grid" && flow.columns > 1 ? flow.columns : 0;
+
+	const arrows = (steps: number) => ARROW_KEYS.flatMap((key) => (arrowSteps(flow, key) === steps ? [{ key }] : []));
+
+	const canMove = (steps: number) =>
+		one && source !== undefined && steps !== 0 && moveSteps(source, element.start, steps) !== null;
 
 	const paste = async () => {
 		const copy = await readElement();
@@ -345,23 +364,43 @@ export function elementActions({
 			run: () => void paste(),
 		},
 		{
-			// Figma reorders auto layout children with the arrow keys. Passive: without an element they nudge screens
+			// Figma reorders auto layout children with the arrows along the parent's direction. Passive: without an element they nudge screens
 			id: "move-element-earlier",
 			label: "Move earlier",
 			group: "Element",
-			chords: [{ key: "ArrowUp" }, { key: "ArrowLeft" }],
+			chords: arrows(-1),
 			enabled: canMove(-1),
 			passive: true,
-			run: () => structure.moveNodeAmongSiblings(-1),
+			run: () => structure.moveNodeBy(-1),
 		},
 		{
 			id: "move-element-later",
 			label: "Move later",
 			group: "Element",
-			chords: [{ key: "ArrowDown" }, { key: "ArrowRight" }],
+			chords: arrows(1),
 			enabled: canMove(1),
 			passive: true,
-			run: () => structure.moveNodeAmongSiblings(1),
+			run: () => structure.moveNodeBy(1),
+		},
+		{
+			id: "move-element-row-up",
+			label: "Move up a row",
+			group: "Element",
+			chords: arrows(-rows),
+			enabled: canMove(-rows),
+			hidden: true,
+			passive: true,
+			run: () => structure.moveNodeBy(-rows),
+		},
+		{
+			id: "move-element-row-down",
+			label: "Move down a row",
+			group: "Element",
+			chords: arrows(rows),
+			enabled: canMove(rows),
+			hidden: true,
+			passive: true,
+			run: () => structure.moveNodeBy(rows),
 		},
 		{
 			// Figma's Frame selection

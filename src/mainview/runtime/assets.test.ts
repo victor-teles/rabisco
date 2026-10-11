@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FrameAssets } from "./assets";
+import { FrameAssets, resolveImageSources } from "./assets";
 
 const png = () => new Blob(["png"], { type: "image/png" });
 
@@ -48,6 +48,56 @@ describe("FrameAssets", () => {
 		});
 		const plain = { style: { color: "red" } };
 		expect(assets.props(plain)).toBe(plain);
+	});
+
+	test("rewrites each image in srcSet, keeping the descriptors", () => {
+		const assets = new FrameAssets();
+		const picture = { srcSet: "/a.png 1x, /b.png 2x", sizes: "100vw" };
+		expect(assets.props(picture)).toBe(picture);
+		assets.apply({ "/a.png": "data:image/png;base64,AA==" });
+		expect(assets.props(picture)).toEqual({ srcSet: "data:image/png;base64,AA== 1x, /b.png 2x", sizes: "100vw" });
+		expect(assets.props({ srcset: "/a.png 640w", src: "/a.png" })).toEqual({
+			srcset: "data:image/png;base64,AA== 640w",
+			src: "data:image/png;base64,AA==",
+		});
+		const remote = { srcSet: "https://example.com/a.png 1x" };
+		expect(assets.props(remote)).toBe(remote);
+	});
+
+	test("images made from script resolve through the src and srcset setters", () => {
+		class Element {
+			#src = "";
+			#srcset = "";
+
+			get src() {
+				return this.#src;
+			}
+
+			set src(value: string) {
+				this.#src = value;
+			}
+
+			get srcset() {
+				return this.#srcset;
+			}
+
+			set srcset(value: string) {
+				this.#srcset = value;
+			}
+		}
+
+		const assets = new FrameAssets();
+		resolveImageSources(Element.prototype, assets);
+		const image = new Element();
+		image.src = "/a.png";
+		expect(image.src).toBe("/a.png");
+		assets.apply({ "/a.png": "data:image/png;base64,AA==" });
+		image.src = "./a.png";
+		image.srcset = "/a.png 2x, https://example.com/b.png 3x";
+		expect(image.src).toBe("data:image/png;base64,AA==");
+		expect(image.srcset).toBe("data:image/png;base64,AA== 2x, https://example.com/b.png 3x");
+		image.src = "https://example.com/a.png";
+		expect(image.src).toBe("https://example.com/a.png");
 	});
 
 	test("rewrites url() in the stylesheet", () => {

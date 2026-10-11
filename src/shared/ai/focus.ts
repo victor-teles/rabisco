@@ -78,4 +78,16 @@ export function resolveFocus(focus: ElementFocus | undefined, files: ProjectFile
 	return found && found.snippet === focus.snippet ? found : null;
 }
 
+export function resolveFocused(focus: ElementFocus[] | undefined, files: ProjectFiles): ElementFocus[] | null {
+	const file = focus?.[0]?.file;
+
+	if (!focus || file === undefined || focus.some((element) => element.file !== file)) return null;
+	const resolved = focus.flatMap((element) => resolveFocus(element, files) ?? []);
+
+	return resolved.length === focus.length ? resolved : null;
+}
+
+export const focusLabel = (focus: ElementFocus[]) =>
+	focus.length === 1 ? (focus[0]?.label ?? "") : `${focus.length} elements`;
+
 export const focusNote = (label: string, where: string, prompt: string) => `${label} in ${where}: ${prompt}`;

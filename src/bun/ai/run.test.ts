@@ -579,19 +579,27 @@ describe("point and prompt", () => {
 			model: "m",
 			projectFiles: project,
 			targets: [path],
-			focus,
+			focus: [focus],
 			...overrides,
 		});
 
 	test("buildGenerationRequest keeps the focus of an edit of its file, re-checked against the file", () => {
-		expect(build().focus).toEqual(focus);
+		expect(build().focus).toEqual([focus]);
 		const moved = `// header\n${source}`;
-		expect(build({ projectFiles: { [path]: moved } }).focus?.startLine).toBe(5);
+		expect(build({ projectFiles: { [path]: moved } }).focus?.[0]?.startLine).toBe(5);
 		expect(build({ projectFiles: { [path]: source.replace("Hello", "Hi") } }).focus).toBeUndefined();
 		expect(
 			build({ targets: ["screens/b.tsx"], projectFiles: { ...project, "screens/b.tsx": "x" } }).focus,
 		).toBeUndefined();
 		expect(build({ task: "create", targets: [] }).focus).toBeUndefined();
+	});
+
+	test("several elements of the file are all kept; one stale or in another file drops the focus", () => {
+		const body = elementFocus(source, path, source.indexOf("<p>"))!;
+		expect(build({ focus: [focus, body] }).focus).toEqual([focus, body]);
+		expect(build({ focus: [focus, { ...body, snippet: "<p>Gone</p>" }] }).focus).toBeUndefined();
+		expect(build({ focus: [focus, { ...body, file: "screens/b.tsx" }] }).focus).toBeUndefined();
+		expect(build({ focus: [] }).focus).toBeUndefined();
 	});
 
 	test("a change outside the element is kept, with a note; a repair keeps the focus", async () => {
@@ -605,7 +613,7 @@ describe("point and prompt", () => {
 
 		const { result } = await run(provider, project, undefined, build());
 		expect(requests[1]!.task).toBe("repair");
-		expect(requests[1]!.focus).toEqual(focus);
+		expect(requests[1]!.focus).toEqual([focus]);
 		expect(result.changes).toEqual([{ path, content: fixed }]);
 		expect(result.notes).toEqual([
 			`Note: this also changed ${path} outside <h1> “Hello” (line 5). Undo reverts the whole edit.`,

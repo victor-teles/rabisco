@@ -71,23 +71,25 @@ Some failures today lose work or hide it. Fix them before adding more surface.
 
 ---
 
-## Phase 20: Editing leftovers ⬜
+## Phase 20: Editing leftovers 🚧
 
 _Principle: Direct manipulation over prompts_
 
 Open items from phases 6, 9, 11 and 12.
 
-- ⬜ Move an element to another screen by dragging
-- ⬜ Resize and padding handles follow the State switch, and work with several elements selected
-- ⬜ Arrow keys follow the parent's main axis (↑/← always move earlier today)
-- ⬜ Renaming a screen updates `href="#/…"` as it does `data-link-to`
-- ⬜ Rewrite images in `srcSet`, `<source>` and `new Image()` to project images
-- ⬜ "Link to" on the element menu (links are per element, [0007](./decisions/0007-prototype-links-in-source.md))
-- ⬜ Prototype connectors start at the linked element, not at the frame edge
-- ⬜ A ⌘-click or double-click on a frame that is not live selects the element once its iframe loads; "Send to chat" on such a frame targets the element, not the whole screen
-- ⬜ `const Foo = () =>` components keep their state on edit, as `function` components do
-- ⬜ Point and prompt with several elements selected sends all of them, not only the first
-- ⬜ Align and distribute elements inside a screen, not only screens
+- ✅ Move an element to another screen by dragging. Both screens change in one undo step, and imports move with the element. An element that uses its old screen's local state or variables won't compile in the new one
+- ✅ Resize and padding handles follow the State switch, and work with several elements selected
+- ✅ Arrow keys follow the parent's main axis: ←/→ in a row, ↑/↓ in a column, and by row in a grid
+- ✅ Renaming a screen's route rewrites `href="#/…"` as it does `data-link-to` (`retargetLinks`). Nothing renames screen files yet, so nothing calls it
+- ✅ Rewrite images in `srcSet`, `<source>` and `new Image()` to project images. `setAttribute("src", …)` is still not rewritten
+- ✅ "Link to" on the element menu (links are per element, [0007](./decisions/0007-prototype-links-in-source.md))
+- ✅ Prototype connectors start at the linked element, not at the frame edge
+- ✅ A ⌘-click or double-click on a frame that is not live selects the element once its iframe loads; "Send to chat" on such a frame targets the element, not the whole screen
+- ✅ `const Foo = () =>` components keep their state on edit, as `function` components do. `memo` and `forwardRef` components still remount
+- ✅ Point and prompt with several elements selected sends all of them, not only the first ([0025](./decisions/0025-focus-on-several-elements.md))
+- ✅ Align and distribute elements inside a screen, not only screens. Aligning some children along a row or column, and distributing only some of them, are refused
+- ⬜ Check it in the packaged app: dragging an element between screens, handles in a state and with several elements, arrow keys in a row, column and grid, element align and distribute, the Link to menu, connectors from elements, a ⌘-click on a snapshot frame, and a multi-element point and prompt
+- ⬜ Align buttons in the element inspector (the keys and menus work today)
 
 **Done when** a user can build a simple card from components with the mouse only, and the TSX reads like a developer wrote it.
 

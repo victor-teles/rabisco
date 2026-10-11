@@ -38,8 +38,9 @@ export type HostMessage =
 	| { type: "element-boxes"; id: number; start: number; version: string }
 	/** Stream `boxes` for the element at `start` on every layout change until the next `track`; `null` stops. */
 	| { type: "track"; start: number | null; version: string }
-	/** Inline styles on every instance of the element at `start` while a handle drags; `null` (or the next render) restores them */
-	| { type: "preview-style"; start: number; version: string; style: Record<string, string> | null }
+	| { type: "links"; starts: number[]; version: string }
+	/** Inline styles on every instance of the elements at `starts` while a handle drags; `null` (or the next render) restores them */
+	| { type: "preview-style"; starts: number[]; version: string; style: Record<string, string> | null }
 	/** Shifts the instances of a dragged list item until the next render; `null` slides them back */
 	| { type: "preview-order"; start: number; version: string; preview: OrderPreview | null }
 	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
@@ -98,6 +99,7 @@ export type FrameMessage =
 			spacing?: Spacing | null;
 			layout?: ElementLayout | null;
 	  }
+	| { type: "link-boxes"; version: string; width: number; links: LinkBox[] }
 	/** `refused` when the element's DOM doesn't hold just its text; `done` with `text: null` means cancelled. */
 	| { type: "text-edit"; start: number; version: string; state: "editing" | "refused" }
 	| { type: "text-edit"; start: number; version: string; state: "done"; text: string | null }
@@ -113,6 +115,8 @@ export type FrameMessage =
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };
+
+export type LinkBox = { start: number; box: Box };
 
 /** Frame-local CSS pixels. `children` are the container's direct children from the entry file, in DOM order; an element rendered by `.map` reports one entry per instance, all with the same `start`. */
 export type DropLayout = {
@@ -287,6 +291,9 @@ function isDropLayout(layout: unknown): layout is DropLayout {
 
 const isBoxList = (boxes: unknown): boxes is Box[] => Array.isArray(boxes) && boxes.every(isBox);
 
+const isLinkBox = (link: unknown): link is LinkBox =>
+	isObject(link) && "start" in link && "box" in link && isOffset(link.start) && isBox(link.box);
+
 function isSpacing(spacing: unknown): spacing is Spacing {
 	return (
 		isObject(spacing) &&
@@ -374,6 +381,16 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 				isBoxList(data.boxes) &&
 				(!("spacing" in data) || data.spacing === undefined || data.spacing === null || isSpacing(data.spacing)) &&
 				(!("layout" in data) || data.layout === undefined || data.layout === null || isElementLayout(data.layout))
+			);
+		case "link-boxes":
+			return (
+				"version" in data &&
+				"width" in data &&
+				"links" in data &&
+				isString(data.version) &&
+				isNumber(data.width) &&
+				Array.isArray(data.links) &&
+				data.links.every(isLinkBox)
 			);
 		case "text-edit":
 			if (!isTracked(data) || !("state" in data)) return false;

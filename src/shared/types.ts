@@ -173,7 +173,7 @@ export type GenerateParams = {
 	/** Read but must not change, e.g. the variation a "Mix" takes a section from */
 	references?: string[];
 	/** Dropped by the main process when the element is gone from the file on disk */
-	focus?: ElementFocus;
+	focus?: ElementFocus[];
 	problems?: Problem[];
 	attachments?: Attachment[];
 	/** The chat session whose messages are the history. Missing: no history */

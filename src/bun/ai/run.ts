@@ -15,7 +15,7 @@ import { componentSignatures } from "../../shared/components/usages";
 import { contextBody } from "../../shared/context/body";
 import { designTokensOf, type DesignTokens } from "../../shared/context/tokens";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
-import { resolveFocus } from "../../shared/ai/focus";
+import { resolveFocused } from "../../shared/ai/focus";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
 import { focusNotes } from "./focus-guard";
@@ -392,7 +392,7 @@ export type BuildRequestParams = {
 	/** Read-only files; always included, like targets */
 	references?: string[];
 	/** `edit` only; dropped unless its file is a target and the element still resolves */
-	focus?: ElementFocus;
+	focus?: ElementFocus[];
 	attachments?: Attachment[];
 	history?: GenerationRequest["history"];
 	/** The applied theme (rabisco.json); DESIGN.md's tokens when missing */
@@ -436,8 +436,8 @@ export function buildGenerationRequest(params: BuildRequestParams): GenerationRe
 	};
 
 	const focus =
-		params.task === "edit" && params.focus && targets.includes(params.focus.file)
-			? resolveFocus(params.focus, files)
+		params.task === "edit" && targets.includes(params.focus?.[0]?.file ?? "")
+			? resolveFocused(params.focus, files)
 			: null;
 
 	const references = contextTarget

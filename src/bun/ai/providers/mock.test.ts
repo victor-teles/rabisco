@@ -9,6 +9,7 @@ import {
 	mockRepair,
 	primaryFamilyOf,
 	restyleElement,
+	restyleElements,
 	restyleForVariation,
 	withoutMissingComponents,
 } from "./mock";
@@ -308,6 +309,16 @@ describe("restyleElement", () => {
 			`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`,
 		);
 		expect(restyleElement(source.replace("New", "Old"), focus, 1)).toBeNull();
+	});
+
+	test("restyleElements changes each of several elements, and refuses when none is where it was", () => {
+		const heading = elementFocus(source, "screens/a.tsx", source.indexOf("<h1"))!;
+		const badge = elementFocus(source, "screens/a.tsx", source.indexOf("<Badge"))!;
+		const out = restyleElements(source, [heading, badge], 1)!;
+		expect(out).toContain(`<h1 className="text-2xl font-bold">Hi</h1>`);
+		expect(out).toContain(`<Badge className="ring-2 ring-primary ring-offset-2">New</Badge>`);
+		expect(restyleElements(source.replace("Hi", "Yo").replace("New", "Old"), [heading, badge], 1)).toBeNull();
+		expect(restyleElements(source, [], 1)).toBeNull();
 	});
 });
 

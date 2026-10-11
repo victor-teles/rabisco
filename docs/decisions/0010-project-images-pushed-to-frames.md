@@ -28,6 +28,6 @@ Frames are sandboxed with an opaque origin and must never reach the file system 
 ## Consequences
 
 - The bytes cross RPC once as base64 on open, and again only for files that change. Very large image folders make opening slower; files over 20 MB are skipped with a warning.
-- Only `src`, inline background styles and stylesheet `url()`s resolve. `srcSet`, `<source>`, `React.createElement` calls and images created from script (`new Image()`) still point at the bundle.
+- `src`, `srcSet` (on `<img>` and `<source>`), inline background styles and stylesheet `url()`s resolve. The frame also wraps the `src` and `srcset` setters of images and sources, so images created from script (`new Image()`, `img.src = …`) resolve too. `React.createElement` calls and `setAttribute("src", …)` still point at the bundle.
 - A screen that renders before an image arrives shows it as broken until the `assets` message lands, then re-renders.
 - In browser mode (`hutch run hmr`) there is no project folder, so there are no images; nothing else changes.

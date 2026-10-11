@@ -59,14 +59,28 @@ export function spacingPixels(value: string): number | null {
 const mainDimension = (parent: ParentAxis): Dimension | null =>
 	parent === "row" ? "width" : parent === "column" ? "height" : null;
 
-const grows = (classes: string) => getStyle(classes, "flex") === "1" || getStyle(classes, "flexGrow") !== null;
+const grows = (classes: string, variant = "") =>
+	getStyle(classes, "flex", variant) === "1" || getStyle(classes, "flexGrow", variant) !== null;
 
 /** Drops `flex-1` and `grow`, which would override the size along the parent's main axis */
-const withoutGrow = (classes: string) => setStyle(setStyle(classes, "flex", null), "flexGrow", null);
+function withoutGrow(classes: string, variant = "") {
+	const cleared = setStyle(setStyle(classes, "flex", null, variant), "flexGrow", null, variant);
 
-export function sizeMode(classes: string, dimension: Dimension, parent: ParentAxis): SizeMode {
-	if (mainDimension(parent) === dimension && grows(classes)) return "fill";
-	const value = getBox(classes, "size")[dimension];
+	return variant && grows(classes) ? setStyle(cleared, "flex", "none", variant) : cleared;
+}
+
+const sizeOf = (classes: string, dimension: Dimension, variant: string) =>
+	getBox(classes, "size", variant)[dimension] ?? (variant ? getBox(classes, "size")[dimension] : null);
+
+function growing(classes: string, variant: string) {
+	const flex = variant ? getStyle(classes, "flex", variant) : null;
+
+	return flex !== null ? flex === "1" : grows(classes, variant) || grows(classes);
+}
+
+export function sizeMode(classes: string, dimension: Dimension, parent: ParentAxis, variant = ""): SizeMode {
+	if (mainDimension(parent) === dimension && growing(classes, variant)) return "fill";
+	const value = sizeOf(classes, dimension, variant);
 
 	if (value === "full") return "fill";
 
@@ -76,30 +90,37 @@ export function sizeMode(classes: string, dimension: Dimension, parent: ParentAx
 }
 
 /** A fixed size: `w-64`; a grown child stops growing so the size shows */
-export function setFixedSize(classes: string, dimension: Dimension, value: string, parent: ParentAxis): string {
-	const base = mainDimension(parent) === dimension ? withoutGrow(classes) : classes;
+export function setFixedSize(
+	classes: string,
+	dimension: Dimension,
+	value: string,
+	parent: ParentAxis,
+	variant = "",
+): string {
+	const base = mainDimension(parent) === dimension ? withoutGrow(classes, variant) : classes;
 
-	return setBoxParts(base, "size", [dimension], value);
+	return setBoxParts(base, "size", [dimension], value, variant);
 }
 
 /** `flex-1` along a flex parent's main axis, `w-full` / `h-full` otherwise */
-export function setFill(classes: string, dimension: Dimension, parent: ParentAxis): string {
+export function setFill(classes: string, dimension: Dimension, parent: ParentAxis, variant = ""): string {
 	if (mainDimension(parent) === dimension)
-		return setStyle(setBoxParts(classes, "size", [dimension], null), "flex", "1");
+		return setStyle(setBoxParts(classes, "size", [dimension], null, variant), "flex", "1", variant);
 
-	return setBoxParts(classes, "size", [dimension], "full");
+	return setBoxParts(classes, "size", [dimension], "full", variant);
 }
 
 /**
  * The size of the content. A flex child already hugs along the main axis, and a block hugs its height, so the size
  * class just goes; elsewhere (a block's width, a stretched cross axis) it takes `w-fit` / `h-fit`.
  */
-export function setHug(classes: string, dimension: Dimension, parent: ParentAxis): string {
+export function setHug(classes: string, dimension: Dimension, parent: ParentAxis, variant = ""): string {
 	const main = mainDimension(parent);
-	const base = main === dimension ? withoutGrow(classes) : classes;
-	const hugsAlready = main === dimension || (parent === null && dimension === "height");
+	const base = main === dimension ? withoutGrow(classes, variant) : classes;
+	const sized = variant !== "" && getBox(classes, "size")[dimension] !== null;
+	const hugsAlready = !sized && (main === dimension || (parent === null && dimension === "height"));
 
-	return setBoxParts(base, "size", [dimension], hugsAlready ? null : "fit");
+	return setBoxParts(base, "size", [dimension], hugsAlready ? null : "fit", variant);
 }
 
 export function setSizeMode(
@@ -109,12 +130,13 @@ export function setSizeMode(
 	parent: ParentAxis,
 	/** The rendered size, for `fixed` */
 	px: number,
+	variant = "",
 ): string {
-	if (mode === "fill") return setFill(classes, dimension, parent);
+	if (mode === "fill") return setFill(classes, dimension, parent, variant);
 
-	if (mode === "hug") return setHug(classes, dimension, parent);
+	if (mode === "hug") return setHug(classes, dimension, parent, variant);
 
-	return setFixedSize(classes, dimension, spacingValue(px), parent);
+	return setFixedSize(classes, dimension, spacingValue(px), parent, variant);
 }
 
 /** Edges and corners, by compass point */
@@ -164,8 +186,11 @@ export function resizedSize(
 }
 
 /** The size classes being written, for the label during a drag: `w-64`, `size-10` */
-export function sizeLabel(values: Partial<Record<Dimension, string>>): string {
-	return boxClasses("size", { width: values.width ?? null, height: values.height ?? null }).join(" ");
+const inVariant = (classes: string[], variant: string) =>
+	classes.map((name) => (variant ? `${variant}:${name}` : name)).join(" ");
+
+export function sizeLabel(values: Partial<Record<Dimension, string>>, variant = ""): string {
+	return inVariant(boxClasses("size", { width: values.width ?? null, height: values.height ?? null }), variant);
 }
 
 export type Side = keyof Insets;
@@ -195,11 +220,11 @@ export function paddingBox(sides: readonly Side[], value: string): ClassBox {
 	return Object.fromEntries(SIDES.map((side) => [side, sides.includes(side) ? value : null]));
 }
 
-export const paddingLabel = (sides: readonly Side[], value: string) =>
-	boxClasses("padding", paddingBox(sides, value)).join(" ");
+export const paddingLabel = (sides: readonly Side[], value: string, variant = "") =>
+	inVariant(boxClasses("padding", paddingBox(sides, value)), variant);
 
-export function setPadding(classes: string, sides: readonly Side[], value: string): string {
-	return setBoxParts(classes, "padding", sides, value);
+export function setPadding(classes: string, sides: readonly Side[], value: string, variant = ""): string {
+	return setBoxParts(classes, "padding", sides, value, variant);
 }
 
 /** Inline styles that preview padding on the live frame */
@@ -220,19 +245,19 @@ export function draggedGap(part: GapPart, start: number, delta: Point): number {
  * Which gap parts a drag writes. A flex container has one gap that matters, so it writes `gap-*` unless the classes
  * already split it; a grid writes the part being dragged, which folds back into `gap-*` when both match.
  */
-export function gapParts(classes: string, part: GapPart, flow: ElementLayout["flow"]): GapPart[] {
-	const current = getBox(classes, "gap");
+export function gapParts(classes: string, part: GapPart, flow: ElementLayout["flow"], variant = ""): GapPart[] {
+	const current = getBox(classes, "gap", variant);
 	const split = current.x !== current.y;
 
 	return flow === "grid" || split ? [part] : ["x", "y"];
 }
 
-export function setGap(classes: string, parts: readonly GapPart[], value: string): string {
-	return setBoxParts(classes, "gap", parts, value);
+export function setGap(classes: string, parts: readonly GapPart[], value: string, variant = ""): string {
+	return setBoxParts(classes, "gap", parts, value, variant);
 }
 
-export const gapLabel = (classes: string, parts: readonly GapPart[], value: string) =>
-	boxClasses("gap", getBox(setGap(classes, parts, value), "gap")).join(" ");
+export const gapLabel = (classes: string, parts: readonly GapPart[], value: string, variant = "") =>
+	inVariant(boxClasses("gap", getBox(setGap(classes, parts, value, variant), "gap", variant)), variant);
 
 const GAP_PROPERTIES: Record<GapPart, string> = { x: "column-gap", y: "row-gap" };
 

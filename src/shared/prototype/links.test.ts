@@ -8,6 +8,7 @@ import {
 	LINK_ATTRIBUTE,
 	linkHrefToScreen,
 	linkSettingsOfElement,
+	linkStarts,
 	listLinks,
 	normalizeTarget,
 	readLink,
@@ -94,6 +95,34 @@ describe("writing links", () => {
 		expect(next.match(/data-link-to="screens\/preferences\.tsx"/g)).toHaveLength(2);
 		expect(next).toContain(`data-link-to={"back"}`);
 		expect(retargetLinks(files, "screens/nowhere.tsx", "screens/x.tsx")).toEqual([]);
+	});
+
+	test("retargets the export's href routes to a renamed screen", () => {
+		const home = `export default function Home() {
+	return (
+		<nav>
+			<a href="#/settings" data-link-to="screens/settings.tsx">Settings</a>
+			<a href="#/settings">Again</a>
+			<a href="#/profile">Profile</a>
+			<a href={"#/settings"}>Literal</a>
+			<a href={route}>Code</a>
+		</nav>
+	);
+}
+`;
+
+		const changes = retargetLinks({ ...FILES, "screens/home.tsx": home }, "screens/settings.tsx", "screens/prefs.tsx");
+		const next = changes.find((change) => change.path === "screens/home.tsx")!.content!;
+		expect(next).toContain(`<a href="#/prefs" data-link-to="screens/prefs.tsx">Settings</a>`);
+		expect(next).toContain(`<a href="#/prefs">Again</a>`);
+		expect(next).toContain(`<a href="#/prefs">Literal</a>`);
+		expect(next).toContain(`<a href="#/profile">Profile</a>`);
+		expect(next).toContain(`<a href={route}>Code</a>`);
+	});
+
+	test("lists the starts of the elements with a literal link", () => {
+		expect(linkStarts(HOME)).toEqual([startOf(HOME, "<button"), startOf(HOME, "<a")]);
+		expect(linkStarts("export default () => <p />;")).toEqual([]);
 	});
 });
 

@@ -9,7 +9,7 @@ import { stagedAttachments } from "./attachments";
 import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 18;
+export const PROMPT_VERSION = 19;
 
 export type PromptMode = "text" | "agent";
 
@@ -422,29 +422,40 @@ export function numberedSnippet(focus: ElementFocus, content?: string): string {
 }
 
 /** A repair only gets a reminder: the element's lines moved with the first attempt. */
+const linesOf = (focus: ElementFocus) =>
+	focus.startLine === focus.endLine ? `line ${focus.startLine}` : `lines ${focus.startLine}–${focus.endLine}`;
+
 function focusText(request: GenerationRequest, mode: PromptMode): string | null {
-	const focus = request.focus;
+	const focus = request.focus ?? [];
+	const file = focus[0]?.file;
 
-	if (!focus || !request.targets?.includes(focus.file)) return null;
+	if (file === undefined || !request.targets?.includes(file)) return null;
 
-	const lines =
-		focus.startLine === focus.endLine ? `line ${focus.startLine}` : `lines ${focus.startLine}–${focus.endLine}`;
+	const one = focus.length === 1;
+	const labels = focus.map((element) => element.label).join(", ");
 
 	if (request.task === "repair") {
-		return `The request was about one element of ${focus.file}: ${focus.label}. Fix the problems without changing anything else in that file.`;
+		return `The request was about ${one ? "one element" : `${focus.length} elements`} of ${file}: ${labels}. Fix the problems without changing anything else in that file.`;
 	}
 
 	if (request.task !== "edit") return null;
-	const content = request.files.find((file) => file.path === focus.file)?.content;
+	const content = request.files.find((candidate) => candidate.path === file)?.content;
+	const snippets = focus.map((element) => numberedSnippet(element, content)).join("\n\n");
+
+	const selected = one
+		? `one element in ${file}: ${labels}, ${linesOf(focus[0]!)}. Apply the request to that element only.`
+		: `${focus.length} elements in ${file}. Apply the request to each of them, and only to them:\n${focus.map((element) => `  - ${element.label}, ${linesOf(element)}`).join("\n")}`;
+
+	const element = one ? "the element" : "the elements";
 
 	return `# Focus
-The user selected one element in ${focus.file}: ${focus.label}, ${lines}. Apply the request to that element only.
-- Change that element and what it contains. You may also add what it needs: imports, or a small helper component (in the same file, or in components/ when it is reusable).
-- Keep the rest of ${focus.file} exactly as it is: the markup, classes, copy and order outside ${lines} don't change.
-- ${mode === "text" ? `Send the change as <rabisco-edit> blocks. Copy SEARCH lines from the file itself, without the line numbers shown below.` : `Edit ${focus.file} in place; leave everything outside the element as it is.`}
-- If the request can't be done inside the element, make the smallest change outside it and say so in your reply.
+The user selected ${selected}
+- Change ${one ? "that element and what it contains" : "those elements and what they contain"}. You may also add what ${one ? "it needs" : "they need"}: imports, or a small helper component (in the same file, or in components/ when it is reusable).
+- Keep the rest of ${file} exactly as it is: the markup, classes, copy and order outside ${one ? linesOf(focus[0]!) : "their lines"} don't change.
+- ${mode === "text" ? `Send the change as <rabisco-edit> blocks. Copy SEARCH lines from the file itself, without the line numbers shown below.` : `Edit ${file} in place; leave everything outside ${element} as it is.`}
+- If the request can't be done inside ${element}, make the smallest change outside ${one ? "it" : "them"} and say so in your reply.
 
-${numberedSnippet(focus, content)}`;
+${snippets}`;
 }
 
 function variationText(variation: NonNullable<GenerationRequest["variation"]>) {

@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { draftsOf, message, type AttachCallbacks, type RunOptions } from "@/lib/generation-session";
 import { projectSessions } from "@/lib/sessions";
 import type { Attachment, GenerationPlan, Problem } from "../../shared/ai/contract";
-import { focusNote, focusOf } from "../../shared/ai/focus";
+import { focusLabel, focusNote, focusOf } from "../../shared/ai/focus";
 import type { DesignNote } from "../../shared/change-summary";
 import { DESIGN_RULE_LABELS } from "../../shared/design/findings";
 import { isFreshNote, noteProblem, POLISH_PROMPT } from "../../shared/design/polish";
@@ -128,14 +128,14 @@ export function useGeneration({
 		(
 			prompt: string,
 			{
-				focus: node,
+				focus: nodes = [],
 				files,
 				...options
 			}: {
 				targets?: string[];
 				files?: File[];
 				variations?: number;
-				focus?: StructureNode | null;
+				focus?: StructureNode[];
 				command?: { name: string; args: string };
 				resolves?: string[];
 				autoDesign?: boolean;
@@ -152,6 +152,7 @@ export function useGeneration({
 					const user = (content: string) =>
 						attachments.length ? { ...message("user", content), attachments } : message("user", content);
 
+					const node = nodes[0];
 					const focused = Boolean(node && node.file in current.files);
 					const waiting = controller.get().pendingPlan;
 
@@ -165,9 +166,12 @@ export function useGeneration({
 					if (waiting) session.addMessages([message("assistant", "Dropped the plan that was waiting.")]);
 
 					if (node && focused) {
-						const focus = focusOf(current.files, node);
+						const focus = nodes.flatMap((each) =>
+							each.file === node.file ? (focusOf(current.files, each) ?? []) : [],
+						);
+
 						const where = variationName(node.file, current.canvas.frames);
-						session.addMessages([user(focus ? focusNote(focus.label, where, prompt) : prompt)]);
+						session.addMessages([user(focus.length ? focusNote(focusLabel(focus), where, prompt) : prompt)]);
 
 						const send: RunOptions = {
 							targets: [node.file],
@@ -176,7 +180,7 @@ export function useGeneration({
 							resolves: options.resolves,
 						};
 
-						if (focus) send.focus = focus;
+						if (focus.length) send.focus = focus;
 						void controller.run(prompt, send, model);
 
 						return;
@@ -234,7 +238,7 @@ export function useGeneration({
 
 			const options: RunOptions = { targets: [note.path], repair: { problems: [noteProblem(note, fresh)] } };
 
-			if (focus) options.focus = focus;
+			if (focus) options.focus = [focus];
 			void run(POLISH_PROMPT, options);
 		},
 		[ready, session, run],

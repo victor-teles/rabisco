@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { elementFocus, focusNote, focusOf, lineAt, resolveFocus } from "./focus";
+import { elementFocus, focusLabel, focusNote, focusOf, lineAt, resolveFocus, resolveFocused } from "./focus";
 
 const SCREEN = `import { Button } from "@/components/ui/button";
 
@@ -92,6 +92,32 @@ describe("resolveFocus", () => {
 		expect(resolveFocus({ ...focus, start: 0 }, { "screens/welcome.tsx": twice })).toBeNull();
 		expect(resolveFocus(focus, {})).toBeNull();
 		expect(resolveFocus(undefined, { "screens/welcome.tsx": SCREEN })).toBeNull();
+	});
+});
+
+describe("resolveFocused", () => {
+	const button = elementFocus(SCREEN, "screens/welcome.tsx", at("<Button size"))!;
+	const heading = elementFocus(SCREEN, "screens/welcome.tsx", at("<h1"))!;
+
+	test("every element of one file, followed through the changes", () => {
+		const moved = SCREEN.replace("export default", "const x = 1;\n\nexport default");
+		const resolved = resolveFocused([heading, button], { "screens/welcome.tsx": moved })!;
+		expect(resolved.map((element) => element.start)).toEqual([moved.indexOf("<h1"), moved.indexOf("<Button size")]);
+	});
+
+	test("null when one is gone, they span files, or there are none", () => {
+		const files = { "screens/welcome.tsx": SCREEN.replace("Get started", "Go") };
+		expect(resolveFocused([heading, button], files)).toBeNull();
+		expect(
+			resolveFocused([heading, { ...button, file: "screens/other.tsx" }], { "screens/welcome.tsx": SCREEN }),
+		).toBeNull();
+		expect(resolveFocused([], { "screens/welcome.tsx": SCREEN })).toBeNull();
+		expect(resolveFocused(undefined, { "screens/welcome.tsx": SCREEN })).toBeNull();
+	});
+
+	test("focusLabel names one element, and counts several", () => {
+		expect(focusLabel([button])).toBe("<Button> “Get started”");
+		expect(focusLabel([button, heading])).toBe("2 elements");
 	});
 });
 

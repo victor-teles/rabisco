@@ -32,6 +32,7 @@ import { HANDLES, handleSides, resizeRect, snapResize, type Handle } from "@/lib
 import { isInsertTool, type CanvasInsert, type InsertTarget, type InsertTool } from "@/lib/insert-tools";
 import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
+import { styleState } from "@/lib/style-state";
 import { suggestionHover, type SuggestionHover } from "@/lib/suggestion-hover";
 import { sourceVersion, type Box, type DropLayout, type FrameError } from "@/lib/render/protocol";
 import type { ElementLayout, Spacing } from "@/lib/render/spacing";
@@ -126,6 +127,8 @@ const SHOWN_ATTEMPTS = 40;
 
 const SHOWN_RETRY_MS = 50;
 
+const SHOWN_RENDER_MS = 5_000;
+
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((v) => b.has(v));
@@ -161,7 +164,10 @@ type CanvasProps = {
 	onToggleElement?: (element: ElementRef) => void;
 	onEditText?: (element: ElementRef, text: string) => void;
 	/** Dragging the selected element drops it here; `parent` and `index` are offsets in the source at `version` */
-	onMoveElement?: (element: ElementRef, target: { parent: number; index: number; version: string }) => void;
+	onMoveElement?: (
+		element: ElementRef,
+		target: { file: string; parent: number; index: number; version: string },
+	) => void;
 	/** Dragging an item a `.map` renders moves its array entry `from` to `to`, indexes in the source at `version` */
 	onMoveEntry?: (element: ElementRef, move: { from: number; to: number; version: string }) => void;
 	/** The selection's resize, padding and gap handles; one undo step per call */
@@ -447,6 +453,9 @@ export function Canvas({
 	const [menuPoint, setMenuPoint] = useState<Point>({ x: 0, y: 0 });
 	/** Frames in or near the view, which keep their live iframe */
 	const [visible, setVisible] = useState<ReadonlySet<string>>(() => new Set());
+	const [waking, setWaking] = useState<ReadonlySet<string>>(() => new Set());
+	const wakeCounts = useRef(new Map<string, number>());
+	const picking = useRef(0);
 	const painted = useRef({ request: 0, zoom: Number.NaN, gesture: 0 });
 	/** The screen whose label is an input */
 	const [renaming, setRenaming] = useState<string | null>(null);
@@ -621,6 +630,46 @@ export function Canvas({
 		[],
 	);
 
+	const wake = useCallback((file: string, step: 1 | -1) => {
+		const counts = wakeCounts.current;
+		const count = (counts.get(file) ?? 0) + step;
+
+		if (count > 0) counts.set(file, count);
+		else counts.delete(file);
+		setWaking(new Set(counts.keys()));
+	}, []);
+
+	const withShownHost = useCallback(
+		async <T,>(file: string, use: (host: FrameHost) => Promise<T>): Promise<T | null> => {
+			const live = hostFor(file);
+
+			if (live?.status === "rendered") return use(live);
+			wake(file, 1);
+
+			try {
+				for (let attempt = 0; attempt < SHOWN_ATTEMPTS; attempt++) {
+					const host = hostFor(file);
+
+					if (host) {
+						const rendered = await host.whenRendered(SHOWN_RENDER_MS).then(
+							() => true,
+							() => false,
+						);
+
+						return rendered && hostFor(file) === host ? await use(host) : null;
+					}
+
+					await new Promise((resolve) => setTimeout(resolve, SHOWN_RETRY_MS));
+				}
+
+				return null;
+			} finally {
+				wake(file, -1);
+			}
+		},
+		[hostFor, wake],
+	);
+
 	/** Falls back to `onEditTextElsewhere` when the element holds more than text or its DOM doesn't match the source */
 	const editText = useCallback(
 		(target: ElementRef, point?: Point) => {
@@ -704,13 +753,13 @@ export function Canvas({
 				if (editingRef.current) hostFor(editingRef.current.file)?.endTextEdit(commit);
 			},
 			elementAt: async (file, point) => {
-				const host = hostFor(file);
-				const source = filesRef.current[file];
+				const found = await withShownHost(file, async (host) => {
+					const source = filesRef.current[file];
 
-				if (!host || source === undefined) return null;
-				const starts = hitStarts(await host.hitTest(point.x, point.y), file, source);
+					return source === undefined ? null : hitStarts(await host.hitTest(point.x, point.y), file, source);
+				});
 
-				return starts ? { file, start: starts[0]! } : null;
+				return found ? { file, start: found[0]! } : null;
 			},
 			pointer: () => {
 				const last = lastPointer.current;
@@ -730,7 +779,7 @@ export function Canvas({
 				return { x: (last.clientX - rect.left - x) / zoom, y: (last.clientY - rect.top - y) / zoom };
 			},
 		}),
-		[view, zoomAround, fitTo, settle, editText, hostFor],
+		[view, zoomAround, fitTo, settle, editText, hostFor, withShownHost],
 	);
 
 	// On the window, so leaving the canvas for a panel counts. A live frame takes the events while the pointer
@@ -906,9 +955,10 @@ export function Canvas({
 		const source = filesRef.current[frame.file];
 		const blocked = { file: frame.file, spot: null };
 		const moving = movingElement.current;
+		const across = !!moving && moving.file !== frame.file;
 
-		// An element moves within its own screen
-		if (host?.status === "error" || (moving && moving.file !== frame.file)) return blocked;
+		// A list item reorders within its own screen; any other element can go to another screen
+		if (host?.status === "error" || (across && !moving.dragged)) return blocked;
 
 		if (!host || host.status !== "rendered" || source === undefined) return null;
 		const point = toCanvas(clientX, clientY);
@@ -919,9 +969,10 @@ export function Canvas({
 		const hit = await host.hitTest(local.x, local.y);
 
 		// A newer version is about to render
-		if ((hit && hit.version !== version) || (moving && moving.version !== version)) return null;
+		if ((hit && hit.version !== version) || (moving && !across && moving.version !== version)) return null;
 		const starts = hitStarts(hit, frame.file, source);
-		const target = moving?.dragged ? moveTarget(source, moving.dragged, starts) : dropTarget(source, starts);
+
+		const target = moving?.dragged && !across ? moveTarget(source, moving.dragged, starts) : dropTarget(source, starts);
 
 		if (!target) return blocked;
 		const { layouts } = dropping.current;
@@ -1147,7 +1198,7 @@ export function Canvas({
 		state.generation++;
 
 		void probeDrop(clientX, clientY).then((preview) => {
-			const spot = preview?.file === drag.file ? preview.spot : null;
+			const spot = preview?.file === drag.file || drag.dragged ? (preview?.spot ?? null) : null;
 			const reorders = spot?.from != null && spot.from !== spot.index;
 
 			// The items stay in their new slots until the render that applies the move
@@ -1161,10 +1212,15 @@ export function Canvas({
 			clearDrop();
 			const element = { file: drag.file, start: drag.start };
 
-			if (!spot) return;
+			if (!spot || !preview) return;
 
 			if (spot.from === null)
-				onMoveElement?.(element, { parent: spot.parent, index: spot.index, version: spot.version });
+				onMoveElement?.(element, {
+					file: preview.file,
+					parent: spot.parent,
+					index: spot.index,
+					version: spot.version,
+				});
 			else if (reorders) onMoveEntry?.(element, { from: spot.from, to: spot.index, version: spot.version });
 		});
 	};
@@ -1202,11 +1258,20 @@ export function Canvas({
 	/** `null` unless the frame shows the current source: offsets of an older render point at the wrong elements */
 	const elementsAt = async (frame: Frame, clientX: number, clientY: number) => {
 		const host = hostFor(frame.file);
+
+		return host ? elementsIn(host, frame, localPoint(frame, clientX, clientY)) : null;
+	};
+
+	const localPoint = (frame: Frame, clientX: number, clientY: number): Point => {
+		const point = toCanvas(clientX, clientY);
+
+		return { x: point.x - frame.x, y: point.y - frame.y };
+	};
+
+	const elementsIn = async (host: FrameHost, frame: Frame, local: Point) => {
 		const source = filesRef.current[frame.file];
 
-		if (!host || source === undefined) return null;
-		const point = toCanvas(clientX, clientY);
-		const local = { x: point.x - frame.x, y: point.y - frame.y };
+		if (source === undefined) return null;
 		const hit = await host.hitTest(local.x, local.y);
 		const starts = hitStarts(hit, frame.file, source);
 
@@ -1224,7 +1289,11 @@ export function Canvas({
 
 	/** `keepSelected`: a right-click on one of several selected elements keeps them all, as in Figma */
 	const pickElement = async (frame: Frame, clientX: number, clientY: number, keepSelected = false) => {
-		const found = await elementsAt(frame, clientX, clientY);
+		const request = ++picking.current;
+		const local = localPoint(frame, clientX, clientY);
+		const found = await withShownHost(frame.file, (host) => elementsIn(host, frame, local));
+
+		if (request !== picking.current) return null;
 		const start = found?.starts[0];
 
 		const kept =
@@ -1740,6 +1809,7 @@ export function Canvas({
 								onFix={onFixRender ? fixRender : undefined}
 								live={
 									visible.has(frame.file) ||
+									waking.has(frame.file) ||
 									editing?.file === frame.file ||
 									hover?.file === frame.file ||
 									dropFile === frame.file ||
@@ -1793,6 +1863,7 @@ export function Canvas({
 						<SelectedElement
 							key={element.file}
 							element={element}
+							others={elements.map((extra) => extra.start)}
 							frame={shown.find((f) => f.file === element.file)}
 							source={rendered[element.file]}
 							host={hostFor}
@@ -1803,7 +1874,6 @@ export function Canvas({
 								draggingElement ||
 								drafts ||
 								tool !== "move" ||
-								elements.length ||
 								isElementLocked(locks, element.file, files[element.file], element.start)
 									? undefined
 									: onEditClasses
@@ -2508,6 +2578,7 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 /** The last boxes stay up while a newer version renders, so edits don't flicker */
 function SelectedElement({
 	element,
+	others,
 	frame,
 	source,
 	host,
@@ -2516,6 +2587,7 @@ function SelectedElement({
 	onEditClasses,
 }: {
 	element: ElementRef;
+	others: number[];
 	frame: Frame | undefined;
 	source: string | undefined;
 	host: (file: string) => FrameHost | undefined;
@@ -2527,6 +2599,7 @@ function SelectedElement({
 	const [boxes, setBoxes] = useState<Box[]>([]);
 	const [spacing, setSpacing] = useState<Spacing | null>(null);
 	const [layout, setLayout] = useState<ElementLayout | null>(null);
+	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
 	const version = source === undefined ? "" : sourceVersion(source);
 	useEffect(() => {
 		const target = host(element.file);
@@ -2575,8 +2648,9 @@ function SelectedElement({
 						layout={handles.layout}
 						spacing={spacing}
 						classes={handles.info.classes}
+						variant={variant}
 						zoom={zoom}
-						onPreview={(style) => host(element.file)?.previewStyle(element.start, version, style)}
+						onPreview={(style) => host(element.file)?.previewStyle([element.start, ...others], version, style)}
 						onCommit={(edit) => onEditClasses?.(element, edit)}
 					/>
 				</div>

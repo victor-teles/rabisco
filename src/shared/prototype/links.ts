@@ -153,6 +153,15 @@ export function listLinks(files: ProjectFiles): ProjectLink[] {
 	return links;
 }
 
+export function linkStarts(source: string): number[] {
+	if (!source.includes(LINK_ATTRIBUTE)) return [];
+	const parsed = parseFile(source);
+
+	if (!parsed.ok) return [];
+
+	return flatten(parsed).flatMap((element) => (linkOfElement(element) === null ? [] : [element.start]));
+}
+
 /** `./settings.tsx`, `/screens/settings.tsx` and `settings` all mean `screens/settings.tsx`. */
 export function normalizeTarget(to: string): string {
 	let path = to
@@ -174,23 +183,41 @@ export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 	return isScreenFile(file) && files[file] !== undefined ? { kind: "screen", file } : { kind: "broken", to };
 }
 
-/** For a renamed screen */
+type AttributeEdit = { start: number; name: string; value: string };
+
+function retargetEdits(element: JsxElement, from: string, to: string): AttributeEdit[] {
+	const edits: AttributeEdit[] = [];
+	const link = linkOfElement(element);
+	const href = literalAttribute(element, "href");
+
+	if (link !== null && link.toLowerCase() !== BACK && normalizeTarget(link) === from)
+		edits.push({ start: element.start, name: LINK_ATTRIBUTE, value: to });
+
+	if (href !== null && hrefTarget(href) === from)
+		edits.push({ start: element.start, name: "href", value: screenHref(to) });
+
+	return edits;
+}
+
+/** For a renamed screen: its `data-link-to` links and the export's `href="#/…"` routes */
 export function retargetLinks(files: ProjectFiles, from: string, to: string): FileChange[] {
 	const changes: FileChange[] = [];
-	const byFile = new Map<string, ProjectLink[]>();
 
-	for (const link of listLinks(files)) {
-		if (link.to.trim().toLowerCase() !== BACK && normalizeTarget(link.to) === from)
-			byFile.set(link.file, [...(byFile.get(link.file) ?? []), link]);
-	}
+	for (const file of Object.keys(files).filter(canLink).sort()) {
+		const source = files[file]!;
 
-	for (const [file, links] of byFile) {
+		if (!source.includes(LINK_ATTRIBUTE) && !source.includes("#/")) continue;
+		const parsed = parseFile(source);
+
+		if (!parsed.ok) continue;
+		const edits = flatten(parsed).flatMap((element) => retargetEdits(element, from, to));
+		let next = source;
+
 		// Last first, so earlier offsets stay valid
-		let source = files[file]!;
+		for (const edit of edits.sort((a, b) => b.start - a.start))
+			next = setAttribute(next, edit.start, edit.name, edit.value) ?? next;
 
-		for (const link of [...links].reverse()) source = setLink(source, link.start, to) ?? source;
-
-		if (source !== files[file]) changes.push({ path: file, content: source });
+		if (next !== source) changes.push({ path: file, content: next });
 	}
 
 	return changes;
@@ -199,10 +226,15 @@ export function retargetLinks(files: ProjectFiles, from: string, to: string): Fi
 /** The exported app's hash route for a screen (`src/App.tsx` in the Vite export): `screens/settings.tsx` → `#/settings` */
 export const screenHref = (file: string) => `#/${file.replace(/^screens\//, "").replace(/\.tsx$/, "")}`;
 
+function hrefTarget(href: string): string | null {
+	const match = /^#\/([\w.-]+)$/.exec(href.trim());
+
+	return match ? `screens/${match[1]}.tsx` : null;
+}
+
 /** The screen a `#/settings` href routes to in the export, if it exists */
 export function hrefScreen(href: string, files: ProjectFiles): string | null {
-	const match = /^#\/([\w.-]+)$/.exec(href.trim());
-	const file = match ? `screens/${match[1]}.tsx` : null;
+	const file = hrefTarget(href);
 
 	return file && isScreenFile(file) && files[file] !== undefined ? file : null;
 }

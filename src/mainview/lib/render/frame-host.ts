@@ -1,12 +1,15 @@
 import type { DesignFinding } from "../../../shared/design/findings";
 import type { Scene } from "../../../shared/export/scene";
+import { linkStarts } from "../../../shared/prototype/links";
 import type { ProjectFiles } from "../../../shared/types";
 import { projectAssets } from "./assets";
 import { compileCache, type CompiledModule } from "./compile";
 import { collectGraph } from "./graph";
+import { setLinkBoxes } from "./link-boxes";
 import {
 	hitBoxes,
 	isFrameMessage,
+	sourceVersion,
 	type Box,
 	type DropLayout,
 	type FrameError,
@@ -74,6 +77,8 @@ let requestId = 0;
 
 type TrackedElement = { start: number | null; version: string };
 
+type LinkedElements = { entry: string; source: string; starts: number[]; version: string };
+
 export type TrackedBoxes = {
 	start: number;
 	version: string;
@@ -116,6 +121,7 @@ export class FrameHost {
 	/** Re-sent when the frame reloads. */
 	#tracked: TrackedElement = { start: null, version: "" };
 	onBoxes: ((boxes: TrackedBoxes) => void) | null = null;
+	#links: LinkedElements = { entry: "", source: "", starts: [], version: "" };
 	#textEdit: { start: number; version: string; resolve: (text: string | null | undefined) => void } | null = null;
 	/** Re-sent when the frame reloads. */
 	#play = false;
@@ -243,8 +249,8 @@ export class FrameHost {
 	}
 
 	/** Inline styles on the element while a handle drags; `null` restores them. The next render restores them too */
-	previewStyle(start: number, version: string, style: Record<string, string> | null) {
-		if (this.#ready) this.#post({ type: "preview-style", start, version, style });
+	previewStyle(starts: number[], version: string, style: Record<string, string> | null) {
+		if (this.#ready) this.#post({ type: "preview-style", starts, version, style });
 	}
 
 	/** Shifts the instances of a dragged list item; `null` slides them back. The next render clears it too */
@@ -346,6 +352,20 @@ export class FrameHost {
 		this.#files = files;
 		this.#theme = theme;
 		this.#sync();
+		this.#pushLinks();
+	}
+
+	#pushLinks() {
+		const entry = this.#entry;
+		const source = this.#files[entry] ?? "";
+		const last = this.#links;
+
+		if (entry === last.entry && source === last.source) return;
+		const starts = linkStarts(source);
+		this.#links = { entry, source, starts, version: sourceVersion(source) };
+
+		if (this.#ready && (starts.length || last.starts.length))
+			this.#post({ type: "links", starts, version: this.#links.version });
 	}
 
 	receive(message: FrameMessage) {
@@ -363,6 +383,9 @@ export class FrameHost {
 			this.#sync();
 
 			if (this.#tracked.start !== null) this.#post({ type: "track", ...this.#tracked });
+
+			if (this.#links.starts.length)
+				this.#post({ type: "links", starts: this.#links.starts, version: this.#links.version });
 
 			if (this.#play) this.#post({ type: "play", on: true });
 
@@ -397,6 +420,9 @@ export class FrameHost {
 				const { start, version, boxes } = message;
 				this.onBoxes?.({ start, version, boxes, spacing: message.spacing ?? null, layout: message.layout ?? null });
 			}
+		} else if (message?.type === "link-boxes") {
+			if (message.version === this.#links.version && this.#links.entry)
+				setLinkBoxes(this.#links.entry, message.version, message.width, message.links);
 		} else if (message?.type === "text-edit") {
 			const edit = this.#textEdit;
 

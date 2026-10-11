@@ -54,3 +54,35 @@ export function rewriteCssUrls(css: string, resolve: (key: string) => string | u
 		return resolved ? `url("${resolved}")` : match;
 	});
 }
+
+const SRCSET_SEPARATOR = /[\s,]*/y;
+
+const SRCSET_URL = /\S*?(?=,*(?:\s|$))/y;
+
+const SRCSET_DESCRIPTORS = /[^,]*/y;
+
+export function rewriteSrcset(srcset: string, resolve: (key: string) => string | undefined): string {
+	let rewritten = "";
+	let at = 0;
+
+	const take = (pattern: RegExp) => {
+		pattern.lastIndex = at;
+		const taken = pattern.exec(srcset)?.[0] ?? "";
+		at += taken.length;
+
+		return taken;
+	};
+
+	while (at < srcset.length) {
+		rewritten += take(SRCSET_SEPARATOR);
+
+		if (at >= srcset.length) break;
+		const url = take(SRCSET_URL);
+		const key = assetKey(url);
+		rewritten += (key ? resolve(key) : undefined) ?? url;
+
+		if (!srcset.startsWith(",", at)) rewritten += take(SRCSET_DESCRIPTORS);
+	}
+
+	return rewritten;
+}

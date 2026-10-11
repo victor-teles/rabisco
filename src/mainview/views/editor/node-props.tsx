@@ -1,8 +1,9 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useSyncExternalStore } from "react";
 import { Component, CornerUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Structure } from "@/hooks/use-structure";
 import { componentRef, importedComponents } from "@/lib/outline";
+import { styleState } from "@/lib/style-state";
 import { componentSpec, extraAttributes, isVoidElement, readChildrenText, readProp, type PropValue } from "@/lib/props";
 import { UI_SOURCES } from "@/lib/ui-sources";
 import { cn } from "@/lib/utils";
@@ -114,7 +115,7 @@ function ElementProps({
 	const spec = componentSpec(ref, files, UI_SOURCES);
 	const burst = useRef(0);
 	// Not per element: editing hover styles across several elements keeps the state
-	const [variant, setVariant] = useState("");
+	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
 
 	if (!element) return null;
 
@@ -256,7 +257,7 @@ function ElementProps({
 					}}
 					onFieldBlur={onEndStep}
 					variant={variant}
-					onVariantChange={setVariant}
+					onVariantChange={styleState.set}
 					tokens={tokens}
 				/>
 			)}
@@ -280,7 +281,7 @@ function SeveralElements({
 	onEndStep: () => void;
 	tokens?: DesignTokens;
 }) {
-	const [variant, setVariant] = useState("");
+	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
 	const tree = parseJsx(source);
 	const elements = starts.flatMap((start) => findElement(tree, start) ?? []);
 	const names = [...new Set(elements.map((element) => element.name ?? "Fragment"))];
@@ -309,7 +310,7 @@ function SeveralElements({
 					onChange={(next, step) => structure.editCode(file, next, step)}
 					onFieldBlur={onEndStep}
 					variant={variant}
-					onVariantChange={setVariant}
+					onVariantChange={styleState.set}
 					tokens={tokens}
 				/>
 			)}

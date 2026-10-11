@@ -79,7 +79,7 @@ export type RunOptions = {
 	task?: "context" | "vary";
 	variations?: number;
 	references?: string[];
-	focus?: ElementFocus;
+	focus?: ElementFocus[];
 	repair?: { problems: Problem[] };
 	/** A provider command; `prompt` is `/name args` */
 	command?: { name: string; args: string };

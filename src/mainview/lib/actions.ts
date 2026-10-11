@@ -20,6 +20,7 @@ export type Action = {
 	/** The first one is the one shown */
 	chords?: Chord[];
 	enabled: boolean;
+	checked?: boolean;
 	destructive?: boolean;
 	/** Keys only: left out of the command palette */
 	hidden?: boolean;
