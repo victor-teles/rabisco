@@ -112,3 +112,13 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `↑` `↓` / `←` `→` (Structure)                             | Move through elements / collapse, expand                                          |
 | `⌥⌘K` or `Enter` (Structure)                              | Make component from the selected element, and replace its repeats                 |
 | `⌫` (Structure)                                           | Delete the selected element                                                       |
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Vendored code keeps its own license:
+
+- `tools/oxlint/anti-slop/`: MIT, see its [LICENSE](tools/oxlint/anti-slop/LICENSE) and [eslint-stylistic LICENSE](tools/oxlint/anti-slop/vendor/eslint-stylistic/LICENSE).
+- `src/mainview/components/ui/`: [shadcn/ui](https://ui.shadcn.com), MIT, see its [LICENSE](src/mainview/components/ui/LICENSE.md).
+- `src/mainview/components/ui/uai/`: blocks from [uai](https://uaiblocks.vercel.app).
