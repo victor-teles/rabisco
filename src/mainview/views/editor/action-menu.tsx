@@ -65,7 +65,7 @@ function MenuItems({ items }: { items: MenuItem[] }) {
 		if (isSubmenu(item)) {
 			return (
 				<ContextMenuSub key={item.label}>
-					<ContextMenuSubTrigger>{item.label}</ContextMenuSubTrigger>
+					<ContextMenuSubTrigger inset={inset}>{item.label}</ContextMenuSubTrigger>
 					<ContextMenuSubContent className="w-60">
 						<MenuItems items={item.items} />
 					</ContextMenuSubContent>

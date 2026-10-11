@@ -208,14 +208,19 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 
 	useEffect(() => {
 		if (renaming !== frame.file) return;
-		nameRef.current?.focus();
-		nameRef.current?.select();
-		onRenamed();
+
+		const timer = setTimeout(() => {
+			nameRef.current?.focus();
+			nameRef.current?.select();
+			onRenamed();
+		});
+
+		return () => clearTimeout(timer);
 	}, [renaming, frame.file, onRenamed]);
 
 	return (
 		<div className="flex flex-col gap-4 p-4">
-			<Section title="Screen">
+			<Section title="Screen" reveal={renaming === frame.file}>
 				<input
 					ref={nameRef}
 					value={frame.name}
@@ -665,8 +670,12 @@ function useFieldSteps(file: string) {
 	};
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-	return <InspectorSection title={title}>{children}</InspectorSection>;
+function Section({ title, reveal, children }: { title: string; reveal?: boolean; children: React.ReactNode }) {
+	return (
+		<InspectorSection title={title} reveal={reveal}>
+			{children}
+		</InspectorSection>
+	);
 }
 
 /** Tolerates partial text ("-", "") while typing and only reports valid numbers */

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -35,15 +35,22 @@ function useSectionOpen(title: string): [boolean, (open: boolean) => void] {
 export function InspectorSection({
 	title,
 	action,
+	reveal = false,
 	className,
 	children,
 }: {
 	title: string;
 	action?: React.ReactNode;
+	reveal?: boolean;
 	className?: string;
 	children: React.ReactNode;
 }) {
-	const [open, setOpen] = useSectionOpen(title);
+	const [remembered, setOpen] = useSectionOpen(title);
+	const open = remembered || reveal;
+
+	useEffect(() => {
+		if (reveal && !remembered) setOpen(true);
+	}, [reveal, remembered, setOpen]);
 
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} asChild>

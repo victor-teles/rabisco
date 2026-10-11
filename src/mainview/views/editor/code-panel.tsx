@@ -246,9 +246,14 @@ function NameField({
 		return element ? suggestName(element, icons) : "";
 	});
 
-	// After the commit rather than in it (`autoFocus`): a menu that opened this still traps focus until then
+	// A task later rather than `autoFocus`: a menu item's `onSelect` commits in `flushSync`, while its menu still traps focus
 	const input = useRef<HTMLInputElement>(null);
-	useEffect(() => input.current?.focus(), []);
+
+	useEffect(() => {
+		const timer = setTimeout(() => input.current?.focus());
+
+		return () => clearTimeout(timer);
+	}, []);
 
 	return (
 		<form

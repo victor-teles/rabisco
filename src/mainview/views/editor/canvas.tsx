@@ -2521,7 +2521,12 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 			>
 				<div
 					className={cn(OUTLINE_LABEL, "bg-destructive font-sans font-medium")}
-					style={{ left: 0, top: 0, transform: LABEL_ABOVE, transformOrigin: "top left" }}
+					style={{
+						left: frame.width / 2,
+						top: 0,
+						transform: "translateX(-50%) scale(var(--unzoom)) translateY(12px)",
+						transformOrigin: "top center",
+					}}
 				>
 					Can't drop here
 				</div>

@@ -230,7 +230,7 @@ export function ContextPanel(props: ContextPanelProps) {
 								?.filter((f) => contextBody(files[f.path]) !== undefined && files[f.path] !== f.content)
 								.map((f) => f.path)
 								.join(" and ")}{" "}
-							already {pendingImport && pendingImport.length > 1 ? "have" : "has"} content. You can undo the import.
+							will be replaced. You can undo the import.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
