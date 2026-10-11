@@ -1925,7 +1925,7 @@ export function Canvas({
 					) : null}
 					{element && elements.length ? (
 						<SelectedElements
-							key={element.file}
+							key={`extras:${element.file}`}
 							starts={[element.start, ...elements.map((extra) => extra.start)]}
 							frame={shown.find((f) => f.file === element.file)}
 							source={rendered[element.file]}
