@@ -106,6 +106,7 @@ export type FrameMessage =
 	| ({ type: "navigate"; to: string } & LinkOptions)
 	/** Escape pressed in play mode and not handled by the screen. */
 	| { type: "escape" }
+	| { type: "contextmenu"; x: number; y: number; metaKey: boolean }
 	| { type: "measured"; id: number; height: number }
 	| { type: "snapshot"; id: number; scene: Scene; raster?: { dataUrl: string; scale: number } }
 	| { type: "snapshot"; id: number; error: string }
@@ -404,6 +405,15 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 				isString(data.to) &&
 				(!("transition" in data) || data.transition === undefined || isString(data.transition)) &&
 				(!("mode" in data) || data.mode === undefined || isString(data.mode))
+			);
+		case "contextmenu":
+			return (
+				"x" in data &&
+				isNumber(data.x) &&
+				"y" in data &&
+				isNumber(data.y) &&
+				"metaKey" in data &&
+				typeof data.metaKey === "boolean"
 			);
 		case "measured":
 			return hasId(data) && "height" in data && isNumber(data.height);

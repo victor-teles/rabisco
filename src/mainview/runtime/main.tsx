@@ -464,6 +464,15 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	}
 });
 
+window.addEventListener("contextmenu", (event) => {
+	const target = event.target instanceof Element ? event.target : null;
+
+	if (play.playing || target?.closest("[contenteditable]")) return;
+	event.preventDefault();
+	window.getSelection()?.removeAllRanges();
+	post({ type: "contextmenu", x: event.clientX, y: event.clientY, metaKey: event.metaKey });
+});
+
 window.addEventListener("error", (event) => reportError(event.error ?? event.message));
 
 window.addEventListener("unhandledrejection", (event) => reportError(event.reason));

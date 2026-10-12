@@ -449,10 +449,23 @@ export class FrameHost {
 			this.#requests.get(message.id)?.(message);
 		} else if (message?.type === "escape") {
 			if (this.#play) this.onEscape?.();
+		} else if (message?.type === "contextmenu") {
+			if (!this.#play) this.#forwardContextMenu(message.x, message.y, message.metaKey);
 		} else if (message?.type === "size" && message.height !== this.contentHeight) {
 			this.contentHeight = message.height;
 			this.onContentHeight?.(message.height);
 		}
+	}
+
+	#forwardContextMenu(x: number, y: number, metaKey: boolean) {
+		const rect = this.frame.getBoundingClientRect();
+		const scale = this.frame.offsetWidth ? rect.width / this.frame.offsetWidth : 1;
+		const clientX = rect.left + x * scale;
+		const clientY = rect.top + y * scale;
+
+		this.frame.dispatchEvent(
+			new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX, clientY, metaKey }),
+		);
 	}
 
 	#emit(status: { status: "ready" | "rendered" } | { status: "error"; error: FrameError }) {

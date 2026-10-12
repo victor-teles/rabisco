@@ -530,6 +530,57 @@ describe("play mode", () => {
 	});
 });
 
+describe("FrameHost: context menu", () => {
+	class FakeMouseEvent extends Event {
+		clientX: number;
+		clientY: number;
+		metaKey: boolean;
+
+		constructor(type: string, init: MouseEventInit) {
+			super(type, init);
+			this.clientX = init.clientX ?? 0;
+			this.clientY = init.clientY ?? 0;
+			this.metaKey = init.metaKey ?? false;
+		}
+	}
+
+	const events: { MouseEvent?: new (type: string, init: MouseEventInit) => Event } = globalThis;
+
+	const hadMouseEvent = "MouseEvent" in events;
+
+	events.MouseEvent ??= FakeMouseEvent;
+
+	afterAll(() => {
+		if (!hadMouseEvent) delete events.MouseEvent;
+	});
+
+	test("a right-click in the frame reaches the canvas at the same point, outside play mode", () => {
+		const target = new EventTarget();
+		const seen: FakeMouseEvent[] = [];
+		target.addEventListener("contextmenu", (event) => {
+			if (event instanceof FakeMouseEvent) seen.push(event);
+		});
+		const rect = { left: 100, top: 50, width: 200, height: 400 };
+
+		// SAFETY: FrameHost only reads the frame's box and dispatches events on it here
+		const frame = Object.assign(target, { offsetWidth: 400, getBoundingClientRect: () => rect }) as HTMLIFrameElement;
+		const host = new FrameHost(frame);
+
+		host.receive({ type: "contextmenu", x: 40, y: 20, metaKey: true });
+		expect(seen.map(({ clientX, clientY, metaKey }) => ({ clientX, clientY, metaKey }))).toEqual([
+			{ clientX: 120, clientY: 60, metaKey: true },
+		]);
+		expect(seen[0]?.cancelable).toBe(true);
+		host.setPlay(true);
+		host.receive({ type: "contextmenu", x: 40, y: 20, metaKey: false });
+		expect(seen).toHaveLength(1);
+		expect(isFrameMessage({ type: "contextmenu", x: 1, y: 2, metaKey: false })).toBe(true);
+		expect(isFrameMessage({ type: "contextmenu", x: 1, y: 2 })).toBe(false);
+		expect(isFrameMessage({ type: "contextmenu", x: "1", y: 2, metaKey: false })).toBe(false);
+		host.dispose();
+	});
+});
+
 describe("FrameHost: image export", () => {
 	const scene = { width: 390, height: 1200, background: null, ops: [], links: [] };
 
