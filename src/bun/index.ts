@@ -170,6 +170,7 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			deleteChat: ({ path, chatId }) => (store.deleteChat(path, chatId), ok),
 			readHistory: ({ path }) => store.readHistory(path),
 			writeHistory: ({ path, history }) => (store.writeHistory(path, history), ok),
+			writeAssets: ({ path, writes }) => ({ missing: store.writeAssets(path, writes) }),
 			backupProject: ({ path, reason, files, canvas }) => ({
 				dir: store.backupProject(path, reason, files, canvas),
 			}),

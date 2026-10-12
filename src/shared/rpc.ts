@@ -1,5 +1,5 @@
 import type { RPCSchema } from "electrobun";
-import type { AssetChange } from "./assets";
+import type { AssetChange, AssetWrite } from "./assets";
 import type { StyleId } from "./context/styles";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
@@ -52,6 +52,8 @@ export type RabiscoRPC = {
 			deleteChat: { params: { path: string; chatId: string }; response: { ok: true } };
 			readHistory: { params: { path: string }; response: SavedHistory | null };
 			writeHistory: { params: { path: string; history: SavedHistory }; response: { ok: true } };
+			/** Writes or removes `public/` images from the history's saved copies. `missing` had no copy left */
+			writeAssets: { params: { path: string; writes: AssetWrite[] }; response: { missing: string[] } };
 			backupProject: {
 				params: { path: string; reason: BackupReason; files: ProjectFiles; canvas: CanvasDoc };
 				response: { dir: string };

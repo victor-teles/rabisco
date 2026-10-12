@@ -1,17 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { commit, createHistory, type Snapshot } from "../mainview/lib/history";
 import { packHistory, resumeHistory, unpackHistory } from "../mainview/lib/saved-history";
 import { emptyCanvas } from "../shared/project";
 import type { SavedHistory } from "../shared/saved-history";
-import { CANVAS_FILE, createProjectFolder, loadProject, writeCanvas } from "./project-folder";
+import { newChatId } from "../shared/chats";
+import { assetDigest } from "./assets";
+import { appendChat, CANVAS_FILE, createProjectFolder, loadProject, readChat, writeCanvas } from "./project-folder";
 import {
 	BACKUP_LIMIT,
 	backupProject,
 	backupsDir,
 	historyFile,
 	readSavedHistory,
+	stashDir,
+	writeAssets,
 	writeSavedHistory,
 } from "./saved-history";
 import { createProjectStore } from "./store";
@@ -42,6 +46,25 @@ function snapshotOf(dir: string): Snapshot {
 		sections: canvas.sections,
 	};
 }
+
+const LOGO = Buffer.from("89504e470d0a1a0a", "hex");
+
+const LOGO_SRC = "/images/logo.png";
+
+function withLogo(dir: string) {
+	mkdirSync(join(dir, "public/images"), { recursive: true });
+	writeFileSync(join(dir, "public/images/logo.png"), LOGO);
+}
+
+const storeFor = (userDataDir: string) =>
+	createProjectStore({
+		documentsDir: tempDir(),
+		userDataDir,
+		moveToTrash: () => true,
+		showItemInFolder: () => {},
+		pickFolder: async () => [],
+		onFilesChanged: () => {},
+	});
 
 type Saved = { saved: SavedHistory; disk: Snapshot };
 
@@ -197,5 +220,110 @@ describe("project backups", () => {
 		store.closeAll();
 		expect(project.backup?.startsWith(backupsDir(userData, dir))).toBe(true);
 		expect(existsSync(join(project.backup!, "chat.jsonl"))).toBe(true);
+	});
+});
+
+describe("moved projects", () => {
+	test("moving or renaming a folder keeps its history and backups", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const store = storeFor(userData);
+		const { saved } = savedFor(dir);
+
+		store.openProject(dir);
+		store.writeHistory(dir, saved);
+		backupProject(userData, dir, "reload");
+		store.closeAll();
+
+		const moved = join(tempDir(), "Renamed");
+
+		renameSync(dir, moved);
+		expect(store.readHistory(moved)).toEqual(saved);
+		expect(readdirSync(backupsDir(userData, moved))).toHaveLength(1);
+		expect(existsSync(historyFile(userData, dir))).toBe(false);
+		expect(existsSync(backupsDir(userData, dir))).toBe(false);
+	});
+
+	test("a copy of a folder starts its own history and leaves the original's alone", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const store = storeFor(userData);
+
+		store.openProject(dir);
+		store.writeHistory(dir, savedFor(dir).saved);
+		store.closeAll();
+
+		const copy = join(tempDir(), "Copy");
+
+		cpSync(dir, copy, { recursive: true });
+		expect(store.readHistory(copy)).toBeNull();
+		expect(store.readHistory(dir)).not.toBeNull();
+	});
+});
+
+describe("images in saved history", () => {
+	test("an image removed through history is kept in app data and comes back from there", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const digest = assetDigest(LOGO);
+
+		withLogo(dir);
+		const store = storeFor(userData);
+
+		expect(store.openProject(dir).assetDigests).toEqual({ [LOGO_SRC]: digest });
+		store.closeAll();
+
+		expect(writeAssets(userData, dir, [{ src: LOGO_SRC, digest: null }])).toEqual([]);
+		expect(existsSync(join(dir, "public/images/logo.png"))).toBe(false);
+
+		expect(writeAssets(userData, dir, [{ src: LOGO_SRC, digest }])).toEqual([]);
+		expect(readFileSync(join(dir, "public/images/logo.png"))).toEqual(LOGO);
+
+		expect(writeAssets(userData, dir, [{ src: "/images/gone.png", digest: "c".repeat(32) }])).toEqual([
+			"/images/gone.png",
+		]);
+		expect(() => writeAssets(userData, dir, [{ src: "/../escape.png", digest: null }])).toThrow();
+	});
+
+	test("writing history drops the saved images no step refers to", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const digest = assetDigest(LOGO);
+		const { saved } = savedFor(dir);
+
+		withLogo(dir);
+		writeAssets(userData, dir, [{ src: LOGO_SRC, digest: null }]);
+
+		const referring = {
+			...saved,
+			past: saved.past.map((snapshot) => ({ ...snapshot, assets: { [LOGO_SRC]: digest } })),
+		};
+
+		writeSavedHistory(userData, dir, referring);
+		expect(readdirSync(stashDir(userData, dir))).toEqual([digest]);
+		expect(readSavedHistory(userData, dir)?.past[0]?.assets).toEqual({ [LOGO_SRC]: digest });
+
+		writeSavedHistory(userData, dir, saved);
+		expect(readdirSync(stashDir(userData, dir))).toEqual([]);
+	});
+
+	test("a backup holds the images and the chats, and copying it back restores them", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const chatId = newChatId();
+		const message = { id: "m1", role: "user" as const, content: "Make it blue", createdAt: new Date(0).toISOString() };
+
+		withLogo(dir);
+		appendChat(dir, chatId, [message]);
+		const backup = backupProject(userData, dir, "reload");
+
+		rmSync(join(dir, "public"), { recursive: true });
+		rmSync(join(dir, "chats"), { recursive: true });
+
+		for (const sub of ["public", "chats"]) cpSync(join(backup, sub), join(dir, sub), { recursive: true });
+
+		expect(readFileSync(join(dir, "public/images/logo.png"))).toEqual(LOGO);
+		expect(readChat(dir, chatId)).toEqual([message]);
+		expect(loadProject(backup).chats.map((chat) => chat.id)).toEqual([chatId]);
 	});
 });

@@ -1,12 +1,15 @@
 import {
+	applyAssetWrites,
 	applyFileChanges,
 	canRedo,
 	canUndo,
 	commit,
 	createHistory,
+	diffAssets,
 	diffFiles,
 	nextSnapshot,
 	rebase,
+	rebaseAssets,
 	redo,
 	seal,
 	undo,
@@ -18,7 +21,7 @@ import type { RabiscoApi } from "@/lib/rpc";
 import { packHistory, resumeHistory, unpackHistory } from "@/lib/saved-history";
 import { sameSelection } from "@/lib/selection";
 import { type SessionVersion, withVersion } from "@/lib/versions";
-import type { AssetChange, ProjectAssets } from "../../shared/assets";
+import type { AssetChange, AssetDigests, AssetWrite, ProjectAssets } from "../../shared/assets";
 import { type ChatSummary, newChatId, withAppended, withMoreMessages } from "../../shared/chats";
 import { detachComments } from "../../shared/comments";
 import { appliedTheme, isComponentFile, reconcileFrames } from "../../shared/project";
@@ -63,6 +66,7 @@ export type ProjectApi = Pick<
 	| "deleteChat"
 	| "readHistory"
 	| "writeHistory"
+	| "writeAssets"
 	| "backupProject"
 >;
 
@@ -95,6 +99,8 @@ export function createProjectSession({
 	let diskFiles: ProjectFiles = {};
 	let savedCanvas: CanvasDoc | null = null;
 	let assets: ProjectAssets = {};
+	let diskAssets: AssetDigests = {};
+	let assetTimer: ReturnType<typeof setTimeout> | undefined;
 	let writeTimer: ReturnType<typeof setTimeout> | undefined;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	let historyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -142,9 +148,44 @@ export function createProjectSession({
 		}
 	}
 
+	async function flushAssets(): Promise<boolean> {
+		clearTimeout(assetTimer);
+		const current = view.state;
+		const target = current?.history.present.assets;
+
+		if (closed || !current || !target) return true;
+		const writes = diffAssets(diskAssets, target);
+		const before = diskAssets;
+		diskAssets = target;
+
+		if (!writes.length) return true;
+
+		try {
+			const { missing } = await api.writeAssets({ path, writes });
+
+			if (missing.length) lostAssets(missing);
+
+			return true;
+		} catch (cause) {
+			if (diskAssets === target) diskAssets = before;
+			onSaveError(cause);
+
+			return false;
+		}
+	}
+
+	function lostAssets(missing: string[]) {
+		const lost: AssetWrite[] = missing.map((src) => ({ src, digest: null }));
+		diskAssets = applyAssetWrites(diskAssets, lost);
+		const current = view.state;
+
+		if (current) apply(withHistory(current, rebaseAssets(current.history, lost)));
+		onSaveError(new Error(`Couldn't bring back ${missing.join(", ")}: no saved copy is left.`));
+	}
+
 	/** Writes pending files too, so a git commit sees both. Both requests go out synchronously. */
 	async function flushCanvas(): Promise<boolean> {
-		const files = flushFiles();
+		const files = Promise.all([flushFiles(), flushAssets()]).then((saved) => saved.every(Boolean));
 		void flushHistory();
 		clearTimeout(saveTimer);
 		const current = view.state;
@@ -225,6 +266,11 @@ export function createProjectSession({
 			writeTimer = setTimeout(flushFiles, writeDelay);
 		}
 
+		if (next.history.present.assets && next.history.present.assets !== diskAssets) {
+			clearTimeout(assetTimer);
+			assetTimer = setTimeout(flushAssets, writeDelay);
+		}
+
 		if (next.canvas !== savedCanvas) {
 			clearTimeout(saveTimer);
 			saveTimer = setTimeout(flushCanvas, saveDelay);
@@ -235,6 +281,7 @@ export function createProjectSession({
 		diskFiles = project.files;
 		savedCanvas = project.canvas;
 		assets = project.assets ?? {};
+		diskAssets = project.assetDigests ?? {};
 
 		return openedCanvas(project.canvas, project.files);
 	}
@@ -244,7 +291,7 @@ export function createProjectSession({
 			([project, saved]) => {
 				if (closed) return;
 				const canvas = opened(project);
-				const disk = snapshotOf(canvas, project.files);
+				const disk = snapshotOf(canvas, project.files, project.assetDigests);
 				const restored = saved && unpackHistory(saved);
 				const resumed = restored && resumeHistory(restored.history, disk, reconcileWith(canvas));
 				const history = resumed ? resumed.history : createHistory(disk);
@@ -297,16 +344,32 @@ export function createProjectSession({
 		apply(next);
 	}
 
-	/** Images aren't project files: they never enter history (decision 0010) */
+	/** Images changed outside Rabisco are folded into history like files (decision 0034) */
 	function assetsChanged(changes: AssetChange[]) {
 		const next = { ...assets };
+		const writes: AssetWrite[] = [];
 
-		for (const { src, data } of changes) {
-			if (data === null) delete next[src];
-			else next[src] = data;
+		for (const { src, data, digest } of changes) {
+			if (data === null) {
+				delete next[src];
+				writes.push({ src, digest: null });
+			} else {
+				next[src] = data;
+
+				if (digest) writes.push({ src, digest });
+			}
 		}
 
 		assets = next;
+
+		const external = writes.filter(({ src, digest }) =>
+			digest === null ? src in diskAssets : diskAssets[src] !== digest,
+		);
+
+		diskAssets = applyAssetWrites(diskAssets, writes);
+		const current = view.state;
+
+		if (!closed && current && external.length) apply(withHistory(current, rebaseAssets(current.history, external)));
 	}
 
 	function change(recipe: (snapshot: Snapshot) => Snapshot, options: ChangeOptions = {}) {
@@ -404,7 +467,7 @@ export function createProjectSession({
 
 	/** After a git pull: the files, canvas and images all come back from the folder at once. */
 	async function reloadFromDisk(): Promise<Reloaded | null> {
-		await flushFiles();
+		await Promise.all([flushFiles(), flushAssets()]);
 		clearTimeout(saveTimer);
 		await flushHistory();
 		const project = await api.openProject({ path });
@@ -412,7 +475,8 @@ export function createProjectSession({
 
 		if (!current) return null;
 		const canvas = opened(project);
-		const resumed = resumeHistory(current.history, snapshotOf(canvas, project.files), reconcileWith(canvas));
+		const disk = snapshotOf(canvas, project.files, project.assetDigests);
+		const resumed = resumeHistory(current.history, disk, reconcileWith(canvas));
 		const backup = resumed.dropped ? backupOf(current, current.history.present) : null;
 
 		apply({ ...current, canvas, files: project.files, history: resumed.history });
@@ -425,6 +489,7 @@ export function createProjectSession({
 	function close() {
 		closed = true;
 		clearTimeout(writeTimer);
+		clearTimeout(assetTimer);
 		clearTimeout(saveTimer);
 		clearTimeout(historyTimer);
 	}
@@ -503,8 +568,9 @@ const sameSteps = (saved: Steps, current: Steps) =>
 	saved.history.past.at(-1) === current.history.past.at(-1) &&
 	saved.history.future[0] === current.history.future[0];
 
-function snapshotOf(canvas: CanvasDoc, files: ProjectFiles): Snapshot {
+function snapshotOf(canvas: CanvasDoc, files: ProjectFiles, assets?: AssetDigests): Snapshot {
 	return {
+		assets,
 		frames: canvas.frames,
 		files,
 		comments: canvas.comments ?? [],

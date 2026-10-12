@@ -4,7 +4,11 @@
 export type ProjectAssets = Record<string, string>;
 
 /** `data: null` means the file is gone */
-export type AssetChange = { src: string; data: string | null };
+export type AssetChange = { src: string; data: string | null; digest?: string };
+
+export type AssetDigests = Record<string, string>;
+
+export type AssetWrite = { src: string; digest: string | null };
 
 export const PUBLIC_DIR = "public";
 

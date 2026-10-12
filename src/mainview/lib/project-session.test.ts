@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { canUndo } from "./history";
+import { removeImage } from "./moodboard";
 import { createProjectSession, type ProjectApi } from "./project-session";
+import type { AssetDigests } from "../../shared/assets";
 import { emptyCanvas } from "../../shared/project";
 import type { SavedHistory } from "../../shared/saved-history";
 import type { CanvasDoc, ProjectFiles } from "../../shared/types";
@@ -9,17 +11,42 @@ const PATH = "/p/saved";
 
 const ok = { ok: true } as const;
 
-type Disk = { canvas: CanvasDoc; files: ProjectFiles };
+type Disk = { canvas: CanvasDoc; files: ProjectFiles; assets: AssetDigests };
+
+type Backup = { canvas: CanvasDoc; files: ProjectFiles };
+
+const IMAGE = { id: "img-1", src: "/moodboard/cat.png", name: "cat.png", x: 0, y: 0, width: 100, height: 100 };
 
 function diskApi() {
-	const disk: Disk = { canvas: emptyCanvas("Saved", "mobile"), files: { "DESIGN.md": "# Design\n" } };
+	const disk: Disk = { canvas: emptyCanvas("Saved", "mobile"), files: { "DESIGN.md": "# Design\n" }, assets: {} };
+	const stash = new Set<string>();
 
 	const histories: SavedHistory[] = [];
-	const backups: Disk[] = [];
+	const backups: Backup[] = [];
 
 	const api: ProjectApi = {
 		async openProject({ path }) {
-			return { path, canvas: disk.canvas, files: disk.files, chatId: "chat-1", messages: [], chats: [] };
+			const { canvas, files, assets: assetDigests } = disk;
+
+			return { path, canvas, files, assetDigests, chatId: "chat-1", messages: [], chats: [] };
+		},
+		async writeAssets({ writes }) {
+			const assets = { ...disk.assets };
+			const missing: string[] = [];
+
+			for (const { src, digest } of writes) {
+				const current = assets[src];
+
+				if (current) stash.add(current);
+
+				if (digest === null) delete assets[src];
+				else if (stash.has(digest)) assets[src] = digest;
+				else missing.push(src);
+			}
+
+			disk.assets = assets;
+
+			return { missing };
 		},
 		async writeFiles({ changes }) {
 			const files = { ...disk.files };
@@ -64,16 +91,20 @@ function diskApi() {
 		},
 	};
 
-	return { api, disk, histories, backups };
+	return { api, disk, stash, histories, backups };
 }
 
-async function opened(api: ProjectApi, onBackup?: (dir: string) => void) {
+async function opened(
+	api: ProjectApi,
+	onBackup?: (dir: string) => void,
+	onSaveError: (cause: unknown) => void = (cause) => {
+		throw cause;
+	},
+) {
 	const session = createProjectSession({
 		path: PATH,
 		api,
-		onSaveError: (cause) => {
-			throw cause;
-		},
+		onSaveError,
 		onBackup,
 		writeDelay: 1,
 		saveDelay: 1,
@@ -205,5 +236,76 @@ describe("history across sessions", () => {
 
 		await opened(withBackup, (dir) => shown.push(dir));
 		expect(shown).toEqual(["/backups/migration"]);
+	});
+});
+
+describe("images in history", () => {
+	const withImage = (disk: Disk) => {
+		disk.canvas = { ...disk.canvas, images: [IMAGE] };
+		disk.assets = { [IMAGE.src]: "a".repeat(32) };
+	};
+
+	test("deleting a moodboard image removes its file, and undo brings it back after a reopen", async () => {
+		const { api, disk } = diskApi();
+
+		withImage(disk);
+		const first = await opened(api);
+
+		first.change((snapshot) => removeImage(snapshot, IMAGE.id));
+		await first.flushCanvas();
+		expect(disk.assets).toEqual({});
+		expect(disk.canvas.images).toEqual([]);
+		first.close();
+		await settle();
+
+		const second = await opened(api);
+
+		second.undo();
+		await second.flushCanvas();
+		expect(disk.assets).toEqual({ [IMAGE.src]: "a".repeat(32) });
+		expect(disk.canvas.images).toEqual([IMAGE]);
+	});
+
+	test("an image a screen still uses keeps its file", async () => {
+		const { api, disk } = diskApi();
+
+		withImage(disk);
+		disk.files = { ...disk.files, "screens/home.tsx": `<img src="${IMAGE.src}" />` };
+		const session = await opened(api);
+
+		session.change((snapshot) => removeImage(snapshot, IMAGE.id));
+		await session.flushCanvas();
+		expect(disk.assets).toEqual({ [IMAGE.src]: "a".repeat(32) });
+	});
+
+	test("an image changed outside Rabisco is folded in, so undo doesn't revert it", async () => {
+		const { api, disk } = diskApi();
+		const session = await opened(api);
+
+		session.setMeta({ name: "Mine" });
+		disk.assets = { "/images/logo.png": "b".repeat(32) };
+		session.assetsChanged([{ src: "/images/logo.png", data: "AAAA", digest: "b".repeat(32) }]);
+		session.undo();
+		await session.flushCanvas();
+		expect(session.state()!.history.present.assets).toEqual({ "/images/logo.png": "b".repeat(32) });
+		expect(disk.assets).toEqual({ "/images/logo.png": "b".repeat(32) });
+	});
+
+	test("an image with no saved copy left is dropped from history and reported once", async () => {
+		const { api, disk, stash } = diskApi();
+		const errors: string[] = [];
+
+		withImage(disk);
+		const session = await opened(api, undefined, (cause) => errors.push(String(cause)));
+
+		session.change((snapshot) => removeImage(snapshot, IMAGE.id));
+		await session.flushCanvas();
+		stash.clear();
+		session.undo();
+		await session.flushCanvas();
+		await session.flushCanvas();
+		expect(errors).toEqual([`Error: Couldn't bring back ${IMAGE.src}: no saved copy is left.`]);
+		expect(session.state()!.history.present.assets).toEqual({});
+		expect(disk.canvas.images).toEqual([IMAGE]);
 	});
 });

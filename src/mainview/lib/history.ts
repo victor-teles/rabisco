@@ -1,3 +1,4 @@
+import type { AssetDigests, AssetWrite } from "../../shared/assets";
 import { detachComments } from "../../shared/comments";
 import type { AppliedTheme } from "../../shared/context/theme";
 import type {
@@ -25,6 +26,7 @@ export type Snapshot = {
 	locks?: ElementLock[];
 	sections?: CanvasSection[];
 	images?: CanvasImage[];
+	assets?: AssetDigests;
 };
 
 /** Pins on removed frames are detached in the same step, so undo puts them back on their frame. */
@@ -36,6 +38,7 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	const device = update.device ?? present.device;
 	const sections = update.sections ?? present.sections;
 	const images = update.images ?? present.images;
+	const assets = update.assets ?? present.assets;
 
 	const locks =
 		update.locks === undefined || update.locks === present.locks
@@ -49,11 +52,12 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 		device === update.device &&
 		locks === update.locks &&
 		sections === update.sections &&
-		images === update.images
+		images === update.images &&
+		assets === update.assets
 	)
 		return update;
 
-	return { ...update, comments, theme, name, device, locks, sections, images };
+	return { ...update, comments, theme, name, device, locks, sections, images, assets };
 }
 
 export type History = {
@@ -158,6 +162,57 @@ export function rebase(
 		}
 
 		return reconcile(files === snapshot.files ? snapshot : { ...snapshot, files });
+	};
+
+	return {
+		past: history.past.map(fold),
+		present: fold(history.present),
+		future: history.future.map(fold),
+		coalesceKey: null,
+	};
+}
+
+export function applyAssetWrites(assets: AssetDigests, writes: AssetWrite[]): AssetDigests {
+	if (!writes.length) return assets;
+	const next = { ...assets };
+
+	for (const { src, digest } of writes) {
+		if (digest === null) delete next[src];
+		else next[src] = digest;
+	}
+
+	return next;
+}
+
+export function diffAssets(from: AssetDigests, to: AssetDigests): AssetWrite[] {
+	if (from === to) return [];
+	const writes: AssetWrite[] = [];
+
+	for (const src of Object.keys(from)) if (!(src in to)) writes.push({ src, digest: null });
+
+	for (const [src, digest] of Object.entries(to)) if (from[src] !== digest) writes.push({ src, digest });
+
+	return writes.sort((a, b) => a.src.localeCompare(b.src));
+}
+
+export function rebaseAssets(history: History, writes: AssetWrite[]): History {
+	if (!writes.length) return history;
+	const existing = history.present.assets ?? {};
+
+	const fold = (snapshot: Snapshot): Snapshot => {
+		const assets = snapshot.assets ?? {};
+		let next = assets;
+
+		for (const write of writes) {
+			const isEdit = write.digest !== null && write.src in existing;
+
+			if (isEdit && !(write.src in next)) continue;
+
+			if (write.digest === null ? !(write.src in next) : next[write.src] === write.digest) continue;
+			next = applyAssetWrites(next, [write]);
+		}
+
+		return next === assets ? snapshot : { ...snapshot, assets: next };
 	};
 
 	return {

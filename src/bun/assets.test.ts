@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "fs";
 import { join } from "path";
-import { AssetTracker, importImage, listAssets, saveMoodboardImage } from "./assets";
+import { assetDigest, AssetTracker, importImage, listAssets, saveMoodboardImage } from "./assets";
 import { tempDir } from "./test-utils";
 
 describe("saveMoodboardImage", () => {
@@ -88,9 +88,9 @@ describe("AssetTracker", () => {
 		writeFileSync(join(project, "public/hero.webp"), "hero");
 		rmSync(join(project, "public/images/icons/star.svg"));
 		expect(tracker.changes().sort((a, b) => a.src.localeCompare(b.src))).toEqual([
-			{ src: "/hero.webp", data: base64("hero") },
+			{ src: "/hero.webp", data: base64("hero"), digest: assetDigest(Buffer.from("hero")) },
 			{ src: "/images/icons/star.svg", data: null },
-			{ src: "/images/logo.png", data: base64("new logo") },
+			{ src: "/images/logo.png", data: base64("new logo"), digest: assetDigest(Buffer.from("new logo")) },
 		]);
 		expect(tracker.changes()).toEqual([]);
 	});

@@ -7,7 +7,7 @@ import type {
 	ProviderErrorCode,
 	Usage,
 } from "./ai/contract";
-import type { ProjectAssets } from "./assets";
+import type { AssetDigests, ProjectAssets } from "./assets";
 import type { ChangeSummary } from "./change-summary";
 import type { ChatSummary } from "./chats";
 import type { AppliedTheme } from "./context/theme";
@@ -130,8 +130,9 @@ export type Project = {
 	/** Of `chatId` */
 	messages: ChatMessage[];
 	chats: ChatSummary[];
-	/** Images under `public/`, pushed to frames as bytes (decision 0010). Not files: they stay out of history */
+	/** Images under `public/`, pushed to frames as bytes (decision 0010). History keeps their digests (decision 0034) */
 	assets?: ProjectAssets;
+	assetDigests?: AssetDigests;
 	backup?: string;
 };
 

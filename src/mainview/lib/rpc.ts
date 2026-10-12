@@ -290,6 +290,9 @@ function createBrowserApi(): RabiscoApi {
 		async writeHistory() {
 			return ok;
 		},
+		async writeAssets() {
+			return { missing: [] };
+		},
 		async backupProject() {
 			throw new Error("Backups need the Rabisco desktop app.");
 		},

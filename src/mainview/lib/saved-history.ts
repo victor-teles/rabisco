@@ -1,5 +1,15 @@
 import { rebaseCanvas } from "@/lib/canvas-rebase";
-import { canRedo, canUndo, createHistory, diffFiles, rebase, type History, type Snapshot } from "@/lib/history";
+import {
+	canRedo,
+	canUndo,
+	createHistory,
+	diffAssets,
+	diffFiles,
+	rebase,
+	rebaseAssets,
+	type History,
+	type Snapshot,
+} from "@/lib/history";
 import type { SessionVersion } from "@/lib/versions";
 import { isJsonObject, type Json, type JsonObject } from "../../shared/json";
 import type { SavedHistory, SavedSnapshot, SavedVersion } from "../../shared/saved-history";
@@ -36,6 +46,8 @@ function packSnapshot(packer: Packer, snapshot: Snapshot): SavedSnapshot {
 	};
 
 	if (snapshot.theme) saved.theme = snapshot.theme;
+
+	if (snapshot.assets) saved.assets = snapshot.assets;
 
 	return saved;
 }
@@ -118,6 +130,7 @@ function unpackSnapshot(contents: string[], saved: SavedSnapshot): Snapshot {
 		locks: saved.locks,
 		sections: saved.sections,
 		images: saved.images ?? [],
+		assets: saved.assets,
 	};
 }
 
@@ -167,7 +180,12 @@ export type Resumed = { history: History; dropped: boolean };
 
 export function resumeHistory(saved: History, disk: Snapshot, reconcile: (snapshot: Snapshot) => Snapshot): Resumed {
 	const withFiles = rebase(saved, diffFiles(saved.present.files, disk.files), reconcile);
-	const rebased = rebaseCanvas(withFiles, withFiles.present, disk, reconcile);
+
+	const withAssets = disk.assets
+		? rebaseAssets(withFiles, diffAssets(saved.present.assets ?? {}, disk.assets))
+		: withFiles;
+
+	const rebased = rebaseCanvas(withAssets, withAssets.present, disk, reconcile);
 
 	if (sameCanvas(rebased.present, disk))
 		return { history: { ...rebased, present: disk, coalesceKey: null }, dropped: false };

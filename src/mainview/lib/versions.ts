@@ -94,6 +94,7 @@ export function restoredSnapshot(present: Snapshot, version: Snapshot): Snapshot
 		locks: version.locks ?? [],
 		sections: version.sections ?? [],
 		images: version.images ?? [],
+		assets: present.assets && version.assets ? { ...present.assets, ...version.assets } : present.assets,
 	};
 }
 

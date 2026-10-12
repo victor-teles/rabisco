@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import type { Attachment } from "../shared/ai/contract";
-import type { AssetChange } from "../shared/assets";
+import type { AssetChange, AssetWrite } from "../shared/assets";
 import type { BackupReason, SavedHistory } from "../shared/saved-history";
 import type { StyleId } from "../shared/context/styles";
 import type {
@@ -39,7 +39,14 @@ import {
 	touchRecent,
 	writeRecents,
 } from "./recents";
-import { backupProject, deleteSavedHistory, readSavedHistory, writeSavedHistory } from "./saved-history";
+import {
+	adoptMovedHistory,
+	backupProject,
+	deleteSavedHistory,
+	readSavedHistory,
+	writeAssets,
+	writeSavedHistory,
+} from "./saved-history";
 import { ProjectWatcher } from "./watcher";
 
 export type StoreOptions = {
@@ -114,7 +121,7 @@ export function createProjectStore(options: StoreOptions) {
 			);
 		writeRecents(recentsFile, touchRecent(recents(), path));
 
-		return { ...project, assets: assets.load() };
+		return { ...project, assets: assets.load(), assetDigests: assets.digests() };
 	}
 
 	return {
@@ -217,12 +224,24 @@ export function createProjectStore(options: StoreOptions) {
 		},
 
 		readHistory(path: string): SavedHistory | null {
+			adoptMovedHistory(options.userDataDir, normalize(path));
+
 			return readSavedHistory(options.userDataDir, normalize(path));
 		},
 
 		writeHistory(path: string, history: SavedHistory) {
 			assertProject(path);
 			writeSavedHistory(options.userDataDir, normalize(path), history);
+		},
+
+		writeAssets(path: string, writes: AssetWrite[]): string[] {
+			assertProject(path);
+
+			try {
+				return writeAssets(options.userDataDir, normalize(path), writes);
+			} finally {
+				pushAssets(normalize(path));
+			}
 		},
 
 		backupProject(path: string, reason: BackupReason, files: ProjectFiles, canvas: CanvasDoc) {

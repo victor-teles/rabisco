@@ -111,6 +111,15 @@ describe("versions", () => {
 		expect(undo(next).present).toBe(present);
 	});
 
+	test("restore brings back the images the version had and keeps the ones added since", () => {
+		const restored = restoredSnapshot(
+			{ ...after, assets: { "/moodboard/new.png": "b".repeat(32) } },
+			{ ...before, assets: { "/moodboard/old.png": "a".repeat(32) } },
+		);
+
+		expect(restored.assets).toEqual({ "/moodboard/new.png": "b".repeat(32), "/moodboard/old.png": "a".repeat(32) });
+	});
+
 	test("a checkpoint read from git becomes a snapshot with the canvas's theme, or DESIGN.md's", () => {
 		const canvas = { ...emptyCanvas("App", "mobile"), frames: [frame("screens/home.tsx")] };
 		const snapshot = versionSnapshot(canvas, { "screens/home.tsx": "home" });

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import {
 	copyFileSync,
 	type Dirent,
@@ -10,7 +11,7 @@ import {
 } from "fs";
 import { basename, extname, join } from "path";
 import type { Attachment } from "../shared/ai/contract";
-import { assetKey, PUBLIC_DIR, type AssetChange, type ProjectAssets } from "../shared/assets";
+import { assetKey, PUBLIC_DIR, type AssetChange, type AssetDigests, type ProjectAssets } from "../shared/assets";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../shared/moodboard";
 import { assertProjectDir } from "./project-folder";
 
@@ -129,9 +130,11 @@ export function listAssets(projectDir: string): Map<string, string> {
 	return listed;
 }
 
-function readAsset(projectDir: string, src: string): string | null {
+export const assetDigest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex").slice(0, 32);
+
+function readAsset(projectDir: string, src: string): Buffer | null {
 	try {
-		return readFileSync(join(projectDir, PUBLIC_DIR, src)).toString("base64");
+		return readFileSync(join(projectDir, PUBLIC_DIR, src));
 	} catch {
 		return null;
 	}
@@ -140,18 +143,27 @@ function readAsset(projectDir: string, src: string): string | null {
 /** Remembers what the webview has, so a change sends only the files that changed */
 export class AssetTracker {
 	#known = new Map<string, string>();
+	#digests: AssetDigests = {};
 
 	constructor(readonly dir: string) {}
 
+	digests(): AssetDigests {
+		return this.#digests;
+	}
+
 	load(): ProjectAssets {
 		this.#known = listAssets(this.dir);
+		this.#digests = {};
 		const assets: ProjectAssets = {};
 
 		for (const src of this.#known.keys()) {
-			const data = readAsset(this.dir, src);
+			const bytes = readAsset(this.dir, src);
 
-			if (data === null) this.#known.delete(src);
-			else assets[src] = data;
+			if (bytes === null) this.#known.delete(src);
+			else {
+				assets[src] = bytes.toString("base64");
+				this.#digests[src] = assetDigest(bytes);
+			}
 		}
 
 		return assets;
@@ -160,17 +172,28 @@ export class AssetTracker {
 	changes(): AssetChange[] {
 		const listed = listAssets(this.dir);
 		const changes: AssetChange[] = [];
+		const digests = { ...this.#digests };
 
 		for (const [src, signature] of listed) {
 			if (this.#known.get(src) === signature) continue;
-			const data = readAsset(this.dir, src);
+			const bytes = readAsset(this.dir, src);
 
-			if (data === null) listed.delete(src);
-			else changes.push({ src, data });
+			if (bytes === null) listed.delete(src);
+			else {
+				const digest = assetDigest(bytes);
+				digests[src] = digest;
+				changes.push({ src, data: bytes.toString("base64"), digest });
+			}
 		}
 
-		for (const src of this.#known.keys()) if (!listed.has(src)) changes.push({ src, data: null });
+		for (const src of this.#known.keys()) {
+			if (listed.has(src)) continue;
+			delete digests[src];
+			changes.push({ src, data: null });
+		}
+
 		this.#known = listed;
+		this.#digests = digests;
 
 		return changes;
 	}

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import type { AssetChange } from "../shared/assets";
+import { assetDigest } from "./assets";
 import type { ChangeSummary } from "../shared/change-summary";
 import type { CanvasDoc, FileChange } from "../shared/types";
 import {
@@ -451,13 +452,20 @@ describe("project store", () => {
 			writeFileSync(picked, "logo");
 			expect(store.importImage(p.path, picked)).toBe("/images/logo.png");
 			// Picking pushes right away; the watcher then sees nothing new
-			expect(assetEvents).toEqual([{ path: p.path, changes: [{ src: "/images/logo.png", data: "bG9nbw==" }] }]);
+			expect(assetEvents).toEqual([
+				{
+					path: p.path,
+					changes: [{ src: "/images/logo.png", data: "bG9nbw==", digest: assetDigest(Buffer.from("logo")) }],
+				},
+			]);
 			await settle();
 			expect(assetEvents).toHaveLength(1);
 
 			writeFileSync(join(p.path, "public/hero.svg"), "<svg/>");
 			await settle();
-			expect(assetEvents.slice(1).flatMap((e) => e.changes)).toEqual([{ src: "/hero.svg", data: "PHN2Zy8+" }]);
+			expect(assetEvents.slice(1).flatMap((e) => e.changes)).toEqual([
+				{ src: "/hero.svg", data: "PHN2Zy8+", digest: assetDigest(Buffer.from("<svg/>")) },
+			]);
 			// Images aren't project files
 			expect(events).toEqual([]);
 

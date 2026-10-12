@@ -1,3 +1,4 @@
+import type { AssetDigests } from "./assets";
 import type { AppliedTheme } from "./context/theme";
 import type { CanvasComment, CanvasImage, CanvasSection, Device, ElementLock, Frame } from "./types";
 
@@ -11,6 +12,7 @@ export type SavedSnapshot = {
 	locks: ElementLock[];
 	sections: CanvasSection[];
 	images?: CanvasImage[];
+	assets?: AssetDigests;
 };
 
 export type SavedVersionKind = "checkpoint" | "ai";

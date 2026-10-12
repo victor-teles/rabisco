@@ -109,6 +109,9 @@ function memoryApi() {
 
 			return ok;
 		},
+		async writeAssets() {
+			return { missing: [] };
+		},
 		async backupProject({ path, reason }) {
 			backups.push(`${reason} ${path}`);
 
