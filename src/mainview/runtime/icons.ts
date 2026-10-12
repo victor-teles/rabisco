@@ -10,6 +10,7 @@ import {
 	type LucideProps,
 } from "lucide-react";
 import { isString } from "../../shared/guards";
+import { iconFile } from "../../shared/icons";
 
 declare global {
 	interface Window {
@@ -25,18 +26,6 @@ const loading = new Map<string, Promise<LucideIcon | null>>();
 const missing = new Set<string>();
 
 const lazy = new Map<string, ComponentType<LucideProps>>();
-
-const FILE = /^[a-z0-9-]+$/;
-
-/** Mirrors lucide's `toKebabCase`; the build writes a script for every alias whose kebab name differs. */
-export function iconFile(name: string): string | null {
-	const base = name.replace(/^Lucide(?=[A-Z0-9])/, "").replace(/(?<=.)Icon$/, "");
-
-	if (!/^[A-Z]/.test(base)) return null;
-	const file = base.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-
-	return FILE.test(file) ? file : null;
-}
 
 if (typeof window !== "undefined")
 	window.__rabiscoIcon = (file, data) => {

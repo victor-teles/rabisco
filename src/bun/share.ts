@@ -53,7 +53,15 @@ export function readScreenRuntime(dirs: string[]): ScreenRuntime {
 		const html = join(dir, "frame.html");
 		const js = join(dir, "frame.js");
 
-		if (existsSync(html) && existsSync(js)) return { html: readFileSync(html, "utf8"), js: readFileSync(js, "utf8") };
+		if (existsSync(html) && existsSync(js)) {
+			const icon = (file: string) => {
+				const path = join(dir, "icons", `${file}.js`);
+
+				return existsSync(path) ? readFileSync(path, "utf8") : null;
+			};
+
+			return { html: readFileSync(html, "utf8"), js: readFileSync(js, "utf8"), icon };
+		}
 	}
 
 	throw new Error(

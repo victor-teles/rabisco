@@ -36,8 +36,8 @@ Phases 1–17 were checked mostly in Chrome and unit tests. This phase runs ever
 
 **Git and share**
 
-- ⬜ Git sync against GitHub over HTTPS and SSH
-- ⬜ The share viewer in Safari
+- ✅ Git sync against GitHub over HTTPS and SSH: first push with upstream, a remote commit rebased under a local one, then pushed. A missing repository gives a readable error
+- ✅ The share viewer in Safari: sidebar, in-screen links and Back. Fixed: lucide icons were blank in the share link and the website export, because their scripts weren't shipped
 
 **Performance targets** (packaged app, 30-screen project)
 

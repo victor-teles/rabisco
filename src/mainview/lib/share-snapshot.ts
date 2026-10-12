@@ -30,7 +30,7 @@ export async function buildShareSnapshot(input: {
 			screenStyles.add(module.candidates);
 			modules[path] = module.error
 				? { source: module.source, error: module.error }
-				: { source: module.source, code: module.code! };
+				: { source: module.source, code: module.code!, icons: module.icons };
 		}
 	}
 

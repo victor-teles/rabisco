@@ -8,8 +8,8 @@ import { isAlternate } from "../variations";
 
 /** Compiled the way frames receive it (`ModulePayload`) */
 export type ShareModule =
-	| { source: string; code: string; error?: undefined }
-	| { source: string; code?: undefined; error: { message: string; line: number; column?: number } };
+	| { source: string; code: string; icons?: string[]; error?: undefined }
+	| { source: string; code?: undefined; icons?: undefined; error: { message: string; line: number; column?: number } };
 
 export type ShareScreen = { file: string; name: string; device: Device; width: number; height: number };
 
@@ -29,7 +29,7 @@ export type ShareSnapshot = {
 };
 
 /** The same prebuilt runtime the canvas uses */
-export type ScreenRuntime = { html: string; js: string };
+export type ScreenRuntime = { html: string; js: string; icon?: (file: string) => string | null };
 
 export type ShareStatus = {
 	/** The computer's address on the local network */
@@ -42,7 +42,13 @@ export type ShareStatus = {
 function assertModule(path: string, module: Json | undefined): asserts module is ShareModule {
 	if (!isJsonObject(module) || !isString(module.source)) throw new Error(`Snapshot module ${path} has no source`);
 
-	if (isString(module.code)) return;
+	if (isString(module.code)) {
+		if (module.icons !== undefined && !(isJsonArray(module.icons) && module.icons.every(isString)))
+			throw new Error(`Snapshot module ${path} has invalid icons`);
+
+		return;
+	}
+
 	const error = module.error;
 
 	if (!isJsonObject(error) || !isString(error.message) || !isNumber(error.line))

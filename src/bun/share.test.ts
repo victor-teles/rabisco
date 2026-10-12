@@ -55,6 +55,23 @@ describe("viewerFiles", () => {
 		expect(files["runtime/frame.html"]).toBe(`<!doctype html><div id="root"></div><script>${runtime.js}</script>`);
 	});
 
+	test("ships the icon scripts the screens import, which the frame loads from runtime/icons", () => {
+		const withIcons = snapshot();
+		withIcons.modules["screens/welcome.tsx"] = { source: "", code: "", icons: ["Sun", "CalendarDaysIcon", "Nope"] };
+		withIcons.modules["components/tab.tsx"] = { source: "", code: "", icons: ["LucideSun"] };
+		const icon = (file: string) => (file === "nope" ? null : `/* ${file} */`);
+
+		const files = Object.fromEntries(
+			viewerFiles(withIcons, { ...runtime, icon }).map((file) => [file.path, file.content]),
+		);
+
+		expect(Object.keys(files).filter((path) => path.startsWith("runtime/icons/"))).toEqual([
+			"runtime/icons/sun.js",
+			"runtime/icons/calendar-days.js",
+		]);
+		expect(files["runtime/icons/sun.js"]).toBe("/* sun */");
+	});
+
 	test("the inlined runtime can't close its script tag", () => {
 		const html = inlineRuntime({ html: runtime.html, js: 'const a = "</script><script>alert(1)</SCRIPT>"; // <!-- x' });
 		expect(html.match(/<\/script/gi)).toHaveLength(1);
@@ -231,7 +248,11 @@ test("readScreenRuntime reads the first folder that has the runtime", () => {
 	mkdirSync(dir);
 	writeFileSync(join(dir, "frame.html"), "<html>");
 	writeFileSync(join(dir, "frame.js"), "js");
-	expect(readScreenRuntime([empty, dir])).toEqual({ html: "<html>", js: "js" });
+	mkdirSync(join(dir, "icons"));
+	writeFileSync(join(dir, "icons", "sun.js"), "sun");
+	const read = readScreenRuntime([empty, dir]);
+	expect([read.html, read.js]).toEqual(["<html>", "js"]);
+	expect([read.icon?.("sun"), read.icon?.("moon")]).toEqual(["sun", null]);
 	expect(() => readScreenRuntime([empty])).toThrow("screen runtime");
 });
 

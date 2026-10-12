@@ -8,6 +8,7 @@ import {
 	type OverlayMotion,
 	type ScreenTransition,
 } from "../prototype/transitions";
+import { iconFile } from "../icons";
 import type { ExportFile } from "../types";
 import type { ScreenRuntime, ShareSnapshot } from "./snapshot";
 
@@ -472,11 +473,34 @@ export function inlineRuntime(runtime: ScreenRuntime): string {
 	return runtime.html.replace(RUNTIME_SCRIPT, () => `<script>${js}</script>`);
 }
 
+function iconFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[] {
+	const files = new Set<string>();
+
+	for (const module of Object.values(snapshot.modules)) {
+		for (const name of module.icons ?? []) {
+			const file = iconFile(name);
+
+			if (file) files.add(file);
+		}
+	}
+
+	const result: ExportFile[] = [];
+
+	for (const file of files) {
+		const content = runtime.icon?.(file);
+
+		if (content) result.push({ path: `runtime/icons/${file}.js`, content });
+	}
+
+	return result;
+}
+
 export function viewerFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[] {
 	return [
 		{ path: "index.html", content: indexHtml(snapshot) },
 		{ path: "viewer.js", content: viewerJs() },
 		{ path: "snapshot.js", content: `window.${SNAPSHOT_GLOBAL} = ${scriptJson(snapshot)};\n` },
 		{ path: "runtime/frame.html", content: inlineRuntime(runtime) },
+		...iconFiles(snapshot, runtime),
 	];
 }
