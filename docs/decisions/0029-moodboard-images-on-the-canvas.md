@@ -1,6 +1,6 @@
 # 0029 · Moodboard images live in `public/moodboard/`; an image goes with prompts about its nearest screen
 
-- **Status:** accepted
+- **Status:** accepted, partly superseded by [0034](./0034-history-follows-moves-and-keeps-images.md) (deleting a canvas image deletes its unused file; undo brings it back)
 - **Date:** 2026-10-11
 - **Extends:** [0010](./0010-project-images-pushed-to-frames.md), [0011](./0011-image-attachments-reach-every-provider.md)
 - **Code:** [`src/shared/moodboard.ts`](../../src/shared/moodboard.ts), [`src/mainview/hooks/use-moodboard.ts`](../../src/mainview/hooks/use-moodboard.ts), [`src/mainview/views/editor/moodboard-layer.tsx`](../../src/mainview/views/editor/moodboard-layer.tsx), [`src/bun/assets.ts`](../../src/bun/assets.ts)

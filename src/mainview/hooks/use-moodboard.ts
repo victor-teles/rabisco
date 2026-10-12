@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useSyncExternalStore, type RefObject } 
 import { toast } from "sonner";
 import type { Action } from "@/lib/actions";
 import type { Snapshot } from "@/lib/history";
+import { removeImage } from "@/lib/moodboard";
 import { encodeBase64, projectAssets } from "@/lib/render/assets";
 import { api } from "@/lib/rpc";
 import type { Attachment } from "../../shared/ai/contract";
@@ -188,14 +189,7 @@ export function useMoodboard({
 		input.click();
 	}, [add]);
 
-	const remove = useCallback(
-		(id: string) =>
-			change((snapshot) => ({
-				...snapshot,
-				images: (snapshot.images ?? NO_IMAGES).filter((image) => image.id !== id),
-			})),
-		[change],
-	);
+	const remove = useCallback((id: string) => change((snapshot) => removeImage(snapshot, id)), [change]);
 
 	const move = useCallback(
 		(id: string, dx: number, dy: number, dragId: string) =>
