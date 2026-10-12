@@ -13,10 +13,10 @@ import {
 } from "./protocol";
 import { LOC_ATTRIBUTE as JSX_LOC_ATTRIBUTE } from "../../../shared/jsx";
 
+const styles = { ready: true, css: "", subscribe: () => () => {}, whenReady: async () => {}, add: () => false };
+
 // The real stylesheet imports Vite `?raw` assets; the host only needs its interface here
-mock.module("./styles", () => ({
-	screenStyles: { ready: true, css: "", subscribe: () => () => {}, whenReady: async () => {}, add: () => false },
-}));
+mock.module("./styles", () => ({ screenStyles: styles }));
 
 const scope: { window?: unknown } = globalThis;
 
@@ -139,6 +139,37 @@ describe("FrameHost: components", () => {
 		const before = b.posted.length;
 		hostB.update("screens/b.tsx", { ...edited, "screens/a.tsx": screen("A2") }, "");
 		expect(b.posted.length).toBe(before);
+		hostA.dispose();
+		hostB.dispose();
+	});
+});
+
+describe("FrameHost: CSS", () => {
+	test("a frame whose modules didn't change gets new CSS after the edits pause, not with the edited frame", async () => {
+		const a = fakeFrame();
+		const b = fakeFrame();
+		const hostA = new FrameHost(a.frame);
+		const hostB = new FrameHost(b.frame);
+
+		for (const [host, entry] of [
+			[hostA, "screens/a.tsx"],
+			[hostB, "screens/b.tsx"],
+		] as const) {
+			host.receive({ type: "ready" });
+			host.update(entry, PROJECT, "");
+		}
+
+		const before = b.posted.length;
+		const edited = { ...PROJECT, "screens/a.tsx": screen("A").replace("<main>", '<main className="p-6">') };
+		styles.css = ".p-6{padding:1.5rem}";
+		hostA.update("screens/a.tsx", edited, "");
+		hostB.update("screens/b.tsx", edited, "");
+		expect(lastPosted(a.posted, "modules").css).toBe(styles.css);
+		expect(b.posted.length).toBe(before);
+
+		await Bun.sleep(400);
+		expect(b.posted.slice(before)).toEqual([{ type: "css", css: styles.css }]);
+		styles.css = "";
 		hostA.dispose();
 		hostB.dispose();
 	});

@@ -71,6 +71,8 @@ export function hostOf(frame: HTMLIFrameElement | null | undefined): FrameHost |
 
 const HIT_TEST_TIMEOUT_MS = 500;
 
+const CSS_PUSH_DELAY_MS = 300;
+
 let hitTestId = 0;
 
 let requestId = 0;
@@ -112,6 +114,7 @@ export class FrameHost {
 	#sent = new Map<string, string>();
 	#sentEntry = "";
 	#sentCss = "";
+	#cssTimer: ReturnType<typeof setTimeout> | undefined;
 	#sentTheme = "";
 	#sentAssets = new Map<string, Blob>();
 	#sentAssetsVersion = -1;
@@ -136,7 +139,7 @@ export class FrameHost {
 		this.frame = frame;
 		hosts.add(this);
 		listen();
-		this.#unsubscribe = screenStyles.subscribe((css) => this.#pushCss(css));
+		this.#unsubscribe = screenStyles.subscribe(() => this.#pushCss());
 		this.#unsubscribeAssets = projectAssets.subscribe(() => this.#pushAssets());
 	}
 
@@ -144,6 +147,7 @@ export class FrameHost {
 		hosts.delete(this);
 		this.#unsubscribe();
 		this.#unsubscribeAssets();
+		clearTimeout(this.#cssTimer);
 
 		for (const resolve of this.#hitTests.values()) resolve(null);
 		this.#hitTests.clear();
@@ -466,10 +470,14 @@ export class FrameHost {
 		this.frame.contentWindow?.postMessage(message, "*");
 	}
 
-	#pushCss(css: string) {
-		if (!this.#ready || !this.#sentEntry || css === this.#sentCss) return;
-		this.#sentCss = css;
-		this.#post({ type: "css", css });
+	#pushCss() {
+		if (!this.#ready || !this.#sentEntry || screenStyles.css === this.#sentCss) return;
+		clearTimeout(this.#cssTimer);
+		this.#cssTimer = setTimeout(() => {
+			if (!this.#ready || !this.#sentEntry || screenStyles.css === this.#sentCss) return;
+			this.#sentCss = screenStyles.css;
+			this.#post({ type: "css", css: this.#sentCss });
+		}, CSS_PUSH_DELAY_MS);
 	}
 
 	/** Before modules, so the first render already finds the images */
@@ -518,11 +526,13 @@ export class FrameHost {
 		const css = screenStyles.css !== this.#sentCss ? screenStyles.css : undefined;
 		const theme = this.#theme !== this.#sentTheme ? this.#theme : undefined;
 
-		if (!changed && !reset && this.#entry === this.#sentEntry && css === undefined) {
+		if (!changed && !reset && this.#entry === this.#sentEntry) {
 			if (theme !== undefined) {
 				this.#sentTheme = theme;
 				this.#post({ type: "theme", css: theme });
 			}
+
+			if (css !== undefined) this.#pushCss();
 
 			return;
 		}
