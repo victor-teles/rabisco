@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { draftsOf, message, type AttachCallbacks, type RunOptions } from "@/lib/generation-session";
+import { recreateRequest } from "@/lib/recreate";
 import { projectSessions } from "@/lib/sessions";
 import type { Attachment, GenerationPlan, Problem } from "../../shared/ai/contract";
 import { focusLabel, focusNote, focusOf } from "../../shared/ai/focus";
 import type { DesignNote } from "../../shared/change-summary";
 import { DESIGN_RULE_LABELS } from "../../shared/design/findings";
 import { isFreshNote, noteProblem, POLISH_PROMPT } from "../../shared/design/polish";
-import type { ContextFileName, Device, Frame, ProjectFiles } from "../../shared/types";
+import { recreateNote, recreatePrompt } from "../../shared/recreate";
+import type { CanvasImage, ContextFileName, Device, Frame, ProjectFiles } from "../../shared/types";
 import { mixNote, mixPrompt, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
 import { openSettings, useProviders } from "./use-providers";
 import type { StructureNode } from "./use-structure";
@@ -204,6 +206,32 @@ export function useGeneration({
 		[ready, model, session, controller],
 	);
 
+	const recreate = useCallback(
+		(image: CanvasImage) => {
+			if (!ready() || !model) return;
+
+			void recreateRequest(image).then(
+				(request) => {
+					if (!request) {
+						toast("The screenshot hasn't loaded yet");
+
+						return;
+					}
+
+					const user = { ...message("user", recreateNote(image.name)), attachments: [request.reference] };
+					session.addMessages([user]);
+					void controller.run(
+						recreatePrompt(image.name),
+						{ attachments: [request.reference], recreate: request },
+						model,
+					);
+				},
+				(reason) => toast.error("Couldn't read the screenshot", { description: String(reason) }),
+			);
+		},
+		[ready, model, session, controller],
+	);
+
 	/** Another repair, on request, for a screen that still fails to render after the automatic one */
 	const fix = useCallback(
 		(target: string, problem: Problem) => {
@@ -312,6 +340,7 @@ export function useGeneration({
 		failure,
 		dismissFailure: controller.dismissFailure,
 		send,
+		recreate,
 		vary,
 		fix,
 		fixNote,

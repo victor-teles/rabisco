@@ -94,6 +94,7 @@ import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
+import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import { Canvas, withMoves, type CanvasHandle, type ElementRef, type FrameMove, type Tool } from "./canvas";
@@ -103,6 +104,7 @@ import { CommentsList } from "./comments-list";
 import { CodePanel } from "./code-panel";
 import { CommandPalette } from "./command-palette";
 import { CompareView } from "./compare-view";
+import { ScreenshotCompare } from "./screenshot-compare";
 import { ComponentsPanel } from "./components-panel";
 import { ContextPanel } from "./context-panel";
 import { ElementArrange, Inspector, type ArrangeRefusals, type FramePatch, type InspectorTab } from "./inspector";
@@ -232,6 +234,7 @@ export function EditorView({
 	const [viewport] = useState(() => viewportStore(restoredViewport ?? { x: 80, y: 80, zoom: 0.6 }));
 	/** By its base path */
 	const [compareBase, setCompareBase] = useState<string | null>(null);
+	const [screenshotPair, setScreenshotPair] = useState<{ file: string; image: string } | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
 	const [designChecks, setDesignChecks] = useState<ScreenCheck[] | null>(null);
 	/** The screen whose name field in the inspector takes focus */
@@ -352,6 +355,7 @@ export function EditorView({
 		failure,
 		dismissFailure,
 		send,
+		recreate,
 		vary,
 		fix,
 		fixNote,
@@ -420,6 +424,42 @@ export function EditorView({
 		: interview
 			? "Finish or cancel the PRODUCT.md interview first."
 			: undefined;
+
+	const recreateImage = useCallback(
+		(id: string) => {
+			const image = moodboard.images.find((each) => each.id === id);
+
+			if (!image) return;
+
+			if (busyReason) return void toast(busyReason);
+
+			sidePanel.show("chat");
+			recreate(image);
+		},
+		[moodboard.images, busyReason, sidePanel, recreate],
+	);
+
+	const comparedImages = useMemo(
+		() => new Set(moodboard.images.flatMap((image) => (screenOf(image, frames) ? [image.id] : []))),
+		[moodboard.images, frames],
+	);
+
+	const compareImage = useCallback(
+		(id: string) => {
+			const image = moodboard.images.find((each) => each.id === id);
+			const frame = image ? screenOf(image, frames) : null;
+
+			if (image && frame) setScreenshotPair({ file: frame.file, image: image.id });
+		},
+		[moodboard.images, frames],
+	);
+
+	const screenshotCompare = useMemo(() => {
+		const frame = frames.find((each) => each.file === screenshotPair?.file);
+		const image = moodboard.images.find((each) => each.id === screenshotPair?.image);
+
+		return frame && image ? { frame, image } : null;
+	}, [frames, moodboard.images, screenshotPair]);
 
 	const {
 		components,
@@ -1284,6 +1324,17 @@ export function EditorView({
 	};
 
 	/** Every editor action: the keyboard, the right-click menus and the command palette all run these */
+	const selectedImage = moodboard.images.find((image) => image.id === moodboard.selectedId) ?? null;
+	const singleReference = single ? referenceOf(single, moodboard.images, frames) : null;
+	const imageScreen = selectedImage ? screenOf(selectedImage, frames) : null;
+
+	const screenshotTarget =
+		single && singleReference
+			? { file: single.file, image: singleReference.id }
+			: selectedImage && imageScreen
+				? { file: imageScreen.file, image: selectedImage.id }
+				: null;
+
 	const actions: Action[] = [
 		{ id: "undo", label: "Undo", group: "Edit", chords: [{ code: "KeyZ", mod: true }], enabled: canUndo, run: undo },
 		{
@@ -1380,6 +1431,20 @@ export function EditorView({
 				if (singleGroup) setCompareBase(singleGroup.base);
 				else toast("This screen has no variations yet", { description: "Use Vary this in the inspector." });
 			},
+		},
+		{
+			id: "recreate-from-screenshot",
+			label: "Recreate from screenshot",
+			group: "Insert",
+			enabled: selectedImage !== null,
+			run: () => selectedImage && recreateImage(selectedImage.id),
+		},
+		{
+			id: "compare-screenshot",
+			label: "Compare with screenshot",
+			group: "Screen",
+			enabled: screenshotTarget !== null,
+			run: () => screenshotTarget && setScreenshotPair(screenshotTarget),
 		},
 		{
 			id: "play",
@@ -2315,6 +2380,9 @@ export function EditorView({
 										onMoveEnd={endStep}
 										onResize={moodboard.resize}
 										onDelete={moodboard.remove}
+										compared={comparedImages}
+										onRecreate={recreateImage}
+										onCompare={compareImage}
 									/>
 								</>
 							}
@@ -2404,6 +2472,15 @@ export function EditorView({
 						/>
 						{playStart ? (
 							<PlayView start={playStart} frames={frames} files={files} onClose={() => setPlayStart(null)} />
+						) : null}
+						{screenshotCompare ? (
+							<ScreenshotCompare
+								frame={screenshotCompare.frame}
+								image={screenshotCompare.image}
+								files={files}
+								theme={appliedTokens}
+								onClose={() => setScreenshotPair(null)}
+							/>
 						) : null}
 						{compareGroup ? (
 							<CompareView

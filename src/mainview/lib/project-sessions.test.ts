@@ -536,6 +536,54 @@ describe("project sessions", () => {
 		expect(session.state()!.messages.at(-1)?.content).toContain("Polished 1 design problem");
 	});
 
+	test("a recreate skips the plan, lands beside its image and is one undo step with its polish", async () => {
+		const { open, nextCall, finish } = setup({ polish: "polish", plan: true });
+		const { session, controller } = await open("/p/a");
+		const shot = { id: "shot", src: "/moodboard/shot.png", name: "shot.png", x: 1000, y: 200, width: 480, height: 300 };
+		session.change((snapshot) => ({ ...snapshot, images: [shot] }));
+		const steps = session.state()!.history.past.length;
+		const reference = { name: "shot.png", mediaType: "image/png" as const, data: "iVBORw0KGgo=" };
+
+		const running = controller.run(
+			"Recreate it",
+			{ attachments: [reference], recreate: { image: shot, device: "desktop", reference } },
+			MODEL,
+		);
+
+		const params = await nextCall(1);
+
+		expect(params.task).toBe("create");
+		expect(params.device).toBe("desktop");
+
+		finish(params, {
+			ok: true,
+			changes: [{ path: "screens/home.tsx", content: SCREEN }],
+			frames: [{ file: "screens/home.tsx", name: "Home", device: "desktop", x: 0, y: 0, width: 1280, height: 800 }],
+			reply: "Made the home screen.",
+			problems: [],
+			context: [],
+		});
+
+		const repair = await nextCall(2);
+
+		expect(repair.task).toBe("repair");
+		finish(repair, {
+			ok: true,
+			changes: [{ path: "screens/home.tsx", content: POLISHED }],
+			frames: [],
+			reply: "",
+			problems: [],
+			context: [],
+		});
+		await running;
+
+		const [placed] = session.state()!.canvas.frames;
+
+		expect(placed).toMatchObject({ x: 1000 + 480 + 80, y: 200, width: 1280, height: 800, reference: "shot" });
+		expect(session.state()!.files["screens/home.tsx"]).toBe(POLISHED);
+		expect(session.state()!.history.past.length).toBe(steps + 1);
+	});
+
 	test("a polish that fails says so in the reply", async () => {
 		const { open, nextCall, finish } = setup({ polish: "polish" });
 		const { session, controller } = await open("/p/a");

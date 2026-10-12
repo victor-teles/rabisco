@@ -298,6 +298,19 @@ describe("visual review", () => {
 		expect(prompt).not.toContain(POLISH_PROMPT);
 	});
 
+	test("a recreated screen is reviewed next to its screenshot, which goes first", () => {
+		const reference = { name: "dribbble.png", mediaType: "image/png" as const, data: "iVBORw0KGgo=" };
+
+		const request = reviewRequest(
+			"Recreate it",
+			[{ screen: "screens/home.tsx", findings: [], image: shot }],
+			reference,
+		);
+
+		expect(request.review?.attachments.map((a) => a.name)).toEqual(["dribbble.png", "screens/home.tsx.jpg"]);
+		expect(request.review?.prompt).toContain("Before them comes dribbble.png, the screenshot the screen recreates.");
+	});
+
 	test("errors are listed first, and their files are writable too", () => {
 		const request = reviewRequest("Edit the badge", [
 			{ screen: "screens/home.tsx", findings: [lowContrast, clipped], image: shot },

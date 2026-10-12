@@ -181,6 +181,14 @@ describe("project files", () => {
 		expect("layoutGrid" in canvas.frames[2]!).toBe(false);
 	});
 
+	test("a screen keeps the image it was recreated from", () => {
+		const frame = { file: "screens/home.tsx", x: 0, y: 0 };
+		const canvas = normalizeCanvas({ version: 1, name: "Shot", frames: [frame, { ...frame, reference: "shot" }] }, "x");
+
+		expect("reference" in canvas.frames[0]!).toBe(false);
+		expect(canvas.frames[1]!.reference).toBe("shot");
+	});
+
 	test("sections load when valid and stay missing in older files", () => {
 		const section = { id: "s1", name: "Onboarding", color: "blue" as const, x: -80, y: -80, width: 560, height: 960 };
 

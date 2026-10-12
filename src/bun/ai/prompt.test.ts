@@ -48,13 +48,14 @@ describe("UI_MODULES", () => {
 			.map((f) => f.replace(/\.tsx$/, ""));
 
 		// Editor chrome only: screens never get a right-click, the breadcrumb is the inspector's, alert
-		// dialogs confirm editor actions (screens use `dialog`), the switch is for settings and the checkbox
-		// for the plan card
+		// dialogs confirm editor actions (screens use `dialog`), the switch is for settings, the checkbox
+		// for the plan card and the slider for the screenshot overlay
 		expect(files.filter((f) => !(f in UI_MODULES)).sort()).toEqual([
 			"alert-dialog",
 			"breadcrumb",
 			"checkbox",
 			"context-menu",
+			"slider",
 			"sonner",
 			"switch",
 		]);

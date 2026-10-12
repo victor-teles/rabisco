@@ -57,23 +57,39 @@ export function gapBetween(a: Rect, b: Rect) {
 	return Math.hypot(dx, dy);
 }
 
+export function nearestScreen(image: Rect, frames: Frame[]): { file: string; gap: number } | null {
+	let closest: { file: string; gap: number } | null = null;
+
+	for (const frame of frames) {
+		const gap = gapBetween(image, frame);
+
+		if (!closest || gap < closest.gap) closest = { file: frame.file, gap };
+	}
+
+	return closest && closest.gap <= NEAR_DISTANCE ? closest : null;
+}
+
+export function imageBeside(file: string, images: CanvasImage[], frames: Frame[]): CanvasImage | null {
+	let best: { image: CanvasImage; gap: number } | null = null;
+
+	for (const image of images) {
+		const closest = nearestScreen(image, frames);
+
+		if (closest?.file === file && (!best || closest.gap < best.gap)) best = { image, gap: closest.gap };
+	}
+
+	return best?.image ?? null;
+}
+
 const readingOrder = (a: CanvasImage, b: CanvasImage) => a.y - b.y || a.x - b.x;
 
 export function moodboardReferences(images: CanvasImage[], frames: Frame[], targets: string[]): CanvasImage[] {
 	if (!targets.length) return [...images].sort(readingOrder).slice(0, MAX_REFERENCES);
 
 	const near = images.flatMap((image) => {
-		let closest: { file: string; gap: number } | null = null;
+		const closest = nearestScreen(image, frames);
 
-		for (const frame of frames) {
-			const gap = gapBetween(image, frame);
-
-			if (!closest || gap < closest.gap) closest = { file: frame.file, gap };
-		}
-
-		return closest && closest.gap <= NEAR_DISTANCE && targets.includes(closest.file)
-			? [{ image, gap: closest.gap }]
-			: [];
+		return closest && targets.includes(closest.file) ? [{ image, gap: closest.gap }] : [];
 	});
 
 	return near

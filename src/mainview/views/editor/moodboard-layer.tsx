@@ -1,9 +1,11 @@
 import { useRef } from "react";
-import { ImageOff } from "lucide-react";
+import { Columns2, ImageOff, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
+	ContextMenuSeparator,
 	ContextMenuShortcut,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
@@ -49,6 +51,9 @@ type MoodboardLayerProps = {
 	onMoveEnd: () => void;
 	onResize: (id: string, rect: Rect) => void;
 	onDelete: (id: string) => void;
+	compared: Set<string>;
+	onRecreate: (id: string) => void;
+	onCompare: (id: string) => void;
 };
 
 export function MoodboardLayer(props: MoodboardLayerProps) {
@@ -173,6 +178,9 @@ function MoodboardImage({
 	numbers,
 	onSelect,
 	onDelete,
+	compared,
+	onRecreate,
+	onCompare,
 	onPress,
 	onPointerMove,
 	onPointerUp,
@@ -271,9 +279,32 @@ function MoodboardImage({
 								);
 							})
 						: null}
+					{selected && interactive ? (
+						<div
+							className="absolute top-full left-0 flex origin-top-left gap-1.5"
+							style={{ transform: "scale(var(--unzoom)) translateY(8px)" }}
+							onPointerDown={(event) => event.stopPropagation()}
+						>
+							<Button size="xs" variant="secondary" className="shadow-sm" onClick={() => onRecreate(image.id)}>
+								<Sparkles />
+								Recreate from screenshot
+							</Button>
+							{compared.has(image.id) ? (
+								<Button size="xs" variant="secondary" className="shadow-sm" onClick={() => onCompare(image.id)}>
+									<Columns2 />
+									Compare
+								</Button>
+							) : null}
+						</div>
+					) : null}
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
+				<ContextMenuItem onSelect={() => onRecreate(image.id)}>Recreate from screenshot</ContextMenuItem>
+				<ContextMenuItem disabled={!compared.has(image.id)} onSelect={() => onCompare(image.id)}>
+					Compare with screen
+				</ContextMenuItem>
+				<ContextMenuSeparator />
 				<ContextMenuItem variant="destructive" onSelect={() => onDelete(image.id)}>
 					Delete image
 					<ContextMenuShortcut>⌫</ContextMenuShortcut>

@@ -92,7 +92,13 @@ export function screenshotOf(screen: string, dataUrl: string): Attachment | null
 
 const lineOf = (problem: Problem) => `- ${problem.path}${problem.line ? `:${problem.line}` : ""}: ${problem.message}`;
 
-export function reviewPrompt(brief: string, shots: Attachment[], problems: Problem[], notes: Problem[]): string {
+export function reviewPrompt(
+	brief: string,
+	shots: Attachment[],
+	problems: Problem[],
+	notes: Problem[],
+	reference?: Attachment,
+): string {
 	const ask = brief.trim();
 	const cut = ask.length > BRIEF_LENGTH ? `${ask.slice(0, BRIEF_LENGTH).trimEnd()}…` : ask;
 
@@ -102,6 +108,13 @@ export function reviewPrompt(brief: string, shots: Attachment[], problems: Probl
 		"Keep the design, the layout, the content and the copy. Make the smallest change that fixes each problem. Leave a file that looks right as it is; if nothing needs fixing, write no files.",
 		'Reply with one short line that says what you changed, like "Tightened the spacing in Home.", or "Nothing to fix."',
 	];
+
+	if (reference)
+		parts.splice(
+			1,
+			0,
+			`Before them comes ${reference.name}, the screenshot the screen recreates. Where the screen clearly differs from it in layout, spacing, color, type or copy, change the screen to match it.`,
+		);
 
 	if (problems.length) parts.unshift(POLISH_PROMPT, "Fix the listed problems first.");
 
@@ -115,7 +128,7 @@ export function reviewPrompt(brief: string, shots: Attachment[], problems: Probl
 	return parts.join("\n\n");
 }
 
-export function reviewRequest(brief: string, checks: ScreenFindings[]): PolishRequest {
+export function reviewRequest(brief: string, checks: ScreenFindings[], reference?: Attachment): PolishRequest {
 	const problems = polishProblems(checks);
 
 	const shown = checks.slice(0, REVIEW_MAX_SCREENS).flatMap(({ screen, image }) => {
@@ -139,7 +152,10 @@ export function reviewRequest(brief: string, checks: ScreenFindings[]): PolishRe
 		prompt: POLISH_PROMPT,
 		targets: [...new Set([...shown.map(({ screen }) => screen), ...problems.map((problem) => problem.path)])],
 		problems,
-		review: { prompt: reviewPrompt(brief, shots, problems, notes), attachments: shots },
+		review: {
+			prompt: reviewPrompt(brief, shots, problems, notes, reference),
+			attachments: reference ? [reference, ...shots] : shots,
+		},
 	};
 }
 

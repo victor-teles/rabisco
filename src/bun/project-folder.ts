@@ -135,6 +135,7 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	const device = parseDevice(frame.device) ?? canvasDevice;
 	const size = FRAME_SIZE[device];
 	const layoutGrid = parseLayoutGrid(frame.layoutGrid);
+	const reference = optionalString(frame.reference);
 
 	const parsed: Frame = {
 		file,
@@ -147,6 +148,8 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	};
 
 	if (layoutGrid) parsed.layoutGrid = layoutGrid;
+
+	if (reference) parsed.reference = reference;
 
 	return [parsed];
 }

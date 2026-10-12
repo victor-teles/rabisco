@@ -29,6 +29,7 @@ export type Frame = {
 	width: number;
 	height: number;
 	layoutGrid?: LayoutGrid;
+	reference?: string;
 };
 
 export type LayoutGrid = { columns: number; gutter: number; margin: number };

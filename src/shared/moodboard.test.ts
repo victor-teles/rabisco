@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { fitImage, gapBetween, MAX_REFERENCES, moodboardReferences, normalizeImages } from "./moodboard";
+import {
+	fitImage,
+	gapBetween,
+	imageBeside,
+	MAX_REFERENCES,
+	moodboardReferences,
+	nearestScreen,
+	normalizeImages,
+} from "./moodboard";
 import type { CanvasImage, Frame } from "./types";
 
 const frame = (file: string, x: number, y = 0): Frame => ({
@@ -75,6 +83,17 @@ describe("moodboard", () => {
 				"nope",
 			]).map((i) => i.id),
 		).toEqual(["ok"]);
+	});
+
+	test("a screen's image is the nearest one that is nearest to it", () => {
+		const frames = [frame("screens/a.tsx", 0), frame("screens/b.tsx", 500)];
+		const images = [image("besideA", -250), image("closerA", -220), image("besideB", 950)];
+
+		expect(nearestScreen(images[0]!, frames)).toEqual({ file: "screens/a.tsx", gap: 50 });
+		expect(nearestScreen(image("far", 5000), frames)).toBe(null);
+		expect(imageBeside("screens/a.tsx", images, frames)?.id).toBe("closerA");
+		expect(imageBeside("screens/b.tsx", images, frames)?.id).toBe("besideB");
+		expect(imageBeside("screens/c.tsx", images, frames)).toBe(null);
 	});
 
 	test("large images are scaled down to a canvas width", () => {

@@ -39,7 +39,10 @@ import {
 	type ScreenFindings,
 } from "../../shared/design/polish";
 import { isContextFile, isScreenFile } from "../../shared/project";
+import { besideImage } from "../../shared/recreate";
 import type {
+	CanvasDoc,
+	CanvasImage,
 	ChatMessage,
 	Device,
 	FileChange,
@@ -88,6 +91,7 @@ export type RunOptions = {
 	/** An accepted plan: its shared components, then its screens in parallel (decision 0015) */
 	plan?: GenerationPlan;
 	autoDesign?: boolean;
+	recreate?: { image: CanvasImage; device: Device; reference: Attachment };
 };
 
 /** A plan waiting in the chat for the user to review it; its request runs when they accept it */
@@ -142,6 +146,7 @@ type Polishing = {
 	step: Snapshot;
 	screens: string[];
 	prompt: string;
+	reference?: Attachment;
 };
 
 type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: string | null };
@@ -184,6 +189,17 @@ export const message = (role: ChatMessage["role"], content: string): ChatMessage
 	content,
 	createdAt: new Date().toISOString(),
 });
+
+function placeFrames(canvas: CanvasDoc, created: Frame[], recreated?: string): Frame[] {
+	const image = canvas.images?.find((each) => each.id === recreated);
+	const [first, ...rest] = created;
+
+	if (!image || !first) return placeNewFrames(canvas.frames, created);
+	const others = (canvas.images ?? []).filter((each) => each.id !== image.id);
+	const beside = besideImage(first, image, [...canvas.frames, ...others]);
+
+	return [beside, ...placeNewFrames([...canvas.frames, beside], rest)];
+}
 
 export type GenerationController = ReturnType<typeof createGenerationController>;
 
@@ -416,7 +432,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			const request =
 				mode === "review"
-					? reviewRequest(polishing.prompt, checks)
+					? reviewRequest(polishing.prompt, checks, polishing.reference)
 					: polishRequest(mode === "polish" ? polishProblems(checks) : []);
 
 			if ((request.problems.length || request.review) && stopped !== polishing.id) {
@@ -504,7 +520,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			last = { prompt, options };
 		}
 
-		if (plansFirst({ planMode: env.planMode(), task, variations, plan: options.plan })) {
+		if (!options.recreate && plansFirst({ planMode: env.planMode(), task, variations, plan: options.plan })) {
 			const plan = await readPlan(prompt, options, model, chatId);
 
 			if ("stopped" in plan) {
@@ -532,7 +548,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				generationId,
 				projectPath: session.path,
 				prompt,
-				device: current.canvas.device,
+				device: options.recreate?.device ?? current.canvas.device,
 				model,
 				targets: options.targets,
 				task,
@@ -562,9 +578,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			const placedFiles = new Set(latest.canvas.frames.map((frame) => frame.file));
 
-			const placed = placeNewFrames(
-				latest.canvas.frames,
+			const placed = placeFrames(
+				latest.canvas,
 				result.frames.filter((frame) => !placedFiles.has(frame.file)),
+				options.recreate?.image.id,
 			);
 
 			const resolving = result.changes.length
@@ -619,6 +636,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 					step,
 					screens,
 					prompt,
+					reference: options.recreate?.reference,
 				};
 			} else {
 				if (summary) done.summary = summary;
