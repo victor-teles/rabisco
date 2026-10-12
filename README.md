@@ -57,6 +57,30 @@ Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [
 
 The UI also runs in a plain browser: `hutch run hmr`, then open http://localhost:5173. Outside Electrobun the RPC layer falls back to localStorage.
 
+## The `rabisco` command
+
+`rabisco` drives the running app from a terminal or a script. It ships inside the app as `Rabisco.app/Contents/Resources/app/bin/rabisco`. From a source checkout, run `bun src/mcp-bridge/index.ts <command>` instead, or `hutch run bridge:build` and `node dist/bridge/rabisco.mjs <command>`.
+
+| Command                                     | What it does                                                                                                         |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `rabisco open <folder>`                     | Opens the folder in Rabisco. Starts the app when it isn't running. Works with the MCP server off.                    |
+| `rabisco check [screen…] [--json]`          | Runs "Check design" on the screens, or on every screen except alternates. Exits with 1 when it finds errors.         |
+| `rabisco screenshot <screen> [-o file.png]` | Saves a PNG of the screen, at most 1280 px wide. `--element 0.1.2` takes one element. The default is `<screen>.png`. |
+| `rabisco export <folder>`                   | Exports the project as a static website into a new folder inside `<folder>`, like Export as website.                 |
+| `rabisco mcp`                               | Runs the MCP server for coding agents on stdin and stdout (decision 0030).                                           |
+
+A screen is a file such as `screens/home.tsx`, or its name on the canvas. `check`, `screenshot` and `export` work on the project open in the editor. Add `--project <folder>` to open a project first:
+
+```bash
+rabisco check --project ~/Documents/Rabisco/shop.rabisco
+rabisco screenshot Home -o home.png
+rabisco export ./site
+```
+
+`check`, `screenshot` and `export` need Rabisco running with Settings → Agents → Let coding agents use Rabisco turned on. When it isn't, the command prints why and exits with 1. Usage errors exit with 2.
+
+The command finds the app through `mcp.json` in the app data folder. Set `RABISCO_MCP_FILE` to use another file, and `RABISCO_APP` to the path of the `.app` that `rabisco open` starts.
+
 ## Layout
 
 ```
@@ -67,6 +91,7 @@ src/
     ai/                 provider layer (decision 0003): settings, keychain, validation, repair loop
       providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Antigravity CLI, Claude Agent SDK
     mcp/                local MCP server for coding agents, off by default, and one-click client setup (decision 0030)
+  mcp-bridge/           the `rabisco` command: the MCP stdio bridge and the CLI (decision 0030)
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback

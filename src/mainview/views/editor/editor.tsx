@@ -501,6 +501,8 @@ export function EditorView({
 	const hasNode = node !== null;
 
 	useAgentTools({
+		path: projectPath,
+		project: error ? { error } : project ? { name: project.canvas.name } : null,
 		stateRef,
 		elements: nodes,
 		elementAt: async (file, point) => (await canvasRef.current?.elementAt(file, point)) ?? null,

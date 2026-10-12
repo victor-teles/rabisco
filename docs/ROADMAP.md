@@ -108,7 +108,7 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 - ⬜ Write tools: create and edit screens and components, set tokens, add comments. Each call is one undo step in history
 - ⬜ An "agent is editing" marker on the frames an agent touches, and a log of agent changes in the History panel
 - ✅ One-click setup for Claude Code, Codex, Cursor, VS Code and Claude Desktop, from Settings → Agents. It writes a `rabisco` server that launches the stdio bridge into each client's config (through `claude mcp add-json` for Claude Code), never a port or a token, and shows which clients are set up and which connected. The bridge itself ships with the `rabisco` CLI
-- ⬜ A `rabisco` CLI: open a project, export, run "Check design", take screenshots
+- ✅ A `rabisco` CLI: `open`, `check`, `screenshot`, `export` and `mcp` (the stdio bridge). It ships in the app bundle and runs on the app's own runtime; `rabisco open` works with the MCP server off
 - ⬜ "Send to agent": copy a screen or selection with its code, tokens and screenshot as context for a coding agent
 - ⬜ Sync a screen into an existing app repository: write it as a component at a path the user picks, with its imports
 

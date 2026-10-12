@@ -3,7 +3,7 @@ import type { JsonObject } from "../../shared/json";
 import { NO_PROJECT, TOOLS, type ToolResult } from "../../shared/mcp/tools";
 import { emptyCanvas } from "../../shared/project";
 import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
-import { runAgentTool, type AgentContext, type AgentElement } from "./agent-tools";
+import { runAgentTool, type AgentCheck, type AgentContext, type AgentElement } from "./agent-tools";
 
 const HOME = `import { StatCard } from "../components/stat-card";
 
@@ -102,6 +102,8 @@ function contextOf(overrides: Partial<AgentContext> = {}) {
 			return "iVBORw0KGgo=";
 		},
 		elementAt: async (file): Promise<AgentElement | null> => ({ file, start: startOf("<h1") }),
+		checkDesign: async (frames): Promise<AgentCheck[]> => frames.map((target) => ({ file: target.file, findings: [] })),
+		exportWebsite: async (dir) => `${dir}/demo-site`,
 		...overrides,
 	};
 
@@ -129,7 +131,8 @@ function error(result: ToolResult) {
 
 describe("runAgentTool", () => {
 	test("has a runner for every listed tool", async () => {
-		for (const tool of TOOLS) {
+		// The app opens projects itself, with or without an editor (agent-open.ts)
+		for (const tool of TOOLS.filter((each) => each.name !== "open_project")) {
 			const [first] = (await call(tool.name)).content;
 
 			expect(first?.type === "text" ? first.text : "").not.toContain("has no tool");
@@ -311,5 +314,75 @@ describe("runAgentTool", () => {
 				replies: [],
 			},
 		]);
+	});
+});
+
+describe("CLI tools", () => {
+	const contrast: AgentCheck = {
+		file: "screens/home.tsx",
+		findings: [
+			{ rule: "contrast", severity: "error", message: "Text is hard to read", path: "screens/home.tsx", line: 6 },
+			{ rule: "raw-color", severity: "warning", message: "Use a token" },
+		],
+	};
+
+	test("check_design checks every screen but alternates, or the named ones", async () => {
+		const checked: string[][] = [];
+
+		const checkDesign = async (frames: Frame[]) => {
+			checked.push(frames.map((each) => each.file));
+
+			return frames.map((each) => (each.file === "screens/home.tsx" ? contrast : { file: each.file, findings: [] }));
+		};
+
+		expect(json(await call("check_design", {}, { checkDesign }))).toEqual({
+			errors: 1,
+			warnings: 1,
+			screens: [
+				{
+					file: "screens/home.tsx",
+					name: "Home",
+					error: null,
+					findings: [
+						{
+							severity: "error",
+							rule: "contrast",
+							title: "Low contrast",
+							message: "Text is hard to read",
+							file: "screens/home.tsx",
+							line: 6,
+						},
+						{
+							severity: "warning",
+							rule: "raw-color",
+							title: "Color without a token",
+							message: "Use a token",
+							file: "screens/home.tsx",
+							line: null,
+						},
+					],
+				},
+				{ file: "screens/settings.tsx", name: "Settings", error: null, findings: [] },
+			],
+		});
+
+		await call("check_design", { screens: ["Settings", "screens/settings.tsx"] }, { checkDesign });
+		expect(checked).toEqual([["screens/home.tsx", "screens/settings.tsx"], ["screens/settings.tsx"]]);
+		expect(error(await call("check_design", { screens: ["stat-card"] }))).toContain("no screen");
+		expect(error(await call("check_design", { screens: "home" }))).toBe("`screens` must be a list of strings.");
+	});
+
+	test("check_design reports a screen that didn't render", async () => {
+		const checkDesign = async () => [{ file: "screens/home.tsx", findings: [], error: "Boom" }];
+
+		expect(json(await call("check_design", { screens: ["home"] }, { checkDesign })).screens[0].error).toBe("Boom");
+	});
+
+	test("export_website writes into an absolute folder", async () => {
+		const result = await call("export_website", { path: "/tmp/out" });
+
+		expect(result).toEqual({ content: [{ type: "text", text: "/tmp/out/demo-site" }] });
+		expect(error(await call("export_website", { path: "out" }))).toBe("`path` must be an absolute folder path.");
+		expect(error(await call("export_website", {}))).toBe("`path` must be an absolute folder path.");
 	});
 });

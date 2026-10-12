@@ -6,7 +6,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
-import { api } from "@/lib/rpc";
+import { agentOpener } from "@/lib/agent-open";
+import { api, onOpenRequested } from "@/lib/rpc";
 import { projectSessions } from "@/lib/sessions";
 import { forgetProject, readLastProject } from "@/lib/workspace";
 import { EditorView } from "@/views/editor/editor";
@@ -60,6 +61,20 @@ export default function App() {
 
 	// useProject resets the Tailwind build with the project's candidates once its files load
 	const openEditor = (next: Extract<Route, { view: "editor" }>) => setRoute(next);
+
+	useEffect(() => agentOpener.handleOpen((projectPath) => setRoute({ view: "editor", projectPath })), []);
+
+	useEffect(() => {
+		const take = () =>
+			api
+				.takeOpenRequest({})
+				.then(({ path }) => path && setRoute({ view: "editor", projectPath: path }))
+				.catch((error) => console.warn("Could not read the open request:", error));
+
+		void take();
+
+		return onOpenRequested(() => void take());
+	}, []);
 
 	const startDesign: StartDesign = async ({ prompt, device, files, variations, style }) => {
 		try {

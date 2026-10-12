@@ -114,7 +114,7 @@ describe("createMcpHandler", () => {
 
 		for (const tool of reply.result.tools) {
 			expect(tool.title).toBeTruthy();
-			expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+			expect(tool.annotations).toMatchObject({ readOnlyHint: tool.name !== "open_project", destructiveHint: false });
 		}
 	});
 

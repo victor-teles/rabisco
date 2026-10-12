@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/main";
 import { existsSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import type { RabiscoRPC } from "../shared/rpc";
 import { assertSnapshot } from "../shared/share/snapshot";
 import { viewerFiles } from "../shared/share/viewer";
@@ -19,7 +19,8 @@ import { freeExportDir, writeExportFiles } from "./export";
 import { createGit } from "./git";
 import { fetchBrandKit } from "./brand-kit";
 import { findContextFiles } from "./import-context";
-import { createAgentService } from "./mcp/agents";
+import { createAgentService, DISCOVERY_FILE } from "./mcp/agents";
+import { OPEN_REQUEST_FILE, watchOpenRequests } from "./mcp/open-request";
 import { bridgeLaunch, listClients, removeClient, setUpClient, systemClientEnv } from "./mcp/clients";
 import { createShareService, readScreenRuntime } from "./share";
 import { createProjectStore } from "./store";
@@ -117,6 +118,9 @@ const clientEnv = systemClientEnv();
 const bridge = () =>
 	bridgeLaunch(join(PATHS.VIEWS_FOLDER, "..", "bin", process.platform === "win32" ? "rabisco.exe" : "rabisco"));
 
+/** The folder `rabisco open` asked for, until the webview takes it */
+let requestedFolder: string | null = null;
+
 /** App bundle first, then the source tree (development) */
 const runtimeDirs = () => [
 	join(PATHS.VIEWS_FOLDER, "mainview/runtime"),
@@ -167,6 +171,12 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			listRecents: () => store.listRecents(),
 			loadCover: ({ path }) => store.loadCover(path),
 			pickProjectFolder: () => store.pickProjectFolder(),
+			takeOpenRequest: () => {
+				const path = requestedFolder;
+				requestedFolder = null;
+
+				return { path };
+			},
 			openProject: ({ path }) => store.openProject(path),
 			// A share link lives while its project is open
 			closeProject: ({ path }) => (store.closeProject(path), shares.stop(path), ok),
@@ -317,6 +327,20 @@ try {
 	console.warn("Could not start the MCP server:", error);
 }
 
+// `rabisco open` leaves the folder next to the discovery file, so it works with the MCP server off (decision 0030)
+const openRequests = watchOpenRequests(
+	join(dirname(process.env.RABISCO_MCP_FILE || join(Utils.paths.userData, DISCOVERY_FILE)), OPEN_REQUEST_FILE),
+	(path) => {
+		requestedFolder = path;
+
+		try {
+			mainWindow.webview.rpc?.send.openRequested({});
+		} catch (error) {
+			console.warn("Could not push openRequested:", error);
+		}
+	},
+);
+
 const SAVE_ON_CLOSE_MS = 3000;
 
 let saving: Promise<void> | null = null;
@@ -347,7 +371,9 @@ function saveBeforeClosing(event: ElectrobunEvent<{}, { allow: boolean }>, close
 Electrobun.events.on("before-quit", (event: ElectrobunEvent<{}, { allow: boolean }>) => {
 	saveBeforeClosing(event, () => Utils.quit());
 
-	if (event.response?.allow !== false) agents.close();
+	if (event.response?.allow === false) return;
+	agents.close();
+	openRequests.close();
 });
 
 Electrobun.events.on(`will-close-${mainWindow.id}`, (event: ElectrobunEvent<{}, { allow: boolean }>) =>

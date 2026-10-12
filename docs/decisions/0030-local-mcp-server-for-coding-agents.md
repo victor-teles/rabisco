@@ -79,7 +79,7 @@ There is no delete tool. Deleting stays a user action.
 **The `rabisco` CLI is the bridge with commands. It talks to the running app through the same server.**
 
 - `rabisco mcp` runs the stdio bridge.
-- `rabisco open <path>` launches Rabisco with the folder, or opens it in the running app through `open_project`. It works with the server off: it starts the app with the path as an argument.
+- `rabisco open <path>` launches Rabisco with the folder, or opens it in the running app through `open_project`. It works with the server off: it writes `open.json` (the folder and a time) next to the discovery file and starts the app or brings it forward. The app reads the file at launch and watches it while it runs, and ignores a request older than a minute.
 - `rabisco check [screen…]`, `rabisco screenshot <screen> [-o file.png]` and `rabisco export <folder>` call `check_design`, `get_screenshot` and an `export_website` tool. `export_website` is not in `tools/list`; only the CLI calls it. They need the app running with the server on, and print the same sentences as the bridge when it isn't. `--project <path>` opens that project first.
 - Settings → Agents has "Install the `rabisco` command", which links the bundled command into `/usr/local/bin` after asking.
 
@@ -103,5 +103,5 @@ There is no delete tool. Deleting stays a user action.
 - Tools work only with the app open and a project in the editor. An agent that just needs to edit files can still edit them on disk; those edits stay outside changes.
 - The tool list is part of a public contract. Renaming a tool or changing its input breaks client configs and directory listings, so changes add tools or optional fields.
 - The npm package and the bundled command must be released together with the app. An older bridge still works, because `tools/list` comes from the app when it runs.
-- The `rabisco` command in the bundle needs a runtime. The implementation must confirm it can run with the app's bundled Bun; if not, one-click setup falls back to `npx`.
+- The `rabisco` command in the bundle needs a runtime. It is a shell script that runs the Node build of the bridge with the app's own Cottontail binary, so it needs no Node. Outside the bundle, the same build runs on Node through `npx`.
 - A security review of the server, the discovery file and the path checks is needed before the server ships.

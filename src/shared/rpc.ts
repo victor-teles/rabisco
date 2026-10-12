@@ -35,6 +35,8 @@ export type RabiscoRPC = {
 			/** The files of a recent project's cover, read when it shows. */
 			loadCover: { params: { path: string }; response: ScreenSource | null };
 			pickProjectFolder: { params: {}; response: string | null };
+			/** The folder `rabisco open` asked for, once */
+			takeOpenRequest: { params: {}; response: { path: string | null } };
 			/** Creates `rabisco.json` if needed, adds to recents and starts watching. */
 			openProject: { params: { path: string }; response: Project };
 			closeProject: { params: { path: string }; response: { ok: true } };
@@ -170,6 +172,8 @@ export type RabiscoRPC = {
 			canvasChanged: { path: string; canvas: CanvasDoc };
 			/** A coding agent's tool call; answered by `agentResult` */
 			agentCall: AgentCall;
+			/** `rabisco open` asked for a folder; read it with `takeOpenRequest` */
+			openRequested: {};
 		};
 	}>;
 };

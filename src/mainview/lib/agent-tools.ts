@@ -2,13 +2,22 @@ import { cachedComponentApi, componentUsages } from "../../shared/components/usa
 import { propsSignature } from "../../shared/components/api";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { designSourceOf } from "../../shared/context/theme";
+import { DESIGN_RULE_LABELS, type DesignFinding } from "../../shared/design/findings";
 import { lineAt } from "../../shared/design/locate";
+import { imageTargets } from "../../shared/export/targets";
 import type { GitStatus } from "../../shared/git";
 import { isString } from "../../shared/guards";
 import { parseJsx, readImports } from "../../shared/jsx";
 import { resolveModule } from "../../shared/jsx/modules";
 import type { Json, JsonObject } from "../../shared/json";
-import { errorResult, jsonResult, NO_PROJECT, type ToolContent, type ToolResult } from "../../shared/mcp/tools";
+import {
+	errorResult,
+	jsonResult,
+	NO_PROJECT,
+	textResult,
+	type ToolContent,
+	type ToolResult,
+} from "../../shared/mcp/tools";
 import { appliedTheme, isComponentFile, isScreenFile } from "../../shared/project";
 import { sectionOf } from "../../shared/sections";
 import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
@@ -18,6 +27,8 @@ import { atPath, buildOutline, findNode, pathOf, type OutlineNode } from "./outl
 export type AgentElement = { file: string; start: number };
 
 export type AgentPoint = { x: number; y: number };
+
+export type AgentCheck = { file: string; findings: DesignFinding[]; error?: string };
 
 /** What the editor hands the tools: the project as it shows, and the editor's own renderer */
 export type AgentContext = {
@@ -29,6 +40,9 @@ export type AgentContext = {
 	/** A base64 PNG of the screen, or of the element at `start` in it */
 	screenshot: (frame: Frame, start: number | null) => Promise<string>;
 	elementAt: (file: string, point: AgentPoint) => Promise<AgentElement | null>;
+	checkDesign: (frames: Frame[]) => Promise<AgentCheck[]>;
+	/** Writes the website into a new folder inside `dir` and returns that folder */
+	exportWebsite: (dir: string) => Promise<string>;
 };
 
 class ToolError extends Error {}
@@ -50,6 +64,18 @@ function stringArg(args: JsonObject, name: string): string | undefined {
 
 	return value.trim() || undefined;
 }
+
+function stringsArg(args: JsonObject, name: string): string[] {
+	const value = args[name];
+
+	if (value === undefined || value === null) return [];
+
+	if (!Array.isArray(value) || !value.every(isString)) throw new ToolError(`\`${name}\` must be a list of strings.`);
+
+	return value.map((each) => each.trim()).filter(Boolean);
+}
+
+const isAbsolutePath = (path: string) => path.startsWith("/") || /^[a-z]:[\\/]/i.test(path);
 
 const isSourceFile = (path: string) => isScreenFile(path) || isComponentFile(path);
 
@@ -274,6 +300,42 @@ async function listComments(context: AgentContext): Promise<Json> {
 	);
 }
 
+async function checkDesign(context: AgentContext, args: JsonObject): Promise<Json> {
+	const { canvas, files } = context;
+	const named = stringsArg(args, "screens").map((screen) => frameOf(context, resolveFile(context, screen, false)));
+	const targets = named.length ? [...new Set(named)] : imageTargets(canvas.frames, [], files);
+
+	if (!targets.length) throw new ToolError("The project has no screens to check.");
+	const results = await context.checkDesign(targets);
+	const all = results.flatMap((result) => result.findings);
+
+	return {
+		errors: all.filter((finding) => finding.severity === "error").length,
+		warnings: all.filter((finding) => finding.severity === "warning").length,
+		screens: results.map((result) => ({
+			file: result.file,
+			name: frameOf(context, result.file).name,
+			error: result.error ?? null,
+			findings: result.findings.map((finding) => ({
+				severity: finding.severity,
+				rule: finding.rule,
+				title: DESIGN_RULE_LABELS[finding.rule],
+				message: finding.message,
+				file: finding.path ?? result.file,
+				line: finding.line ?? null,
+			})),
+		})),
+	};
+}
+
+async function exportWebsite(context: AgentContext, args: JsonObject): Promise<ToolResult> {
+	const dir = stringArg(args, "path");
+
+	if (!dir || !isAbsolutePath(dir)) throw new ToolError("`path` must be an absolute folder path.");
+
+	return textResult(await context.exportWebsite(dir));
+}
+
 async function run(tool: string, args: JsonObject, context: AgentContext): Promise<ToolResult> {
 	switch (tool) {
 		case "get_project":
@@ -292,6 +354,10 @@ async function run(tool: string, args: JsonObject, context: AgentContext): Promi
 			return jsonResult(listComponents(context));
 		case "list_comments":
 			return jsonResult(await listComments(context));
+		case "check_design":
+			return jsonResult(await checkDesign(context, args));
+		case "export_website":
+			return exportWebsite(context, args);
 		default:
 			return errorResult(`Rabisco has no tool \`${tool}\`.`);
 	}

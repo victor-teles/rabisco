@@ -1,6 +1,7 @@
 import { Electroview } from "electrobun/view";
 import { normalizeComments } from "../../shared/comments";
 import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
+import { agentOpener } from "@/lib/agent-open";
 import { brandKitUrl } from "../../shared/context/brand-kit";
 import { starterFiles } from "../../shared/context/styles";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
@@ -52,6 +53,8 @@ const assetChanges = listenerSet<AssetsChanged>();
 
 const canvasChanges = listenerSet<CanvasChanged>();
 
+const openRequests = listenerSet<{}>();
+
 export const onGenerationEvent = generationEvents.add;
 
 export const onFilesChanged = fileChanges.add;
@@ -59,6 +62,8 @@ export const onFilesChanged = fileChanges.add;
 export const onAssetsChanged = assetChanges.add;
 
 export const onCanvasChanged = canvasChanges.add;
+
+export const onOpenRequested = openRequests.add;
 
 let saveAll = async () => true;
 
@@ -80,7 +85,9 @@ export function handleAgentCall(handler: AgentCallHandler) {
 }
 
 async function answerAgent(call: AgentCall) {
-	const result = await (agentCall ?? (async () => errorResult(NO_PROJECT)))(call).catch((error) =>
+	const run = call.tool === "open_project" ? () => agentOpener.open(call.args) : agentCall;
+
+	const result = await (run ?? (async () => errorResult(NO_PROJECT)))(call).catch((error) =>
 		errorResult(error instanceof Error ? error.message : String(error)),
 	);
 
@@ -103,6 +110,7 @@ function createElectrobunApi(): RabiscoApi {
 				assetsChanged: assetChanges.emit,
 				canvasChanged: canvasChanges.emit,
 				agentCall: (call) => void answerAgent(call),
+				openRequested: openRequests.emit,
 			},
 		},
 	});
@@ -233,6 +241,7 @@ function createBrowserApi(): RabiscoApi {
 		async pickProjectFolder() {
 			return null;
 		},
+		takeOpenRequest: async () => ({ path: null }),
 		openProject,
 		async closeProject() {
 			return ok;

@@ -8,7 +8,9 @@ export default {
 		"dev:hmr": "bunx concurrently -k -n ui,app 'hutch run hmr' 'hutch run start'",
 		hmr: "hutch electrobun prepare && hutch run runtime:build && bunx --bun vite --port 5173",
 		"runtime:build": "bunx --bun vite build -c vite.runtime.config.ts",
-		"ui:build": "hutch run runtime:build && bunx --bun vite build",
+		"ui:build": "hutch run runtime:build && bunx --bun vite build && hutch run bridge:build",
+		// The `rabisco` command: the MCP stdio bridge and the CLI (decision 0030)
+		"bridge:build": "bun build src/mcp-bridge/index.ts --target=node --outfile dist/bridge/rabisco.mjs",
 		typecheck: "bunx tsc --noEmit",
 		lint: "bunx oxlint",
 		"lint:fix": "bunx oxlint --fix",

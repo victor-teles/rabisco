@@ -21,6 +21,8 @@ export default {
 			"dist/assets": "views/mainview/assets",
 			"dist/runtime": "views/mainview/runtime",
 			[claudeSdkBinary]: `bin/${claudeBinary}`,
+			"dist/bridge/rabisco.mjs": "bin/rabisco.mjs",
+			"src/mcp-bridge/rabisco.sh": "bin/rabisco",
 		},
 		// Vite output is rebuilt by `hutch run ui:build` / HMR, not the watcher
 		watchIgnore: ["dist/**", "src/mainview/public/runtime/**"],
