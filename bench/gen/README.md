@@ -49,6 +49,10 @@ A tablet brief generates as tablet, at 834×1194. Runs from before prompt v12 de
 
 Change the briefs only together with a new baseline. Scores compare across runs of the same briefs.
 
+## Baseline
+
+`baseline.json` is the baseline: prompt v20, `claude-code:claude-opus-5-5`, no plan, layout checks on, 12/12 briefs. Compare a new run with `--baseline bench/gen/baseline.json`. `phase16-before.json` is the same run with the Phase 16 design and layout rules reverted to their v13 text.
+
 ## Output
 
 Each brief becomes `<out>/<brief>.rabisco/`, with its files, `rabisco.json` (new frames placed as the editor places them) and a chat with the prompt and the reply. Open it in Rabisco to look at the screens.

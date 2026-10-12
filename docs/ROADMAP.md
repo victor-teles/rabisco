@@ -20,7 +20,7 @@ Phases 1–17 were checked mostly in Chrome and unit tests. This phase runs ever
 - ✅ Antigravity CLI replaces Gemini CLI ([decision 0032](./decisions/0032-antigravity-cli-replaces-gemini-cli.md)); its event mapping is built from a real `agy` 1.3.3 run
 - ⬜ The same checks with an API key and Ollama, and a real Codex run to check its event mapping
 - ✅ Run the generation eval with real providers and keep the first report as the baseline (`bench/gen`). Claude Code (Opus): 12/12 briefs, reports in [LIT-11](/LIT/issues/LIT-11). Bug: [LIT-88](/LIT/issues/LIT-88)
-- ⬜ Compare the eval before and after the Phase 16 prompt rules with the same provider
+- ✅ Compare the eval before and after the Phase 16 prompt rules with the same provider. Baseline in `bench/gen/baseline.json`; with the rules, layout warnings drop from 28 to 16 and contrast findings from 29 to 18. Results in [LIT-12](/LIT/issues/LIT-12)
 
 **Checks in WKWebView**
 

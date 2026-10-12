@@ -1,0 +1,627 @@
+{
+	"promptVersion": 20,
+	"style": null,
+	"plan": false,
+	"layout": {
+		"browser": "Chrome 154.0.8037.59"
+	},
+	"model": "claude-code:claude-opus-5-5",
+	"date": "2026-10-12T01:38:54.112Z",
+	"briefs": [
+		{
+			"id": "bank-home",
+			"task": "create",
+			"device": "mobile",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 26105,
+			"inputTokens": 43377,
+			"outputTokens": 2891,
+			"costUsd": 0.16656100000000001,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 2,
+			"uiModules": ["avatar", "badge", "button", "progress"],
+			"uaiModules": [],
+			"tokensDefined": 6,
+			"tokensUsed": 5,
+			"tokenClassUses": 16,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 0,
+				"byRule": {},
+				"findings": []
+			}
+		},
+		{
+			"id": "bank-send-flow",
+			"task": "create",
+			"device": "mobile",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 4,
+			"components": 2,
+			"ms": 79584,
+			"inputTokens": 124789,
+			"outputTokens": 9223,
+			"costUsd": 0.3689186,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 0,
+			"uiModules": ["avatar", "button", "separator", "toggle-group"],
+			"uaiModules": ["search-field"],
+			"tokensDefined": 6,
+			"tokensUsed": 5,
+			"tokenClassUses": 17,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 4,
+				"failed": [],
+				"errors": 0,
+				"warnings": 0,
+				"byRule": {},
+				"findings": []
+			}
+		},
+		{
+			"id": "habit-onboarding",
+			"task": "create",
+			"device": "mobile",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 3,
+			"components": 1,
+			"ms": 60522,
+			"inputTokens": 61008,
+			"outputTokens": 7582,
+			"costUsd": 0.2890074,
+			"rawColors": 2,
+			"designFindings": 2,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": ["button", "placeholder"],
+			"uaiModules": [],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 3,
+				"failed": [],
+				"errors": 0,
+				"warnings": 3,
+				"byRule": {
+					"contrast": 3
+				},
+				"findings": [
+					{
+						"path": "screens/onboarding-reminder.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<button> \"M\" has a contrast of 3.65:1, under 4.5:1 for text this size",
+						"start": 4401,
+						"line": 127
+					},
+					{
+						"path": "screens/onboarding-reminder.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"8:00 PM\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 5810,
+						"line": 162
+					},
+					{
+						"path": "screens/onboarding-reminder.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"Time to check in: water and 10 pages of…\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 5965,
+						"line": 166
+					}
+				]
+			}
+		},
+		{
+			"id": "analytics-dashboard",
+			"task": "create",
+			"device": "desktop",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 42609,
+			"inputTokens": 39468,
+			"outputTokens": 5153,
+			"costUsd": 0.21174459999999998,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": ["avatar", "badge", "button", "card", "progress", "separator", "toggle-group"],
+			"uaiModules": ["metric-card"],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 6,
+				"byRule": {
+					"contrast": 4,
+					"font-sizes": 2
+				},
+				"findings": [
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"JM\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 4852,
+						"line": 117
+					},
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"+6.4%\" has a contrast of 3.13:1, under 4.5:1 for text this size",
+						"start": 6567,
+						"line": 157
+					},
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<p> \"vs. 17,331 last 30 days\" has a contrast of 3.03:1, under 4.5:1 for text this size",
+						"start": 6774,
+						"line": 160
+					},
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"NL\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 10892,
+						"line": 249
+					},
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "font-sizes",
+						"severity": "warning",
+						"message": "<div> mixes 4 font sizes (12px, 14px, 16px, 24px). Keep a card to 3",
+						"start": 6967,
+						"line": 166
+					},
+					{
+						"path": "screens/analytics-dashboard.tsx",
+						"rule": "font-sizes",
+						"severity": "warning",
+						"message": "The screen uses 8 font sizes (11.5px, 12px, 12.5px, 14px, 16px, 18px, 24px, 28px). Keep to 6 or fewer for a clear scale"
+					}
+				]
+			}
+		},
+		{
+			"id": "pulse-funnels",
+			"task": "create",
+			"device": "desktop",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 42220,
+			"inputTokens": 45243,
+			"outputTokens": 4792,
+			"costUsd": 0.21992240000000002,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 2,
+			"uiModules": ["badge", "button", "separator", "toggle-group"],
+			"uaiModules": [],
+			"tokensDefined": 4,
+			"tokensUsed": 2,
+			"tokenClassUses": 2,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 1,
+				"byRule": {
+					"contrast": 1
+				},
+				"findings": [
+					{
+						"path": "screens/funnels.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"+4.2 pts\" has a contrast of 3.30:1, under 4.5:1 for text this size",
+						"start": 3229,
+						"line": 121
+					}
+				]
+			}
+		},
+		{
+			"id": "clinic-schedule",
+			"task": "create",
+			"device": "tablet",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 60659,
+			"inputTokens": 41176,
+			"outputTokens": 7013,
+			"costUsd": 0.2632638,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": ["avatar", "badge", "button", "progress", "separator"],
+			"uaiModules": [],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 2,
+				"byRule": {
+					"contrast": 2
+				},
+				"findings": [
+					{
+						"path": "screens/front-desk-schedule.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"AR\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 8252,
+						"line": 150
+					},
+					{
+						"path": "screens/front-desk-schedule.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"MR\" has a contrast of 4.35:1, under 4.5:1 for text this size",
+						"start": 10451,
+						"line": 198
+					}
+				]
+			}
+		},
+		{
+			"id": "bank-statements-tablet",
+			"task": "create",
+			"device": "tablet",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 53411,
+			"inputTokens": 46303,
+			"outputTokens": 5977,
+			"costUsd": 0.2529838,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 2,
+			"uiModules": ["badge", "button", "separator", "tabs"],
+			"uaiModules": [],
+			"tokensDefined": 6,
+			"tokensUsed": 6,
+			"tokenClassUses": 10,
+			"planned": false,
+			"sharedComponents": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 2,
+				"byRule": {
+					"contrast": 2
+				},
+				"findings": [
+					{
+						"path": "screens/monthly-statement.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<button> \"Income\" has a contrast of 4.29:1, under 4.5:1 for text this size",
+						"start": 7573,
+						"line": 191
+					},
+					{
+						"path": "screens/monthly-statement.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<button> \"Expenses\" has a contrast of 4.29:1, under 4.5:1 for text this size",
+						"start": 7631,
+						"line": 192
+					}
+				]
+			}
+		},
+		{
+			"id": "settings-danger-zone",
+			"task": "edit",
+			"device": "desktop",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 17751,
+			"inputTokens": 41972,
+			"outputTokens": 1838,
+			"costUsd": 0.137303,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 0,
+			"uiModules": ["button", "input", "label"],
+			"uaiModules": [],
+			"tokensDefined": 4,
+			"tokensUsed": 2,
+			"tokenClassUses": 2,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 1,
+				"byRule": {
+					"contrast": 1
+				},
+				"findings": [
+					{
+						"path": "screens/workspace-settings.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<h2> \"Danger zone\" has a contrast of 4.19:1, under 4.5:1 for text this size",
+						"start": 1359,
+						"line": 36
+					}
+				]
+			}
+		},
+		{
+			"id": "habit-today-edit",
+			"task": "edit",
+			"device": "mobile",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 16963,
+			"inputTokens": 37104,
+			"outputTokens": 1749,
+			"costUsd": 0.1203612,
+			"rawColors": 2,
+			"designFindings": 2,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": [],
+			"uaiModules": [],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 1,
+				"byRule": {
+					"contrast": 1
+				},
+				"findings": [
+					{
+						"path": "screens/today.tsx",
+						"rule": "contrast",
+						"severity": "warning",
+						"message": "<span> \"10\" has a contrast of 4.39:1, under 4.5:1 for text this size",
+						"start": 1125,
+						"line": 31
+					}
+				]
+			}
+		},
+		{
+			"id": "pricing-focus",
+			"task": "focus",
+			"device": "desktop",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 12010,
+			"inputTokens": 36880,
+			"outputTokens": 1035,
+			"costUsd": 0.1032206,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": ["badge", "button"],
+			"uaiModules": [],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"focusOutside": 0,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 0,
+				"byRule": {},
+				"findings": []
+			}
+		},
+		{
+			"id": "bank-activity-focus",
+			"task": "focus",
+			"device": "mobile",
+			"themed": true,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 1,
+			"components": 0,
+			"ms": 17764,
+			"inputTokens": 42549,
+			"outputTokens": 1614,
+			"costUsd": 0.1332114,
+			"rawColors": 0,
+			"designFindings": 0,
+			"componentsAvailable": 2,
+			"componentsReused": 0,
+			"uiModules": [],
+			"uaiModules": [],
+			"tokensDefined": 6,
+			"tokensUsed": 2,
+			"tokenClassUses": 2,
+			"focusOutside": 1,
+			"layout": {
+				"screens": 1,
+				"failed": [],
+				"errors": 0,
+				"warnings": 0,
+				"byRule": {},
+				"findings": []
+			}
+		},
+		{
+			"id": "sign-in-vary",
+			"task": "vary",
+			"device": "mobile",
+			"themed": false,
+			"ok": true,
+			"repairs": 0,
+			"problemsLeft": 0,
+			"screens": 2,
+			"components": 0,
+			"ms": 16118,
+			"inputTokens": 74360,
+			"outputTokens": 3016,
+			"costUsd": 0.2283906,
+			"rawColors": 16,
+			"designFindings": 16,
+			"componentsAvailable": 0,
+			"componentsReused": 0,
+			"uiModules": ["button", "input", "label", "placeholder"],
+			"uaiModules": [],
+			"tokensDefined": 0,
+			"tokensUsed": 0,
+			"tokenClassUses": 0,
+			"layout": {
+				"screens": 2,
+				"failed": [],
+				"errors": 4,
+				"warnings": 0,
+				"byRule": {
+					"contrast": 4
+				},
+				"findings": [
+					{
+						"path": "screens/sign-in.alt-1.tsx",
+						"rule": "contrast",
+						"severity": "error",
+						"message": "<span> \"Trailmate\" has a contrast of 1.04:1, under 3:1",
+						"start": 848,
+						"line": 17
+					},
+					{
+						"path": "screens/sign-in.alt-1.tsx",
+						"rule": "contrast",
+						"severity": "error",
+						"message": "<h1> \"Welcome back to Trailmate\" has a contrast of 1.04:1, under 3:1",
+						"start": 983,
+						"line": 20
+					},
+					{
+						"path": "screens/sign-in.alt-1.tsx",
+						"rule": "contrast",
+						"severity": "error",
+						"message": "<p> \"Plan hikes with friends and share the r…\" has a contrast of 1.04:1, under 3:1",
+						"start": 1073,
+						"line": 21
+					},
+					{
+						"path": "screens/sign-in.alt-2.tsx",
+						"rule": "contrast",
+						"severity": "error",
+						"message": "<span> \"Trailmate\" has a contrast of 1.04:1, under 3:1",
+						"start": 833,
+						"line": 17
+					}
+				]
+			}
+		}
+	],
+	"totals": {
+		"ok": 12,
+		"errors": 0,
+		"repairs": 0,
+		"problemsLeft": 0,
+		"screens": 18,
+		"components": 3,
+		"seconds": 445.7,
+		"inputTokens": 634229,
+		"outputTokens": 51883,
+		"costUsd": 2.4949,
+		"rawColors": 20,
+		"designFindings": 20,
+		"reuse": 75,
+		"uiModules": 39,
+		"uaiModules": 2,
+		"tokenUse": 68.8,
+		"tokenClassUses": 49,
+		"focusOutside": 1,
+		"planned": 0,
+		"sharedComponents": 0,
+		"layoutScreens": 18,
+		"layoutFailed": 0,
+		"layoutErrors": 4,
+		"layoutWarnings": 16,
+		"frame-overflow": 0,
+		"text-clipped": 0,
+		"overlap": 0,
+		"contrast": 18,
+		"empty-container": 0,
+		"font-sizes": 2
+	}
+}
