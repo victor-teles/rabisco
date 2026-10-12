@@ -64,7 +64,8 @@ Some failures today lose work or hide it. Fix them before adding more surface.
 - ✅ Autosave the composer draft per project and chat (text only)
 - ✅ Recover after a crash: reopen the last project, the open chat and the canvas viewport. Back to home clears it
 - ✅ A project backup before a migration or a reload from disk that clears history (app data, 10 per project, Show from the toast)
-- ⬜ Check it in the packaged app: reopen after a quit and a forced kill, undo after reopen, a `git pull` with the project open, a failed folder write, and the Windows key store on a Windows machine
+- ✅ Check it in the packaged app on macOS: reopen after a quit, a window close and a forced kill, undo after reopen, a `git pull` with the project open, and a failed folder write. Quitting or closing the window now writes pending edits and undo history first, and the save error stays up with Retry
+- ⬜ Check the Windows key store on a Windows machine
 - ⬜ When `rabisco.json` changed while the project was closed, rebase history with `rebaseCanvas` instead of starting it again
 - ⬜ History starts again when a project folder is moved or renamed; history and backups don't include `public/` images or chats
 

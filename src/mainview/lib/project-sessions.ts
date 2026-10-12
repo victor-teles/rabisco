@@ -69,6 +69,15 @@ export function createProjectSessions(options: SessionsOptions) {
 		await Promise.all([...entries.values()].map((entry) => entry.session.flushFiles()));
 	}
 
+	/** History first: `flushCanvas` starts a history write it doesn't wait for */
+	async function saveAll() {
+		const saved = await Promise.all(
+			[...entries.values()].map((entry) => Promise.all([entry.session.flushHistory(), entry.session.flushCanvas()])),
+		);
+
+		return saved.flat().every(Boolean);
+	}
+
 	const route = (generationId: string, listener: (message: GenerationEventMessage) => void) => {
 		routes.set(generationId, listener);
 
@@ -210,6 +219,7 @@ export function createProjectSessions(options: SessionsOptions) {
 		stop: (path: string) => entries.get(path)?.controller.stop(),
 		discard,
 		flushAll,
+		saveAll,
 		subscribe(listener: () => void) {
 			listeners.add(listener);
 

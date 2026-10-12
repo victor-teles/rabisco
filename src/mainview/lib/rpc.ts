@@ -58,12 +58,20 @@ export const onAssetsChanged = assetChanges.add;
 
 export const onCanvasChanged = canvasChanges.add;
 
+let saveAll = async () => true;
+
+export function handleSaveAll(handler: () => Promise<boolean>) {
+	saveAll = handler;
+}
+
 function createElectrobunApi(): RabiscoApi {
 	const rpc = Electroview.defineRPC<RabiscoRPC>({
 		// Generations can run for minutes with agentic providers
 		maxRequestTime: 15 * 60_000,
 		handlers: {
-			requests: {},
+			requests: {
+				saveAll: () => saveAll().then(() => ({ ok: true }) as const),
+			},
 			messages: {
 				generationEvent: generationEvents.emit,
 				filesChanged: fileChanges.emit,

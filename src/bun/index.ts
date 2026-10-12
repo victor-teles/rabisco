@@ -1,4 +1,12 @@
-import { ApplicationMenu, BrowserView, BrowserWindow, PATHS, Updater, Utils } from "electrobun/main";
+import Electrobun, {
+	ApplicationMenu,
+	BrowserView,
+	BrowserWindow,
+	type ElectrobunEvent,
+	PATHS,
+	Updater,
+	Utils,
+} from "electrobun/main";
 import { existsSync } from "fs";
 import { join } from "path";
 import type { RabiscoRPC } from "../shared/rpc";
@@ -269,3 +277,38 @@ const mainWindow = new BrowserWindow({
 });
 
 mainWindow.maximize();
+
+const SAVE_ON_CLOSE_MS = 3000;
+
+let saving: Promise<void> | null = null;
+
+let saved = false;
+
+/** Edits are saved after a short delay; write them before the window or the app goes away */
+function saveBeforeClosing(event: ElectrobunEvent<{}, { allow: boolean }>, close: () => void) {
+	if (saved) return;
+	event.response = { allow: false };
+
+	saving ??= Promise.race([
+		mainWindow.webview.rpc?.request.saveAll({}),
+		new Promise((resolve) => setTimeout(resolve, SAVE_ON_CLOSE_MS)),
+	]).then(
+		() => {
+			saved = true;
+		},
+		(error) => {
+			saved = true;
+			console.warn("Could not save before closing:", error);
+		},
+	);
+
+	void saving.then(close);
+}
+
+Electrobun.events.on("before-quit", (event: ElectrobunEvent<{}, { allow: boolean }>) =>
+	saveBeforeClosing(event, () => Utils.quit()),
+);
+
+Electrobun.events.on(`will-close-${mainWindow.id}`, (event: ElectrobunEvent<{}, { allow: boolean }>) =>
+	saveBeforeClosing(event, () => mainWindow.close()),
+);

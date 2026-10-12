@@ -139,7 +139,10 @@ export type RabiscoRPC = {
 		messages: {};
 	}>;
 	webview: RPCSchema<{
-		requests: {};
+		requests: {
+			/** Writes every open project's pending changes and undo history. Runs before the app quits. */
+			saveAll: { params: {}; response: { ok: true } };
+		};
 		messages: {
 			generationEvent: GenerationEventMessage;
 			/** Outside Rabisco only: writes made through `writeFiles` are not echoed. */

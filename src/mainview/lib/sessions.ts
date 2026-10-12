@@ -4,7 +4,7 @@ import { planMode } from "@/hooks/use-plan-mode";
 import type { RenderFailure } from "@/lib/generation-session";
 import { createProjectSessions } from "@/lib/project-sessions";
 import { onFrameStatus } from "@/lib/render/frame-host";
-import { api, onAssetsChanged, onCanvasChanged, onFilesChanged, onGenerationEvent } from "@/lib/rpc";
+import { api, handleSaveAll, onAssetsChanged, onCanvasChanged, onFilesChanged, onGenerationEvent } from "@/lib/rpc";
 import { checkDesign } from "@/views/editor/design-check";
 
 const RENDER_CHECK_MS = 2500;
@@ -45,7 +45,18 @@ function reportBackup(dir: string) {
 
 function reportSaveError(cause: unknown) {
 	console.error("[rabisco] save failed", cause);
-	toast.error("Couldn’t save changes", { id: "save-error", description: String(cause) });
+	toast.error("Couldn’t save changes", {
+		id: "save-error",
+		description: String(cause),
+		duration: Infinity,
+		action: {
+			label: "Retry",
+			onClick: (event) => {
+				event.preventDefault();
+				void projectSessions.saveAll().then((saved) => saved && toast.dismiss("save-error"));
+			},
+		},
+	});
 }
 
 export const projectSessions = createProjectSessions({
@@ -68,3 +79,5 @@ export const projectSessions = createProjectSessions({
 		planMode,
 	},
 });
+
+handleSaveAll(projectSessions.saveAll);

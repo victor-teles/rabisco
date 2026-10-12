@@ -351,6 +351,30 @@ describe("project sessions", () => {
 		expect(stored("/p/a").files["screens/home.tsx"]).toBe(SCREEN);
 	});
 
+	test("save all writes the pending files, canvas and undo history at once", async () => {
+		const { open, sessions, stored, histories } = setup();
+		const { session } = await open("/p/a");
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "screens/home.tsx": SCREEN } }));
+		await sessions.saveAll();
+
+		expect(stored("/p/a").files["screens/home.tsx"]).toBe(SCREEN);
+		expect(histories.get("/p/a")?.past).toHaveLength(1);
+	});
+
+	test("save all reports a failed write", async () => {
+		const { open, sessions, api } = setup();
+		const { session } = await open("/p/a");
+
+		api.writeFiles = async () => {
+			throw new Error("Disk full");
+		};
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "screens/home.tsx": SCREEN } }));
+
+		expect(await sessions.saveAll()).toBe(false);
+	});
+
 	test("a plan that fails says so, then runs in one go", async () => {
 		const { open, nextCall, finish } = setup({ plan: true });
 		const { session, controller } = await open("/p/a");
