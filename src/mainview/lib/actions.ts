@@ -1,3 +1,5 @@
+import type { PasteData } from "./clipboard";
+
 /** One key combination. `mod` is ⌘ on macOS and Ctrl elsewhere */
 export type Chord = {
 	/** `event.code`, for keys that ⌥ or ⇧ change on macOS */
@@ -29,6 +31,8 @@ export type Action = {
 	/** While disabled, its keys reach the page: Tab moves focus when no element is selected */
 	passive?: boolean;
 	run: () => void;
+	/** ⌘V and Edit > Paste run this from the native `paste` event, so WKWebView shows no Paste callout */
+	paste?: (data: PasteData) => void;
 };
 
 export type KeyInput = Pick<KeyboardEvent, "code" | "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;

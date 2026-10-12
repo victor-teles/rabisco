@@ -1,4 +1,5 @@
 import { boundsOf } from "./align";
+import type { PasteData } from "./clipboard";
 import type { Size } from "./device-presets";
 import { FRAME_SIZE, nextFrameX, uniqueScreenPath } from "../../shared/project";
 import type { Device, Frame, ProjectFiles } from "../../shared/types";
@@ -102,8 +103,8 @@ export function writeScreens(screens: ScreenCopy[]) {
 }
 
 /** Screens copied here, else a screen from TSX on the system clipboard; falls back to the last copy if it can't be read */
-export async function readScreens(device: Device): Promise<ScreenCopy[]> {
-	const text = await navigator.clipboard.readText().catch(() => null);
+export async function readScreens(device: Device, paste: PasteData): Promise<ScreenCopy[]> {
+	const text = await paste.text();
 
 	if (clipboard && (text === null || text === clipboard.text)) return clipboard.screens;
 	const pasted = text === null ? null : screenFromCode(text, device);

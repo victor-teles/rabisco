@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import type { Structure } from "@/hooks/use-structure";
 import type { Action } from "@/lib/actions";
+import { systemPaste, type PasteData } from "@/lib/clipboard";
 import { readElement, usedImports, writeElement } from "@/lib/element-clipboard";
 import { isLocked, lockedStarts } from "@/lib/element-locks";
 import { arrowSteps, moveSteps, parentOf, type ArrowKey } from "@/lib/element-flow";
@@ -177,7 +178,7 @@ type Options = {
 	askAI: () => void;
 	showSource: () => void;
 	/** ⌘V when the clipboard holds no element code: screens, or a screen's TSX */
-	pasteScreens: () => void;
+	pasteScreens: (data: PasteData) => void;
 };
 
 /** Go after the editor's hidden Escape action, which wins the Esc key that `select-parent` only shows */
@@ -225,11 +226,11 @@ export function elementActions({
 	const canMove = (steps: number) =>
 		one && source !== undefined && steps !== 0 && moveSteps(source, element.start, steps) !== null;
 
-	const paste = async () => {
-		const copy = await readElement();
+	const paste = async (data: PasteData) => {
+		const copy = await readElement(data);
 
 		if (copy) structure.pasteIntoNode(copy);
-		else pasteScreens();
+		else pasteScreens(data);
 	};
 
 	const selectSibling = (step: 1 | -1) => {
@@ -361,7 +362,8 @@ export function elementActions({
 			group: "Element",
 			chords: [{ code: "KeyV", mod: true }],
 			enabled: one,
-			run: () => void paste(),
+			run: () => void paste(systemPaste),
+			paste: (data) => void paste(data),
 		},
 		{
 			// Figma reorders auto layout children with the arrows along the parent's direction. Passive: without an element they nudge screens

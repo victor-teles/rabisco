@@ -1,5 +1,6 @@
 import type { LibraryImport } from "../../shared/components/library";
 import { addImport, isElementCode, pasteElement, readImports } from "../../shared/jsx";
+import type { PasteData } from "./clipboard";
 
 /** Element code and the named imports it uses, so a paste into another screen still compiles */
 export type ElementCopy = { code: string; imports: LibraryImport[] };
@@ -45,8 +46,8 @@ export function writeElement(copy: ElementCopy) {
 }
 
 /** Element code copied here or from an editor; `null` when the clipboard holds something else, such as screens */
-export async function readElement(): Promise<ElementCopy | null> {
-	const text = await navigator.clipboard.readText().catch(() => null);
+export async function readElement(paste: PasteData): Promise<ElementCopy | null> {
+	const text = await paste.text();
 
 	if (copied && (text === null || text === copied.code)) return copied;
 

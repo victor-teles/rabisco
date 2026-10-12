@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import type { ChangeOptions } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
+import { systemPaste, type PasteData } from "@/lib/clipboard";
 import { DEVICE_PRESETS, deviceForSize, type DevicePreset, type Size } from "@/lib/device-presets";
 import type { Snapshot } from "@/lib/history";
 import {
@@ -41,7 +42,7 @@ export type ScreenActionsContext = {
 	reveal: (frames: Frame[]) => void;
 	/** Where ⌘V pastes: the pointer, when it is over the canvas */
 	pointer: () => Point | null;
-	pasteImages: (at: Point | null) => Promise<boolean>;
+	pasteImages: (at: Point | null, paste: PasteData) => Promise<boolean>;
 };
 
 /** Screen and canvas actions; with `point` (a right-click on the canvas) new screens and comments land there */
@@ -79,13 +80,13 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 		if (frame) context.rename(frame.file);
 	};
 
-	const paste = async () => {
+	const paste = async (data: PasteData) => {
 		// Read before the clipboard prompt can move the pointer
 		const under = point ?? context.pointer();
-		const screens = await readScreens(device);
+		const screens = await readScreens(device, data);
 
 		if (screens.length) add(screens, under ? centeredOn(screens, under) : undefined);
-		else if (!(await context.pasteImages(under)))
+		else if (!(await context.pasteImages(under, data)))
 			toast("Nothing to paste", { description: "Copy screens, the TSX of a screen, or an image first." });
 	};
 
@@ -140,7 +141,8 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 			group: "Edit",
 			chords: [{ code: "KeyV", mod: true }],
 			enabled: true,
-			run: () => void paste(),
+			run: () => void paste(systemPaste),
+			paste: (data) => void paste(data),
 		},
 		{
 			id: "new-screen",

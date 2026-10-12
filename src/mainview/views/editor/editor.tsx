@@ -48,7 +48,8 @@ import { useStructure } from "@/hooks/use-structure";
 import { useAgentTools } from "@/hooks/use-agent-tools";
 import type { Theme } from "@/hooks/use-theme";
 import { useVariations } from "@/hooks/use-variations";
-import { type Action, actionById, actionForKey } from "@/lib/actions";
+import { type Action, actionById, actionForKey, type KeyInput } from "@/lib/actions";
+import { eventPaste } from "@/lib/clipboard";
 import { type ChatCommand, isBuiltin } from "@/lib/chat-commands";
 import { commentsPrompt, openOnScreen, type ChatComment } from "@/lib/comment-threads";
 import { useAutoResolve } from "@/hooks/use-auto-resolve";
@@ -144,6 +145,7 @@ import {
 	DISTRIBUTE_SHORTCUTS,
 	focusOwnsKey,
 	NEW_CHAT_CODE,
+	ownsKey,
 	PLAY_KEYS,
 	SCREENS_VIEW_CODE,
 	SIDE_PANEL_CODE,
@@ -162,6 +164,8 @@ type EditorProps = {
 };
 
 const NO_FRAMES: Frame[] = [];
+
+const PASTE_KEY: KeyInput = { code: "KeyV", key: "v", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false };
 
 const NO_FILES: ProjectFiles = {};
 
@@ -1336,7 +1340,7 @@ export function EditorView({
 				setTab("code");
 				setSourceReveal((key) => key + 1);
 			},
-			pasteScreens: () => actionById(screenActions(screenContext), "paste-screens")?.run(),
+			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		{
@@ -1710,6 +1714,8 @@ export function EditorView({
 		if (compareBase && action?.id !== "undo" && action?.id !== "redo") return;
 
 		if (action) {
+			// The default fires the native `paste` event, which `onPaste` handles
+			if (action.enabled && action.paste) return;
 			event.preventDefault();
 
 			if (action.enabled) action.run();
@@ -1727,6 +1733,19 @@ export function EditorView({
 			const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
 			nudgeSelection(dx, dy);
 		}
+	};
+
+	const onPaste = (event: ClipboardEvent) => {
+		if (event.defaultPrevented || !project || paletteOpen || sheetOpen || playStart || compareBase) return;
+
+		if (ownsKey(event.target instanceof HTMLElement ? event.target : null, PASTE_KEY)) return;
+
+		if (canvasRef.current?.isEditingText()) return;
+		const action = actionForKey(actions, PASTE_KEY);
+
+		if (!action?.enabled || !action.paste) return;
+		event.preventDefault();
+		action.paste(eventPaste(event.clipboardData));
 	};
 
 	function startNewChat() {
@@ -2044,11 +2063,18 @@ export function EditorView({
 
 	const keyHandler = useRef(onKeyDown);
 	keyHandler.current = onKeyDown;
+	const pasteHandler = useRef(onPaste);
+	pasteHandler.current = onPaste;
 	useEffect(() => {
 		const listener = (event: KeyboardEvent) => keyHandler.current(event);
+		const pasteListener = (event: ClipboardEvent) => pasteHandler.current(event);
 		window.addEventListener("keydown", listener);
+		window.addEventListener("paste", pasteListener);
 
-		return () => window.removeEventListener("keydown", listener);
+		return () => {
+			window.removeEventListener("keydown", listener);
+			window.removeEventListener("paste", pasteListener);
+		};
 	}, []);
 
 	if (error) {

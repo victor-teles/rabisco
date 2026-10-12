@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore, type RefObject } from "react";
 import { toast } from "sonner";
 import type { Action } from "@/lib/actions";
+import type { PasteData } from "@/lib/clipboard";
 import type { Snapshot } from "@/lib/history";
 import { removeImage } from "@/lib/moodboard";
 import { encodeBase64, projectAssets } from "@/lib/render/assets";
@@ -61,19 +62,14 @@ function besideEverything(frames: Frame[], images: CanvasImage[]): Point {
 	};
 }
 
-async function readClipboardImages(): Promise<File[]> {
-	const items = await navigator.clipboard.read().catch(() => []);
-	const files: File[] = [];
+async function readClipboardImages(paste: PasteData): Promise<File[]> {
+	const blobs = await paste.blobs(isMoodboardType);
 
-	for (const item of items) {
-		const type = item.types.find(isMoodboardType);
-
-		if (!type) continue;
-		const blob = await item.getType(type);
-		files.push(new File([blob], `pasted.${MOODBOARD_EXTENSIONS[type]}`, { type }));
-	}
-
-	return files;
+	return blobs.flatMap((blob) =>
+		isMoodboardType(blob.type)
+			? [new File([blob], `pasted.${MOODBOARD_EXTENSIONS[blob.type]}`, { type: blob.type })]
+			: [],
+	);
 }
 
 export function useMoodboard({
@@ -172,8 +168,8 @@ export function useMoodboard({
 	);
 
 	const paste = useCallback(
-		async (at: Point | null) => {
-			const files = await readClipboardImages();
+		async (at: Point | null, paste: PasteData) => {
+			const files = await readClipboardImages(paste);
 
 			return files.length > 0 && add(files, at ?? undefined);
 		},
