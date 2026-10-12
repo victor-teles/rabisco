@@ -97,25 +97,6 @@ Open items from phases 6, 9, 11 and 12.
 
 ---
 
-## Phase 21: Start from something that exists ⬜
-
-_Principles: UX first · Screens are React_
-
-Every competitor starts from a reference: a screenshot, a live site or a Figma file. Rabisco can attach images to a prompt ([0011](./decisions/0011-image-attachments-reach-every-provider.md)), but it can't turn them into an editable screen on purpose.
-
-- ⬜ "Recreate from screenshot": drop an image on the canvas, get a screen that matches it, then compare the two side by side with an overlay and a difference score
-- ✅ Numbered image references in the composer, so a prompt can say "the layout from image 2"
-- ⬜ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes 🧭
-- ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it 🧭
-- ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens 🧭
-- ⬜ Attach a PRD or any Markdown file, and plan every screen from it
-- ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
-- ✅ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo. DESIGN.md actions: "Import from a URL…" reads a Design.md, a CSS theme or a JSON token file (GitHub links work); "Colors from a logo…" sets primary, its foreground, ring and charts. Each is one undo step that re-themes the screens
-
-**Done when** a user can drop a screenshot of an existing app and get an editable screen in its style on the first try.
-
----
-
 ## Phase 22: Rabisco for coding agents ⬜ 🧭
 
 _Principles: Bring your own AI · Context is a file_
@@ -132,6 +113,25 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 - ⬜ Sync a screen into an existing app repository: write it as a component at a path the user picks, with its imports
 
 **Done when** Claude Code can read the selected screen, change it, and the user can undo that change in Rabisco.
+
+---
+
+## Phase 21: Start from something that exists ⬜
+
+_Principles: UX first · Screens are React_
+
+Every competitor starts from a reference: a screenshot, a live site or a Figma file. Rabisco can attach images to a prompt ([0011](./decisions/0011-image-attachments-reach-every-provider.md)), but it can't turn them into an editable screen on purpose.
+
+- ⬜ "Recreate from screenshot": drop an image on the canvas, get a screen that matches it, then compare the two side by side with an overlay and a difference score
+- ✅ Numbered image references in the composer, so a prompt can say "the layout from image 2"
+- ⬜ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes 🧭
+- ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it 🧭
+- ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens 🧭
+- ⬜ Attach a PRD or any Markdown file, and plan every screen from it
+- ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
+- ✅ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo. DESIGN.md actions: "Import from a URL…" reads a Design.md, a CSS theme or a JSON token file (GitHub links work); "Colors from a logo…" sets primary, its foreground, ring and charts. Each is one undo step that re-themes the screens
+
+**Done when** a user can drop a screenshot of an existing app and get an editable screen in its style on the first try.
 
 ---
 
