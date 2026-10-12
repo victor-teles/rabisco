@@ -98,6 +98,19 @@ describe("treeToTsx", () => {
 		expect(untokened).toEqual({ colors: 1, radii: 0 });
 	});
 
+	test("breaks ties between equal tokens by role, then by theme order", () => {
+		const { source } = treeToTsx(
+			tree([
+				el("div", { display: "block", "background-color": "rgb(255, 255, 255)" }),
+				el("p", { display: "block", color: "rgb(255, 255, 255)" }, [text("On dark")]),
+			]),
+			{ ...THEME, card: "#ffffff", popover: "#ffffff", "card-foreground": "#ffffff" },
+		);
+
+		expect(source).toContain('<div className="bg-background" />');
+		expect(source).toContain('<p className="text-card-foreground">On dark</p>');
+	});
+
 	test("uses project tokens for custom colors, font sizes and radii", () => {
 		const theme = { ...THEME, "color-brand": "#e11d48", "text-display": "3.5rem", "radius-card": "20px" };
 

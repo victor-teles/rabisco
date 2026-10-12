@@ -7,7 +7,7 @@ type Lab = [number, number, number];
 type ColorOption = { name: string; lab: Lab };
 
 export type Matcher = {
-	color: (value: string) => string | null;
+	color: (value: string, role?: ColorRole) => string | null;
 	spacing: (value: string) => string | null;
 	size: (value: string, box?: number) => string | null;
 	maxWidth: (value: string) => string | null;
@@ -17,7 +17,11 @@ export type Matcher = {
 	arbitrary: { colors: Set<string>; radii: Set<string> };
 };
 
+export type ColorRole = "fill" | "text";
+
 const TOKEN_DISTANCE = 0.02;
+
+const ROLE_PENALTY = 0.005;
 
 const PALETTE_DISTANCE = 0.01;
 
@@ -116,6 +120,8 @@ export const arbitrary = (value: string) =>
 		.replace(/["'`\\]/g, "")
 		.replace(/\s+/g, "_")}]`;
 
+const TIE = 1e-9;
+
 function nearest<T>(options: T[], score: (option: T) => number, limit: number): T | null {
 	let best: T | null = null;
 	let bestScore = limit;
@@ -123,7 +129,7 @@ function nearest<T>(options: T[], score: (option: T) => number, limit: number): 
 	for (const option of options) {
 		const value = score(option);
 
-		if (value <= bestScore) {
+		if (best === null ? value <= limit : value < bestScore - TIE) {
 			best = option;
 			bestScore = value;
 		}
@@ -198,7 +204,7 @@ export function createMatcher(theme: Record<string, string>): Matcher {
 		else if (kind === "radius") radii.unshift([tokenUtility(name), size]);
 	}
 
-	const color = (value: string) => {
+	const color = (value: string, role: ColorRole = "fill") => {
 		const rgba: Rgba | null = parseColor(value);
 
 		if (!rgba) return null;
@@ -208,8 +214,12 @@ export function createMatcher(theme: Record<string, string>): Matcher {
 		const alpha = rgba.a < 1 ? alphaModifier(rgba.a) : "";
 
 		const match =
-			nearest(tokens, (option) => distance(option.lab, lab), TOKEN_DISTANCE) ??
-			nearest(palette, (option) => distance(option.lab, lab), PALETTE_DISTANCE);
+			nearest(
+				tokens,
+				(option) =>
+					distance(option.lab, lab) + (option.name.endsWith("foreground") === (role === "text") ? 0 : ROLE_PENALTY),
+				TOKEN_DISTANCE,
+			) ?? nearest(palette, (option) => distance(option.lab, lab), PALETTE_DISTANCE);
 
 		if (match) return match.name + alpha;
 		const hex = toHex(rgba);

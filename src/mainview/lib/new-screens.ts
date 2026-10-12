@@ -1,6 +1,7 @@
 import { boundsOf } from "./align";
 import type { PasteData } from "./clipboard";
 import type { Size } from "./device-presets";
+import type { ImportedScreen } from "../../shared/import/to-tsx";
 import { FRAME_SIZE, nextFrameX, uniqueScreenPath } from "../../shared/project";
 import type { Device, Frame, ProjectFiles } from "../../shared/types";
 
@@ -58,6 +59,20 @@ export function screenFromCode(text: string, device: Device): ScreenCopy | null 
 	const words = component?.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase() ?? "pasted screen";
 
 	return { ...blankScreen(words[0]!.toUpperCase() + words.slice(1), device), source: text };
+}
+
+const MIN_IMPORT_HEIGHT = 400;
+
+export function importedScreen(screen: ImportedScreen, device: Device): ScreenCopy {
+	return {
+		name: screen.name,
+		device,
+		width: screen.width,
+		height: Math.max(MIN_IMPORT_HEIGHT, screen.height),
+		source: screen.source,
+		dx: 0,
+		dy: 0,
+	};
 }
 
 /** The top-left that centers the copies, as laid out together, on `point` */

@@ -5,8 +5,8 @@ import { readScreens } from "./new-screens";
 
 const SCREEN = `export default function Settings() {\n\treturn <main className="p-4">Settings</main>;\n}\n`;
 
-const data = (text: string, files: File[] = []) => ({
-	getData: (format: string) => (format === "text/plain" ? text : ""),
+const data = (text: string, files: File[] = [], html = "") => ({
+	getData: (format: string) => (format === "text/plain" ? text : format === "text/html" ? html : ""),
 	files,
 });
 
@@ -17,7 +17,12 @@ describe("eventPaste", () => {
 		const paste = eventPaste(data("hello", [png, pdf]));
 
 		expect(await paste.text()).toBe("hello");
+		expect(await paste.html()).toBeNull();
 		expect(await paste.blobs((type) => type.startsWith("image/"))).toEqual([png]);
+	});
+
+	test("reads the event's HTML", async () => {
+		expect(await eventPaste(data("Hi", [], "<b>Hi</b>")).html()).toBe("<b>Hi</b>");
 	});
 
 	test("reads nothing without data", async () => {

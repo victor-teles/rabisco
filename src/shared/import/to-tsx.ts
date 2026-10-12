@@ -455,7 +455,7 @@ function colorClass(node: CapturedNode, property: string, prefix: string, match:
 
 	if (bound) return bound;
 	const value = node.styles[property];
-	const color = value ? match.color(value) : null;
+	const color = value ? match.color(value, prefix === "text" ? "text" : "fill") : null;
 
 	return color ? `${prefix}-${color}` : null;
 }

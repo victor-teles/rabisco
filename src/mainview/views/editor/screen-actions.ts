@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import type { ChangeOptions } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import { systemPaste, type PasteData } from "@/lib/clipboard";
+import { htmlScreen } from "@/lib/html-import";
 import { DEVICE_PRESETS, deviceForSize, type DevicePreset, type Size } from "@/lib/device-presets";
 import type { Snapshot } from "@/lib/history";
 import {
@@ -85,9 +86,18 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 		const under = point ?? context.pointer();
 		const screens = await readScreens(device, data);
 
-		if (screens.length) add(screens, under ? centeredOn(screens, under) : undefined);
-		else if (!(await context.pasteImages(under, data)))
-			toast("Nothing to paste", { description: "Copy screens, the TSX of a screen, or an image first." });
+		if (screens.length) {
+			add(screens, under ? centeredOn(screens, under) : undefined);
+
+			return;
+		}
+
+		if (await context.pasteImages(under, data)) return;
+		const html = await data.html();
+		const imported = html ? await htmlScreen(html, device, context.current()?.theme) : null;
+
+		if (imported) add([imported], under ? centeredOn([imported], under) : undefined);
+		else toast("Nothing to paste", { description: "Copy screens, the TSX of a screen, HTML or an image first." });
 	};
 
 	return [
