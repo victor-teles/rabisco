@@ -58,7 +58,7 @@ A pure function in `src/shared/import/` writes TSX from the tree and the applied
 ### Tokens from the source
 
 - **Live URL.** The capture also reads `:root` custom properties, the body's background and text, and the most used colors, radii and fonts. Rabisco proposes a `## Tokens` section from them with the same rules as the built-in heuristics: body colors become `background` and `foreground`, the most used filled button or link color becomes `primary`. With a provider, the theme task from [0009](./0009-theme-read-from-design-md.md) can read them instead. The user picks "Keep project theme" or "Use the site's theme". The second writes DESIGN.md, and conversion then matches against the new tokens, so the screen uses token classes.
-- **Figma variables.** A variable bound to a fill, radius, gap or padding becomes a custom token named with its Tailwind namespace (`Brand/500` → `color-brand-500`). Missing tokens are proposed for DESIGN.md. A name that already exists keeps the project's value, and the import says so.
+- **Figma variables.** A variable bound to a fill, radius, gap or padding becomes a custom token named with its Tailwind namespace (`Brand/500` → `color-brand-500`). Missing tokens are proposed for DESIGN.md. A name that already exists keeps the project's value, and the import says so. A name that isn't a valid token name (`Spacing/4` gives `spacing-4`, `Radius/LG` gives the built-in `radius-lg`) stays a plain value and matches like any other.
 - **HTML paste.** No new tokens. Values match the project's tokens or stay arbitrary.
 
 Re-theming always asks first, as in [0009](./0009-theme-read-from-design-md.md).

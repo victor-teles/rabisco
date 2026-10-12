@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import type { ChangeOptions } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import { systemPaste, type PasteData } from "@/lib/clipboard";
+import { figmaImport } from "@/lib/figma-import";
 import { appliedTheme, htmlScreen } from "@/lib/html-import";
 import { DEVICE_PRESETS, deviceForSize, type DevicePreset, type Size } from "@/lib/device-presets";
 import type { Snapshot } from "@/lib/history";
@@ -16,6 +17,7 @@ import {
 	type ScreenCopy,
 } from "@/lib/new-screens";
 import type { DesignTokens } from "../../../shared/context/tokens";
+import { hasFigmaData } from "../../../shared/import/figma/clipboard";
 import { treeToTsx } from "../../../shared/import/to-tsx";
 import type { UrlCapture } from "../../../shared/import/url-capture";
 import { isScreenFile } from "../../../shared/project";
@@ -26,6 +28,10 @@ import { askPageImport } from "./import-page-dialog";
 import { NEW_SCREEN_CODE } from "./shortcuts";
 
 type Point = { x: number; y: number };
+
+const FIGMA_SCREEN_GAP = 80;
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 export const presetActionId = (preset: DevicePreset) => `new-screen-${preset.id}`;
 
@@ -88,6 +94,48 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 		if (frame) context.rename(frame.file);
 	};
 
+	/** The screens are one undo step; variables that aren't tokens yet go into DESIGN.md as a second one */
+	const pasteFigma = async (html: string, under: Point | null) => {
+		const result = await figmaImport(html, context.current()?.theme).catch((error: Error) => error);
+
+		if (result instanceof Error) {
+			toast.error("Couldn't paste from Figma", { description: result.message });
+
+			return;
+		}
+
+		const copies = result.screens.map((screen) => importedScreen(screen, deviceForSize(screen)));
+
+		if (!copies.length) {
+			toast("Nothing to paste", { description: "Copy a frame or layers in Figma first." });
+
+			return;
+		}
+
+		let dx = 0;
+
+		for (const copy of copies) {
+			copy.dx = dx;
+			dx += copy.width + FIGMA_SCREEN_GAP;
+		}
+
+		add(copies, under ? centeredOn(copies, under) : undefined);
+		const added = Object.keys(result.added).length;
+
+		if (added) context.importTokens({ light: result.added, dark: {} });
+
+		const notes = [
+			added ? `Added ${plural(added, "Figma variable")} to DESIGN.md as tokens.` : "",
+			result.kept.length ? `Kept the project's value for ${result.kept.join(", ")}.` : "",
+			result.placeholders ? `${plural(result.placeholders, "image fill")} became image placeholders.` : "",
+		].join(" ");
+
+		toast(`Pasted ${plural(copies.length, "screen")} from Figma`, {
+			id: "import-design",
+			description: `${notes} Press ⌘Z to undo.`.trim(),
+		});
+	};
+
 	const paste = async (data: PasteData) => {
 		// Read before the clipboard prompt can move the pointer
 		const under = point ?? context.pointer();
@@ -99,8 +147,15 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 			return;
 		}
 
-		if (await context.pasteImages(under, data)) return;
 		const html = await data.html();
+
+		if (html && hasFigmaData(html)) {
+			await pasteFigma(html, under);
+
+			return;
+		}
+
+		if (await context.pasteImages(under, data)) return;
 		const imported = html ? await htmlScreen(html, device, context.current()?.theme) : null;
 
 		if (imported) add([imported], under ? centeredOn([imported], under) : undefined);
