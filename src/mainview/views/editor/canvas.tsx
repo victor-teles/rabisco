@@ -38,6 +38,7 @@ import {
 	type Handle,
 } from "@/lib/frame-resize";
 import { isInsertTool, type CanvasInsert, type InsertTarget, type InsertTool } from "@/lib/insert-tools";
+import { isControlClick, isDeepModifier } from "@/lib/platform";
 import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
 import { styleState } from "@/lib/style-state";
@@ -1380,7 +1381,7 @@ export function Canvas({
 	};
 
 	const onPointerDown = (event: React.PointerEvent) => {
-		if (event.button !== 0 && event.button !== 1) return;
+		if ((event.button !== 0 && event.button !== 1) || isControlClick(event)) return;
 
 		// A press outside the frame being edited ends the edit, keeping the text
 		if (editingRef.current) {
@@ -1452,7 +1453,7 @@ export function Canvas({
 			return;
 		}
 
-		const deep = event.metaKey || event.ctrlKey;
+		const deep = isDeepModifier(event);
 		const pressedFrame = shown.find((f) => f.file === file);
 
 		// Figma's ⇧-click on layers. Without a selected element, ⇧-click still adds and removes screens
@@ -1486,7 +1487,7 @@ export function Canvas({
 	const onPointerMove = (event: React.PointerEvent) => {
 		if (!drag) {
 			if (!panning && tool === "move" && onSelectElement)
-				updateHover(event.clientX, event.clientY, event.metaKey || event.ctrlKey);
+				updateHover(event.clientX, event.clientY, isDeepModifier(event));
 			else if (hover) clearHover();
 
 			if (!panning && isInsertTool(tool) && onInsert) updateDrop(event.clientX, event.clientY);
@@ -1992,7 +1993,7 @@ export function Canvas({
 					{/* Releasing the right button that opened the menu must not pick the item that shifted under it */}
 					<ContextMenuContent
 						className="w-52"
-						onPointerUpCapture={(event) => event.button === 2 && event.stopPropagation()}
+						onPointerUpCapture={(event) => (event.button === 2 || isControlClick(event)) && event.stopPropagation()}
 						// Rename focuses the inspector's name field; focus coming back here would take it away
 						onCloseAutoFocus={(event) => event.preventDefault()}
 					>
