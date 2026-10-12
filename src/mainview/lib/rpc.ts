@@ -401,6 +401,13 @@ function createBrowserApi(): RabiscoApi {
 			throw new Error(AGENTS_DESKTOP_ONLY);
 		},
 		agentResult: async () => ok,
+		agentClients: async () => [],
+		async setUpAgentClient() {
+			throw new Error(AGENTS_DESKTOP_ONLY);
+		},
+		async removeAgentClient() {
+			throw new Error(AGENTS_DESKTOP_ONLY);
+		},
 		...generator,
 	};
 }

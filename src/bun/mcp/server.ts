@@ -13,7 +13,10 @@ const INSTRUCTIONS =
 
 export type CallTool = (tool: string, args: JsonObject, client: string) => Promise<ToolResult>;
 
-export type McpOptions = { port: number; token: string; version: string; call: CallTool };
+/** Told the client's name on every accepted request */
+export type SeenClient = (client: string) => void;
+
+export type McpOptions = { port: number; token: string; version: string; call: CallTool; seen?: SeenClient };
 
 type JsonRpcId = string | number | null;
 
@@ -147,7 +150,8 @@ export function createMcpHandler(options: McpOptions) {
 		const params = message["params"] ?? {};
 
 		if (!isJsonObject(params)) return replyOf(errorReply(id, -32602, "Params must be an object"));
-		const client = request.headers.get("rabisco-client") ?? lastClient;
+		const client = request.headers.get("rabisco-client") ?? clientName(params) ?? lastClient;
+		options.seen?.(client);
 
 		try {
 			return replyOf({ jsonrpc: "2.0", id, result: await answer(message["method"], params, client) });
@@ -162,12 +166,12 @@ export function createMcpHandler(options: McpOptions) {
 export type McpServer = { port: number; token: string; stop: () => void };
 
 /** Loopback only, on a random port, with a new token each start */
-export function startMcpServer(version: string, call: CallTool): McpServer {
+export function startMcpServer(version: string, call: CallTool, seen?: SeenClient): McpServer {
 	const token = newToken();
 	let handle: (request: Request) => Promise<Response> = async () => failure(503, "Starting");
 	const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => handle(request) });
 	const port = server.port ?? 0;
-	handle = createMcpHandler({ port, token, version, call });
+	handle = createMcpHandler({ port, token, version, call, seen });
 
 	return { port, token, stop: () => void server.stop(true) };
 }

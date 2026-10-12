@@ -5,9 +5,9 @@ import type { AgentCall } from "../../shared/mcp/tools";
 import { textResult } from "../../shared/mcp/tools";
 import { tempDir } from "../test-utils";
 import { AGENTS_FILE, createAgentService, DISCOVERY_FILE } from "./agents";
-import type { CallTool } from "./server";
+import type { CallTool, SeenClient } from "./server";
 
-type FakeServer = { port: number; token: string; stopped: boolean; call: CallTool };
+type FakeServer = { port: number; token: string; stopped: boolean; call: CallTool; seen?: SeenClient };
 
 function setup(options: { timeoutMs?: number; send?: (call: AgentCall) => void } = {}) {
 	const dir = tempDir();
@@ -19,12 +19,13 @@ function setup(options: { timeoutMs?: number; send?: (call: AgentCall) => void }
 		appVersion: "1.0.0",
 		send: options.send ?? ((call) => sent.push(call)),
 		timeoutMs: options.timeoutMs,
-		start: (_version, call) => {
+		start: (_version, call, seen) => {
 			const server: FakeServer = {
 				port: 5000 + servers.length,
 				token: `token-${servers.length}`,
 				stopped: false,
 				call,
+				seen,
 			};
 
 			servers.push(server);
@@ -163,5 +164,18 @@ describe("createAgentService", () => {
 		writeFileSync(join(dir, AGENTS_FILE), "{ nope");
 
 		expect(createAgentService({ userDataDir: dir, appVersion: "1", send: () => {} }).init().enabled).toBe(false);
+	});
+
+	test("remembers which clients connected until the server stops", () => {
+		const { agents, servers } = setup();
+		agents.init();
+		agents.setEnabled(true);
+		servers[0]!.seen?.("claude-code");
+		servers[0]!.seen?.("Visual Studio Code");
+		servers[0]!.seen?.("agent");
+
+		expect([...agents.connected()].sort()).toEqual(["claude-code", "vscode"]);
+		agents.resetAccess();
+		expect([...agents.connected()]).toEqual([]);
 	});
 });

@@ -20,6 +20,7 @@ import { createGit } from "./git";
 import { fetchBrandKit } from "./brand-kit";
 import { findContextFiles } from "./import-context";
 import { createAgentService } from "./mcp/agents";
+import { bridgeLaunch, listClients, removeClient, setUpClient, systemClientEnv } from "./mcp/clients";
 import { createShareService, readScreenRuntime } from "./share";
 import { createProjectStore } from "./store";
 
@@ -109,6 +110,12 @@ const agents = createAgentService({
 	appVersion: (await Updater.localInfo.version()) || "dev",
 	send: (call) => mainWindow.webview.rpc?.send.agentCall(call),
 });
+
+const clientEnv = systemClientEnv();
+
+/** One-click setup points clients at the `rabisco` command in the bundle, next to `bin/claude` */
+const bridge = () =>
+	bridgeLaunch(join(PATHS.VIEWS_FOLDER, "..", "bin", process.platform === "win32" ? "rabisco.exe" : "rabisco"));
 
 /** App bundle first, then the source tree (development) */
 const runtimeDirs = () => [
@@ -248,6 +255,17 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			setAgentServer: ({ enabled }) => agents.setEnabled(enabled),
 			resetAgentAccess: () => agents.resetAccess(),
 			agentResult: ({ callId, result }) => (agents.resolve(callId, result), ok),
+			agentClients: () => listClients(clientEnv, bridge(), agents.connected()),
+			setUpAgentClient: async ({ id }) => {
+				await setUpClient(id, clientEnv, bridge());
+
+				return listClients(clientEnv, bridge(), agents.connected());
+			},
+			removeAgentClient: async ({ id }) => {
+				await removeClient(id, clientEnv);
+
+				return listClients(clientEnv, bridge(), agents.connected());
+			},
 		},
 		messages: {},
 	},

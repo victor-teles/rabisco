@@ -66,7 +66,7 @@ src/
     store.ts            project folders, recents and file watching
     ai/                 provider layer (decision 0003): settings, keychain, validation, repair loop
       providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Antigravity CLI, Claude Agent SDK
-    mcp/                local MCP server for coding agents, off by default (decision 0030)
+    mcp/                local MCP server for coding agents, off by default, and one-click client setup (decision 0030)
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback

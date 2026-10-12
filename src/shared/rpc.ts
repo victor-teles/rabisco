@@ -4,6 +4,7 @@ import type { StyleId } from "./context/styles";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
+import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
@@ -148,6 +149,10 @@ export type RabiscoRPC = {
 			resetAgentAccess: { params: {}; response: AgentServerStatus };
 			/** The answer to an `agentCall` */
 			agentResult: { params: { callId: string; result: ToolResult }; response: { ok: true } };
+			/** One-click setup: the `rabisco` server in each client's config, and which clients connected */
+			agentClients: { params: {}; response: AgentClientStatus[] };
+			setUpAgentClient: { params: { id: AgentClientId }; response: AgentClientStatus[] };
+			removeAgentClient: { params: { id: AgentClientId }; response: AgentClientStatus[] };
 		};
 		messages: {};
 	}>;

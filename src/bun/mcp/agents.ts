@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync }
 import { dirname, join } from "path";
 import { isBoolean } from "../../shared/guards";
 import { isJsonObject, type JsonObject } from "../../shared/json";
+import { clientOfName, type AgentClientId } from "../../shared/mcp/clients";
 import { errorResult, type AgentCall, type AgentServerStatus, type ToolResult } from "../../shared/mcp/tools";
 import { parseJson } from "../json";
 import { startMcpServer, type McpServer } from "./server";
@@ -54,6 +55,7 @@ export function createAgentService(options: AgentsOptions) {
 	const timeoutMs = options.timeoutMs ?? CALL_TIMEOUT_MS;
 	const start = options.start ?? startMcpServer;
 	const pending = new Map<string, { resolve: (result: ToolResult) => void; timer: ReturnType<typeof setTimeout> }>();
+	const connected = new Set<AgentClientId>();
 	let enabled = readEnabled(settingsFile);
 	let server: McpServer | null = null;
 	let nextCall = 0;
@@ -78,6 +80,14 @@ export function createAgentService(options: AgentsOptions) {
 			}
 		});
 
+	const seen = (client: string) => {
+		const id = clientOfName(client);
+
+		if (id) connected.add(id);
+	};
+
+	const serve = () => start(options.appVersion, call, seen);
+
 	const writeDiscovery = () => {
 		const base = { version: 1, pid: process.pid, appVersion: options.appVersion } as const;
 
@@ -90,6 +100,7 @@ export function createAgentService(options: AgentsOptions) {
 	const stopServer = () => {
 		server?.stop();
 		server = null;
+		connected.clear();
 
 		for (const [callId, { resolve, timer }] of pending) {
 			clearTimeout(timer);
@@ -103,18 +114,20 @@ export function createAgentService(options: AgentsOptions) {
 	return {
 		/** At launch: serves when the setting is on, and writes the discovery file either way */
 		init() {
-			if (enabled) server = start(options.appVersion, call);
+			if (enabled) server = serve();
 			writeDiscovery();
 
 			return status();
 		},
 		status,
+		/** Clients that called the server since it started */
+		connected: (): ReadonlySet<AgentClientId> => connected,
 		setEnabled(on: boolean) {
 			enabled = on;
 			writePrivateJson(settingsFile, { enabled });
 
 			if (!on) stopServer();
-			else server ??= start(options.appVersion, call);
+			else server ??= serve();
 			writeDiscovery();
 
 			return status();
@@ -123,7 +136,7 @@ export function createAgentService(options: AgentsOptions) {
 		resetAccess() {
 			stopServer();
 
-			if (enabled) server = start(options.appVersion, call);
+			if (enabled) server = serve();
 			writeDiscovery();
 
 			return status();

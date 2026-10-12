@@ -12,6 +12,7 @@ type Seen = { tool: string; args: JsonObject; client: string };
 
 function setup(call?: CallTool) {
 	const seen: Seen[] = [];
+	const clients: string[] = [];
 
 	const handle = createMcpHandler({
 		port: PORT,
@@ -24,9 +25,10 @@ function setup(call?: CallTool) {
 
 				return textResult(`ran ${tool}`);
 			}),
+		seen: (client) => clients.push(client),
 	});
 
-	return { handle, seen };
+	return { handle, seen, clients };
 }
 
 const post = (body: Json, headers: Record<string, string> = {}) =>
@@ -56,6 +58,15 @@ describe("createMcpHandler", () => {
 		expect((await handle(post(list, { Authorization: "Bearer short" }))).status).toBe(401);
 		expect((await handle(post(list, { Host: `localhost:${PORT}` }))).status).toBe(200);
 		expect(seen).toEqual([]);
+	});
+
+	test("tells who called on every accepted request", async () => {
+		const { handle, clients } = setup();
+		await handle(post(rpc("tools/list"), { Origin: "https://example.com" }));
+		await handle(post(rpc("tools/list"), { "Rabisco-Client": "claude-code" }));
+		await handle(post(rpc("initialize", { clientInfo: { name: "cursor-vscode" } })));
+
+		expect(clients).toEqual(["claude-code", "cursor-vscode"]);
 	});
 
 	test("serves POST /mcp only, with a JSON body", async () => {
