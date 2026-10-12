@@ -293,3 +293,6 @@ export function mixOklab(from: Rgba, to: Rgba, t: number): Rgba {
 
 	return fromLinear(oklabToLinearSrgb(mixed), from.a + (to.a - from.a) * t);
 }
+
+export const toOklab = ({ r, g, b }: Rgba): Vec3 =>
+	linearSrgbToOklab([decode(r / 255), decode(g / 255), decode(b / 255)]);
