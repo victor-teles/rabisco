@@ -120,10 +120,11 @@ describe("history across sessions", () => {
 		expect(histories).toHaveLength(1);
 	});
 
-	test("a canvas changed while closed starts history again and backs up the old state", async () => {
+	test("a canvas changed while closed is rebased, so undo still reaches the edits made before", async () => {
 		const { api, disk, backups } = diskApi();
 		const first = await opened(api);
 
+		first.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "DESIGN.md": "# Blue\n" } }));
 		first.setMeta({ name: "Mine" });
 		await first.flushCanvas();
 		first.close();
@@ -135,26 +136,56 @@ describe("history across sessions", () => {
 
 		await settle();
 		expect(second.state()!.canvas.name).toBe("Theirs");
+		second.undo();
+		second.undo();
+		expect(second.state()!.files["DESIGN.md"]).toBe("# Design\n");
+		expect(second.state()!.canvas.name).toBe("Theirs");
+		expect(backups).toEqual([]);
+		expect(shown).toEqual([]);
+	});
+
+	test("a canvas change the rebase can't reproduce starts history again and backs up the old state", async () => {
+		const { api, disk, backups } = diskApi();
+
+		disk.files = { ...disk.files, "screens/a.tsx": "a", "screens/b.tsx": "b" };
+		const first = await opened(api);
+
+		first.setMeta({ name: "Mine" });
+		await first.flushCanvas();
+		first.close();
+		await settle();
+
+		disk.canvas = { ...disk.canvas, frames: [...disk.canvas.frames].reverse() };
+		const shown: string[] = [];
+		const second = await opened(api, (dir) => shown.push(dir));
+
+		await settle();
+		expect(second.state()!.canvas.frames.map((frame) => frame.file)).toEqual(["screens/b.tsx", "screens/a.tsx"]);
 		expect(canUndo(second.state()!.history)).toBe(false);
-		expect(backups.map((backup) => backup.canvas.name)).toEqual(["Mine"]);
+		expect(backups.map((backup) => backup.canvas.frames.map((frame) => frame.file))).toEqual([
+			["screens/a.tsx", "screens/b.tsx"],
+		]);
 		expect(shown).toEqual(["/backups/1"]);
 	});
 
-	test("a reload keeps history when only files changed and backs up when it must clear it", async () => {
+	test("a reload keeps history when it can rebase and backs up when it must clear it", async () => {
 		const { api, disk, backups } = diskApi();
+
+		disk.files = { ...disk.files, "screens/a.tsx": "a", "screens/b.tsx": "b" };
 		const session = await opened(api);
 
 		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, "PRODUCT.md": "# Product\n" } }));
 		await session.flushCanvas();
 
 		disk.files = { ...disk.files, "DESIGN.md": "# Pulled\n" };
+		disk.canvas = { ...disk.canvas, name: "Pulled" };
 		const kept = await session.reloadFromDisk();
 
 		expect(kept?.hadHistory).toBe(false);
 		expect(kept?.backup).toBeNull();
 		expect(canUndo(session.state()!.history)).toBe(true);
 
-		disk.canvas = { ...disk.canvas, name: "Pulled" };
+		disk.canvas = { ...disk.canvas, frames: [...disk.canvas.frames].reverse() };
 		const cleared = await session.reloadFromDisk();
 
 		expect(cleared?.hadHistory).toBe(true);

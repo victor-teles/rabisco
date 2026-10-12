@@ -103,9 +103,48 @@ describe("resuming history", () => {
 		expect(resumed.history.past[0]!.files["screens/home.tsx"]).toBe("home v1");
 	});
 
-	test("a canvas changed outside Rabisco drops the steps", () => {
-		const history = steps(3);
-		const disk = { ...history.present, frames: [frame("screens/home.tsx", 400)] };
+	test("a canvas changed outside Rabisco is rebased into every step, so undo still reaches older steps", () => {
+		const history = commit(steps(2), { ...steps(2).present, frames: [frame("screens/home.tsx", 100)] });
+
+		const disk = {
+			...history.present,
+			name: "Pulled",
+			frames: [frame("screens/home.tsx", 100), frame("screens/new.tsx")],
+		};
+
+		const resumed = resumeHistory(history, disk, keep);
+
+		expect(resumed.dropped).toBe(false);
+		expect(resumed.history.present).toBe(disk);
+		expect(resumed.history.past).toHaveLength(2);
+
+		const before = undo(undo(resumed.history)).present;
+
+		expect(before.files["screens/home.tsx"]).toBe("home v1");
+		expect(before.frames).toEqual([frame("screens/home.tsx"), frame("screens/new.tsx")]);
+		expect(before.name).toBe("Pulled");
+	});
+
+	test("files and canvas changed while closed are both folded in", () => {
+		const history = steps(2);
+
+		const disk = {
+			...history.present,
+			files: { ...history.present.files, "DESIGN.md": "# Changed\n" },
+			frames: [frame("screens/home.tsx", 400)],
+		};
+
+		const resumed = resumeHistory(history, disk, keep);
+
+		expect(resumed.dropped).toBe(false);
+		expect(resumed.history.past[0]!.frames).toEqual(disk.frames);
+		expect(resumed.history.past[0]!.files).toEqual({ "DESIGN.md": "# Changed\n", "screens/home.tsx": "home v1" });
+	});
+
+	test("a canvas the rebase can't reproduce drops the steps", () => {
+		const two = { ...base, frames: [frame("screens/home.tsx"), frame("screens/next.tsx")] };
+		const history = commit(createHistory(two), edit(two, "home v2"));
+		const disk = { ...history.present, frames: [frame("screens/next.tsx"), frame("screens/home.tsx")] };
 		const resumed = resumeHistory(history, disk, keep);
 
 		expect(resumed.dropped).toBe(true);

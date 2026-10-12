@@ -1,6 +1,6 @@
 # 0024 · Undo history and session versions are saved in app data; a backup comes before a migration or a reload that clears history
 
-- **Status:** accepted
+- **Status:** accepted, partly superseded by [0033](./0033-rebase-saved-history-on-canvas-changes.md) (a canvas changed while closed is rebased into the history)
 - **Date:** 2026-10-10
 - **Supersedes:** part of [0023](./0023-version-history.md) (session versions last only as long as the session)
 - **Extends:** [0021](./0021-generations-outlive-the-editor.md), [0005](./0005-rpc-round-trip-floor.md)

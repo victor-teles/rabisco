@@ -1,6 +1,6 @@
 import type { History, Snapshot } from "@/lib/history";
 import { isJsonObject } from "../../shared/json";
-import type { CanvasComment, CanvasDoc, CanvasImage, CanvasSection, Frame } from "../../shared/types";
+import type { CanvasComment, CanvasImage, CanvasSection, Frame } from "../../shared/types";
 
 const canonical = <T>(value: T) =>
 	JSON.stringify(value, (_key, inner) =>
@@ -45,14 +45,16 @@ function foldList<T>(list: T[], change: ListChange<T>, key: (item: T) => string)
 	return kept;
 }
 
+type CanvasFields = Omit<Snapshot, "files">;
+
 const byFile = (frame: Frame) => frame.file;
 
 const byId = (item: CanvasComment | CanvasSection | CanvasImage) => item.id;
 
 export function rebaseCanvas(
 	history: History,
-	from: CanvasDoc,
-	to: CanvasDoc,
+	from: CanvasFields,
+	to: CanvasFields,
 	reconcile: (snapshot: Snapshot) => Snapshot = (snapshot) => snapshot,
 ): History {
 	const frames = diffList(from.frames, to.frames, byFile);

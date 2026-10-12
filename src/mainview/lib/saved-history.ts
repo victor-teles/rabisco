@@ -1,3 +1,4 @@
+import { rebaseCanvas } from "@/lib/canvas-rebase";
 import { canRedo, canUndo, createHistory, diffFiles, rebase, type History, type Snapshot } from "@/lib/history";
 import type { SessionVersion } from "@/lib/versions";
 import { isJsonObject, type Json, type JsonObject } from "../../shared/json";
@@ -165,7 +166,8 @@ export const sameCanvas = (a: Snapshot, b: Snapshot) => canvasKey(a) === canvasK
 export type Resumed = { history: History; dropped: boolean };
 
 export function resumeHistory(saved: History, disk: Snapshot, reconcile: (snapshot: Snapshot) => Snapshot): Resumed {
-	const rebased = rebase(saved, diffFiles(saved.present.files, disk.files), reconcile);
+	const withFiles = rebase(saved, diffFiles(saved.present.files, disk.files), reconcile);
+	const rebased = rebaseCanvas(withFiles, withFiles.present, disk, reconcile);
 
 	if (sameCanvas(rebased.present, disk))
 		return { history: { ...rebased, present: disk, coalesceKey: null }, dropped: false };

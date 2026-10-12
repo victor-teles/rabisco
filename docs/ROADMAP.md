@@ -66,7 +66,7 @@ Some failures today lose work or hide it. Fix them before adding more surface.
 - ✅ A project backup before a migration or a reload from disk that clears history (app data, 10 per project, Show from the toast)
 - ✅ Check it in the packaged app on macOS: reopen after a quit, a window close and a forced kill, undo after reopen, a `git pull` with the project open, and a failed folder write. Quitting or closing the window now writes pending edits and undo history first, and the save error stays up with Retry
 - ⬜ Check the Windows key store on a Windows machine (deferred until a Windows machine is available)
-- ⬜ When `rabisco.json` changed while the project was closed, rebase history with `rebaseCanvas` instead of starting it again
+- ✅ When `rabisco.json` changed while the project was closed, rebase history with `rebaseCanvas` instead of starting it again. History starts again, with a backup, only when the rebase can't reproduce the folder's canvas ([0033](./decisions/0033-rebase-saved-history-on-canvas-changes.md))
 - ⬜ History starts again when a project folder is moved or renamed; history and backups don't include `public/` images or chats
 
 **Done when** closing the app, a crash or a failed sync never loses a change the user made.
