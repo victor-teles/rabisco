@@ -12,6 +12,7 @@ const REFRESH_MS = 5000;
 export function AgentSettings() {
 	const [status, setStatus] = useState<AgentServerStatus | null>(null);
 	const [pending, setPending] = useState(false);
+	const [unknown, setUnknown] = useState(false);
 
 	useEffect(() => {
 		let live = true;
@@ -19,7 +20,7 @@ export function AgentSettings() {
 		api
 			.agentServerStatus({})
 			.then((next) => live && setStatus(next))
-			.catch(() => live && setStatus({ enabled: false, port: null }));
+			.catch(() => live && setUnknown(true));
 
 		return () => {
 			live = false;
@@ -42,18 +43,25 @@ export function AgentSettings() {
 
 	const enabled = status?.enabled ?? false;
 
+	const note = unknown
+		? "Couldn't check this setting. Close Settings and open it again."
+		: enabled && !status?.port
+			? "Couldn't start. Turn it off and on to try again."
+			: enabled
+				? `MCP server on 127.0.0.1:${status?.port}`
+				: null;
+
 	return (
 		<div className="border-t px-6 py-4">
+			<h3 className="mb-3 text-xs font-medium text-muted-foreground">Agents</h3>
 			<label className="flex items-start justify-between gap-6">
 				<span className="flex flex-col gap-0.5">
 					<span className="text-sm font-medium">Let coding agents use Rabisco</span>
 					<span className="text-[13px] text-muted-foreground">
-						Claude Code, Codex, Cursor and other MCP clients on this Mac can read the open project, the selection and
-						screenshots. Only apps on this computer can connect.
+						Claude Code, Codex, Cursor and other MCP clients can read the open project, the selection and screenshots.
+						Only apps on this computer can connect.
 					</span>
-					{enabled && status?.port ? (
-						<span className="text-[13px] text-muted-foreground">MCP server on 127.0.0.1:{status.port}</span>
-					) : null}
+					{note ? <span className="text-[13px] text-muted-foreground">{note}</span> : null}
 				</span>
 				<Switch
 					className="mt-0.5"
@@ -67,7 +75,7 @@ export function AgentSettings() {
 			{enabled ? (
 				<div className="mt-3 flex items-center justify-between gap-6">
 					<span className="text-[13px] text-muted-foreground">
-						Agents connected now lose access and connect again with a new token.
+						Disconnects every agent. Agents set up with Rabisco reconnect on their next call.
 					</span>
 					<Button
 						variant="outline"

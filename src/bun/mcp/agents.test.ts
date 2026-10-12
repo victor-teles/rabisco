@@ -90,6 +90,42 @@ describe("createAgentService", () => {
 		expect(discovery()).not.toHaveProperty("token");
 	});
 
+	test("a server that can't start leaves the setting off", () => {
+		const dir = tempDir();
+
+		const agents = createAgentService({
+			userDataDir: dir,
+			appVersion: "1.0.0",
+			send: () => {},
+			start: () => {
+				throw new Error("port in use");
+			},
+		});
+
+		agents.init();
+
+		expect(() => agents.setEnabled(true)).toThrow("port in use");
+		expect(agents.status()).toEqual({ enabled: false, port: null });
+		expect(existsSync(join(dir, AGENTS_FILE))).toBe(false);
+	});
+
+	test("a server that can't start at launch shows as on with no port", () => {
+		const dir = tempDir();
+		writeFileSync(join(dir, AGENTS_FILE), JSON.stringify({ enabled: true }));
+
+		const agents = createAgentService({
+			userDataDir: dir,
+			appVersion: "1.0.0",
+			send: () => {},
+			start: () => {
+				throw new Error("port in use");
+			},
+		});
+
+		expect(agents.init()).toEqual({ enabled: true, port: null });
+		expect(JSON.parse(readFileSync(join(dir, DISCOVERY_FILE), "utf-8")).enabled).toBe(false);
+	});
+
 	test("reset access starts a new server with a new token", () => {
 		const { agents, servers, discovery } = setup();
 		agents.setEnabled(true);

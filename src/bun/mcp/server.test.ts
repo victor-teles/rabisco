@@ -118,7 +118,7 @@ describe("createMcpHandler", () => {
 		}
 	});
 
-	test("forwards tools/call with the client from initialize or the header", async () => {
+	test("forwards tools/call with the client from the header, never from another request", async () => {
 		const { handle, seen } = setup();
 		await handle(post(rpc("initialize", { clientInfo: { name: "claude-code" } })));
 
@@ -129,7 +129,7 @@ describe("createMcpHandler", () => {
 		expect(reply).toEqual({ jsonrpc: "2.0", id: 7, result: { content: [{ type: "text", text: "ran get_screen" }] } });
 		await handle(post(rpc("tools/call", { name: "get_project" }), { "Rabisco-Client": "cursor" }));
 		expect(seen).toEqual([
-			{ tool: "get_screen", args: { screen: "home" }, client: "claude-code" },
+			{ tool: "get_screen", args: { screen: "home" }, client: "agent" },
 			{ tool: "get_project", args: {}, client: "cursor" },
 		]);
 	});
@@ -196,6 +196,22 @@ describe("startMcpServer", () => {
 			});
 
 			expect(refused.status).toBe(401);
+
+			const huge = new ReadableStream<Uint8Array>({
+				start(controller) {
+					for (let i = 0; i < 3; i++) controller.enqueue(new Uint8Array(512 * 1024).fill(32));
+					controller.close();
+				},
+			});
+
+			const tooLarge = await fetch(`http://127.0.0.1:${server.port}/mcp`, {
+				method: "POST",
+				headers: { Authorization: `Bearer ${server.token}`, "Content-Type": "application/json" },
+				body: huge,
+			});
+
+			expect(tooLarge.status).toBe(413);
+			expect(await tooLarge.text()).toBe("");
 		} finally {
 			server.stop();
 		}

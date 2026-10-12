@@ -120,7 +120,7 @@ export function OnboardingDialog() {
 					</DialogDescription>
 				</DialogHeader>
 
-				<ScrollArea className="min-h-0 flex-1 border-y">
+				<ScrollArea className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] border-y">
 					<div role="radiogroup" aria-label="AI provider" className="flex flex-col gap-1 px-4 py-3">
 						{settings.providers.length ? (
 							<>

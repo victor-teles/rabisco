@@ -114,7 +114,12 @@ export function createAgentService(options: AgentsOptions) {
 	return {
 		/** At launch: serves when the setting is on, and writes the discovery file either way */
 		init() {
-			if (enabled) server = serve();
+			try {
+				if (enabled) server = serve();
+			} catch (error) {
+				console.error("Couldn't start the MCP server:", error);
+			}
+
 			writeDiscovery();
 
 			return status();
@@ -123,11 +128,11 @@ export function createAgentService(options: AgentsOptions) {
 		/** Clients that called the server since it started */
 		connected: (): ReadonlySet<AgentClientId> => connected,
 		setEnabled(on: boolean) {
+			if (on) server ??= serve();
+			else stopServer();
+
 			enabled = on;
 			writePrivateJson(settingsFile, { enabled });
-
-			if (!on) stopServer();
-			else server ??= serve();
 			writeDiscovery();
 
 			return status();
