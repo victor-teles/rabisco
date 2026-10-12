@@ -32,6 +32,7 @@ export type Fiber = {
 	return: Fiber | null;
 	child: Fiber | null;
 	sibling: Fiber | null;
+	alternate?: Fiber | null;
 };
 
 function expandoFiber(node: Node, prefix: string): Fiber | null {
@@ -45,6 +46,32 @@ function expandoFiber(node: Node, prefix: string): Fiber | null {
 }
 
 export const fiberOf = (node: Node) => expandoFiber(node, "__reactFiber$");
+
+function propsOf(node: Node): FiberProps | null {
+	const key = Object.keys(node).find((name) => name.startsWith("__reactProps$"));
+
+	// SAFETY: `__reactProps$…` is React's expando for the props of the last commit
+	return key ? ((node as Node & Record<string, FiberProps | undefined>)[key] ?? null) : null;
+}
+
+function holdsChild(parent: Fiber, child: Fiber): boolean {
+	for (let node = parent.child; node; node = node.sibling) if (node === child) return true;
+
+	return false;
+}
+
+export function* currentAncestors(fiber: Fiber, props: FiberProps | null): Generator<Fiber> {
+	let node: Fiber | null =
+		fiber.memoizedProps !== props && fiber.alternate?.memoizedProps === props ? fiber.alternate : fiber;
+
+	while (node) {
+		yield node;
+		const parent: Fiber | null = node.return;
+
+		node =
+			parent?.alternate && !holdsChild(parent, node) && holdsChild(parent.alternate, node) ? parent.alternate : parent;
+	}
+}
 
 function isFiberRoot(value: unknown): value is { current: Fiber } {
 	return typeof value === "object" && value !== null && "current" in value && typeof value.current === "object";
@@ -119,7 +146,7 @@ export function locatedAt(x: number, y: number): Located[] {
 	const fiber = fiberOf(target);
 
 	if (fiber) {
-		for (let node: Fiber | null = fiber; node; node = node.return) {
+		for (const node of currentAncestors(fiber, propsOf(target))) {
 			const loc = locOf(node);
 
 			if (loc && found[found.length - 1]?.loc !== loc) found.push(lazyLocated(loc, node));
