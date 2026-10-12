@@ -21,7 +21,7 @@ export const IMAGES_DIR = "public/images";
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"];
 
 /** `My Photo (1).PNG` → `my-photo-1` */
-function slug(name: string) {
+export function slug(name: string) {
 	return (
 		name
 			.toLowerCase()

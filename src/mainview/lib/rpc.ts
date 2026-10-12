@@ -345,6 +345,12 @@ function createBrowserApi(): RabiscoApi {
 				contentType: response.headers.get("content-type") ?? "",
 			};
 		},
+		async captureUrl() {
+			throw new Error("Importing a web page needs the Rabisco desktop app.");
+		},
+		async stopCapture() {
+			return ok;
+		},
 		async importContext() {
 			throw new Error("Import needs the desktop app");
 		},

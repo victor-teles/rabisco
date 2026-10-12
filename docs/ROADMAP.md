@@ -125,7 +125,7 @@ Every competitor starts from a reference: a screenshot, a live site or a Figma f
 - ⬜ "Recreate from screenshot": drop an image on the canvas, get a screen that matches it, then compare the two side by side with an overlay and a difference score
 - ✅ Numbered image references in the composer, so a prompt can say "the layout from image 2"
 - ✅ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes ([0035](./decisions/0035-imports-become-one-captured-tree.md)). ⌘V on the canvas renders the HTML in a sandboxed frame, reads its computed styles and writes a new screen as one undo step. Colors, sizes and radii snap to the project's tokens first, then the Tailwind scale
-- ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it ([0035](./decisions/0035-imports-become-one-captured-tree.md))
+- ✅ Capture a live URL and get a screen and tokens in its style ([0035](./decisions/0035-imports-become-one-captured-tree.md)). "Import from HTML or URL…" in the canvas menu loads the page in a hidden, sandboxed window with no RPC and its own storage, waits for it to settle and reads the DOM and styles. Its images are copied into `public/images/imported/`. "Use the site's theme" writes its tokens to DESIGN.md as a second undo step, and the screen already uses them
 - ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens ([0035](./decisions/0035-imports-become-one-captured-tree.md))
 - ⬜ Attach a PRD or any Markdown file, and plan every screen from it
 - ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does

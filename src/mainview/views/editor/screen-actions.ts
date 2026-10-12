@@ -2,22 +2,27 @@ import { toast } from "sonner";
 import type { ChangeOptions } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import { systemPaste, type PasteData } from "@/lib/clipboard";
-import { htmlScreen } from "@/lib/html-import";
+import { appliedTheme, htmlScreen } from "@/lib/html-import";
 import { DEVICE_PRESETS, deviceForSize, type DevicePreset, type Size } from "@/lib/device-presets";
 import type { Snapshot } from "@/lib/history";
 import {
 	blankScreen,
 	centeredOn,
+	importedScreen,
 	copyScreens,
 	placeScreens,
 	readScreens,
 	writeScreens,
 	type ScreenCopy,
 } from "@/lib/new-screens";
+import type { DesignTokens } from "../../../shared/context/tokens";
+import { treeToTsx } from "../../../shared/import/to-tsx";
+import type { UrlCapture } from "../../../shared/import/url-capture";
 import { isScreenFile } from "../../../shared/project";
 import type { Device, Frame } from "../../../shared/types";
 import { isAlternate } from "../../../shared/variations";
 import { askCustomSize } from "./custom-size-dialog";
+import { askPageImport } from "./import-page-dialog";
 import { NEW_SCREEN_CODE } from "./shortcuts";
 
 type Point = { x: number; y: number };
@@ -44,6 +49,8 @@ export type ScreenActionsContext = {
 	/** Where ⌘V pastes: the pointer, when it is over the canvas */
 	pointer: () => Point | null;
 	pasteImages: (at: Point | null, paste: PasteData) => Promise<boolean>;
+	projectPath: string;
+	importTokens: (tokens: DesignTokens) => void;
 };
 
 /** Screen and canvas actions; with `point` (a right-click on the canvas) new screens and comments land there */
@@ -100,6 +107,24 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 		else toast("Nothing to paste", { description: "Copy screens, the TSX of a screen, HTML or an image first." });
 	};
 
+	const importHtml = async (html: string, screenDevice: Device) => {
+		const imported = await htmlScreen(html, screenDevice, context.current()?.theme);
+
+		if (!imported) throw new Error("That HTML has no layout to import.");
+		add([imported]);
+	};
+
+	/** The screen is one undo step; the site's tokens, when taken, are a second one and the screen already uses them */
+	const importCapture = (capture: UrlCapture, screenDevice: Device, siteTheme: DesignTokens | null) => {
+		const theme = context.current()?.theme;
+		const tokens = siteTheme ? { light: { ...theme?.light, ...siteTheme.light }, dark: theme?.dark ?? {} } : theme;
+		const name = capture.tree.title.trim() || new URL(capture.url).host;
+
+		add([importedScreen(treeToTsx(capture.tree, appliedTheme(tokens), name), screenDevice)]);
+
+		if (siteTheme) context.importTokens(siteTheme);
+	};
+
 	return [
 		{
 			id: "rename-screen",
@@ -153,6 +178,20 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 			enabled: true,
 			run: () => void paste(systemPaste),
 			paste: (data) => void paste(data),
+		},
+		{
+			id: "import-page",
+			label: "Import from HTML or URL…",
+			group: "Screen",
+			enabled: true,
+			run: () =>
+				askPageImport({
+					projectPath: context.projectPath,
+					device,
+					tokens: context.current()?.theme ?? { light: {}, dark: {} },
+					importHtml,
+					importCapture,
+				}),
 		},
 		{
 			id: "new-screen",

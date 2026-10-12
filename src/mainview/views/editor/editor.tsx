@@ -127,6 +127,7 @@ import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { CustomSizeDialog } from "./custom-size-dialog";
+import { ImportPageDialog } from "./import-page-dialog";
 import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
@@ -1278,6 +1279,8 @@ export function EditorView({
 		reveal: (shown) => canvasRef.current?.fitTo(shown),
 		pointer: () => canvasRef.current?.pointer() ?? null,
 		pasteImages: moodboard.paste,
+		projectPath,
+		importTokens: importDesignTokens,
 	};
 
 	/** Every editor action: the keyboard, the right-click menus and the command palette all run these */
@@ -2449,6 +2452,7 @@ export function EditorView({
 			<StyleDialog open={styleDialogOpen && canStartStyle} onOpenChange={setStyleDialogOpen} onPick={startFromStyle} />
 			<ShortcutSheet open={sheetOpen} onOpenChange={setSheetOpen} actions={actions} />
 			<CustomSizeDialog />
+			<ImportPageDialog />
 		</ScreenTheme>
 	);
 }
@@ -2480,6 +2484,7 @@ const SCREEN_MENU: MenuEntry[] = [
 
 const CANVAS_MENU: MenuEntry[] = [
 	"paste-screens",
+	"import-page",
 	SEPARATOR,
 	"new-screen",
 	NEW_SCREEN_SUBMENU,

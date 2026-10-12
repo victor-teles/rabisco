@@ -251,7 +251,7 @@ function LogoImport({
 	);
 }
 
-function TokenPreview({ tokens, current }: { tokens: DesignTokens; current: DesignTokens }) {
+export function TokenPreview({ tokens, current }: { tokens: DesignTokens; current: DesignTokens }) {
 	const rows = (["light", "dark"] as const).flatMap((mode) =>
 		orderedTokenNames(tokens[mode]).map((name) => ({
 			mode,

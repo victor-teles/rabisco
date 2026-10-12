@@ -9,6 +9,8 @@ import Electrobun, {
 } from "electrobun/main";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
+import { isString } from "../shared/guards";
+import type { Json } from "../shared/json";
 import type { RabiscoRPC } from "../shared/rpc";
 import { assertSnapshot } from "../shared/share/snapshot";
 import { viewerFiles } from "../shared/share/viewer";
@@ -18,6 +20,8 @@ import { createAiService } from "./ai/service";
 import { freeExportDir, writeExportFiles } from "./export";
 import { createGit } from "./git";
 import { fetchBrandKit } from "./brand-kit";
+import { importCapturedImages } from "./import/images";
+import { assertReachable, captureAddress, createUrlCapture } from "./import/url-capture";
 import { findContextFiles } from "./import-context";
 import { createAgentService, DISCOVERY_FILE } from "./mcp/agents";
 import { OPEN_REQUEST_FILE, watchOpenRequests } from "./mcp/open-request";
@@ -134,6 +138,46 @@ const shares = createShareService({
 
 const git = createGit();
 
+const CAPTURE_HEIGHT = 900;
+
+// A captured page gets no RPC, no storage shared with the app and no way to leave http and https (decision 0035)
+const urlCaptures = createUrlCapture((url, width, events) => {
+	const frame = { x: 0, y: 0, width, height: CAPTURE_HEIGHT };
+
+	const window = new BrowserWindow({
+		title: "Rabisco import",
+		html: "<html></html>",
+		hidden: true,
+		sandbox: true,
+		frame,
+	});
+
+	const view = new BrowserView({
+		url,
+		windowId: window.id,
+		partition: `import-${crypto.randomUUID()}`,
+		sandbox: true,
+		navigationRules: JSON.stringify(["^*", "https://*", "http://*"]),
+		frame,
+	});
+
+	const listeners: [string, (event: ElectrobunEvent<{ detail: Json }, {}>) => void][] = [
+		[`dom-ready-${view.id}`, () => events.ready()],
+		[`host-message-${view.id}`, (event) => events.message(isString(event.data.detail) ? event.data.detail : "")],
+		[`download-started-${view.id}`, () => events.download()],
+	];
+
+	for (const [name, listener] of listeners) Electrobun.events.on(name, listener);
+
+	return {
+		run: (script) => view.executeJavascript(script),
+		close: () => {
+			for (const [name, listener] of listeners) Electrobun.events.off(name, listener);
+			window.close();
+		},
+	};
+});
+
 /** Only web links leave the app */
 function openExternal(url: string) {
 	if (!/^https?:\/\//.test(url)) throw new Error(`Not a web link: ${url}`);
@@ -213,6 +257,14 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			revealProject: ({ path }) => (store.revealProject(path), ok),
 			importContext: ({ from }) => ({ files: findContextFiles(from) }),
 			fetchBrandKit: ({ url }) => fetchBrandKit(url),
+			captureUrl: async ({ path, url, width }) => {
+				await assertReachable(captureAddress(url));
+				const capture = await urlCaptures.capture(url, width);
+				const { tree, copied, failed } = await importCapturedImages(path, capture.tree, capture.url);
+
+				return { capture: { ...capture, tree }, copied, failed };
+			},
+			stopCapture: () => (urlCaptures.stop(), ok),
 			generate: (params) => ai.generate(params),
 			stopGeneration: ({ generationId }) => (ai.stopGeneration(generationId), ok),
 			listProviders: ({ refresh }) => ai.listProviders(refresh),

@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun";
 import type { AssetChange, AssetWrite } from "./assets";
+import type { UrlCapture } from "./import/url-capture";
 import type { StyleId } from "./context/styles";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
@@ -107,6 +108,11 @@ export type RabiscoRPC = {
 			/** Writes nothing: the editor applies the result as one undoable step. */
 			/** Reads a Design.md, CSS theme or token file from the web. Writes nothing. */
 			fetchBrandKit: { params: { url: string }; response: { url: string; text: string; contentType: string } };
+			captureUrl: {
+				params: { path: string; url: string; width: number };
+				response: { capture: UrlCapture; copied: number; failed: number };
+			};
+			stopCapture: { params: {}; response: { ok: true } };
 			importContext: {
 				params: { from: string };
 				response: {
