@@ -124,9 +124,9 @@ Every competitor starts from a reference: a screenshot, a live site or a Figma f
 
 - ⬜ "Recreate from screenshot": drop an image on the canvas, get a screen that matches it, then compare the two side by side with an overlay and a difference score
 - ✅ Numbered image references in the composer, so a prompt can say "the layout from image 2"
-- ⬜ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes 🧭
-- ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it 🧭
-- ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens 🧭
+- ⬜ Paste HTML with inline styles, or a page section, and get TSX with Tailwind classes ([0035](./decisions/0035-imports-become-one-captured-tree.md))
+- ⬜ Capture a live URL: render it in a hidden frame, read the DOM and styles, write TSX and DESIGN.md tokens from it ([0035](./decisions/0035-imports-become-one-captured-tree.md))
+- ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens ([0035](./decisions/0035-imports-become-one-captured-tree.md))
 - ⬜ Attach a PRD or any Markdown file, and plan every screen from it
 - ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
 - ✅ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo. DESIGN.md actions: "Import from a URL…" reads a Design.md, a CSS theme or a JSON token file (GitHub links work); "Colors from a logo…" sets primary, its foreground, ring and charts. Each is one undo step that re-themes the screens
