@@ -4,6 +4,7 @@ import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
 import { starterFiles } from "../../shared/context/styles";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
+import { errorResult, NO_PROJECT, type AgentCall, type ToolResult } from "../../shared/mcp/tools";
 import type { RabiscoRPC } from "../../shared/rpc";
 import type {
 	CanvasDoc,
@@ -64,6 +65,29 @@ export function handleSaveAll(handler: () => Promise<boolean>) {
 	saveAll = handler;
 }
 
+type AgentCallHandler = (call: AgentCall) => Promise<ToolResult>;
+
+let agentCall: AgentCallHandler | null = null;
+
+/** The editor runs coding agents' tools on its project; with none, every call says so */
+export function handleAgentCall(handler: AgentCallHandler) {
+	agentCall = handler;
+
+	return () => {
+		if (agentCall === handler) agentCall = null;
+	};
+}
+
+async function answerAgent(call: AgentCall) {
+	const result = await (agentCall ?? (async () => errorResult(NO_PROJECT)))(call).catch((error) =>
+		errorResult(error instanceof Error ? error.message : String(error)),
+	);
+
+	await api
+		.agentResult({ callId: call.callId, result })
+		.catch((error) => console.warn("Could not answer agentCall:", error));
+}
+
 function createElectrobunApi(): RabiscoApi {
 	const rpc = Electroview.defineRPC<RabiscoRPC>({
 		// Generations can run for minutes with agentic providers
@@ -77,6 +101,7 @@ function createElectrobunApi(): RabiscoApi {
 				filesChanged: fileChanges.emit,
 				assetsChanged: assetChanges.emit,
 				canvasChanged: canvasChanges.emit,
+				agentCall: (call) => void answerAgent(call),
 			},
 		},
 	});
@@ -350,11 +375,21 @@ function createBrowserApi(): RabiscoApi {
 		async gitReadCheckpoint() {
 			throw new Error(DESKTOP_ONLY);
 		},
+		agentServerStatus: async () => ({ enabled: false, port: null }),
+		async setAgentServer() {
+			throw new Error(AGENTS_DESKTOP_ONLY);
+		},
+		async resetAgentAccess() {
+			throw new Error(AGENTS_DESKTOP_ONLY);
+		},
+		agentResult: async () => ok,
 		...generator,
 	};
 }
 
 export const DESKTOP_ONLY = "Sharing and git sync need the Rabisco desktop app.";
+
+const AGENTS_DESKTOP_ONLY = "Coding agents need the Rabisco desktop app.";
 
 export const isDesktop = typeof window !== "undefined" && Boolean(window.__electrobun);
 

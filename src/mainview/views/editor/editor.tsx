@@ -45,6 +45,7 @@ import { useShowFps } from "@/hooks/use-show-fps";
 import { referenceAttachments, useMoodboard } from "@/hooks/use-moodboard";
 import { useSections } from "@/hooks/use-sections";
 import { useStructure } from "@/hooks/use-structure";
+import { useAgentTools } from "@/hooks/use-agent-tools";
 import type { Theme } from "@/hooks/use-theme";
 import { useVariations } from "@/hooks/use-variations";
 import { type Action, actionById, actionForKey } from "@/lib/actions";
@@ -496,6 +497,12 @@ export function EditorView({
 	const { selectMany, toggleHiddenNodes, pastePropertiesNodes, toggleLockNodes } = liveStructure;
 	const structureBusy = liveStructure.busy;
 	const hasNode = node !== null;
+
+	useAgentTools({
+		stateRef,
+		elements: nodes,
+		elementAt: async (file, point) => (await canvasRef.current?.elementAt(file, point)) ?? null,
+	});
 
 	useEffect(() => {
 		if (!hasNode) styleState.set("");

@@ -1,0 +1,315 @@
+import { describe, expect, test } from "bun:test";
+import type { JsonObject } from "../../shared/json";
+import { NO_PROJECT, TOOLS, type ToolResult } from "../../shared/mcp/tools";
+import { emptyCanvas } from "../../shared/project";
+import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
+import { runAgentTool, type AgentContext, type AgentElement } from "./agent-tools";
+
+const HOME = `import { StatCard } from "../components/stat-card";
+
+export default function Home() {
+	return (
+		<main className="p-6">
+			<h1 className="text-2xl">Welcome</h1>
+			<section>
+				<StatCard label="Visits" value="12" />
+				<button className="rounded">Continue</button>
+			</section>
+		</main>
+	);
+}
+`;
+
+const SETTINGS = `export default function Settings() {
+	return <div className="p-4">Settings</div>;
+}
+`;
+
+const STAT_CARD = `import { Badge } from "@/components/ui/badge";
+import { format } from "./format";
+
+export function StatCard({ label, value }: { label: string; value: string }) {
+	return <div><Badge>{label}</Badge>{format(value)}</div>;
+}
+`;
+
+const DESIGN = `# Design
+
+## Tokens
+
+- primary: #2563eb
+`;
+
+const FILES: ProjectFiles = {
+	"screens/home.tsx": HOME,
+	"screens/settings.tsx": SETTINGS,
+	"components/stat-card.tsx": STAT_CARD,
+	"components/format.ts": "export const format = (value: string) => value;\n",
+	"DESIGN.md": DESIGN,
+	"PRODUCT.md": "# Product\n",
+};
+
+const frame = (file: string, name: string, x: number): Frame => ({
+	file,
+	name,
+	device: "mobile",
+	x,
+	y: 0,
+	width: 390,
+	height: 844,
+});
+
+function canvasOf(selection: string[]): CanvasDoc {
+	const canvas = emptyCanvas("Demo", "mobile");
+
+	return {
+		...canvas,
+		frames: [frame("screens/home.tsx", "Home", 0), frame("screens/settings.tsx", "Settings", 500)],
+		selection,
+		sections: [{ id: "s1", name: "Onboarding", color: "blue", x: -40, y: -40, width: 480, height: 940 }],
+		comments: [
+			{ id: "c1", file: "screens/home.tsx", x: 20, y: 30, text: "Bigger title", createdAt: "2026-10-01T00:00:00Z" },
+			{ id: "c2", x: 900, y: 900, text: "Add a profile screen", createdAt: "2026-10-02T00:00:00Z" },
+			{
+				id: "c3",
+				file: "screens/home.tsx",
+				x: 1,
+				y: 1,
+				text: "Done",
+				createdAt: "2026-10-03T00:00:00Z",
+				resolved: true,
+			},
+		],
+	};
+}
+
+const startOf = (text: string) => HOME.indexOf(text);
+
+type Shot = { file: string; start: number | null };
+
+function contextOf(overrides: Partial<AgentContext> = {}) {
+	const shots: Shot[] = [];
+
+	const context: AgentContext = {
+		path: "/projects/demo.rabisco",
+		canvas: canvasOf(["screens/home.tsx"]),
+		files: FILES,
+		elements: [{ file: "screens/home.tsx", start: startOf("<button") }],
+		gitStatus: async () => ({ state: "none" }),
+		screenshot: async (target, start) => {
+			shots.push({ file: target.file, start });
+
+			return "iVBORw0KGgo=";
+		},
+		elementAt: async (file): Promise<AgentElement | null> => ({ file, start: startOf("<h1") }),
+		...overrides,
+	};
+
+	return { context, shots };
+}
+
+const call = (tool: string, args: JsonObject = {}, overrides: Partial<AgentContext> = {}) =>
+	runAgentTool(tool, args, contextOf(overrides).context);
+
+function json(result: ToolResult) {
+	expect(result.isError).toBeUndefined();
+	const [first] = result.content;
+
+	if (first?.type !== "text") throw new Error("Expected text");
+
+	return JSON.parse(first.text);
+}
+
+function error(result: ToolResult) {
+	expect(result.isError).toBe(true);
+	const [first] = result.content;
+
+	return first?.type === "text" ? first.text : "";
+}
+
+describe("runAgentTool", () => {
+	test("has a runner for every listed tool", async () => {
+		for (const tool of TOOLS) {
+			const [first] = (await call(tool.name)).content;
+
+			expect(first?.type === "text" ? first.text : "").not.toContain("has no tool");
+		}
+	});
+
+	test("says no project is open without an editor", async () => {
+		expect(error(await runAgentTool("get_project", {}, null))).toBe(NO_PROJECT);
+		expect(error(await call("rename_everything"))).toBe("Rabisco has no tool `rename_everything`.");
+	});
+
+	test("get_project", async () => {
+		expect(
+			json(await call("get_project", {}, { gitStatus: async () => ({ state: "unavailable", error: "x" }) })),
+		).toEqual({
+			name: "Demo",
+			path: "/projects/demo.rabisco",
+			device: "mobile",
+			devices: ["mobile"],
+			git: false,
+			screens: [
+				{
+					file: "screens/home.tsx",
+					name: "Home",
+					device: "mobile",
+					width: 390,
+					height: 844,
+					section: "Onboarding",
+					alternate: false,
+				},
+				{
+					file: "screens/settings.tsx",
+					name: "Settings",
+					device: "mobile",
+					width: 390,
+					height: 844,
+					section: null,
+					alternate: false,
+				},
+			],
+			components: ["components/stat-card.tsx"],
+			sections: ["Onboarding"],
+			contextFiles: ["PRODUCT.md", "DESIGN.md"],
+		});
+	});
+
+	test("get_selection names elements by path and line", async () => {
+		expect(json(await call("get_selection"))).toEqual({
+			screens: [{ file: "screens/home.tsx", name: "Home" }],
+			elements: [{ file: "screens/home.tsx", path: "0.1.1", line: 9, label: "button", hint: "“Continue”" }],
+		});
+
+		expect(json(await call("get_selection", {}, { canvas: canvasOf([]), elements: [] }))).toEqual({
+			screens: [],
+			elements: [],
+		});
+	});
+
+	test("get_screen returns the selected screen with the project files it imports", async () => {
+		expect(json(await call("get_screen"))).toEqual({
+			file: "screens/home.tsx",
+			source: HOME,
+			imports: [
+				{ file: "components/format.ts", source: FILES["components/format.ts"] },
+				{ file: "components/stat-card.tsx", source: STAT_CARD },
+			],
+		});
+	});
+
+	test("get_screen finds a screen by file, name or component", async () => {
+		expect(json(await call("get_screen", { screen: "settings" })).file).toBe("screens/settings.tsx");
+		expect(json(await call("get_screen", { screen: "Settings" })).file).toBe("screens/settings.tsx");
+		expect(json(await call("get_screen", { screen: "screens/settings.tsx" })).file).toBe("screens/settings.tsx");
+		expect(json(await call("get_screen", { screen: "components/stat-card.tsx" })).file).toBe(
+			"components/stat-card.tsx",
+		);
+		expect(error(await call("get_screen", { screen: "../secrets" }))).toContain("There is no screen or component");
+		expect(error(await call("get_screen", { screen: "DESIGN.md" }))).toContain("There is no screen or component");
+		expect(error(await call("get_screen", { screen: 3 }))).toBe("`screen` must be a string.");
+		expect(error(await call("get_screen", {}, { canvas: canvasOf([]) }))).toContain("No screen is selected");
+	});
+
+	test("get_element_tree", async () => {
+		const tree = json(await call("get_element_tree", { screen: "home" }));
+
+		expect(tree.file).toBe("screens/home.tsx");
+		expect(tree.elements).toHaveLength(1);
+		const [main] = tree.elements;
+
+		expect(main).toMatchObject({ path: "0", line: 5, label: "main", kind: "intrinsic" });
+		expect(main.children.map((child: { label: string }) => child.label)).toEqual(["h1", "section"]);
+		expect(main.children[1].children).toMatchObject([
+			{ path: "0.1.0", label: "StatCard", kind: "component" },
+			{ path: "0.1.1", label: "button", hint: "“Continue”" },
+		]);
+
+		const broken = { ...FILES, "screens/home.tsx": "export default function Home() { return <div>; }" };
+		expect(error(await call("get_element_tree", {}, { files: broken }))).toContain("doesn't parse");
+	});
+
+	test("get_screenshot of a screen or one element", async () => {
+		const { context, shots } = contextOf();
+		const screen = await runAgentTool("get_screenshot", {}, context);
+
+		expect(screen.content).toEqual([
+			{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+			{ type: "text", text: "Home (screens/home.tsx)" },
+		]);
+
+		const element = await runAgentTool("get_screenshot", { screen: "home", element: "0.1.1" }, context);
+		expect(element.content[1]).toEqual({ type: "text", text: "Element 0.1.1 of Home (screens/home.tsx)" });
+		expect(shots).toEqual([
+			{ file: "screens/home.tsx", start: null },
+			{ file: "screens/home.tsx", start: startOf("<button") },
+		]);
+
+		expect(error(await runAgentTool("get_screenshot", { element: "0.9" }, context))).toContain("has no element");
+		expect(error(await runAgentTool("get_screenshot", { element: "../x" }, context))).toContain(
+			"isn't an element path",
+		);
+		expect(error(await runAgentTool("get_screenshot", { screen: "stat-card" }, context))).toContain("no screen");
+		expect(shots).toHaveLength(2);
+	});
+
+	test("get_screenshot reports a render failure", async () => {
+		const failing = async () => {
+			throw new Error("The screen didn't render");
+		};
+
+		expect(error(await call("get_screenshot", {}, { screenshot: failing }))).toBe(
+			"get_screenshot failed: The screen didn't render",
+		);
+	});
+
+	test("get_design_tokens", async () => {
+		const tokens = json(await call("get_design_tokens"));
+
+		expect(tokens).toEqual({
+			applied: { light: { primary: "#2563eb" }, dark: {} },
+			appliedFromCurrentDesign: true,
+			designMd: DESIGN,
+		});
+
+		const canvas = { ...canvasOf([]), theme: { light: { primary: "red" }, dark: {}, source: "old" } };
+		expect(json(await call("get_design_tokens", {}, { canvas })).appliedFromCurrentDesign).toBe(false);
+	});
+
+	test("list_components", async () => {
+		const { project, library } = json(await call("list_components"));
+
+		expect(project).toEqual([
+			{
+				file: "components/stat-card.tsx",
+				exports: [
+					{ name: "StatCard", signature: "StatCard({ label: string; value: string })", acceptsChildren: false },
+				],
+				usedBy: ["screens/home.tsx"],
+			},
+		]);
+		expect(library).toContainEqual({ import: "@/components/ui/button", exports: ["Button", "buttonVariants"] });
+	});
+
+	test("list_comments lists open comments with their screen and element", async () => {
+		expect(json(await call("list_comments"))).toEqual([
+			{
+				id: "c1",
+				text: "Bigger title",
+				createdAt: "2026-10-01T00:00:00Z",
+				screen: { file: "screens/home.tsx", name: "Home" },
+				element: { file: "screens/home.tsx", path: "0.0", line: 6, label: "h1", hint: "“Welcome”" },
+				replies: [],
+			},
+			{
+				id: "c2",
+				text: "Add a profile screen",
+				createdAt: "2026-10-02T00:00:00Z",
+				screen: null,
+				element: null,
+				replies: [],
+			},
+		]);
+	});
+});

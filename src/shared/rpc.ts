@@ -4,6 +4,7 @@ import type { StyleId } from "./context/styles";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
+import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
@@ -135,6 +136,14 @@ export type RabiscoRPC = {
 			gitCheckpoints: { params: { path: string }; response: GitCheckpoint[] };
 			gitCheckpoint: { params: { path: string; name: string }; response: GitCheckpoint };
 			gitReadCheckpoint: { params: { path: string; hash: string }; response: CheckpointVersion };
+
+			/** The local MCP server for coding agents (decision 0030) */
+			agentServerStatus: { params: {}; response: AgentServerStatus };
+			setAgentServer: { params: { enabled: boolean }; response: AgentServerStatus };
+			/** Restarts the server with a new port and token */
+			resetAgentAccess: { params: {}; response: AgentServerStatus };
+			/** The answer to an `agentCall` */
+			agentResult: { params: { callId: string; result: ToolResult }; response: { ok: true } };
 		};
 		messages: {};
 	}>;
@@ -150,6 +159,8 @@ export type RabiscoRPC = {
 			/** Images under `public/` changed: picked in the inspector or edited outside Rabisco (decision 0010) */
 			assetsChanged: { path: string; changes: AssetChange[] };
 			canvasChanged: { path: string; canvas: CanvasDoc };
+			/** A coding agent's tool call; answered by `agentResult` */
+			agentCall: AgentCall;
 		};
 	}>;
 };

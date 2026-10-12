@@ -122,8 +122,8 @@ _Principles: Bring your own AI · Context is a file_
 
 MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the canvas. Screens are files on disk, so an agent can already edit them, but it can't see the selection, take a screenshot or make a change that goes through history.
 
-- ⬜ A local MCP server in the main process, off by default, with a token per session
-- ⬜ Read tools: the project, the screens, the selection, the element tree, a screenshot of a screen or element, DESIGN.md tokens, the component catalog, open comments
+- ✅ A local MCP server in the main process, off by default, with a token per session. Settings has "Let coding agents use Rabisco" and "Reset access"; clients find the port and token in `mcp.json` in app data ([0030](./decisions/0030-local-mcp-server-for-coding-agents.md))
+- ✅ Read tools: the project, the screens, the selection, the element tree, a screenshot of a screen or element, DESIGN.md tokens, the component catalog, open comments
 - ⬜ Write tools: create and edit screens and components, set tokens, add comments. Each call is one undo step in history
 - ⬜ An "agent is editing" marker on the frames an agent touches, and a log of agent changes in the History panel
 - ⬜ One-click setup for Claude Code, Codex, Cursor, VS Code and Claude Desktop, from Settings

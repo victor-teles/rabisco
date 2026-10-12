@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { AgentSettings } from "@/components/app/agent-settings";
 import { useAutoPolish, useAutoReview } from "@/hooks/use-auto-polish";
 import { useAutoResolve } from "@/hooks/use-auto-resolve";
 import {
@@ -100,7 +101,7 @@ export function SettingsDialog() {
 					) : null}
 				</DialogHeader>
 
-				<ScrollArea className="min-h-0 flex-1">
+				<ScrollArea className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
 					<div className="flex flex-col gap-2 px-6 py-4">
 						{loading && !settings.providers.length ? (
 							<p className="py-8 text-center text-sm text-muted-foreground">Checking providers…</p>
@@ -122,6 +123,7 @@ export function SettingsDialog() {
 					</div>
 					<FastModelSettings />
 					<CommentSettings />
+					<AgentSettings />
 				</ScrollArea>
 
 				<div className="flex items-center gap-2 border-t px-6 py-3">

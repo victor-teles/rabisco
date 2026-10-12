@@ -18,6 +18,7 @@ import { createAiService } from "./ai/service";
 import { freeExportDir, writeExportFiles } from "./export";
 import { createGit } from "./git";
 import { findContextFiles } from "./import-context";
+import { createAgentService } from "./mcp/agents";
 import { createShareService, readScreenRuntime } from "./share";
 import { createProjectStore } from "./store";
 
@@ -100,6 +101,13 @@ const ai = createAiService({
 });
 
 const ok = { ok: true } as const;
+
+// Coding agents reach the open project through a local MCP server, off by default (decision 0030)
+const agents = createAgentService({
+	userDataDir: Utils.paths.userData,
+	appVersion: (await Updater.localInfo.version()) || "dev",
+	send: (call) => mainWindow.webview.rpc?.send.agentCall(call),
+});
 
 /** App bundle first, then the source tree (development) */
 const runtimeDirs = () => [
@@ -233,6 +241,10 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			gitCheckpoints: ({ path }) => git.checkpoints(path),
 			gitCheckpoint: ({ path, name }) => git.checkpoint(path, name),
 			gitReadCheckpoint: ({ path, hash }) => git.readCheckpoint(path, hash),
+			agentServerStatus: () => agents.status(),
+			setAgentServer: ({ enabled }) => agents.setEnabled(enabled),
+			resetAgentAccess: () => agents.resetAccess(),
+			agentResult: ({ callId, result }) => (agents.resolve(callId, result), ok),
 		},
 		messages: {},
 	},
@@ -278,6 +290,12 @@ const mainWindow = new BrowserWindow({
 
 mainWindow.maximize();
 
+try {
+	agents.init();
+} catch (error) {
+	console.warn("Could not start the MCP server:", error);
+}
+
 const SAVE_ON_CLOSE_MS = 3000;
 
 let saving: Promise<void> | null = null;
@@ -305,9 +323,11 @@ function saveBeforeClosing(event: ElectrobunEvent<{}, { allow: boolean }>, close
 	void saving.then(close);
 }
 
-Electrobun.events.on("before-quit", (event: ElectrobunEvent<{}, { allow: boolean }>) =>
-	saveBeforeClosing(event, () => Utils.quit()),
-);
+Electrobun.events.on("before-quit", (event: ElectrobunEvent<{}, { allow: boolean }>) => {
+	saveBeforeClosing(event, () => Utils.quit());
+
+	if (event.response?.allow !== false) agents.close();
+});
 
 Electrobun.events.on(`will-close-${mainWindow.id}`, (event: ElectrobunEvent<{}, { allow: boolean }>) =>
 	saveBeforeClosing(event, () => mainWindow.close()),

@@ -66,10 +66,12 @@ src/
     store.ts            project folders, recents and file watching
     ai/                 provider layer (decision 0003): settings, keychain, validation, repair loop
       providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Antigravity CLI, Claude Agent SDK
+    mcp/                local MCP server for coding agents, off by default (decision 0030)
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback
     lib/project-sessions.ts  open projects and their generations, kept while work runs (decision 0021)
+    lib/agent-tools.ts  the MCP tools, run on the project open in the editor
     views/home.tsx      prompt hero and recent projects
     views/editor/       chat panel, infinite canvas, inspector
     components/ui/      shadcn primitives, uai blocks in ui/uai
