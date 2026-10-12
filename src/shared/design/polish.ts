@@ -151,7 +151,7 @@ export function reviewNote(reply: string, writes: FileChange[]): string {
 	const line = reply
 		.split("\n")
 		.map((text) => text.trim())
-		.find(Boolean);
+		.find((text) => text && !text.endsWith(":"));
 
 	if (!changed.length) return "Review: nothing to fix.";
 

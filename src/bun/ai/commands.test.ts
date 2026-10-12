@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { tempDir } from "../test-utils";
 import { commandMethods, expandCommand } from "./command-template";
-import { claudeCommands, geminiCommands, parseMarkdownCommand } from "./commands";
+import { antigravityCommands, claudeCommands, parseMarkdownCommand } from "./commands";
 
 function put(root: string, path: string, content: string) {
 	mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -33,30 +33,32 @@ describe("commands", () => {
 		]);
 	});
 
-	test("Gemini commands are TOML with a prompt", () => {
+	test("Antigravity commands are global and project workflows", () => {
 		const home = tempDir();
-		put(home, ".gemini/commands/git/review.toml", 'description = "Review"\nprompt = """\nReview {{args}}\n"""\n');
-		put(home, ".gemini/commands/broken.toml", "prompt = ");
-		put(home, ".gemini/commands/no-prompt.toml", 'description = "x"');
+		const project = tempDir();
+		put(home, ".gemini/config/global_workflows/review.md", "---\ndescription: Review\n---\nReview the screens");
+		put(project, ".agents/workflows/review.md", "Review the project way");
+		put(project, ".agents/workflows/ship.md", "Ship it");
 
-		const [review, ...rest] = geminiCommands(tempDir(), home);
-		expect(rest).toEqual([]);
-		expect(review).toMatchObject({ name: "git:review", description: "Review", template: "Review {{args}}" });
-		expect(expandCommand(review!, " the home screen ")).toBe("Review the home screen");
+		expect(
+			antigravityCommands(project, home).map(({ name, description, source }) => [name, description, source]),
+		).toEqual([
+			["review", "Review the project way", "project"],
+			["ship", "Ship it", "project"],
+		]);
 	});
 
 	test("arguments fill $ARGUMENTS and $1…$9, or follow a template without placeholders", () => {
-		const markdown = (template: string) => ({ template, syntax: "markdown" as const });
+		const markdown = (template: string) => ({ template });
 		expect(expandCommand(markdown("Make $ARGUMENTS bolder"), "the hero")).toBe("Make the hero bolder");
 		expect(expandCommand(markdown("Swap $2 for $1, keep $3"), "red blue")).toBe("Swap blue for red, keep ");
 		expect(expandCommand(markdown("Tidy the spacing"), "on home")).toBe("Tidy the spacing\n\nARGUMENTS: on home");
 		expect(expandCommand(markdown("Tidy the spacing"), "")).toBe("Tidy the spacing");
-		expect(expandCommand({ template: "Review", syntax: "toml" }, "home")).toBe("Review\n\nhome");
 	});
 
 	test("the provider methods list without templates and expand by name", async () => {
 		const methods = commandMethods(() => [
-			{ name: "brief", description: "Brief", source: "user", template: "Design $ARGUMENTS", syntax: "markdown" },
+			{ name: "brief", description: "Brief", source: "user", template: "Design $ARGUMENTS" },
 		]);
 
 		expect(await methods.listCommands("/p")).toEqual([{ name: "brief", description: "Brief", source: "user" }]);

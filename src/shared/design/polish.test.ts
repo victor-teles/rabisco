@@ -321,6 +321,9 @@ describe("visual review", () => {
 
 		expect(reviewNote("Tightened spacing in Home.", writes)).toBe("Review: tightened spacing in Home.");
 		expect(reviewNote("", writes)).toBe("Review: changed Home.");
+		expect(reviewNote("Looking at the screenshots:\n\nThe tab bar sat too low, so I raised it.", writes)).toBe(
+			"Review: the tab bar sat too low, so I raised it.",
+		);
 		expect(reviewNote("Nothing to fix.", [])).toBe("Review: nothing to fix.");
 	});
 });

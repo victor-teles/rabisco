@@ -2,9 +2,6 @@ import { readdirSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import type { ProviderCommand } from "../../shared/ai/contract";
-import { isString } from "../../shared/guards";
-import type { Json } from "../../shared/json";
-import { objectOr } from "../json";
 import { isDirectory } from "../project-folder";
 import type { CommandFile } from "./command-template";
 
@@ -12,7 +9,7 @@ type CommandDir = { dir: string; source: ProviderCommand["source"] };
 
 const MAX_DEPTH = 3;
 
-/** `name.md` or `name.toml` anywhere under `dir`; the path below `dir` is the name, joined with `:` */
+/** `name.md` anywhere under `dir`; the path below `dir` is the name, joined with `:` */
 function commandPaths(dir: string, extension: string, prefix: string[] = []): { name: string; path: string }[] {
 	if (prefix.length > MAX_DEPTH || !isDirectory(dir)) return [];
 
@@ -84,43 +81,11 @@ export function readMarkdownCommands({ dir, source }: CommandDir): CommandFile[]
 			description: describe(fields.description, body),
 			source,
 			template: body,
-			syntax: "markdown",
 		};
 
 		if (fields["argument-hint"]) command.argumentHint = fields["argument-hint"];
 
 		return [command];
-	});
-}
-
-function parseToml(text: string): Json {
-	try {
-		// SAFETY: TOML yields strings, numbers, booleans, arrays and tables, which are Json, and dates;
-		// only string fields are read, each checked with `isString`, so a date is never used as one
-		return Bun.TOML.parse(text) as Json;
-	} catch {
-		return null;
-	}
-}
-
-/** Gemini CLI: `prompt = """…"""` and an optional `description` */
-export function readTomlCommands({ dir, source }: CommandDir): CommandFile[] {
-	return commandPaths(dir, ".toml").flatMap(({ name, path }) => {
-		const text = readText(path);
-		const fields = objectOr(text === null ? null : parseToml(text));
-		const prompt = isString(fields.prompt) ? fields.prompt.trim() : "";
-
-		if (!prompt) return [];
-
-		return [
-			{
-				name,
-				description: describe(isString(fields.description) ? fields.description : undefined, prompt),
-				source,
-				template: prompt,
-				syntax: "toml",
-			},
-		];
 	});
 }
 
@@ -142,8 +107,8 @@ export const claudeCommands = (projectPath: string, home = homedir()) =>
 export const codexCommands = (_projectPath: string, home = homedir()) =>
 	merged([readMarkdownCommands({ dir: join(home, ".codex/prompts"), source: "user" })]);
 
-export const geminiCommands = (projectPath: string, home = homedir()) =>
+export const antigravityCommands = (projectPath: string, home = homedir()) =>
 	merged([
-		readTomlCommands({ dir: join(home, ".gemini/commands"), source: "user" }),
-		readTomlCommands({ dir: join(projectPath, ".gemini/commands"), source: "project" }),
+		readMarkdownCommands({ dir: join(home, ".gemini/config/global_workflows"), source: "user" }),
+		readMarkdownCommands({ dir: join(projectPath, ".agents/workflows"), source: "project" }),
 	]);

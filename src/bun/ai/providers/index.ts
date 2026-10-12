@@ -9,10 +9,10 @@ import {
 import type { SpawnFn } from "../cli";
 import { apiKeyAccount, type SecretStore } from "../keychain";
 import { createAnthropicProvider } from "./anthropic";
+import { createAntigravityProvider } from "./antigravity";
 import { createClaudeAgentSdkProvider } from "./claude-agent-sdk";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createCodexProvider } from "./codex";
-import { createGeminiCliProvider } from "./gemini-cli";
 import { createMockProvider } from "./mock";
 import { createOpenAICompatibleProvider } from "./openai-compatible";
 
@@ -42,8 +42,8 @@ export function createProvider(config: ProviderConfig, deps: ProviderDeps): Prov
 			return createClaudeCodeProvider(cli);
 		case "codex":
 			return createCodexProvider(cli);
-		case "gemini-cli":
-			return createGeminiCliProvider(cli);
+		case "antigravity":
+			return createAntigravityProvider(cli);
 		case "claude-agent-sdk":
 			return createClaudeAgentSdkProvider({
 				config,

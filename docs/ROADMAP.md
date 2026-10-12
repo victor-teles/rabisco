@@ -16,9 +16,10 @@ Phases 1–17 were checked mostly in Chrome and unit tests. This phase runs ever
 
 **Real providers**
 
-- ⬜ The same prompt with an API key, Claude Code and Ollama: screens, `context` and `theme` tasks, variations (parallel CLI runs, rate limits), Mix, point and prompt (how often the focus guard fires), and component and custom token reuse
-- ⬜ A real Codex run to check its event mapping; Gemini CLI against its docs
-- ⬜ Run the generation eval with real providers and keep the first report as the baseline (`bench/gen`)
+- ✅ The same prompt with Claude Code and Antigravity CLI: screens, `context` and `theme` tasks, variations (parallel CLI runs, rate limits), Mix, point and prompt, and component and custom token reuse. Fixed: the review note showed an agent's opening line ("looking at the screenshots:"). Bugs: [LIT-86](/LIT/issues/LIT-86) (the review edits outside the focus, unreported), [LIT-87](/LIT/issues/LIT-87) (Antigravity runs that end with no screens)
+- ✅ Antigravity CLI replaces Gemini CLI ([decision 0032](./decisions/0032-antigravity-cli-replaces-gemini-cli.md)); its event mapping is built from a real `agy` 1.3.3 run
+- ⬜ The same checks with an API key and Ollama, and a real Codex run to check its event mapping
+- ✅ Run the generation eval with real providers and keep the first report as the baseline (`bench/gen`). Claude Code (Opus): 12/12 briefs, reports in [LIT-11](/LIT/issues/LIT-11). Bug: [LIT-88](/LIT/issues/LIT-88)
 - ⬜ Compare the eval before and after the Phase 16 prompt rules with the same provider
 
 **Checks in WKWebView**

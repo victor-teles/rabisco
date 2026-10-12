@@ -63,7 +63,7 @@ describe("classifyFailure", () => {
 			code: "not_authenticated",
 			fix: "Run `codex login` in a terminal.",
 		});
-		expect(classifyFailure("gemini-cli", "Please set an Auth method in your settings")).toMatchObject({
+		expect(classifyFailure("antigravity", "Please set an Auth method in your settings")).toMatchObject({
 			code: "not_authenticated",
 		});
 		expect(classifyFailure("claude-code", "API Error: 429 rate_limit_error")).toMatchObject({
@@ -146,7 +146,7 @@ describe("runCliAgent", () => {
 		const { spawn } = fakeSpawn({ throws: error });
 
 		const events = await collect(
-			runCliAgent({ type: "gemini-cli", spawn, cmd: ["gemini"], cwd: "/tmp", map }, new AbortController().signal),
+			runCliAgent({ type: "antigravity", spawn, cmd: ["agy"], cwd: "/tmp", map }, new AbortController().signal),
 		);
 
 		expect(events).toEqual([expect.objectContaining({ type: "error", code: "not_installed" })]);

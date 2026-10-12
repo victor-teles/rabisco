@@ -125,6 +125,33 @@ describe("settings store", () => {
 		expect((await store.get()).fastModel).toBeUndefined();
 	});
 
+	test("a Gemini CLI provider becomes Antigravity CLI and loses its Gemini models", () => {
+		const settings = normalizeSettings({
+			providers: [
+				{ id: "claude-code", type: "claude-code", enabled: true },
+				{
+					id: "gemini-cli",
+					type: "gemini-cli",
+					label: "Gemini CLI",
+					enabled: false,
+					binPath: "/opt/gemini",
+					defaultModel: "gemini-2.5-pro",
+				},
+			],
+			defaultModel: "gemini-cli:gemini-2.5-pro",
+			fastModel: "claude-code:haiku",
+		});
+
+		expect(settings).toEqual({
+			version: 1,
+			providers: [
+				{ id: "claude-code", type: "claude-code", label: "Claude Code", enabled: true },
+				{ id: "antigravity", type: "antigravity", label: "Antigravity CLI", enabled: false },
+			],
+			fastModel: "claude-code:haiku",
+		});
+	});
+
 	test("normalize keeps a valid fast model and tolerates files without one", () => {
 		expect(normalizeSettings({ providers: [], fastModel: "ollama:qwen3:4b" }).fastModel).toBe("ollama:qwen3:4b");
 		expect(normalizeSettings({ providers: [], fastModel: "nocolon" })).toEqual({ version: 1, providers: [] });

@@ -465,7 +465,7 @@ function ProviderCard({
 						<Field label="Binary path" hint="Leave empty to find it on your PATH.">
 							<Input
 								value={binPath}
-								placeholder={config.type === "claude-code" ? "claude" : config.type === "codex" ? "codex" : "gemini"}
+								placeholder={config.type === "claude-code" ? "claude" : config.type === "codex" ? "codex" : "agy"}
 								onChange={(e) => setBinPath(e.target.value)}
 								className="h-8 font-mono"
 							/>

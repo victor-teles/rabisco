@@ -38,7 +38,7 @@ Rabisco does not lock you to one model or one vendor. A provider can be:
 
 | Kind    | Examples                                                                | Why                                                             |
 | ------- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **CLI** | Claude Code, Codex CLI, Gemini CLI                                      | Reuses a subscription the user already has. No keys in Rabisco. |
+| **CLI** | Claude Code, Codex CLI, Antigravity CLI                                 | Reuses a subscription the user already has. No keys in Rabisco. |
 | **SDK** | Claude Agent SDK, Vercel AI SDK                                         | Agent loops, tools and streaming in-process.                    |
 | **API** | Anthropic, OpenAI, OpenRouter, Ollama or any OpenAI-compatible endpoint | Direct control over the model, cost and local models.           |
 

@@ -93,13 +93,13 @@ export function cliEnv(binary: string, extra: Record<string, string | undefined>
 export const CLI_BINARIES: Partial<Record<ProviderType, string>> = {
 	"claude-code": "claude",
 	codex: "codex",
-	"gemini-cli": "gemini",
+	antigravity: "agy",
 };
 
 const LOGIN_FIX: Partial<Record<ProviderType, string>> = {
 	"claude-code": "Run `claude` in a terminal and log in.",
 	codex: "Run `codex login` in a terminal.",
-	"gemini-cli": "Run `gemini` in a terminal and sign in.",
+	antigravity: "Run `agy` in a terminal and sign in.",
 	"claude-agent-sdk": "Add an Anthropic API key in Settings.",
 };
 

@@ -1,6 +1,6 @@
 # 0012 · Chat sessions are files; provider commands are read and expanded by Rabisco
 
-- **Status:** accepted
+- **Status:** accepted, partly superseded by [0032](./0032-antigravity-cli-replaces-gemini-cli.md)
 - **Date:** 2026-10-07
 - **Extends:** [0003](./0003-ai-provider-contract.md)
 - **Code:** [`src/shared/chats.ts`](../../src/shared/chats.ts), [`src/bun/project-folder.ts`](../../src/bun/project-folder.ts), [`src/bun/ai/commands.ts`](../../src/bun/ai/commands.ts), [`src/bun/ai/command-template.ts`](../../src/bun/ai/command-template.ts), [`src/mainview/lib/chat-commands.ts`](../../src/mainview/lib/chat-commands.ts)

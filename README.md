@@ -26,7 +26,7 @@
 
 - **Local-first.** A project is a folder on your disk. No account, no cloud. Your designs never leave your machine unless you push them.
 - **Real React/TSX.** Every screen is a React component styled with Tailwind and shadcn/ui. What you see is what you ship. There's no conversion step.
-- **Bring your own AI.** Use Claude Code, Codex CLI, Gemini CLI, Ollama, or an API key for Anthropic, OpenAI or OpenRouter. No credits: your Claude Code plan already covers it.
+- **Bring your own AI.** Use Claude Code, Codex CLI, Antigravity CLI, Ollama, or an API key for Anthropic, OpenAI or OpenRouter. No credits: your Claude Code plan already covers it.
 - **Git-friendly.** Screens are `.tsx` files and `DESIGN.md` is plain Markdown. Review a design change in a pull request.
 - **Undoable.** Every AI edit goes through history, and history survives restarts. Every AI change is one ⌘Z away.
 
@@ -65,7 +65,7 @@ src/
     index.ts            window and RPC handlers
     store.ts            project folders, recents and file watching
     ai/                 provider layer (decision 0003): settings, keychain, validation, repair loop
-      providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Gemini CLI, Claude Agent SDK
+      providers/        Anthropic, OpenAI-compatible, Claude Code, Codex, Antigravity CLI, Claude Agent SDK
   shared/               types, RPC schema, the AI contract and the dev-only mock generator
   mainview/             webview (React)
     lib/rpc.ts          typed RPC client and browser fallback

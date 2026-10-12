@@ -13,12 +13,12 @@ import { apiKeyAccount, type SecretStore } from "./keychain";
 
 export const SETTINGS_FILE = "providers.json";
 
-export type Detected = Partial<Record<"claude" | "codex" | "gemini" | "ollama", boolean>>;
+export type Detected = Partial<Record<"claude" | "codex" | "agy" | "ollama", boolean>>;
 
 export const detectBinaries = async (): Promise<Detected> => ({
 	claude: !!Bun.which("claude"),
 	codex: !!Bun.which("codex"),
-	gemini: !!Bun.which("gemini"),
+	agy: !!Bun.which("agy"),
 	ollama: !!Bun.which("ollama"),
 });
 
@@ -26,7 +26,7 @@ export const detectBinaries = async (): Promise<Detected> => ({
 const SEED: { binary: keyof Detected; type: ProviderType }[] = [
 	{ binary: "claude", type: "claude-code" },
 	{ binary: "codex", type: "codex" },
-	{ binary: "gemini", type: "gemini-cli" },
+	{ binary: "agy", type: "antigravity" },
 	{ binary: "ollama", type: "ollama" },
 ];
 
@@ -61,22 +61,33 @@ export function uniqueProviderId(type: ProviderType, taken: Iterable<string>) {
 	return id;
 }
 
+const LEGACY_GEMINI = "gemini-cli";
+
 const nonBlank = (value: Json | undefined) => optionalString(value)?.trim() || undefined;
 
 export function normalizeSettings(raw: Json): ProviderSettings {
 	const data = objectOr(raw);
 	const providers: ProviderConfig[] = [];
 	const ids = new Set<string>();
+	const retired = new Set<string>();
 
 	for (const entry of arrayOr(data.providers)) {
 		const p = objectOr(entry);
-		const id = optionalString(p.id);
+		const legacy = p.type === LEGACY_GEMINI;
+		const storedId = optionalString(p.id);
+		const id = legacy && storedId ? uniqueProviderId("antigravity", ids) : storedId;
 
 		if (!id || !/^[a-z0-9-]+$/.test(id) || ids.has(id)) continue;
-		const info = PROVIDER_TYPES.find((t) => t.type === p.type);
+		const info = PROVIDER_TYPES.find((t) => t.type === (legacy ? "antigravity" : p.type));
 
 		if (!info) continue;
 		ids.add(id);
+
+		if (legacy && storedId) {
+			retired.add(storedId);
+			providers.push({ id, type: info.type, label: info.label, enabled: p.enabled !== false });
+			continue;
+		}
 
 		const config: ProviderConfig = {
 			id,
@@ -96,12 +107,19 @@ export function normalizeSettings(raw: Json): ProviderSettings {
 	}
 
 	const settings: ProviderSettings = { version: 1, providers };
-	const defaultModel = nonBlank(data.defaultModel);
 
-	if (defaultModel && parseModelRef(defaultModel)) settings.defaultModel = defaultModel;
-	const fastModel = nonBlank(data.fastModel);
+	const usable = (ref: string | undefined) => {
+		const parsed = ref ? parseModelRef(ref) : null;
 
-	if (fastModel && parseModelRef(fastModel)) settings.fastModel = fastModel;
+		return parsed && !retired.has(parsed.providerId) ? ref : undefined;
+	};
+
+	const defaultModel = usable(nonBlank(data.defaultModel));
+
+	if (defaultModel) settings.defaultModel = defaultModel;
+	const fastModel = usable(nonBlank(data.fastModel));
+
+	if (fastModel) settings.fastModel = fastModel;
 
 	return settings;
 }

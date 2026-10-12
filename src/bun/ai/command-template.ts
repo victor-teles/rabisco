@@ -2,20 +2,14 @@ import type { Provider, ProviderCommand } from "../../shared/ai/contract";
 
 /**
  * Commands are read from the tools' folders (`commands.ts`) and expanded here, not by the tool: CLI runs are
- * isolated from the user's settings, and Codex and Gemini don't expand commands in their non-interactive modes.
+ * isolated from the user's settings, and Codex doesn't expand commands in its non-interactive mode.
  * No file system here, so the mock provider still runs in the browser (`browser-generate.ts`).
  */
-export type CommandFile = ProviderCommand & { template: string; syntax: "markdown" | "toml" };
+export type CommandFile = ProviderCommand & { template: string };
 
 /** The way each tool fills in arguments; a template without a placeholder gets them appended */
-export function expandCommand(command: Pick<CommandFile, "template" | "syntax">, args: string) {
+export function expandCommand(command: Pick<CommandFile, "template">, args: string) {
 	const trimmed = args.trim();
-
-	if (command.syntax === "toml") {
-		if (command.template.includes("{{args}}")) return command.template.replaceAll("{{args}}", trimmed);
-
-		return trimmed ? `${command.template}\n\n${trimmed}` : command.template;
-	}
 
 	const words = trimmed ? trimmed.split(/\s+/) : [];
 	const placeholder = /\$ARGUMENTS|\$[1-9]/;

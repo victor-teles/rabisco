@@ -85,7 +85,7 @@ export function createOpenAICompatibleProvider(options: ApiProviderOptions): Pro
 
 		if (key) entries.push(["authorization", `Bearer ${key}`]);
 
-		if (config.type === "openrouter") entries.push(["HTTP-Referer", "https://rabisco.app"], ["X-Title", "Rabisco"]);
+		if (config.type === "openrouter") entries.push(["HTTP-Referer", "https://rabisco.dev"], ["X-Title", "Rabisco"]);
 
 		return Object.fromEntries(entries);
 	}

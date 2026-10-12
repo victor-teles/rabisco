@@ -10,7 +10,7 @@ export type ProviderType =
 	| "openai-compatible"
 	| "claude-code"
 	| "codex"
-	| "gemini-cli"
+	| "antigravity"
 	| "claude-agent-sdk"
 	/** Development only */
 	| "mock";
@@ -119,13 +119,13 @@ export const PROVIDER_TYPES: readonly ProviderTypeInfo[] = [
 		helpUrl: "https://github.com/openai/codex",
 	},
 	{
-		type: "gemini-cli",
+		type: "antigravity",
 		kind: "cli",
-		label: "Gemini CLI",
-		description: "Uses your Gemini CLI login",
+		label: "Antigravity CLI",
+		description: "Uses your Antigravity login",
 		needsKey: false,
 		needsBaseUrl: false,
-		helpUrl: "https://github.com/google-gemini/gemini-cli",
+		helpUrl: "https://antigravity.google",
 	},
 	{
 		type: "claude-agent-sdk",

@@ -23,7 +23,6 @@ export const MOCK_COMMANDS: CommandFile[] = [
 		argumentHint: "<what to build>",
 		source: "user",
 		template: "Design the main screens for: $ARGUMENTS",
-		syntax: "markdown",
 	},
 ];
 

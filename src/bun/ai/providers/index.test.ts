@@ -90,7 +90,7 @@ describe("ProviderRegistry", () => {
 		expect(make("openai-compatible", { baseUrl: "http://localhost:1234/v1" }).kind).toBe("api");
 		expect(make("claude-code").kind).toBe("cli");
 		expect(make("codex").kind).toBe("cli");
-		expect(make("gemini-cli").kind).toBe("cli");
+		expect(make("antigravity").kind).toBe("cli");
 		expect(make("claude-agent-sdk").kind).toBe("sdk");
 		expect(make("mock").id).toBe("mock");
 	});
