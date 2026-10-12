@@ -77,6 +77,21 @@ describe("actionForKey", () => {
 		expect(actionForKey([duplicate], press({ code: "KeyD", metaKey: true }))?.id).toBe("duplicate");
 		expect(actionForKey([duplicate], press({ code: "KeyX", metaKey: true }))).toBeUndefined();
 	});
+
+	test("a ⌃ chord wins over a ⌘ chord on the same keys, since ⌘ chords also take Ctrl", () => {
+		const pasteProperties = action("paste-properties", [{ code: "KeyV", mod: true, alt: true }]);
+		const distribute = action("distribute-vertical", [{ code: "KeyV", ctrl: true, alt: true }]);
+		const actions = [pasteProperties, distribute];
+
+		expect(actionForKey(actions, press({ code: "KeyV", ctrlKey: true, altKey: true }))?.id).toBe("distribute-vertical");
+		expect(actionForKey(actions, press({ code: "KeyV", metaKey: true, altKey: true }))?.id).toBe("paste-properties");
+		expect(
+			actionForKey(
+				[pasteProperties, { ...distribute, enabled: false }],
+				press({ code: "KeyV", ctrlKey: true, altKey: true }),
+			)?.id,
+		).toBe("distribute-vertical");
+	});
 });
 
 describe("formatChord", () => {

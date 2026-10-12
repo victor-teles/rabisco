@@ -49,12 +49,11 @@ export function matchesChord(chord: Chord, event: KeyInput) {
 	return chord.shift === "any" || Boolean(chord.shift) === event.shiftKey;
 }
 
-/** The first enabled action bound to the keys, else the first disabled one that isn't passive, so its keys still don't reach the page */
-export function actionForKey(actions: readonly Action[], event: KeyInput) {
+function firstForKey(actions: readonly Action[], event: KeyInput, fits: (chord: Chord) => boolean) {
 	let disabled: Action | undefined;
 
 	for (const action of actions) {
-		if (!action.chords?.some((chord) => matchesChord(chord, event))) continue;
+		if (!action.chords?.some((chord) => fits(chord) && matchesChord(chord, event))) continue;
 
 		if (action.enabled) return action;
 
@@ -62,6 +61,11 @@ export function actionForKey(actions: readonly Action[], event: KeyInput) {
 	}
 
 	return disabled;
+}
+
+/** The first enabled action bound to the keys, else the first disabled one that isn't passive, so its keys still don't reach the page. A literal ⌃ chord wins over a ⌘ one, which also takes Ctrl */
+export function actionForKey(actions: readonly Action[], event: KeyInput) {
+	return firstForKey(actions, event, (chord) => chord.ctrl === true) ?? firstForKey(actions, event, () => true);
 }
 
 const KEY_LABELS = new Map([
