@@ -4,7 +4,7 @@ import { appliedTheme } from "../../shared/project";
 import { isAlternate } from "../../shared/variations";
 import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
 
-export type VersionKind = "checkpoint" | "ai";
+export type VersionKind = "checkpoint" | "ai" | "agent";
 
 export type SessionVersion = {
 	id: string;
@@ -13,6 +13,8 @@ export type SessionVersion = {
 	at: string;
 	snapshot: Snapshot;
 	changed: string[];
+	/** The coding agent that made an `agent` version */
+	agent?: string;
 };
 
 export type Version =
@@ -40,6 +42,16 @@ export function versionLabel(prompt: string): string {
 
 export function aiVersion(id: string, prompt: string, snapshot: Snapshot, changed: string[], at: Date): SessionVersion {
 	return { id, kind: "ai", label: versionLabel(prompt), at: at.toISOString(), snapshot, changed };
+}
+
+export function agentVersion(
+	agent: string,
+	label: string,
+	snapshot: Snapshot,
+	changed: string[],
+	at: Date,
+): SessionVersion {
+	return { id: crypto.randomUUID(), kind: "agent", label, at: at.toISOString(), snapshot, changed, agent };
 }
 
 export function checkpointVersion(name: string, snapshot: Snapshot, at: Date): SessionVersion {

@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, r
 import { join } from "path";
 import { commit, createHistory, type Snapshot } from "../mainview/lib/history";
 import { packHistory, resumeHistory, unpackHistory } from "../mainview/lib/saved-history";
+import { agentVersion } from "../mainview/lib/versions";
 import { emptyCanvas } from "../shared/project";
 import type { SavedHistory } from "../shared/saved-history";
 import { newChatId } from "../shared/chats";
@@ -87,6 +88,17 @@ describe("saved history on disk", () => {
 		expect(readSavedHistory(userData, dir)).toEqual(saved);
 		expect(readSavedHistory(userData, `${dir}-other`)).toBeNull();
 		expect(historyFile(userData, dir).startsWith(join(userData, "history"))).toBe(true);
+	});
+
+	test("a coding agent's version reads back with the agent's name", () => {
+		const userData = tempDir();
+		const dir = projectWithScreen();
+		const disk = snapshotOf(dir);
+		const version = agentVersion("Codex", "Edited Home", disk, ["screens/home.tsx"], new Date(0));
+
+		writeSavedHistory(userData, dir, packHistory(createHistory(disk), [version], new Date(0)));
+
+		expect(readSavedHistory(userData, dir)?.versions[0]).toMatchObject({ kind: "agent", agent: "Codex" });
 	});
 
 	test("a saved history resumes against the canvas the folder holds", () => {

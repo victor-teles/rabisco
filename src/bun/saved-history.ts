@@ -132,12 +132,15 @@ function parseVersion(value: Json, count: number, fallbackName: string): SavedVe
 	const id = optionalString(raw.id);
 	const label = optionalString(raw.label);
 	const at = optionalString(raw.at);
-	const kind = raw.kind === "ai" || raw.kind === "checkpoint" ? raw.kind : undefined;
+	const kind = raw.kind === "ai" || raw.kind === "checkpoint" || raw.kind === "agent" ? raw.kind : undefined;
+	const agent = optionalString(raw.agent);
 	const snapshot = parseSnapshot(raw.snapshot, count, fallbackName);
 
 	if (!id || label === undefined || !at || !kind || !snapshot) return [];
 
-	return [{ id, kind, label, at, changed: arrayOr(raw.changed).filter(isString), snapshot }];
+	const version: SavedVersion = { id, kind, label, at, changed: arrayOr(raw.changed).filter(isString), snapshot };
+
+	return [agent ? { ...version, agent } : version];
 }
 
 export function parseSavedHistory(value: Json, dir: string): SavedHistory | null {

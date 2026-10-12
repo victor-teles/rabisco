@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { commit, createHistory, undo, type Snapshot } from "./history";
 import {
+	agentVersion,
 	aiVersion,
 	checkpointVersion,
 	defaultCheckpointName,
@@ -61,6 +62,19 @@ describe("versions", () => {
 			snapshot: after,
 			changed: ["screens/settings.tsx"],
 		});
+	});
+
+	test("a coding agent's change carries the agent's name", () => {
+		const version = agentVersion("Claude Code", "Edited Home", after, ["screens/home.tsx"], new Date(0));
+
+		expect(version).toMatchObject({
+			kind: "agent",
+			agent: "Claude Code",
+			label: "Edited Home",
+			at: "1970-01-01T00:00:00.000Z",
+			changed: ["screens/home.tsx"],
+		});
+		expect(listVersions([version], [])[0]).toMatchObject({ source: "session", agent: "Claude Code" });
 	});
 
 	test("a checkpoint is named with a timestamp by default", () => {

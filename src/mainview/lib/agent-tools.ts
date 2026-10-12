@@ -43,6 +43,9 @@ export type AgentElement = { file: string; start: number };
 
 export type AgentPoint = { x: number; y: number };
 
+/** One write, for the History panel and the marker on the screens it touched */
+export type AgentLog = { label: string; changed: string[]; screens: string[] };
+
 export type AgentCheck = { file: string; findings: DesignFinding[]; error?: string };
 
 /** What the editor hands the tools: the project as it shows, and the editor's own renderer */
@@ -61,6 +64,8 @@ export type AgentContext = {
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options: ChangeOptions) => void;
 	/** The coalesce key that makes this call its own undo step */
 	step: string;
+	/** Called after each write lands */
+	log: (entry: AgentLog) => void;
 	/** A generation is running in the project */
 	busy: () => boolean;
 	checkDesign: (frames: Frame[]) => Promise<AgentCheck[]>;
@@ -143,6 +148,9 @@ function resolveFile(context: AgentContext, screen: string | undefined, componen
 
 	throw new ToolError(`There is no ${components ? "screen or component" : "screen"} \`${screen}\` in the project.`);
 }
+
+const screenName = (context: AgentContext, file: string) =>
+	context.canvas.frames.find((frame) => frame.file === file)?.name ?? file;
 
 function frameOf(context: AgentContext, file: string): Frame {
 	const frame = context.canvas.frames.find((each) => each.file === file);
@@ -434,6 +442,7 @@ function createScreen(context: AgentContext, args: JsonObject): Json {
 		(snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: code }, frames: [...snapshot.frames, placed] }),
 		{ coalesce: context.step, select: [file] },
 	);
+	context.log({ label: `Created ${name}`, changed: [file], screens: [file] });
 
 	return { file, name, device, x: placed.x, y: placed.y, width: placed.width, height: placed.height };
 }
@@ -462,6 +471,7 @@ function editScreen(context: AgentContext, args: JsonObject): Json {
 	checkCompiles(file, code);
 	checkLocks(context, file, code);
 	writeFile(context, file, code);
+	context.log({ label: `Edited ${screenName(context, file)}`, changed: [file], screens: [file] });
 
 	return { file, changed: true };
 }
@@ -489,6 +499,13 @@ function writeComponent(context: AgentContext, args: JsonObject): Json {
 	checkCompiles(file, code);
 	checkLocks(context, file, code);
 	writeFile(context, file, code);
+	const users = componentUsages({ ...context.files, [file]: code }).get(file) ?? [];
+
+	context.log({
+		label: `${before === undefined ? "Created" : "Edited"} ${file.slice("components/".length, -".tsx".length)}`,
+		changed: [file],
+		screens: users.flatMap((usage) => (isScreenFile(usage.path) ? [usage.path] : [])),
+	});
 
 	return { file, created: before === undefined, changed: true };
 }
@@ -534,6 +551,11 @@ function setDesignTokens(context: AgentContext, args: JsonObject): Json {
 		(snapshot) => ({ ...snapshot, files: { ...snapshot.files, "DESIGN.md": design }, theme: themeOf(design) }),
 		{ coalesce: context.step },
 	);
+	context.log({
+		label: `Set ${values.length} design token${values.length === 1 ? "" : "s"}`,
+		changed: ["DESIGN.md"],
+		screens: [],
+	});
 
 	return { set: values.length, tokens: designTokensOf(design) };
 }
@@ -569,6 +591,7 @@ async function addComment(context: AgentContext, args: JsonObject): Promise<Json
 	context.change((snapshot) => ({ ...snapshot, comments: [...(snapshot.comments ?? []), comment] }), {
 		coalesce: context.step,
 	});
+	context.log({ label: `Commented on ${frame.name}`, changed: [], screens: [] });
 
 	return { id: comment.id, screen: { file, name: frame.name }, element: element ?? null };
 }

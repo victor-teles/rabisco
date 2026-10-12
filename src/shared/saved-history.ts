@@ -15,7 +15,7 @@ export type SavedSnapshot = {
 	assets?: AssetDigests;
 };
 
-export type SavedVersionKind = "checkpoint" | "ai";
+export type SavedVersionKind = "checkpoint" | "ai" | "agent";
 
 export type SavedVersion = {
 	id: string;
@@ -23,6 +23,7 @@ export type SavedVersion = {
 	label: string;
 	at: string;
 	changed: string[];
+	agent?: string;
 	snapshot: SavedSnapshot;
 };
 

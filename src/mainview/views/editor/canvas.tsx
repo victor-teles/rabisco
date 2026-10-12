@@ -10,7 +10,7 @@ import {
 	useSyncExternalStore,
 	type Ref,
 } from "react";
-import { Check, Columns2, TriangleAlert } from "lucide-react";
+import { Bot, Check, Columns2, TriangleAlert } from "lucide-react";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -148,6 +148,8 @@ type CanvasProps = {
 	frames: Frame[];
 	files: ProjectFiles;
 	drafts?: GenerationDrafts | null;
+	/** Screens a coding agent wrote to just now, with the agent's name */
+	agentEditing?: ReadonlyMap<string, string>;
 	selection: string[];
 	onSelectionChange: (selection: string[]) => void;
 	onClickEmpty?: (point: Point) => void;
@@ -349,6 +351,7 @@ export function Canvas({
 	frames,
 	files,
 	drafts,
+	agentEditing,
 	selection,
 	onSelectionChange,
 	onClickEmpty,
@@ -1835,6 +1838,7 @@ export function Canvas({
 								selected={selected.has(frame.file)}
 								dropTarget={dropFile === frame.file && dropPreview?.file !== frame.file}
 								writing={writing}
+								agent={agentEditing?.get(frame.file)}
 								variation={variationOf(frame.file)}
 								onPick={onPick ? pick : undefined}
 								editing={editing?.file === frame.file}
@@ -2011,6 +2015,7 @@ const FrameView = memo(function FrameView({
 	files,
 	selected,
 	writing,
+	agent,
 	variation,
 	onPick,
 	draft = false,
@@ -2026,6 +2031,8 @@ const FrameView = memo(function FrameView({
 	files: ProjectFiles;
 	selected: boolean;
 	writing?: WritingFile;
+	/** The coding agent editing this screen */
+	agent?: string;
 	variation?: Variation;
 	onPick?: (file: string) => void;
 	/** The label is an input; `onRename` gets the name, or `null` to cancel */
@@ -2073,7 +2080,7 @@ const FrameView = memo(function FrameView({
 						onBlur={(event) => onRename(frame.file, event.currentTarget.value)}
 					/>
 				) : (
-					<span data-frame-label className="truncate">
+					<span data-frame-label className={cn("truncate", agent && "max-w-full shrink-0")}>
 						{frame.name}
 					</span>
 				)}
@@ -2104,6 +2111,15 @@ const FrameView = memo(function FrameView({
 				{streaming ? (
 					<span className="shrink-0 font-normal text-primary motion-safe:animate-pulse">Writing…</span>
 				) : null}
+				{agent && !streaming && !draft ? (
+					<span
+						className="flex min-w-0 items-center gap-1 overflow-hidden font-normal text-primary"
+						title={`${agent} is editing`}
+					>
+						<Bot className="size-3 shrink-0" />
+						<span className="truncate">{agent} is editing</span>
+					</span>
+				) : null}
 				{variation === "alternate" && onPick && !draft ? (
 					<Button
 						variant="ghost"
@@ -2128,7 +2144,9 @@ const FrameView = memo(function FrameView({
 				style={{
 					boxShadow: selected
 						? "0 0 0 calc(2px * var(--unzoom)) var(--primary), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.25))"
-						: "0 0 0 calc(1px * var(--unzoom)) color-mix(in oklab, var(--foreground) 10%, transparent), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))",
+						: agent
+							? "0 0 0 calc(1px * var(--unzoom)) color-mix(in oklab, var(--primary) 60%, transparent), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))"
+							: "0 0 0 calc(1px * var(--unzoom)) color-mix(in oklab, var(--foreground) 10%, transparent), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))",
 				}}
 			>
 				{draft && !writing?.done ? (

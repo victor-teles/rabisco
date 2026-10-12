@@ -3,7 +3,7 @@ import type { JsonObject } from "../../shared/json";
 import { NO_PROJECT, TOOLS, type ToolResult } from "../../shared/mcp/tools";
 import { emptyCanvas } from "../../shared/project";
 import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
-import { runAgentTool, type AgentCheck, type AgentContext, type AgentElement } from "./agent-tools";
+import { runAgentTool, type AgentCheck, type AgentContext, type AgentElement, type AgentLog } from "./agent-tools";
 import { commit, createHistory, nextSnapshot, undo, type History } from "./history";
 
 const HOME = `import { StatCard } from "../components/stat-card";
@@ -106,6 +106,7 @@ function contextOf(overrides: Partial<AgentContext> = {}) {
 		elementBox: async () => ({ x: 24, y: 40, width: 200, height: 32 }),
 		change: () => {},
 		step: "agent:call-1",
+		log: () => {},
 		busy: () => false,
 		checkDesign: async (frames): Promise<AgentCheck[]> => frames.map((target) => ({ file: target.file, findings: [] })),
 		exportWebsite: async (dir) => `${dir}/demo-site`,
@@ -404,6 +405,7 @@ function session(overrides: Partial<AgentContext> = {}) {
 	});
 
 	const selections: string[][] = [];
+	const logs: AgentLog[] = [];
 	let calls = 0;
 
 	const change: AgentContext["change"] = (recipe, options) => {
@@ -414,9 +416,21 @@ function session(overrides: Partial<AgentContext> = {}) {
 
 	return {
 		run: (tool: string, args: JsonObject = {}) =>
-			runAgentTool(tool, args, contextOf({ ...overrides, canvas, files, change, step: `agent:${++calls}` }).context),
+			runAgentTool(
+				tool,
+				args,
+				contextOf({
+					...overrides,
+					canvas,
+					files,
+					change,
+					log: (entry) => logs.push(entry),
+					step: `agent:${++calls}`,
+				}).context,
+			),
 		history: () => history,
 		selections,
+		logs,
 	};
 }
 
@@ -487,6 +501,26 @@ describe("write tools", () => {
 
 		expect(json(await run("edit_screen", { edits: button })).changed).toBe(true);
 		expect(history().past).toHaveLength(1);
+	});
+
+	test("each write logs what it changed and the screens it touched", async () => {
+		const { run, logs } = session();
+		const pill = STAT_CARD.replace("<div>", '<div className="rounded">');
+
+		await run("edit_screen", { edits: EDIT });
+		await run("create_screen", { name: "Profile", code: SETTINGS });
+		await run("write_component", { component: "stat-card", code: pill });
+		await run("set_design_tokens", { light: { primary: "#000000" } });
+		await run("add_comment", { text: "Check this", screen: "Settings" });
+		await run("edit_screen", { edits: EDIT.replace("Welcome", "Goodbye") });
+
+		expect(logs).toEqual([
+			{ label: "Edited Home", changed: ["screens/home.tsx"], screens: ["screens/home.tsx"] },
+			{ label: "Created Profile", changed: ["screens/profile.tsx"], screens: ["screens/profile.tsx"] },
+			{ label: "Edited stat-card", changed: ["components/stat-card.tsx"], screens: ["screens/home.tsx"] },
+			{ label: "Set 1 design token", changed: ["DESIGN.md"], screens: [] },
+			{ label: "Commented on Settings", changed: [], screens: [] },
+		]);
 	});
 
 	test("writes wait while a generation runs", async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, GitCommitHorizontal, LoaderCircle, RotateCcw, Sparkles, type LucideIcon } from "lucide-react";
+import { Bookmark, Bot, GitCommitHorizontal, LoaderCircle, RotateCcw, Sparkles, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame, ScreenTheme } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,8 @@ const LOCAL_NOTE = isDesktop
 function iconOf(version: Version): LucideIcon {
 	if (version.kind === "ai") return Sparkles;
 
+	if (version.kind === "agent") return Bot;
+
 	return version.source === "git" ? GitCommitHorizontal : Bookmark;
 }
 
@@ -53,6 +55,8 @@ function metaOf(version: Version) {
 	];
 
 	if (version.source === "session" && version.changed.length) parts.push(plural(version.changed.length, "file"));
+
+	if (version.source === "session" && version.agent) parts.unshift(version.agent);
 
 	return parts.join(" · ");
 }
@@ -224,7 +228,9 @@ export function HistoryPanel({
 			<div role="list" aria-label="Versions" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
 				{listed.length === 0 ? (
 					<p className="px-2 py-1 text-[13px] text-subtle-foreground">
-						{loading ? "Loading…" : "No versions yet. Save a checkpoint, and AI changes show here as they land."}
+						{loading
+							? "Loading…"
+							: "No versions yet. Save a checkpoint, and AI and coding agent changes show here as they land."}
 					</p>
 				) : (
 					listed.map((version) => {

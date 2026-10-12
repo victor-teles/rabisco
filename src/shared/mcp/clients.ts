@@ -21,6 +21,13 @@ export type AgentClientStatus = {
 	connected: boolean;
 };
 
+/** The name Rabisco shows for a client, from what it sent as `clientInfo.name` */
+export function agentName(name: string): string {
+	const id = clientOfName(name);
+
+	return AGENT_CLIENTS.find((client) => client.id === id)?.name ?? "Coding agent";
+}
+
 /** Maps the MCP `clientInfo.name` each client sends to the client it belongs to */
 export function clientOfName(name: string): AgentClientId | null {
 	const lower = name.toLowerCase();

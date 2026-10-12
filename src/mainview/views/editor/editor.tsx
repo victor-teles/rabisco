@@ -505,7 +505,7 @@ export function EditorView({
 	const structureBusy = liveStructure.busy;
 	const hasNode = node !== null;
 
-	useAgentTools({
+	const agentMarks = useAgentTools({
 		path: projectPath,
 		project: error ? { error } : project ? { name: project.canvas.name } : null,
 		stateRef,
@@ -2248,6 +2248,7 @@ export function EditorView({
 							frames={frames}
 							files={files}
 							drafts={drafts}
+							agentEditing={agentMarks}
 							selection={selection}
 							onSelectionChange={setSelection}
 							onClickEmpty={(point) => {
