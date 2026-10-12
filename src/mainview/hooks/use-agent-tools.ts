@@ -1,9 +1,10 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { agentCheckDesign, agentExportWebsite } from "@/lib/agent-cli";
 import { agentOpener, type EditorProject } from "@/lib/agent-open";
-import { agentScreenshot } from "@/lib/agent-screenshot";
+import { agentElementBox, agentScreenshot } from "@/lib/agent-screenshot";
 import { runAgentTool, type AgentElement, type AgentPoint } from "@/lib/agent-tools";
 import { api, handleAgentCall } from "@/lib/rpc";
+import { projectSessions } from "@/lib/sessions";
 import { appliedTheme } from "../../shared/project";
 import type { ProjectState } from "./use-project";
 
@@ -15,7 +16,7 @@ type Options = {
 	elementAt: (file: string, point: AgentPoint) => Promise<AgentElement | null>;
 };
 
-/** While the editor shows a project, coding agents' tool calls read it (decision 0030) */
+/** While the editor shows a project, coding agents' tool calls read and change it (decision 0030) */
 export function useAgentTools({ path, project, stateRef, elements, elementAt }: Options) {
 	const latest = useRef({ elements, elementAt });
 	const name = project && "name" in project ? project.name : null;
@@ -33,10 +34,11 @@ export function useAgentTools({ path, project, stateRef, elements, elementAt }: 
 
 	useEffect(
 		() =>
-			handleAgentCall(({ tool, args }) => {
+			handleAgentCall(({ callId, tool, args }) => {
 				const state = stateRef.current;
+				const entry = state && projectSessions.get(state.path);
 
-				if (!state) return runAgentTool(tool, args, null);
+				if (!state || !entry) return runAgentTool(tool, args, null);
 				const { path, canvas, files } = state;
 				const theme = appliedTheme(canvas, files);
 
@@ -48,6 +50,10 @@ export function useAgentTools({ path, project, stateRef, elements, elementAt }: 
 					gitStatus: () => api.gitStatus({ path }),
 					screenshot: agentScreenshot(files, theme),
 					elementAt: (file, point) => latest.current.elementAt(file, point),
+					elementBox: agentElementBox(files, theme),
+					change: entry.session.change,
+					step: `agent:${callId}`,
+					busy: () => entry.controller.working(),
 					checkDesign: agentCheckDesign(canvas, files, theme),
 					exportWebsite: agentExportWebsite(canvas, files, theme),
 				});

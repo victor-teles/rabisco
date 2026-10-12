@@ -2,7 +2,7 @@
 
 import type { FileKind, GenerationEvent, ProjectFile, ScreenMeta } from "../../shared/ai/contract";
 import { isDevice, screenNameFromPath, toKebab } from "../../shared/project";
-import { applyEditBlocks, parseEditBlocks } from "./edit-blocks";
+import { applyEditBlocks, parseEditBlocks } from "../../shared/edit-blocks";
 
 const OPEN = "<rabisco-file";
 

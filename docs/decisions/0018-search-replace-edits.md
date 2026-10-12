@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-10
 - **Supersedes:** the "files are always complete" rule for API providers in [0003](./0003-ai-provider-contract.md)
-- **Code:** [`src/bun/ai/edit-blocks.ts`](../../src/bun/ai/edit-blocks.ts), [`src/bun/ai/protocol.ts`](../../src/bun/ai/protocol.ts), `runGeneration` in [`src/bun/ai/run.ts`](../../src/bun/ai/run.ts), `TEXT_PROTOCOL_RULES` in [`src/bun/ai/prompt.ts`](../../src/bun/ai/prompt.ts)
+- **Code:** [`src/shared/edit-blocks.ts`](../../src/shared/edit-blocks.ts), [`src/bun/ai/protocol.ts`](../../src/bun/ai/protocol.ts), `runGeneration` in [`src/bun/ai/run.ts`](../../src/bun/ai/run.ts), `TEXT_PROTOCOL_RULES` in [`src/bun/ai/prompt.ts`](../../src/bun/ai/prompt.ts)
 
 ## Context
 

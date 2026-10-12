@@ -5,7 +5,8 @@ export type ToolContent = { type: "text"; text: string } | { type: "image"; data
 export type ToolResult = { content: ToolContent[]; isError?: boolean };
 
 type PropertySchema =
-	| { type: "string" | "number" | "boolean"; description: string }
+	| { type: "string" | "number" | "boolean"; description: string; enum?: string[] }
+	| { type: "object"; description: string; additionalProperties: { type: "string" } }
 	| { type: "array"; description: string; items: { type: "string" } };
 
 export type InputSchema = {
@@ -59,39 +60,7 @@ const readTool = (name: string, title: string, description: string, inputSchema 
 	annotations: { title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
 
-const PATH: PropertySchema = { type: "string", description: "An absolute folder path." };
-
-const OPEN_PROJECT: ToolDefinition = {
-	name: "open_project",
-	title: "Open a project",
-	description:
-		"Opens a project folder in the Rabisco editor. Other tools then work on it. A folder that isn't a Rabisco project yet becomes one.",
-	inputSchema: { type: "object", properties: { path: PATH }, required: ["path"], additionalProperties: false },
-	annotations: {
-		title: "Open a project",
-		readOnlyHint: false,
-		destructiveHint: false,
-		idempotentHint: true,
-		openWorldHint: false,
-	},
-};
-
-/** Only the `rabisco` CLI calls it, so it isn't in `tools/list` */
-export const EXPORT_WEBSITE: ToolDefinition = {
-	name: "export_website",
-	title: "Export as website",
-	description: "Writes the project as a static website into a new folder inside `path`, like Export as website.",
-	inputSchema: { type: "object", properties: { path: PATH }, required: ["path"], additionalProperties: false },
-	annotations: {
-		title: "Export as website",
-		readOnlyHint: false,
-		destructiveHint: false,
-		idempotentHint: false,
-		openWorldHint: false,
-	},
-};
-
-export const TOOLS: readonly ToolDefinition[] = [
+const READ_TOOLS: readonly ToolDefinition[] = [
 	readTool(
 		"get_project",
 		"Get the project",
@@ -163,8 +132,161 @@ export const TOOLS: readonly ToolDefinition[] = [
 			additionalProperties: false,
 		},
 	),
-	OPEN_PROJECT,
 ];
+
+const writeTool = (
+	name: string,
+	title: string,
+	description: string,
+	inputSchema: InputSchema,
+	hints: { destructive: boolean; idempotent: boolean },
+): ToolDefinition => ({
+	name,
+	title,
+	description,
+	inputSchema,
+	annotations: {
+		title,
+		readOnlyHint: false,
+		destructiveHint: hints.destructive,
+		idempotentHint: hints.idempotent,
+		openWorldHint: false,
+	},
+});
+
+const CODE: PropertySchema = {
+	type: "string",
+	description:
+		"The whole TSX file. Import project components from `../components/<name>`, shadcn and uai from `@/components/ui/<name>`, icons from `lucide-react`.",
+};
+
+const TOKENS = (mode: string): PropertySchema => ({
+	type: "object",
+	description: `${mode} values by token name, such as \`{ "primary": "#2563eb", "radius": "0.5rem" }\`. An empty value removes the token in this mode.`,
+	additionalProperties: { type: "string" },
+});
+
+export const WRITE_TOOLS: readonly ToolDefinition[] = [
+	writeTool(
+		"create_screen",
+		"Create a screen",
+		"Adds a screen to the canvas from TSX: a React component with a default export, styled with Tailwind. It is one undo step in Rabisco, and the new screen is selected.",
+		{
+			type: "object",
+			properties: {
+				name: { type: "string", description: "The screen's name, such as `Order history`." },
+				code: CODE,
+				device: {
+					type: "string",
+					description: "The frame size. Defaults to the project's device.",
+					enum: ["mobile", "tablet", "desktop"],
+				},
+				next_to: { type: "string", description: "Put the screen to the right of this screen, by file or name." },
+			},
+			required: ["name", "code"],
+			additionalProperties: false,
+		},
+		{ destructive: false, idempotent: false },
+	),
+	writeTool(
+		"edit_screen",
+		"Edit a screen",
+		"Changes a screen as one undo step that the user can undo in Rabisco. Pass `edits` with SEARCH/REPLACE blocks, or `code` with the whole new TSX. Nothing changes if a block doesn't match exactly once or the code doesn't compile.",
+		{
+			type: "object",
+			properties: {
+				screen: SCREEN,
+				edits: {
+					type: "string",
+					description:
+						"One or more blocks, applied in order:\n<<<<<<< SEARCH\n<the exact lines to change>\n=======\n<the new lines>\n>>>>>>> REPLACE",
+				},
+				code: CODE,
+			},
+			additionalProperties: false,
+		},
+		{ destructive: true, idempotent: false },
+	),
+	writeTool(
+		"write_component",
+		"Write a component",
+		'Creates or replaces a component file in `components/`, as one undo step. Screens use it with `import { Name } from "../components/<file>"`.',
+		{
+			type: "object",
+			properties: {
+				component: {
+					type: "string",
+					description: "A file such as `components/stat-card.tsx`, or a kebab-case name such as `stat-card`.",
+				},
+				code: CODE,
+			},
+			required: ["component", "code"],
+			additionalProperties: false,
+		},
+		{ destructive: true, idempotent: true },
+	),
+	writeTool(
+		"set_design_tokens",
+		"Set design tokens",
+		"Sets tokens in DESIGN.md and applies them to the screens, as one undo step. Names are built in (primary, background, radius, font-sans…) or custom (color-brand, radius-card, font-display, text-display).",
+		{
+			type: "object",
+			properties: { light: TOKENS("Light mode"), dark: TOKENS("Dark mode") },
+			additionalProperties: false,
+		},
+		{ destructive: true, idempotent: true },
+	),
+	writeTool(
+		"add_comment",
+		"Add a comment",
+		"Pins a comment on a screen, or on one element of it, as one undo step.",
+		{
+			type: "object",
+			properties: {
+				text: { type: "string", description: "The comment." },
+				screen: SCREEN,
+				element: ELEMENT,
+			},
+			required: ["text"],
+			additionalProperties: false,
+		},
+		{ destructive: false, idempotent: false },
+	),
+];
+
+const PATH: PropertySchema = { type: "string", description: "An absolute folder path." };
+
+const OPEN_PROJECT: ToolDefinition = {
+	name: "open_project",
+	title: "Open a project",
+	description:
+		"Opens a project folder in the Rabisco editor. Other tools then work on it. A folder that isn't a Rabisco project yet becomes one.",
+	inputSchema: { type: "object", properties: { path: PATH }, required: ["path"], additionalProperties: false },
+	annotations: {
+		title: "Open a project",
+		readOnlyHint: false,
+		destructiveHint: false,
+		idempotentHint: true,
+		openWorldHint: false,
+	},
+};
+
+/** Only the `rabisco` CLI calls it, so it isn't in `tools/list` */
+export const EXPORT_WEBSITE: ToolDefinition = {
+	name: "export_website",
+	title: "Export as website",
+	description: "Writes the project as a static website into a new folder inside `path`, like Export as website.",
+	inputSchema: { type: "object", properties: { path: PATH }, required: ["path"], additionalProperties: false },
+	annotations: {
+		title: "Export as website",
+		readOnlyHint: false,
+		destructiveHint: false,
+		idempotentHint: false,
+		openWorldHint: false,
+	},
+};
+
+export const TOOLS: readonly ToolDefinition[] = [...READ_TOOLS, ...WRITE_TOOLS, OPEN_PROJECT];
 
 export const findTool = (name: string) => [...TOOLS, EXPORT_WEBSITE].find((tool) => tool.name === name);
 

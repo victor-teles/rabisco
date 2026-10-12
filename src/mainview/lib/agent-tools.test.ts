@@ -4,6 +4,7 @@ import { NO_PROJECT, TOOLS, type ToolResult } from "../../shared/mcp/tools";
 import { emptyCanvas } from "../../shared/project";
 import type { CanvasDoc, Frame, ProjectFiles } from "../../shared/types";
 import { runAgentTool, type AgentCheck, type AgentContext, type AgentElement } from "./agent-tools";
+import { commit, createHistory, nextSnapshot, undo, type History } from "./history";
 
 const HOME = `import { StatCard } from "../components/stat-card";
 
@@ -102,6 +103,10 @@ function contextOf(overrides: Partial<AgentContext> = {}) {
 			return "iVBORw0KGgo=";
 		},
 		elementAt: async (file): Promise<AgentElement | null> => ({ file, start: startOf("<h1") }),
+		elementBox: async () => ({ x: 24, y: 40, width: 200, height: 32 }),
+		change: () => {},
+		step: "agent:call-1",
+		busy: () => false,
 		checkDesign: async (frames): Promise<AgentCheck[]> => frames.map((target) => ({ file: target.file, findings: [] })),
 		exportWebsite: async (dir) => `${dir}/demo-site`,
 		...overrides,
@@ -384,5 +389,246 @@ describe("CLI tools", () => {
 		expect(result).toEqual({ content: [{ type: "text", text: "/tmp/out/demo-site" }] });
 		expect(error(await call("export_website", { path: "out" }))).toBe("`path` must be an absolute folder path.");
 		expect(error(await call("export_website", {}))).toBe("`path` must be an absolute folder path.");
+	});
+});
+
+function session(overrides: Partial<AgentContext> = {}) {
+	const canvas = overrides.canvas ?? canvasOf(["screens/home.tsx"]);
+	const files = overrides.files ?? FILES;
+
+	let history: History = createHistory({
+		frames: canvas.frames,
+		files,
+		comments: canvas.comments,
+		locks: canvas.locks,
+	});
+
+	const selections: string[][] = [];
+	let calls = 0;
+
+	const change: AgentContext["change"] = (recipe, options) => {
+		history = commit(history, nextSnapshot(history.present, recipe(history.present)), options);
+
+		if (options.select) selections.push(options.select);
+	};
+
+	return {
+		run: (tool: string, args: JsonObject = {}) =>
+			runAgentTool(tool, args, contextOf({ ...overrides, canvas, files, change, step: `agent:${++calls}` }).context),
+		history: () => history,
+		selections,
+	};
+}
+
+const EDIT = `<<<<<<< SEARCH
+			<h1 className="text-2xl">Welcome</h1>
+=======
+			<h1 className="text-3xl">Hello again</h1>
+>>>>>>> REPLACE`;
+
+describe("write tools", () => {
+	test("edit_screen applies SEARCH/REPLACE blocks to the selected screen as one undo step", async () => {
+		const { run, history } = session();
+
+		expect(json(await run("edit_screen", { edits: EDIT }))).toEqual({ file: "screens/home.tsx", changed: true });
+		expect(history().present.files["screens/home.tsx"]).toContain('<h1 className="text-3xl">Hello again</h1>');
+		expect(history().past).toHaveLength(1);
+		expect(history().coalesceKey).toBe("agent:1");
+		expect(undo(history()).present.files["screens/home.tsx"]).toBe(HOME);
+	});
+
+	test("edit_screen takes whole code for a screen by name", async () => {
+		const { run, history } = session();
+		const code = SETTINGS.replace("Settings</div>", "Preferences</div>");
+
+		expect(json(await run("edit_screen", { screen: "Settings", code })).file).toBe("screens/settings.tsx");
+		expect(history().present.files["screens/settings.tsx"]).toBe(code);
+		expect(json(await run("edit_screen", { screen: "settings", code })).changed).toBe(true);
+	});
+
+	test("edit_screen changes nothing when it can't apply cleanly", async () => {
+		const { run, history } = session();
+		const missing = EDIT.replace("Welcome", "Goodbye");
+
+		expect(error(await run("edit_screen", { edits: missing }))).toBe(
+			"SEARCH block 1 doesn't match the file in `screens/home.tsx`, so nothing changed.",
+		);
+		expect(error(await run("edit_screen", { edits: "just text" }))).toContain("no complete SEARCH/REPLACE block");
+		expect(error(await run("edit_screen", {}))).toBe("Pass either `edits` or `code`.");
+		expect(error(await run("edit_screen", { edits: EDIT, code: HOME }))).toBe("Pass either `edits` or `code`.");
+		expect(error(await run("edit_screen", { code: "export default function Home() { return <div>; }" }))).toContain(
+			"doesn't compile, so nothing changed",
+		);
+		expect(error(await run("edit_screen", { code: "export function Home() { return <div />; }" }))).toContain(
+			"needs a default export",
+		);
+		expect(error(await run("edit_screen", { screen: "components/stat-card.tsx", code: HOME }))).toContain(
+			"There is no screen",
+		);
+		expect(history().past).toHaveLength(0);
+	});
+
+	test("edit_screen refuses to touch a locked element", async () => {
+		const canvas = {
+			...canvasOf(["screens/home.tsx"]),
+			locks: [{ file: "screens/home.tsx", path: [0, 0], name: "h1" }],
+		};
+
+		const { run, history } = session({ canvas });
+
+		expect(error(await run("edit_screen", { edits: EDIT }))).toBe(
+			"The change touches the locked <h1> in `screens/home.tsx`. Unlock it in Rabisco first.",
+		);
+
+		const button = EDIT.replace(
+			'<h1 className="text-2xl">Welcome</h1>',
+			'<button className="rounded">Continue</button>',
+		).replace('<h1 className="text-3xl">Hello again</h1>', '<button className="rounded-full">Continue</button>');
+
+		expect(json(await run("edit_screen", { edits: button })).changed).toBe(true);
+		expect(history().past).toHaveLength(1);
+	});
+
+	test("writes wait while a generation runs", async () => {
+		const { run, history } = session({ busy: () => true });
+
+		expect(error(await run("edit_screen", { edits: EDIT }))).toContain("A generation is running");
+		expect(error(await run("create_screen", { name: "Profile", code: SETTINGS }))).toContain("A generation is running");
+		expect(error(await run("set_design_tokens", { light: { primary: "#000000" } }))).toContain(
+			"A generation is running",
+		);
+		expect(history().past).toHaveLength(0);
+	});
+
+	test("create_screen adds a frame and its file as one step, and selects it", async () => {
+		const { run, history, selections } = session();
+		const code = SETTINGS.replace("Settings", "Profile");
+
+		expect(json(await run("create_screen", { name: "Profile", code }))).toEqual({
+			file: "screens/profile.tsx",
+			name: "Profile",
+			device: "mobile",
+			x: 1130,
+			y: 0,
+			width: 390,
+			height: 844,
+		});
+		expect(history().present.files["screens/profile.tsx"]).toBe(code);
+		expect(history().present.frames.map((frame) => frame.file)).toContain("screens/profile.tsx");
+		expect(selections).toEqual([["screens/profile.tsx"]]);
+		expect(undo(history()).present.files["screens/profile.tsx"]).toBeUndefined();
+		expect(undo(history()).present.frames).toHaveLength(2);
+	});
+
+	test("create_screen next to a screen skips frames in the way, and takes a device", async () => {
+		const { run } = session();
+
+		expect(json(await run("create_screen", { name: "Settings", code: SETTINGS, next_to: "Home" }))).toMatchObject({
+			file: "screens/settings-2.tsx",
+			x: 1010,
+			y: 0,
+		});
+		expect(json(await run("create_screen", { name: "Wide", code: SETTINGS, device: "desktop" }))).toMatchObject({
+			device: "desktop",
+			width: 1280,
+		});
+		expect(error(await run("create_screen", { name: "Wide", code: SETTINGS, device: "watch" }))).toContain(
+			"`device` must be",
+		);
+		expect(error(await run("create_screen", { name: "Lost", code: SETTINGS, next_to: "Nowhere" }))).toContain(
+			"There is no screen",
+		);
+		expect(error(await run("create_screen", { code: SETTINGS }))).toBe("Pass `name`.");
+	});
+
+	test("write_component creates or replaces a component file, kept inside components/", async () => {
+		const { run, history } = session();
+		const badge = "export function Pill({ label }: { label: string }) {\n\treturn <span>{label}</span>;\n}\n";
+
+		expect(json(await run("write_component", { component: "pill", code: badge }))).toEqual({
+			file: "components/pill.tsx",
+			created: true,
+			changed: true,
+		});
+		expect(json(await run("write_component", { component: "components/stat-card.tsx", code: badge }))).toEqual({
+			file: "components/stat-card.tsx",
+			created: false,
+			changed: true,
+		});
+		expect(history().past).toHaveLength(2);
+		expect(undo(history()).present.files["components/stat-card.tsx"]).toBe(STAT_CARD);
+
+		for (const component of ["../secrets", "/etc/passwd", "components/../../x", "screens/home.tsx", "Stat Card"])
+			expect(error(await run("write_component", { component, code: badge }))).toContain("isn't a component file");
+		expect(error(await run("write_component", { component: "pill", code: "export const x = <div>;" }))).toContain(
+			"doesn't compile",
+		);
+		expect(history().past).toHaveLength(2);
+	});
+
+	test("set_design_tokens writes DESIGN.md and applies the theme as one step", async () => {
+		const { run, history } = session();
+
+		expect(
+			json(
+				await run("set_design_tokens", {
+					light: { primary: "#111111", radius: "1rem" },
+					dark: { "--primary": "#eeeeee" },
+				}),
+			),
+		).toEqual({
+			set: 3,
+			tokens: { light: { primary: "#111111", radius: "1rem" }, dark: { primary: "#eeeeee" } },
+		});
+		expect(history().present.files["DESIGN.md"]).toContain("- primary: #111111");
+		expect(history().present.theme?.light).toEqual({ primary: "#111111", radius: "1rem" });
+		expect(history().past).toHaveLength(1);
+		expect(undo(history()).present.files["DESIGN.md"]).toBe(DESIGN);
+
+		expect(json(await run("set_design_tokens", { light: { primary: "" } })).tokens.light).toEqual({});
+	});
+
+	test("set_design_tokens checks names and values", async () => {
+		const { run, history } = session();
+
+		expect(error(await run("set_design_tokens", {}))).toBe("Pass `light` or `dark` with at least one token.");
+		expect(error(await run("set_design_tokens", { light: { primary: "blue-ish" } }))).toContain(
+			"Light primary: Not a color",
+		);
+		expect(error(await run("set_design_tokens", { dark: { sparkle: "#fff" } }))).toContain(
+			"Dark sparkle: Unknown token",
+		);
+		expect(error(await run("set_design_tokens", { light: { primary: 3 } }))).toContain("must be a string");
+		expect(error(await run("set_design_tokens", { light: "primary" }))).toContain("must map token names");
+		expect(history().past).toHaveLength(0);
+	});
+
+	test("add_comment pins a comment on a screen or in the middle of an element", async () => {
+		const { run, history } = session();
+
+		const onScreen = json(await run("add_comment", { text: "Tighten the spacing" }));
+		expect(onScreen).toMatchObject({ screen: { file: "screens/home.tsx", name: "Home" }, element: null });
+
+		const onElement = json(await run("add_comment", { text: "Too loud", screen: "home", element: "0.0" }));
+		expect(onElement.element).toBe("0.0");
+
+		const added = (history().present.comments ?? []).slice(-2);
+		expect(added).toMatchObject([
+			{ id: onScreen.id, file: "screens/home.tsx", x: 16, y: 16, text: "Tighten the spacing" },
+			{ id: onElement.id, file: "screens/home.tsx", x: 124, y: 56, text: "Too loud" },
+		]);
+		expect(history().past).toHaveLength(2);
+		expect(undo(history()).present.comments).toHaveLength(4);
+
+		expect(error(await run("add_comment", { text: "x", element: "0.9" }))).toContain("has no element");
+		expect(error(await run("add_comment", {}))).toBe("Pass `text`.");
+	});
+
+	test("add_comment needs the element to render", async () => {
+		const { run } = session({ elementBox: async () => null });
+
+		expect(error(await run("add_comment", { text: "x", element: "0.0" }))).toBe(
+			"Element 0.0 isn't visible on the screen.",
+		);
 	});
 });

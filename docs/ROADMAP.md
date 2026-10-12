@@ -105,7 +105,7 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 
 - ✅ A local MCP server in the main process, off by default, with a token per session. Settings has "Let coding agents use Rabisco" and "Reset access"; clients find the port and token in `mcp.json` in app data ([0030](./decisions/0030-local-mcp-server-for-coding-agents.md))
 - ✅ Read tools: the project, the screens, the selection, the element tree, a screenshot of a screen or element, DESIGN.md tokens, the component catalog, open comments
-- ⬜ Write tools: create and edit screens and components, set tokens, add comments. Each call is one undo step in history
+- ✅ Write tools: `create_screen`, `edit_screen` (search/replace blocks or whole TSX), `write_component`, `set_design_tokens`, `add_comment`. Each call is one undo step in history. A write that doesn't compile, doesn't match, touches a locked element or lands during a generation changes nothing and says why
 - ⬜ An "agent is editing" marker on the frames an agent touches, and a log of agent changes in the History panel
 - ✅ One-click setup for Claude Code, Codex, Cursor, VS Code and Claude Desktop, from Settings → Agents. It writes a `rabisco` server that launches the stdio bridge into each client's config (through `claude mcp add-json` for Claude Code), never a port or a token, and shows which clients are set up and which connected. The bridge itself ships with the `rabisco` CLI
 - ✅ A `rabisco` CLI: `open`, `check`, `screenshot`, `export` and `mcp` (the stdio bridge). It ships in the app bundle and runs on the app's own runtime; `rabisco open` works with the MCP server off

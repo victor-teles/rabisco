@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isString } from "../../shared/guards";
 import type { Json, JsonObject } from "../../shared/json";
-import { TOOLS, textResult } from "../../shared/mcp/tools";
+import { TOOLS, textResult, WRITE_TOOLS } from "../../shared/mcp/tools";
 import { createMcpHandler, newToken, sameToken, startMcpServer, type CallTool } from "./server";
 
 const PORT = 4567;
@@ -112,10 +112,22 @@ describe("createMcpHandler", () => {
 
 		expect(reply.result.tools).toEqual(JSON.parse(JSON.stringify(TOOLS)));
 
+		const writes = new Map(WRITE_TOOLS.map((tool) => [tool.name, tool.annotations.destructiveHint]));
+
 		for (const tool of reply.result.tools) {
 			expect(tool.title).toBeTruthy();
-			expect(tool.annotations).toMatchObject({ readOnlyHint: tool.name !== "open_project", destructiveHint: false });
+
+			if (!writes.has(tool.name)) continue;
+			expect(tool.annotations).toMatchObject({ readOnlyHint: false, openWorldHint: false });
 		}
+
+		expect(Object.fromEntries(writes)).toEqual({
+			create_screen: false,
+			edit_screen: true,
+			write_component: true,
+			set_design_tokens: true,
+			add_comment: false,
+		});
 	});
 
 	test("forwards tools/call with the client from the header, never from another request", async () => {

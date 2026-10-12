@@ -62,3 +62,12 @@ export function agentScreenshot(files: ProjectFiles, theme: DesignTokens) {
 			return base64Of(await crop(shot.raster.dataUrl, box, shot.raster.scale));
 		});
 }
+
+export function agentElementBox(files: ProjectFiles, theme: DesignTokens) {
+	return (frame: Frame, start: number) =>
+		renderOffstage(frame, files, theme, async (host) => {
+			const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
+
+			return box ?? null;
+		});
+}
