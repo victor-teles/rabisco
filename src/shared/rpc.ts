@@ -102,6 +102,8 @@ export type RabiscoRPC = {
 			/** Zooms or minimizes the window, as the system setting for a title bar double-click says */
 			titleBarDoubleClick: { params: {}; response: { ok: true } };
 			/** Writes nothing: the editor applies the result as one undoable step. */
+			/** Reads a Design.md, CSS theme or token file from the web. Writes nothing. */
+			fetchBrandKit: { params: { url: string }; response: { url: string; text: string; contentType: string } };
 			importContext: {
 				params: { from: string };
 				response: {

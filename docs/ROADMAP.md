@@ -110,7 +110,7 @@ Every competitor starts from a reference: a screenshot, a live site or a Figma f
 - ⬜ Paste from Figma: frames, text, images and auto layout as TSX, with Figma variables as tokens 🧭
 - ⬜ Attach a PRD or any Markdown file, and plan every screen from it
 - ✅ Moodboard: images placed on the canvas next to the screens are sent as references, as MagicPath does
-- ⬜ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo
+- ✅ Import a Design.md or brand kit from a URL, and pull colors from an uploaded logo. DESIGN.md actions: "Import from a URL…" reads a Design.md, a CSS theme or a JSON token file (GitHub links work); "Colors from a logo…" sets primary, its foreground, ring and charts. Each is one undo step that re-themes the screens
 
 **Done when** a user can drop a screenshot of an existing app and get an editable screen in its style on the first try.
 

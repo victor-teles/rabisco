@@ -1,5 +1,16 @@
 import { useMemo, useRef, useState } from "react";
-import { Check, FileText, FolderInput, MessageSquareText, MoreHorizontal, Plus, Wand2, X } from "lucide-react";
+import {
+	Check,
+	FileText,
+	FolderInput,
+	Globe,
+	Image,
+	MessageSquareText,
+	MoreHorizontal,
+	Plus,
+	Wand2,
+	X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +44,7 @@ import {
 } from "@/components/ui/uai/empty-state";
 import { api, isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { logoPalette } from "../../../shared/context/brand-kit";
 import { contextBody } from "../../../shared/context/body";
 import { CONTEXT_TEMPLATES } from "../../../shared/context/templates";
 import {
@@ -45,6 +57,7 @@ import {
 	type TokenMode,
 } from "../../../shared/context/token-edit";
 import {
+	designTokensOf,
 	isCustomToken,
 	orderedTokenNames,
 	parseDesignTokens,
@@ -54,6 +67,7 @@ import {
 	type DesignTokens,
 } from "../../../shared/context/tokens";
 import type { ContextFileName, ProjectFiles } from "../../../shared/types";
+import { BrandImportDialog, logoPixels, type BrandImport } from "./brand-import-dialog";
 
 export const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 
@@ -72,6 +86,10 @@ export type ContextPanelProps = {
 	onEndStep: () => void;
 	/** One undo step that writes DESIGN.md and applies its tokens to the screens */
 	onEditToken: (edit: TokenEdit) => void;
+	/** One undo step that writes the tokens into DESIGN.md and applies them to the screens */
+	onImportTokens: (tokens: DesignTokens) => void;
+	/** One undo step that replaces DESIGN.md and applies its tokens, if it has any */
+	onReplaceDesign: (markdown: string) => void;
 	onUndo: () => void;
 	onRedo: () => void;
 	/** `null` before the first generation */
@@ -94,8 +112,36 @@ export function ContextPanel(props: ContextPanelProps) {
 	const { files, file, onFileChange, onEdit, onReplace, onEndStep, onEditToken, onUndo, onRedo, lastUsed } = props;
 	const source = files[file];
 	const textarea = useRef<HTMLTextAreaElement>(null);
+	const logoInput = useRef<HTMLInputElement>(null);
 	const focusId = useRef(0);
 	const [pendingImport, setPendingImport] = useState<ImportedFile[] | null>(null);
+	const [brandImport, setBrandImport] = useState<BrandImport | null>(null);
+	const designTokens = useMemo(() => designTokensOf(files["DESIGN.md"]), [files]);
+
+	const readLogo = async (logo: File) => {
+		let palette: ReturnType<typeof logoPalette>;
+
+		try {
+			palette = logoPalette(await logoPixels(logo));
+		} catch {
+			toast.error(`Couldn't read ${logo.name}`, { description: "Pick a PNG, JPG, SVG or WebP image." });
+
+			return;
+		}
+
+		if (!palette) {
+			toast(`No colors in ${logo.name}`, { description: "The image is blank or white." });
+
+			return;
+		}
+
+		setBrandImport({ kind: "logo", palette, image: URL.createObjectURL(logo), name: logo.name });
+	};
+
+	const brandActions = {
+		onImportUrl: () => setBrandImport({ kind: "url" }),
+		onImportLogo: () => logoInput.current?.click(),
+	};
 
 	const applyImport = (found: ImportedFile[]) => {
 		setPendingImport(null);
@@ -141,7 +187,7 @@ export function ContextPanel(props: ContextPanelProps) {
 	};
 
 	const missing = source === undefined;
-	const actions = <ContextActions {...props} missing={missing} onImport={importFromRepository} />;
+	const actions = <ContextActions {...props} {...brandActions} missing={missing} onImport={importFromRepository} />;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -167,7 +213,7 @@ export function ContextPanel(props: ContextPanelProps) {
 			</div>
 
 			{missing ? (
-				<MissingFile {...props} onImport={importFromRepository} />
+				<MissingFile {...props} {...brandActions} onImport={importFromRepository} />
 			) : (
 				<>
 					<UsageLine file={file} source={source} lastUsed={lastUsed} />
@@ -221,6 +267,36 @@ export function ContextPanel(props: ContextPanelProps) {
 				</>
 			)}
 
+			<input
+				ref={logoInput}
+				type="file"
+				accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif,image/avif"
+				className="hidden"
+				tabIndex={-1}
+				aria-hidden
+				onChange={(event) => {
+					const logo = event.target.files?.[0];
+					event.target.value = "";
+
+					if (logo) void readLogo(logo);
+				}}
+			/>
+			<BrandImportDialog
+				request={brandImport}
+				current={designTokens}
+				onClose={() => {
+					if (brandImport?.kind === "logo") URL.revokeObjectURL(brandImport.image);
+					setBrandImport(null);
+				}}
+				onApplyTokens={(tokens) => {
+					props.onImportTokens(tokens);
+					onFileChange("DESIGN.md");
+				}}
+				onReplaceDesign={(markdown) => {
+					props.onReplaceDesign(markdown);
+					onFileChange("DESIGN.md");
+				}}
+			/>
 			<Dialog open={pendingImport !== null} onOpenChange={(open) => !open && setPendingImport(null)}>
 				<DialogContent className="sm:max-w-sm" showCloseButton={false}>
 					<DialogHeader>
@@ -262,8 +338,10 @@ function aiAction({ file, hasScreens, busy, busyReason, onWriteDesign, onIntervi
 		: { label: "Interview me", icon: MessageSquareText, disabled: busy, hint: busyHint, run: onInterview };
 }
 
-function ContextActions(props: ContextPanelProps & { missing: boolean; onImport: () => void }) {
-	const { file, files, onReplace, onImport } = props;
+type BrandActions = { onImportUrl: () => void; onImportLogo: () => void };
+
+function ContextActions(props: ContextPanelProps & BrandActions & { missing: boolean; onImport: () => void }) {
+	const { file, files, onReplace, onImport, onImportUrl, onImportLogo } = props;
 	const ai = aiAction(props);
 	// Resetting to the template would throw work away; only offer it while the file says nothing yet
 	const canUseTemplate = contextBody(files[file]) === undefined && files[file] !== CONTEXT_TEMPLATES[file];
@@ -299,13 +377,25 @@ function ContextActions(props: ContextPanelProps & { missing: boolean; onImport:
 					<FolderInput />
 					Import from a repository…
 				</DropdownMenuItem>
+				{file === "DESIGN.md" ? (
+					<>
+						<DropdownMenuItem className="text-[13px]" onSelect={onImportUrl}>
+							<Globe />
+							Import from a URL…
+						</DropdownMenuItem>
+						<DropdownMenuItem className="text-[13px]" onSelect={onImportLogo}>
+							<Image />
+							Colors from a logo…
+						</DropdownMenuItem>
+					</>
+				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 }
 
-function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
-	const { file, onReplace, onImport } = props;
+function MissingFile(props: ContextPanelProps & BrandActions & { onImport: () => void }) {
+	const { file, onReplace, onImport, onImportUrl } = props;
 	const ai = aiAction(props);
 
 	return (
@@ -332,6 +422,12 @@ function MissingFile(props: ContextPanelProps & { onImport: () => void }) {
 							<FolderInput />
 							Import from a repository…
 						</EmptyStateAction>
+						{file === "DESIGN.md" ? (
+							<EmptyStateAction emphasis="secondary" onClick={onImportUrl}>
+								<Globe />
+								Import from a URL…
+							</EmptyStateAction>
+						) : null}
 					</EmptyStateActions>
 					{ai.hint ? <EmptyStateNote>{ai.hint}</EmptyStateNote> : null}
 				</EmptyStateContent>

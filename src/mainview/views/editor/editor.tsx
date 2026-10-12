@@ -71,6 +71,7 @@ import { persistViewport, rememberProject, savedViewport } from "@/lib/workspace
 import { focusLabel, focusOf } from "../../../shared/ai/focus";
 import {
 	designSourceOf,
+	hasTokens,
 	tokenBlock,
 	tokenChanges,
 	themeUpdateOf,
@@ -86,7 +87,8 @@ import {
 	type StyleId,
 } from "../../../shared/context/styles";
 import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
-import { designTokensOf } from "../../../shared/context/tokens";
+import { withDesignTokens } from "../../../shared/context/brand-kit";
+import { designTokensOf, type DesignTokens } from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
@@ -823,6 +825,39 @@ export function EditorView({
 					theme: withSource(designTokensOf(design), designSourceOf(design)),
 				};
 			}),
+		[change],
+	);
+
+	/** One undo step; a Design.md without tokens keeps the theme until Update theme reads it */
+	const replaceDesign = useCallback(
+		(design: string) => {
+			change((snapshot) => {
+				const tokens = designTokensOf(design);
+
+				return {
+					...snapshot,
+					files: { ...snapshot.files, "DESIGN.md": design },
+					theme: hasTokens(tokens) ? withSource(tokens, designSourceOf(design)) : snapshot.theme,
+				};
+			});
+			toast("Imported DESIGN.md", { id: "import-design", description: "Press ⌘Z to undo." });
+		},
+		[change],
+	);
+
+	const importDesignTokens = useCallback(
+		(tokens: DesignTokens) => {
+			change((snapshot) => {
+				const design = withDesignTokens(seedDesignTokens(snapshot.files["DESIGN.md"] ?? "", snapshot.theme), tokens);
+
+				return {
+					...snapshot,
+					files: { ...snapshot.files, "DESIGN.md": design },
+					theme: withSource(designTokensOf(design), designSourceOf(design)),
+				};
+			});
+			toast("Imported tokens into DESIGN.md", { id: "import-design", description: "Press ⌘Z to undo." });
+		},
 		[change],
 	);
 
@@ -1971,6 +2006,8 @@ export function EditorView({
 				onFileChange={setContextFile}
 				onEdit={editContext}
 				onEditToken={editDesignToken}
+				onImportTokens={importDesignTokens}
+				onReplaceDesign={replaceDesign}
 				onReplace={replaceContext}
 				onEndStep={endStep}
 				onUndo={undo}
@@ -1988,6 +2025,8 @@ export function EditorView({
 			contextFile,
 			editContext,
 			editDesignToken,
+			importDesignTokens,
+			replaceDesign,
 			replaceContext,
 			endStep,
 			undo,

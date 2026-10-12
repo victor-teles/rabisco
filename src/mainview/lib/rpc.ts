@@ -1,6 +1,7 @@
 import { Electroview } from "electrobun/view";
 import { normalizeComments } from "../../shared/comments";
 import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
+import { brandKitUrl } from "../../shared/context/brand-kit";
 import { starterFiles } from "../../shared/context/styles";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
@@ -320,6 +321,20 @@ function createBrowserApi(): RabiscoApi {
 		},
 		async titleBarDoubleClick() {
 			return ok;
+		},
+		async fetchBrandKit({ url }) {
+			const address = brandKitUrl(url);
+
+			if (!address) throw new Error("Enter a web address that starts with https://");
+			const response = await fetch(address);
+
+			if (!response.ok) throw new Error(`Couldn't load ${address}: the server answered ${response.status}.`);
+
+			return {
+				url: response.url || address,
+				text: await response.text(),
+				contentType: response.headers.get("content-type") ?? "",
+			};
 		},
 		async importContext() {
 			throw new Error("Import needs the desktop app");

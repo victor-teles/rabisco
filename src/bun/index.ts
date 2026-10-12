@@ -17,6 +17,7 @@ import { IMAGE_EXTENSIONS } from "./assets";
 import { createAiService } from "./ai/service";
 import { freeExportDir, writeExportFiles } from "./export";
 import { createGit } from "./git";
+import { fetchBrandKit } from "./brand-kit";
 import { findContextFiles } from "./import-context";
 import { createAgentService } from "./mcp/agents";
 import { createShareService, readScreenRuntime } from "./share";
@@ -194,6 +195,7 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),
 			importContext: ({ from }) => ({ files: findContextFiles(from) }),
+			fetchBrandKit: ({ url }) => fetchBrandKit(url),
 			generate: (params) => ai.generate(params),
 			stopGeneration: ({ generationId }) => (ai.stopGeneration(generationId), ok),
 			listProviders: ({ refresh }) => ai.listProviders(refresh),
