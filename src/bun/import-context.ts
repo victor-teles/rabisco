@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
+import { MAX_CONTEXT_FILE_BYTES } from "../shared/project";
 import type { ContextFileName } from "../shared/types";
 import { isDirectory } from "./project-folder";
 
@@ -10,13 +11,15 @@ export type FoundContextFile = {
 	source: string;
 };
 
+export type ContextSearch = {
+	files: FoundContextFile[];
+	tooLarge: string[];
+};
+
 /** In search order; `""` is the folder itself. */
 export const CONTEXT_SEARCH_DIRS = ["", "docs", "doc", "design", ".github", ".rabisco"];
 
 const NAMES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
-
-/** Bigger files aren't context, and would blow up every prompt */
-export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 
 function readable<T>(source: string, read: () => T): T {
 	try {
@@ -29,13 +32,16 @@ function readable<T>(source: string, read: () => T): T {
 const entries = (dir: string, source: string) => (isDirectory(dir) ? readable(source, () => readdirSync(dir)) : []);
 
 /** Case-insensitive; first match wins per file. Throws when `dir` isn't a folder or a match can't be read. */
-export function findContextFiles(dir: string): FoundContextFile[] {
+export function findContextFiles(dir: string): ContextSearch {
 	if (!dir || !existsSync(dir)) throw new Error(`Folder not found: ${dir || "(empty path)"}`);
 
 	if (!isDirectory(dir)) throw new Error(`Not a folder: ${dir}. Choose the repository folder to import from.`);
 	const found: FoundContextFile[] = [];
+	const tooLarge: string[] = [];
 
 	for (const name of NAMES) {
+		let skipped: string | undefined;
+
 		search: for (const sub of CONTEXT_SEARCH_DIRS) {
 			for (const entry of entries(join(dir, sub), sub || "the folder").sort()) {
 				if (entry.toLowerCase() !== name.toLowerCase()) continue;
@@ -43,12 +49,22 @@ export function findContextFiles(dir: string): FoundContextFile[] {
 				const source = sub ? `${sub}/${entry}` : entry;
 				const stat = readable(source, () => statSync(full));
 
-				if (!stat.isFile() || stat.size > MAX_CONTEXT_FILE_BYTES) continue;
+				if (!stat.isFile()) continue;
+
+				if (stat.size > MAX_CONTEXT_FILE_BYTES) {
+					skipped ??= source;
+					continue;
+				}
+
 				found.push({ path: name, content: readable(source, () => readFileSync(full, "utf-8")), source });
+				skipped = undefined;
+
 				break search;
 			}
 		}
+
+		if (skipped) tooLarge.push(skipped);
 	}
 
-	return found;
+	return { files: found, tooLarge };
 }

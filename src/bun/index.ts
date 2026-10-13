@@ -257,7 +257,7 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			removeRecent: ({ path }) => (store.removeRecent(path), ok),
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),
-			importContext: ({ from }) => ({ files: findContextFiles(from) }),
+			importContext: ({ from }) => findContextFiles(from),
 			fetchBrandKit: ({ url }) => fetchBrandKit(url),
 			captureUrl: async ({ path, url, width }) => {
 				await assertReachable(captureAddress(url));

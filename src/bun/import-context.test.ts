@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { findContextFiles, MAX_CONTEXT_FILE_BYTES } from "./import-context";
+import { MAX_CONTEXT_FILE_BYTES } from "../shared/project";
+import { findContextFiles } from "./import-context";
 import { tempDir } from "./test-utils";
 
 function repo(files: Record<string, string>) {
@@ -24,26 +25,39 @@ describe("findContextFiles", () => {
 			".github/DESIGN.md": "github design",
 		});
 
-		expect(findContextFiles(dir)).toEqual([
+		expect(findContextFiles(dir).files).toEqual([
 			{ path: "PRODUCT.md", content: "root product", source: "product.md" },
 			{ path: "DESIGN.md", content: "docs design", source: "docs/Design.md" },
 		]);
 	});
 
 	test("searches docs, doc, design, .github and .rabisco in order", () => {
-		expect(findContextFiles(repo({ ".rabisco/DESIGN.md": "r", "design/design.md": "d" }))).toEqual([
+		expect(findContextFiles(repo({ ".rabisco/DESIGN.md": "r", "design/design.md": "d" })).files).toEqual([
 			{ path: "DESIGN.md", content: "d", source: "design/design.md" },
 		]);
-		expect(findContextFiles(repo({ ".rabisco/PRODUCT.md": "r", "src/PRODUCT.md": "no" }))).toEqual([
+		expect(findContextFiles(repo({ ".rabisco/PRODUCT.md": "r", "src/PRODUCT.md": "no" })).files).toEqual([
 			{ path: "PRODUCT.md", content: "r", source: ".rabisco/PRODUCT.md" },
 		]);
-		expect(findContextFiles(repo({ "README.md": "x" }))).toEqual([]);
+		expect(findContextFiles(repo({ "README.md": "x" }))).toEqual({ files: [], tooLarge: [] });
 	});
 
 	test("skips big files and folders with the name", () => {
 		const dir = repo({ "DESIGN.md": "x".repeat(MAX_CONTEXT_FILE_BYTES + 1), "docs/DESIGN.md": "small" });
 		mkdirSync(join(dir, "PRODUCT.md"));
-		expect(findContextFiles(dir)).toEqual([{ path: "DESIGN.md", content: "small", source: "docs/DESIGN.md" }]);
+		expect(findContextFiles(dir)).toEqual({
+			files: [{ path: "DESIGN.md", content: "small", source: "docs/DESIGN.md" }],
+			tooLarge: [],
+		});
+	});
+
+	test("reports a big file when no smaller one has the name", () => {
+		const big = "x".repeat(MAX_CONTEXT_FILE_BYTES + 1);
+		const dir = repo({ "docs/DESIGN.md": big, "design/DESIGN.md": big, "PRODUCT.md": "product" });
+
+		expect(findContextFiles(dir)).toEqual({
+			files: [{ path: "PRODUCT.md", content: "product", source: "PRODUCT.md" }],
+			tooLarge: ["docs/DESIGN.md"],
+		});
 	});
 
 	test("throws a clear error for a missing folder or a file", () => {

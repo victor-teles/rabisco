@@ -122,6 +122,7 @@ export type RabiscoRPC = {
 						content: string;
 						/** Path inside `from` */ source: string;
 					}[];
+					tooLarge: string[];
 				};
 			};
 

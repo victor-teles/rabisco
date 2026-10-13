@@ -66,6 +66,7 @@ import {
 	validateToken,
 	type DesignTokens,
 } from "../../../shared/context/tokens";
+import { MAX_CONTEXT_FILE_BYTES } from "../../../shared/project";
 import type { ContextFileName, ProjectFiles } from "../../../shared/types";
 import { BrandImportDialog, logoPixels, type BrandImport } from "./brand-import-dialog";
 
@@ -162,19 +163,31 @@ export function ContextPanel(props: ContextPanelProps) {
 
 		if (!from) return;
 		let found: ImportedFile[];
+		let tooLarge: string[];
 
 		try {
-			found = (await api.importContext({ from })).files;
+			({ files: found, tooLarge } = await api.importContext({ from }));
 		} catch (reason) {
 			toast.error("Couldn't import", { description: reason instanceof Error ? reason.message : String(reason) });
 
 			return;
 		}
 
+		if (tooLarge.length) {
+			toast(
+				`${tooLarge.join(" and ")} ${tooLarge.length > 1 ? "are" : "is"} over ${MAX_CONTEXT_FILE_BYTES / 1024} KB`,
+				{
+					description: `Rabisco imports context files up to ${MAX_CONTEXT_FILE_BYTES / 1024} KB.`,
+				},
+			);
+		}
+
 		if (!found.length) {
-			toast("No PRODUCT.md or DESIGN.md in that folder", {
-				description: "Rabisco looks in the folder itself and in docs/.",
-			});
+			if (!tooLarge.length) {
+				toast("No PRODUCT.md or DESIGN.md in that folder", {
+					description: "Rabisco looks in the folder, docs/, doc/, design/, .github/ and .rabisco/.",
+				});
+			}
 
 			return;
 		}
