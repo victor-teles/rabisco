@@ -214,10 +214,12 @@ export function ScreenPreview({
 	source,
 	maxWidth,
 	maxHeight,
+	live,
 }: {
 	source: ScreenSource;
 	maxWidth: number;
 	maxHeight: number;
+	live?: boolean;
 }) {
 	const scale = Math.min(maxWidth / source.width, maxHeight / source.height);
 
@@ -228,7 +230,13 @@ export function ScreenPreview({
 		>
 			<div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
 				<ScreenTheme value={themeCss(source.theme)}>
-					<ScreenFrame entry={source.entry} files={source.files} width={source.width} height={source.height} />
+					<ScreenFrame
+						entry={source.entry}
+						files={source.files}
+						width={source.width}
+						height={source.height}
+						live={live}
+					/>
 				</ScreenTheme>
 			</div>
 		</div>

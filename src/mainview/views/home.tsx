@@ -583,7 +583,7 @@ const loadCover = (project: ProjectSummary) => {
 	return cover;
 };
 
-/** Reads the cover's files and mounts its frame only while the card is near the viewport. */
+/** Reads the cover's files and shows its snapshot only while the card is near the scroll viewport. */
 function LazyCover({ project, cover }: { project: ProjectSummary; cover: ScreenCover }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [near, setNear] = useState(false);
@@ -593,7 +593,8 @@ function LazyCover({ project, cover }: { project: ProjectSummary; cover: ScreenC
 
 	useEffect(() => {
 		const observer = new IntersectionObserver((entries) => setNear(entries.at(-1)?.isIntersecting ?? false), {
-			rootMargin: "300px",
+			root: ref.current!.closest('[data-slot="scroll-area-viewport"]'),
+			rootMargin: "100% 0px",
 		});
 
 		observer.observe(ref.current!);
@@ -614,7 +615,7 @@ function LazyCover({ project, cover }: { project: ProjectSummary; cover: ScreenC
 	return (
 		<div ref={ref}>
 			{near && source ? (
-				<ScreenPreview source={source} maxWidth={maxWidth} maxHeight={150} />
+				<ScreenPreview source={source} maxWidth={maxWidth} maxHeight={150} live={false} />
 			) : (
 				<div
 					className="rounded-md bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_4px_12px_-4px_rgb(0_0_0/0.16)]"
