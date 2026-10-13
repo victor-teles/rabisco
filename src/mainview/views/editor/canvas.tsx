@@ -464,7 +464,7 @@ export function Canvas({
 	/** `null` for the canvas background menu */
 	const [menuFiles, setMenuFiles] = useState<string[] | null>([]);
 	const [menuOnElement, setMenuOnElement] = useState(false);
-	/** Bumped by each right-click, so a hit test that comes back late doesn't open an old menu */
+	/** Bumped by each right-click, press, Esc, pan and text edit, so a hit test that comes back late doesn't open an old menu */
 	const menuRequest = useRef(0);
 	const [menuPoint, setMenuPoint] = useState<Point>({ x: 0, y: 0 });
 	/** Frames in or near the view, which keep their live iframe */
@@ -694,6 +694,8 @@ export function Canvas({
 			const text = node && node.name !== null && !isVoidElement(node) ? readChildrenText(node) : null;
 			const host = hostFor(target.file);
 
+			menuRequest.current++;
+
 			if (source === undefined || text === null || !host) return callbacks.current.onEditTextElsewhere?.(target);
 			// The frame takes pointer input and focus while editing, so the caret can be placed with the mouse
 			void host
@@ -870,6 +872,7 @@ export function Canvas({
 
 		const onWheel = (event: WheelEvent) => {
 			event.preventDefault();
+			menuRequest.current++;
 
 			if (event.ctrlKey || event.metaKey) {
 				zoomAround(Math.exp(-event.deltaY * 0.01), event.clientX, event.clientY);
@@ -889,6 +892,7 @@ export function Canvas({
 	useEffect(() => {
 		const down = (event: KeyboardEvent) => {
 			if (event.code === "Space" && !focusOwnsKey(event)) {
+				menuRequest.current++;
 				event.preventDefault();
 				setSpaceHeld(true);
 			}
@@ -899,11 +903,18 @@ export function Canvas({
 		};
 
 		const blur = () => setSpaceHeld(false);
+
+		const escape = (event: KeyboardEvent) => {
+			if (event.key === "Escape") menuRequest.current++;
+		};
+
+		window.addEventListener("keydown", escape, true);
 		window.addEventListener("keydown", down);
 		window.addEventListener("keyup", up);
 		window.addEventListener("blur", blur);
 
 		return () => {
+			window.removeEventListener("keydown", escape, true);
 			window.removeEventListener("keydown", down);
 			window.removeEventListener("keyup", up);
 			window.removeEventListener("blur", blur);
@@ -1329,7 +1340,7 @@ export function Canvas({
 		const local = localPoint(frame, clientX, clientY);
 		const found = await withShownHost(frame.file, (host) => elementsIn(host, frame, local));
 
-		if (request !== picking.current) return null;
+		if (request !== picking.current) return "cancelled";
 		const start = found?.starts[0];
 
 		const kept =
@@ -1384,6 +1395,8 @@ export function Canvas({
 	};
 
 	const onPointerDown = (event: React.PointerEvent) => {
+		menuRequest.current++;
+
 		if ((event.button !== 0 && event.button !== 1) || isControlClick(event)) return;
 
 		// A press outside the frame being edited ends the edit, keeping the text
@@ -1721,7 +1734,7 @@ export function Canvas({
 		// Where a click would pick an element (⌃-click is a right-click on macOS, so only ⌘ reaches in)
 		if (frame && elementMenu && onSelectElement && tool === "move" && (inSelected || event.metaKey)) {
 			void pickElement(frame, clientX, clientY, true).then((found) => {
-				if (request !== menuRequest.current || (!found && !screenMenu)) return;
+				if (found === "cancelled" || request !== menuRequest.current || (!found && !screenMenu)) return;
 				setMenuOnElement(found !== null);
 				setMenuFiles([frame.file]);
 				openMenu(clientX, clientY);
@@ -1762,7 +1775,7 @@ export function Canvas({
 
 		if (!frame) return;
 		void pickElement(frame, event.clientX, event.clientY).then((found) => {
-			if (found) editText({ file: frame.file, start: found.starts[0]! }, found.point);
+			if (found && found !== "cancelled") editText({ file: frame.file, start: found.starts[0]! }, found.point);
 		});
 	};
 
