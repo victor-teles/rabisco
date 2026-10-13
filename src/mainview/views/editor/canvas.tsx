@@ -2091,7 +2091,7 @@ const FrameView = memo(function FrameView({
 		>
 			<div
 				className={cn(
-					"absolute bottom-full left-0 mb-1 flex origin-bottom-left items-center gap-1.5 text-xs font-medium whitespace-nowrap",
+					"absolute bottom-full left-0 flex origin-bottom-left items-center gap-1.5 pb-1 text-xs font-medium whitespace-nowrap",
 					selected ? "text-primary" : "text-muted-foreground",
 				)}
 				style={{ transform: "scale(var(--unzoom))", maxWidth: `calc(${frame.width}px * var(--zoom))` }}
