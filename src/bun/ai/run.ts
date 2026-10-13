@@ -9,6 +9,7 @@ import {
 	type ProjectFile,
 	type Provider,
 	type ProviderErrorCode,
+	type PromptDocument,
 	type Usage,
 } from "../../shared/ai/contract";
 import { componentSignatures } from "../../shared/components/usages";
@@ -376,6 +377,7 @@ function buildRepairRequest(
 		targets,
 		problems: problems.filter((p) => targets.includes(p.path)),
 		attachments: undefined,
+		documents: undefined,
 	};
 }
 
@@ -394,6 +396,7 @@ export type BuildRequestParams = {
 	/** `edit` only; dropped unless its file is a target and the element still resolves */
 	focus?: ElementFocus[];
 	attachments?: Attachment[];
+	documents?: PromptDocument[];
 	history?: GenerationRequest["history"];
 	/** The applied theme (rabisco.json); DESIGN.md's tokens when missing */
 	theme?: DesignTokens;
@@ -490,6 +493,8 @@ export function buildGenerationRequest(params: BuildRequestParams): GenerationRe
 	if (focus) request.focus = focus;
 
 	if (params.attachments?.length) request.attachments = params.attachments;
+
+	if (params.documents?.length) request.documents = params.documents;
 
 	if (params.history?.length) request.history = params.history;
 

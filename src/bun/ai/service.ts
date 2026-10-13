@@ -363,6 +363,7 @@ export function createAiService(options: AiServiceOptions) {
 						device: params.device,
 						projectFiles,
 						attachments: params.attachments,
+						documents: params.documents,
 						history: history.slice(-HISTORY_TURNS),
 					});
 
@@ -399,6 +400,7 @@ export function createAiService(options: AiServiceOptions) {
 					references: params.references,
 					focus: vary ? undefined : params.focus,
 					attachments: params.attachments,
+					documents: params.documents,
 					history: history.slice(-HISTORY_TURNS),
 					theme: readCanvas(params.projectPath)?.theme,
 				};

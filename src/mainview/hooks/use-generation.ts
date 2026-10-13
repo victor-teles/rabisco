@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { draftsOf, message, type AttachCallbacks, type RunOptions } from "@/lib/generation-session";
 import { recreateRequest } from "@/lib/recreate";
 import { projectSessions } from "@/lib/sessions";
-import type { Attachment, GenerationPlan, Problem } from "../../shared/ai/contract";
+import type { Attachment, GenerationPlan, Problem, PromptDocument } from "../../shared/ai/contract";
+import { DOCUMENT_LIMITS, isDocumentFile, promptDocument } from "../../shared/ai/documents";
 import { focusLabel, focusNote, focusOf } from "../../shared/ai/focus";
 import type { DesignNote } from "../../shared/change-summary";
 import { DESIGN_RULE_LABELS } from "../../shared/design/findings";
@@ -42,6 +43,16 @@ async function toAttachments(files: File[] = []): Promise<Attachment[]> {
 			return { name: file.name, mediaType, data: btoa(binary) };
 		}),
 	);
+}
+
+async function toDocuments(files: File[] = []): Promise<PromptDocument[]> {
+	const picked = files
+		.filter((file) => !isImageType(file.type) && isDocumentFile(file))
+		.slice(0, DOCUMENT_LIMITS.count);
+
+	const documents = await Promise.all(picked.map(async (file) => promptDocument(file.name, await file.text())));
+
+	return documents.flatMap((document) => (document ? [document] : []));
 }
 
 export function useGeneration({
@@ -147,15 +158,22 @@ export function useGeneration({
 		): boolean => {
 			if (!ready() || !model) return false;
 
-			void Promise.all([toAttachments(files), references]).then(
-				([attached, referenced]) => {
+			void Promise.all([toAttachments(files), references, toDocuments(files)]).then(
+				([attached, referenced, documents]) => {
 					const attachments = [...attached, ...referenced];
 					const current = session.state();
 
 					if (!current) return;
 
-					const user = (content: string) =>
-						attachments.length ? { ...message("user", content), attachments } : message("user", content);
+					const user = (content: string) => {
+						const sent = message("user", content);
+
+						if (attachments.length) sent.attachments = attachments;
+
+						if (documents.length) sent.documents = documents;
+
+						return sent;
+					};
 
 					const node = nodes[0];
 					const focused = Boolean(node && node.file in current.files);
@@ -163,7 +181,7 @@ export function useGeneration({
 
 					if (waiting && !focused && !options.targets?.length && !options.command) {
 						session.addMessages([user(prompt)]);
-						controller.revisePlan(prompt, attachments, model);
+						controller.revisePlan(prompt, { attachments, documents }, model);
 
 						return;
 					}
@@ -181,6 +199,7 @@ export function useGeneration({
 						const send: RunOptions = {
 							targets: [node.file],
 							attachments,
+							documents,
 							command: options.command,
 							resolves: options.resolves,
 						};
@@ -194,11 +213,16 @@ export function useGeneration({
 					session.addMessages([user(prompt)]);
 					void controller.run(
 						prompt,
-						{ ...options, attachments, variations: options.targets?.length ? undefined : options.variations },
+						{
+							...options,
+							attachments,
+							documents,
+							variations: options.targets?.length ? undefined : options.variations,
+						},
 						model,
 					);
 				},
-				(reason) => toast.error("Couldn't read the attached images", { description: String(reason) }),
+				(reason) => toast.error("Couldn't read the attached files", { description: String(reason) }),
 			);
 
 			return true;

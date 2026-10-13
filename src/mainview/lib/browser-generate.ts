@@ -141,6 +141,7 @@ async function planned(
 				device: params.device,
 				projectFiles: files,
 				attachments: params.attachments,
+				documents: params.documents,
 			});
 
 			const reading = await runPlanReading({ provider, request, projectFiles: files, signal, onEvent: send });
@@ -158,6 +159,7 @@ async function planned(
 				model: "mock",
 				projectFiles: files,
 				attachments: params.attachments,
+				documents: params.documents,
 			},
 			plan: params.plan ?? { screens: [], components: [], links: [] },
 			projectFiles: files,
@@ -397,6 +399,8 @@ export function createBrowserGenerator(
 
 			if (params.review) base.attachments = params.review.attachments;
 			else if (params.attachments?.length) base.attachments = params.attachments;
+
+			if (params.documents?.length) base.documents = params.documents;
 
 			const run = async (variant: number, index: number): Promise<VariantRun> => {
 				const renamer = createVariantRenamer({ variant, taken: Object.keys(files), readOnly: references });

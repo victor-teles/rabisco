@@ -13,7 +13,8 @@ import {
 	type PlannedScreen,
 } from "./contract";
 
-export const PLAN_LIMITS = { screens: 6, components: 4, links: 24, name: 60, text: 240 } as const;
+/** `screens` holds a plan from a document; a plan from a prompt is asked for `promptScreens` at most */
+export const PLAN_LIMITS = { screens: 12, promptScreens: 6, components: 4, links: 24, name: 60, text: 240 } as const;
 
 const text = (value: Json | undefined, max: number = PLAN_LIMITS.text) =>
 	isString(value) ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
@@ -183,8 +184,18 @@ export function fitPlan(plan: GenerationPlan, files: ProjectFiles): GenerationPl
 	return { screens, components, links };
 }
 
-export const plansFirst = (request: { planMode: boolean; task: string; variations: number; plan?: GenerationPlan }) =>
-	request.planMode && request.task === "create" && request.variations === 1 && !request.plan;
+/** An attached document always plans first, so its screens are reviewed before any is written */
+export const plansFirst = (request: {
+	planMode: boolean;
+	task: string;
+	variations: number;
+	plan?: GenerationPlan;
+	documents?: number;
+}) =>
+	(request.planMode || Boolean(request.documents)) &&
+	request.task === "create" &&
+	request.variations === 1 &&
+	!request.plan;
 
 export const revisedPrompt = (prompt: string, feedback: string) => `${prompt.trim()}\n\n${feedback.trim()}`;
 

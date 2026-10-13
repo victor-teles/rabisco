@@ -263,6 +263,17 @@ describe("project files", () => {
 		expect(parseChat(line("attachments/gone.png"), () => null)[0]!.attachments).toBeUndefined();
 	});
 
+	test("attached documents stay in the chat; malformed ones are dropped", () => {
+		const dir = createProjectFolder(tempDir(), "Docs", "mobile");
+		const prd = { name: "prd.md", content: "# Habits\n\n## Today" };
+
+		appendChat(dir, "c1", [{ id: "m1", role: "user", content: "Plan it", createdAt: "t", documents: [prd] }]);
+		const stored = readFileSync(join(dir, "chats/c1.jsonl"), "utf-8");
+
+		expect(loadProject(dir).messages[0]!.documents).toEqual([prd]);
+		expect(parseChat(stored.replace('"name":"prd.md"', '"name":1'))[0]!.documents).toBeUndefined();
+	});
+
 	test("a reply's change summary loads back; a malformed one is dropped", () => {
 		const summary: ChangeSummary = {
 			files: [{ path: "screens/home.tsx", change: "added", additions: 1, deletions: 0 }],

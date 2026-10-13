@@ -3,14 +3,15 @@ import type {
 	GenerationEvent,
 	GenerationPlan,
 	GenerationRequest,
+	PlannedScreen,
 	Provider,
 } from "../../../shared/ai/contract";
-import { pascalName, planBlock } from "../../../shared/ai/plan";
+import { pascalName, PLAN_LIMITS, planBlock } from "../../../shared/ai/plan";
 import { contextBody } from "../../../shared/context/body";
 import { DESIGN_RULE_LABELS } from "../../../shared/design/findings";
 import { tokenBlock } from "../../../shared/context/theme";
 import { GENERATION_STEPS, generateMockScreens, mockThemeTokens } from "../../../shared/mock-generator";
-import { isScreenFile, screenNameFromPath } from "../../../shared/project";
+import { isScreenFile, screenNameFromPath, uniqueScreenPath } from "../../../shared/project";
 import type { FileChange } from "../../../shared/types";
 import { contextTargetOf } from "../run";
 import { commandMethods, type CommandFile } from "../command-template";
@@ -261,6 +262,8 @@ function mockCreate(request: GenerationRequest) {
 
 /** The mock's own screens for the prompt, as a plan: its drafts, the components they import, and a forward flow */
 export function mockPlan(request: GenerationRequest): GenerationPlan {
+	if (request.documents?.length) return documentPlan(request);
+
 	const result = generateMockScreens({
 		prompt: request.prompt,
 		device: request.device,
@@ -293,6 +296,51 @@ export function mockPlan(request: GenerationRequest): GenerationPlan {
 		.map((screen, index) => ({ from: screens[index]!.path, to: screen.path, label: "Continue" }));
 
 	return { screens, components, links };
+}
+
+type Heading = { level: number; title: string; body: string[] };
+
+function headingsOf(markdown: string): Heading[] {
+	const headings: Heading[] = [];
+
+	for (const line of markdown.split("\n")) {
+		const heading = /^(#{1,3})\s+(.+?)\s*#*$/.exec(line);
+
+		if (heading) headings.push({ level: heading[1]!.length, title: heading[2]!.trim(), body: [] });
+		else if (line.trim()) headings.at(-1)?.body.push(line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, "").trim());
+	}
+
+	return headings;
+}
+
+/** One screen per section of the documents: the second heading level when there is one, else the first */
+function documentPlan(request: GenerationRequest): GenerationPlan {
+	const headings = (request.documents ?? []).flatMap((document) => headingsOf(document.content));
+	const levels = [...new Set(headings.map((heading) => heading.level))].sort((a, b) => a - b);
+	const level = levels.length > 1 ? levels[1]! : (levels[0] ?? 1);
+	const taken = new Set(request.projectScreens ?? []);
+	const screens: PlannedScreen[] = [];
+
+	for (const heading of headings) {
+		if (heading.level !== level || screens.length >= PLAN_LIMITS.screens) continue;
+		const path = uniqueScreenPath(heading.title, taken);
+		taken.add(path);
+
+		screens.push({
+			path,
+			name: heading.title,
+			purpose: heading.body[0] ?? `The ${heading.title.toLowerCase()} screen.`,
+			content: heading.body.slice(1, 5).join(", ") || heading.title,
+		});
+	}
+
+	if (!screens.length) return mockPlan({ ...request, documents: undefined });
+
+	const links = screens
+		.slice(1)
+		.map((screen, index) => ({ from: screens[index]!.path, to: screen.path, label: "Continue" }));
+
+	return { screens, components: [], links };
 }
 
 /** A run of an accepted plan: only the files in `writes`, each from the mock's drafts or a plain stand-in */

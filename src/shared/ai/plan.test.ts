@@ -116,7 +116,7 @@ describe("fitPlan", () => {
 	});
 
 	test("caps the counts", () => {
-		const many = Array.from({ length: 10 }, (_, i) => ({
+		const many = Array.from({ length: 20 }, (_, i) => ({
 			path: `screens/s${i}.tsx`,
 			name: `S${i}`,
 			purpose: "",
@@ -170,6 +170,15 @@ describe("editing a plan", () => {
 		expect(plansFirst({ ...create, planMode: false })).toBe(false);
 		expect(plansFirst({ ...create, task: "edit" })).toBe(false);
 		expect(plansFirst({ ...create, variations: 3 })).toBe(false);
+		expect(plansFirst({ ...create, plan: PLAN })).toBe(false);
+	});
+
+	test("an attached document plans first even out of plan mode", () => {
+		const create = { planMode: false, task: "create", variations: 1, documents: 1 };
+
+		expect(plansFirst(create)).toBe(true);
+		expect(plansFirst({ ...create, documents: 0 })).toBe(false);
+		expect(plansFirst({ ...create, task: "edit" })).toBe(false);
 		expect(plansFirst({ ...create, plan: PLAN })).toBe(false);
 	});
 

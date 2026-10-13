@@ -280,6 +280,41 @@ describe("mock plan task", () => {
 		expect(parsed.links[0]).toEqual({ from: "screens/welcome.tsx", to: "screens/home-2.tsx", label: "Continue" });
 	});
 
+	test("plans one screen per section of an attached PRD", async () => {
+		const prd = [
+			"# Habit tracker PRD",
+			"Track daily habits.",
+			"## Today",
+			"Check off today's habits.",
+			"- Streak card",
+			"- Habit rows",
+			"## Habit detail",
+			"One habit's history.",
+			"## Home",
+			"The start page.",
+		].join("\n");
+
+		const plan: GenerationRequest = {
+			...request,
+			task: "plan",
+			projectScreens: ["screens/home.tsx"],
+			documents: [{ name: "prd.md", content: prd }],
+		};
+
+		const events = await collect(createMockProvider({ delayMs: 0 }).generate(plan, new AbortController().signal));
+		const reply = events.flatMap((e) => (e.type === "message.delta" ? [e.text] : [])).join("");
+		const parsed = parsePlanReply(reply, { "screens/home.tsx": "" })!;
+
+		expect(parsed.screens.map((s) => [s.path, s.name])).toEqual([
+			["screens/today.tsx", "Today"],
+			["screens/habit-detail.tsx", "Habit detail"],
+			["screens/home-2.tsx", "Home"],
+		]);
+		expect(parsed.screens[0]!.purpose).toBe("Check off today's habits.");
+		expect(parsed.screens[0]!.content).toBe("Streak card, Habit rows");
+		expect(parsed.links).toHaveLength(2);
+	});
+
 	test("a planned screen drops the components that weren't written", () => {
 		const source = `import { Flame } from "lucide-react";\nimport { StatCard } from "../components/stat-card";\nimport { TabBar } from "../components/tab-bar";\n\nexport default function A() {\n\treturn (\n\t\t<div>\n\t\t\t<StatCard label="A" icon={Flame} />\n\t\t\t<TabBar active={0} />\n\t\t</div>\n\t);\n}\n`;
 		const out = withoutMissingComponents(source, new Set(["components/stat-card.tsx"]));

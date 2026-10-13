@@ -9,7 +9,7 @@ import { imageLabel, stagedAttachments } from "./attachments";
 import { themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 20;
+export const PROMPT_VERSION = 21;
 
 export type PromptMode = "text" | "agent";
 
@@ -190,7 +190,7 @@ Map the document's own names onto these by meaning. No other names.
 
 const PLAN_ROLE = `You plan app flows for Rabisco, a design canvas. Before any screen is designed, you decide which screens a request needs, the parts they share, and how they link. Each screen is then written separately, in parallel, from your plan.`;
 
-const PLAN_RULES = `# Output
+const planRules = (documents: boolean) => `# Output
 Reply with only one JSON block in a \`\`\`json fence, in this shape, and nothing else:
 
 \`\`\`json
@@ -210,7 +210,7 @@ Reply with only one JSON block in a \`\`\`json fence, in this shape, and nothing
 \`\`\`
 
 # Rules
-- screens: the screens the request needs, in the order of the flow. Usually 2 to 4, at most ${PLAN_LIMITS.screens}; exactly 1 when the request asks for one screen. path is screens/<kebab-name>.tsx and must not be an existing screen. name is a short title. purpose is one line. content lists the key content in a few words.
+- screens: ${documents ? `every screen the attached documents describe, in the order of the flow: each screen, page, view or step they name, and the ones their features clearly need. At most ${PLAN_LIMITS.screens}; when they describe more, keep the core flow. In content, carry the document's own fields, items and copy for the screen` : `the screens the request needs, in the order of the flow. Usually 2 to 4, at most ${PLAN_LIMITS.promptScreens}; exactly 1 when the request asks for one screen`}. path is screens/<kebab-name>.tsx and must not be an existing screen. name is a short title. purpose is one line. content lists the key content in a few words.
 - components: the parts that 2 or more screens share and that must look the same on each: navigation (tab bar, sidebar, top bar), a screen header, a list row, a summary card. At most ${PLAN_LIMITS.components}, and none for a single screen. path is components/<kebab-name>.tsx; name is its PascalCase export. Never plan a part the project components already cover: the screens import those. usedBy lists the paths of the screens that use it.
 - links: how the user moves between the screens. from is a planned screen; to is a planned or existing screen; label names the control (a button, a row, a tab).
 - Plain words in purpose and content; no code. Don't write, edit or delete any file: everything you need is in the request.`;
@@ -238,7 +238,7 @@ const contextFileOf = (request: GenerationRequest) =>
 export function systemPrompt(request: GenerationRequest, mode: PromptMode): string {
 	if (request.task === "theme") return [THEME_ROLE, THEME_RULES].join("\n\n");
 
-	if (request.task === "plan") return [PLAN_ROLE, PLAN_RULES].join("\n\n");
+	if (request.task === "plan") return [PLAN_ROLE, planRules(Boolean(request.documents?.length))].join("\n\n");
 
 	if (request.task === "brief") return [BRIEF_ROLE, BRIEF_RULES].join("\n\n");
 
@@ -285,7 +285,9 @@ function taskText(request: GenerationRequest, mode: PromptMode): string {
 				? ` Existing screens (pick other paths; links may point at them): ${request.projectScreens.join(", ")}.`
 				: "";
 
-			return `Task: plan. Plan the ${frameOf(request)} screens for the request below, their shared components and the links between them.${screens} Reply with the JSON block${mode === "agent" ? " as text. Don't write any file" : ""}.`;
+			const source = request.documents?.length ? "the attached documents and the request below" : "the request below";
+
+			return `Task: plan. Plan the ${frameOf(request)} screens for ${source}, their shared components and the links between them.${screens} Reply with the JSON block${mode === "agent" ? " as text. Don't write any file" : ""}.`;
 		}
 
 		case "brief":
@@ -480,6 +482,17 @@ function attachmentsText(request: GenerationRequest, mode: PromptMode) {
 	return `Attached images, in the current directory. Open each one with your file tools before you start, and use them as reference for the request. Don't change, move or copy them. ${numbering}\n${paths.join("\n")}`;
 }
 
+function documentsText(request: GenerationRequest) {
+	if (!request.documents?.length) return null;
+
+	const documents = request.documents.map(
+		(document, index) =>
+			`<document index="${index + 1}" name="${document.name.replace(/"/g, "'")}">\n${document.content}\n</document>`,
+	);
+
+	return `Attached documents, such as a product spec or PRD. Design from what they describe: their screens, features, fields, data and copy. The request below can narrow or change them. The user refers to them by number ("document 1") or name.\n\n${documents.join("\n\n")}`;
+}
+
 export function userPrompt(request: GenerationRequest, mode: PromptMode): string {
 	const parts: string[] = [];
 	const product = contextBody(request.context.product);
@@ -514,6 +527,9 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 
 	if (tokens) parts.push(tokens);
 
+	const documents = documentsText(request);
+
+	if (documents) parts.push(documents);
 	const attachments = attachmentsText(request, mode);
 
 	if (attachments) parts.push(attachments);

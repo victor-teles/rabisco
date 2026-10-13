@@ -613,6 +613,31 @@ describe("plan", () => {
 		expect(userPrompt(plan(), "agent")).toContain("as text. Don't write any file");
 	});
 
+	test("an attached PRD plans every screen it describes, in both modes", () => {
+		const documents = [{ name: 'spec "v2".md', content: "# Habits\n\n## Today\nCheck off habits." }];
+		const system = systemPrompt(plan({ documents }), "text");
+		expect(system).toContain("every screen the attached documents describe");
+		expect(system).toContain("At most 12; when they describe more, keep the core flow");
+		expect(system).not.toContain("Usually 2 to 4");
+
+		for (const mode of ["text", "agent"] as const) {
+			const text = userPrompt(plan({ documents }), mode);
+			expect(text).toContain(
+				`<document index="1" name="spec 'v2'.md">\n# Habits\n\n## Today\nCheck off habits.\n</document>`,
+			);
+			expect(text).toContain("screens for the attached documents and the request below, their shared components");
+			expect(text.indexOf("<document")).toBeLessThan(text.indexOf("Task: plan."));
+		}
+	});
+
+	test("documents reach the screen runs too, but not a repair", () => {
+		const documents = [{ name: "prd.md", content: "## Today" }];
+		expect(userPrompt(request({ documents, plan: PLAN, writes: ["screens/home.tsx"] }), "text")).toContain(
+			'<document index="1" name="prd.md">',
+		);
+		expect(userPrompt(request(), "text")).not.toContain("<document");
+	});
+
 	test("planText lists screens, shared components and links", () => {
 		const text = planText(PLAN);
 		expect(text).toContain('- screens/home.tsx · "Home": Today\'s habits. Content: streak, habit rows.');

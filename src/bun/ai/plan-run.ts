@@ -31,6 +31,7 @@ export type PlanRequestParams = {
 	device: GenerationRequest["device"];
 	projectFiles: ProjectFiles;
 	attachments?: GenerationRequest["attachments"];
+	documents?: GenerationRequest["documents"];
 	history?: GenerationRequest["history"];
 };
 
@@ -59,6 +60,8 @@ export function buildPlanRequest(params: PlanRequestParams): GenerationRequest {
 	if (screens.length) request.projectScreens = screens.sort();
 
 	if (params.attachments?.length) request.attachments = params.attachments;
+
+	if (params.documents?.length) request.documents = params.documents;
 
 	if (params.history?.length) request.history = params.history;
 

@@ -13,6 +13,7 @@ import type {
 	GenerationEvent,
 	GenerationPlan,
 	Problem,
+	PromptDocument,
 	ScreenMeta,
 } from "../../shared/ai/contract";
 import { planRevisionPrompt, plansFirst, revisedPrompt } from "../../shared/ai/plan";
@@ -78,6 +79,7 @@ export type GenerationDrafts = {
 export type RunOptions = {
 	targets?: string[];
 	attachments?: Attachment[];
+	documents?: PromptDocument[];
 	/** Unset: edit when `targets` is non-empty, else create. */
 	task?: "context" | "vary";
 	variations?: number;
@@ -93,6 +95,9 @@ export type RunOptions = {
 	autoDesign?: boolean;
 	recreate?: { image: CanvasImage; device: Device; reference: Attachment };
 };
+
+/** Sent with a reply to a plan under review */
+export type PlanAdditions = { attachments: Attachment[]; documents: PromptDocument[] };
 
 /** A plan waiting in the chat for the user to review it; its request runs when they accept it */
 export type PendingPlan = { id: string; plan: GenerationPlan; prompt: string; options: RunOptions };
@@ -300,6 +305,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				task: "context",
 				targets: ["DESIGN.md"],
 				attachments: options.attachments,
+				documents: options.documents,
 			});
 
 			if (!result.ok && result.error.code === "aborted") return "stopped";
@@ -342,6 +348,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				model,
 				task: "plan",
 				attachments: options.attachments,
+				documents: options.documents,
 				chatId,
 				command: options.command,
 			});
@@ -520,7 +527,15 @@ export function createGenerationController(session: ProjectSession, env: Control
 			last = { prompt, options };
 		}
 
-		if (!options.recreate && plansFirst({ planMode: env.planMode(), task, variations, plan: options.plan })) {
+		const planning = {
+			planMode: env.planMode(),
+			task,
+			variations,
+			plan: options.plan,
+			documents: options.documents?.length,
+		};
+
+		if (!options.recreate && plansFirst(planning)) {
 			const plan = await readPlan(prompt, options, model, chatId);
 
 			if ("stopped" in plan) {
@@ -557,6 +572,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				focus: options.focus,
 				problems: options.repair?.problems,
 				attachments: options.attachments,
+				documents: options.documents,
 				chatId,
 				command: options.command,
 				plan: options.plan,
@@ -732,15 +748,16 @@ export function createGenerationController(session: ProjectSession, env: Control
 		void run(pending.prompt, { ...pending.options, plan }, model);
 	}
 
-	async function revise(pending: PendingPlan, feedback: string, attachments: Attachment[], model: string) {
+	async function revise(pending: PendingPlan, feedback: string, added: PlanAdditions, model: string) {
 		const chatId = session.state()?.chatId;
 
 		if (!chatId) return { applied: false, outcome: null };
 		set({ pendingPlan: null, failure: null });
+		const options = { ...pending.options };
 
-		const options = attachments.length
-			? { ...pending.options, attachments: [...(pending.options.attachments ?? []), ...attachments] }
-			: pending.options;
+		if (added.attachments.length) options.attachments = [...(pending.options.attachments ?? []), ...added.attachments];
+
+		if (added.documents.length) options.documents = [...(pending.options.documents ?? []), ...added.documents];
 
 		const plan = await readPlan(planRevisionPrompt(pending.prompt, pending.plan, feedback), options, model, chatId);
 
@@ -771,10 +788,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 		return { applied: false, outcome: "plan" as const };
 	}
 
-	function revisePlan(feedback: string, attachments: Attachment[], model: string) {
+	function revisePlan(feedback: string, added: PlanAdditions, model: string) {
 		const pending = view.pendingPlan;
 
-		if (pending && !live) void track(() => revise(pending, feedback, attachments, model));
+		if (pending && !live) void track(() => revise(pending, feedback, added, model));
 	}
 
 	function cancelPlan() {

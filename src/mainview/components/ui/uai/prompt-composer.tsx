@@ -346,37 +346,44 @@ export function PromptComposer({
 
 					{attachments.length > 0 ? (
 						<div className={cn("flex flex-wrap gap-1.5 pt-0.5", chrome.pill ? "px-1" : "px-0.5")}>
-							{attachments.map((item, index) => (
-								<span
-									key={item.id}
-									title={`Image ${index + 1}: ${item.file.name}`}
-									className={cn(
-										"flex items-center gap-1.5 bg-muted py-1 pr-1 pl-1 text-muted-foreground",
-										chrome.chipClass,
-									)}
-								>
-									<span className="grid h-4 min-w-4 place-items-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-card-foreground tabular-nums ring-1 ring-border">
-										<span className="sr-only">Image </span>
-										{index + 1}
-									</span>
-									<FileIcon file={item.file} />
-									<span className="max-w-36 truncate text-card-foreground">{item.file.name}</span>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-xs"
-										aria-label={`Remove ${item.file.name}`}
-										disabled={locked}
-										onClick={() => context.removeAttachment(item.id)}
+							{attachments.map((item, index) => {
+								const image = isImage(item.file);
+								const number = attachments.slice(0, index + 1).filter((each) => isImage(each.file)).length;
+
+								return (
+									<span
+										key={item.id}
+										title={image ? `Image ${number}: ${item.file.name}` : item.file.name}
 										className={cn(
-											"grid size-4 place-items-center text-muted-foreground transition-colors duration-100 hover:bg-transparent hover:text-card-foreground disabled:opacity-100 dark:hover:bg-transparent",
-											chrome.pill ? "rounded-full" : "rounded",
+											"flex items-center gap-1.5 bg-muted py-1 pr-1 pl-1 text-muted-foreground",
+											chrome.chipClass,
 										)}
 									>
-										<X className="size-2.5" strokeWidth={2.5} aria-hidden="true" />
-									</Button>
-								</span>
-							))}
+										{image ? (
+											<span className="grid h-4 min-w-4 place-items-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-card-foreground tabular-nums ring-1 ring-border">
+												<span className="sr-only">Image </span>
+												{number}
+											</span>
+										) : null}
+										<FileIcon file={item.file} />
+										<span className="max-w-36 truncate text-card-foreground">{item.file.name}</span>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-xs"
+											aria-label={`Remove ${item.file.name}`}
+											disabled={locked}
+											onClick={() => context.removeAttachment(item.id)}
+											className={cn(
+												"grid size-4 place-items-center text-muted-foreground transition-colors duration-100 hover:bg-transparent hover:text-card-foreground disabled:opacity-100 dark:hover:bg-transparent",
+												chrome.pill ? "rounded-full" : "rounded",
+											)}
+										>
+											<X className="size-2.5" strokeWidth={2.5} aria-hidden="true" />
+										</Button>
+									</span>
+								);
+							})}
 						</div>
 					) : null}
 
@@ -395,6 +402,8 @@ export function PromptComposer({
 	);
 }
 
+const isImage = (file: File) => file.type.startsWith("image/");
+
 /** A thumbnail for images, so a pasted screenshot is recognisable */
 function FileIcon({ file }: { file: File }) {
 	// The URL lives as long as the image element
@@ -409,7 +418,7 @@ function FileIcon({ file }: { file: File }) {
 		[file],
 	);
 
-	return file.type.startsWith("image/") ? (
+	return isImage(file) ? (
 		<img ref={preview} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
 	) : (
 		<FileText className="size-3" aria-hidden="true" />
@@ -510,11 +519,13 @@ export function PromptComposerAddItem({ onSelect, ...props }: PromptComposerAddI
 export type PromptComposerFileItemProps = Omit<ComponentProps<"input">, "type" | "children" | "onChange"> & {
 	label?: string;
 	description?: string;
+	icon?: ReactNode;
 };
 
 export function PromptComposerFileItem({
 	label = "Add photos & files",
 	description = "Upload from your computer",
+	icon = <Paperclip className="size-4" strokeWidth={1.8} aria-hidden="true" />,
 	multiple = true,
 	accept,
 	disabled,
@@ -539,7 +550,7 @@ export function PromptComposerFileItem({
 	return (
 		<>
 			<PromptComposerMenuItem
-				icon={<Paperclip className="size-4" strokeWidth={1.8} aria-hidden="true" />}
+				icon={icon}
 				description={description}
 				disabled={disabled}
 				onSelect={(event) => {

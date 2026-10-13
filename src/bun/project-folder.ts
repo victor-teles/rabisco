@@ -10,6 +10,7 @@ import {
 	writeFileSync,
 } from "fs";
 import { dirname, join } from "path";
+import { parseDocuments } from "../shared/ai/documents";
 import { parseChangeSummary } from "../shared/change-summary";
 import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
 import { starterFiles, type StyleId } from "../shared/context/styles";
@@ -244,10 +245,14 @@ export function parseChat(text: string, readAttachment?: (path: string) => strin
 			if (!isChatMessage(value)) continue;
 			const message: ChatMessage = { ...value };
 			delete message.attachments;
+			delete message.documents;
 			delete message.summary;
 			const summary = parseChangeSummary(objectOr(value).summary);
 
 			if (summary) message.summary = summary;
+			const documents = parseDocuments(objectOr(value).documents);
+
+			if (documents.length) message.documents = documents;
 
 			const images = readAttachment
 				? arrayOr(objectOr(value).attachments).flatMap((ref) => loadAttachment(ref, readAttachment))

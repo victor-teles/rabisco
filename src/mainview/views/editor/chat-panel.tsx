@@ -74,7 +74,8 @@ import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
 import { draftIdOf } from "@/lib/composer-drafts";
 import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import type { Attachment } from "../../../shared/ai/contract";
+import type { Attachment, PromptDocument } from "../../../shared/ai/contract";
+import { isDocumentFile } from "../../../shared/ai/documents";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import type { StyleId } from "../../../shared/context/styles";
 import type { CanvasImage, ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
@@ -224,7 +225,10 @@ export const ChatPanel = memo(function ChatPanel({
 	const planHint = planModeHint({ editing: editingCount, variations });
 	const files = generation ? Object.entries(generation.writing) : [];
 
-	const onFilesChange = useCallback((files: File[]) => onAttachedCountChange?.(files.length), [onAttachedCountChange]);
+	const onFilesChange = useCallback(
+		(files: File[]) => onAttachedCountChange?.(files.filter((file) => !isDocumentFile(file)).length),
+		[onAttachedCountChange],
+	);
 
 	// Streaming output follows on its own; a new message brings the reader back down
 	useEffect(pin, [messages.length, pin]);
@@ -277,7 +281,12 @@ export const ChatPanel = memo(function ChatPanel({
 			setDraft((current) => ({
 				key: (current?.key ?? 0) + 1,
 				prompt: message.content,
-				files: message.attachments?.flatMap((image) => (image.source === "moodboard" ? [] : [attachmentFile(image)])),
+				files: [
+					...(message.attachments ?? []).flatMap((image) =>
+						image.source === "moodboard" ? [] : [attachmentFile(image)],
+					),
+					...(message.documents ?? []).map(documentFile),
+				],
 			}));
 		},
 		[setDraft],
@@ -508,6 +517,10 @@ function attachmentFile(image: Attachment) {
 	return new File([bytes], image.name, { type: image.mediaType });
 }
 
+function documentFile(document: PromptDocument) {
+	return new File([document.content], document.name, { type: "text/markdown" });
+}
+
 function DraftBar({ onCancel }: { onCancel: () => void }) {
 	return (
 		<div className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-subtle-foreground" aria-live="polite">
@@ -539,6 +552,28 @@ function AttachedImages({ images }: { images: Attachment[] }) {
 			))}
 		</div>
 	);
+}
+
+function AttachedDocuments({ documents }: { documents: PromptDocument[] }) {
+	return (
+		<div className="flex flex-col items-end gap-1.5">
+			{documents.map((document, index) => (
+				<AttachmentCard key={index} variant="row" mimeType="text/markdown" className="w-56">
+					<AttachmentThumbnail />
+					<AttachmentDetails>
+						<AttachmentName title={document.name}>{document.name}</AttachmentName>
+						<AttachmentMeta>{documentSize(document.content)}</AttachmentMeta>
+					</AttachmentDetails>
+				</AttachmentCard>
+			))}
+		</div>
+	);
+}
+
+function documentSize(content: string) {
+	const words = content.split(/\s+/).filter(Boolean).length;
+
+	return words === 1 ? "1 word" : `${words.toLocaleString()} words`;
 }
 
 function ImageNumber({ number, className }: { number: number; className?: string }) {
@@ -784,6 +819,7 @@ const MessageList = memo(function MessageList({
 					{assistant ? <MessageAvatar /> : null}
 					<MessageBody>
 						{message.attachments?.length ? <AttachedImages images={message.attachments} /> : null}
+						{message.documents?.length ? <AttachedDocuments documents={message.documents} /> : null}
 						<MessageContent className={assistant ? undefined : "whitespace-pre-wrap"}>
 							{assistant ? <Markdown source={message.content} /> : message.content}
 						</MessageContent>

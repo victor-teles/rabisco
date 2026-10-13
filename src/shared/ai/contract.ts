@@ -76,6 +76,12 @@ export type Attachment = {
 	source?: "moodboard";
 };
 
+/** A PRD or any Markdown or text file attached to a prompt; every provider gets its text in the prompt */
+export type PromptDocument = {
+	name: string;
+	content: string;
+};
+
 export type Problem = {
 	path: string;
 	message: string;
@@ -173,6 +179,8 @@ export type GenerationRequest = {
 	focus?: ElementFocus[];
 
 	attachments?: Attachment[];
+
+	documents?: PromptDocument[];
 
 	/** Oldest first */
 	history?: { role: "user" | "assistant"; content: string }[];

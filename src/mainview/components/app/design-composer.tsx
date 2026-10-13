@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useRef } from "react";
 import {
 	ChevronDown,
+	FileText,
 	ListChecks,
 	Monitor,
 	Settings2,
@@ -42,6 +43,7 @@ import { IMPROVE_PROMPT_KEYS, isImprovePrompt, useImprovePrompt } from "@/hooks/
 import { isPlanModeToggle, PLAN_MODE_KEYS } from "@/hooks/use-plan-mode";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
+import { DOCUMENT_ACCEPT, isDocumentFile } from "../../../shared/ai/documents";
 import type { StyleChoice } from "../../../shared/context/styles";
 import { isDevice } from "../../../shared/project";
 import type { Device } from "../../../shared/types";
@@ -50,7 +52,7 @@ import { MAX_VARIATIONS } from "../../../shared/variations";
 /** The image types every provider takes */
 const PROMPT_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
-const isPromptImage = (file: File) => PROMPT_IMAGE_TYPES.includes(file.type);
+const isPromptFile = (file: File) => PROMPT_IMAGE_TYPES.includes(file.type) || isDocumentFile(file);
 
 export type DesignComposerProps = {
 	value?: string;
@@ -158,7 +160,7 @@ export function DesignComposer({
 			defaultValue={defaultValue}
 			defaultFiles={defaultFiles}
 			onSubmit={(prompt, files) => onSubmit(prompt, files)}
-			acceptFile={isPromptImage}
+			acceptFile={isPromptFile}
 			onFilesChange={onFilesChange}
 			stacked={stacked}
 			className={className}
@@ -168,6 +170,12 @@ export function DesignComposer({
 					label="Add reference images"
 					description="Or paste or drop them here"
 					accept={PROMPT_IMAGE_TYPES.join(",")}
+				/>
+				<PromptComposerFileItem
+					label="Attach a PRD or Markdown file"
+					description="Plans every screen it describes"
+					icon={<FileText className="size-4" strokeWidth={1.8} aria-hidden="true" />}
+					accept={DOCUMENT_ACCEPT}
 				/>
 			</PromptComposerAdd>
 			{commands?.length && onRunCommand ? (

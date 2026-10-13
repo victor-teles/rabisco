@@ -4,6 +4,7 @@ import type {
 	GenerationEvent,
 	GenerationPlan,
 	Problem,
+	PromptDocument,
 	ProviderErrorCode,
 	Usage,
 } from "./ai/contract";
@@ -117,6 +118,8 @@ export type ChatMessage = {
 	context?: ContextFileName[];
 	/** User prompts: the images sent with them. On disk they live in `attachments/`. */
 	attachments?: Attachment[];
+	/** User prompts: the documents sent with them, kept in the chat */
+	documents?: PromptDocument[];
 	/** Assistant replies to a generation that changed files or left problems. Missing in older chats */
 	summary?: ChangeSummary;
 };
@@ -190,6 +193,7 @@ export type GenerateParams = {
 	focus?: ElementFocus[];
 	problems?: Problem[];
 	attachments?: Attachment[];
+	documents?: PromptDocument[];
 	/** The chat session whose messages are the history. Missing: no history */
 	chatId?: string;
 	/** `prompt` is `/name args`; the main process expands the provider's command */
