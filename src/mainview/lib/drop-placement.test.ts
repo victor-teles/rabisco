@@ -95,6 +95,81 @@ describe("dropPlacement", () => {
 		expect(dropPlacement(wrap, slot, { x: 10, y: 70 })).toEqual({ index: 2, line: b(0, 60, 0, 50) });
 	});
 
+	test("inline children in a block parent read as a row", () => {
+		const inline = layout(
+			[
+				[10, b(0, 0)],
+				[20, b(120, 4, 100, 40)],
+				[30, b(240, 0)],
+			],
+			{ display: "block" },
+		);
+
+		expect(dropPlacement(inline, slot, { x: 230, y: 20 })).toEqual({ index: 2, line: b(230, 0, 0, 50) });
+		expect(dropPlacement(inline, slot, { x: 900, y: 20 })).toEqual({ index: 3, line: b(340, 0, 0, 50) });
+
+		const rtl = layout(
+			[
+				[10, b(240, 0)],
+				[20, b(120, 0)],
+				[30, b(0, 0)],
+			],
+			{ display: "block", direction: "rtl" },
+		);
+
+		expect(dropPlacement(rtl, slot, { x: 115, y: 20 })).toEqual({ index: 2, line: b(110, 0, 0, 50) });
+	});
+
+	test("inline children that wrap pick the nearest child by row", () => {
+		const children: [number, Box][] = [
+			[10, b(0, 0)],
+			[20, b(120, 0)],
+			[30, b(0, 60)],
+		];
+
+		expect(dropPlacement(layout(children), slot, { x: 115, y: 20 })).toEqual({ index: 1, line: b(110, 0, 0, 50) });
+		expect(dropPlacement(layout(children), slot, { x: 150, y: 80 })).toEqual({ index: 3, line: b(100, 60, 0, 50) });
+	});
+
+	test("grid-auto-flow: column", () => {
+		const oneRow = layout(
+			[
+				[10, b(0, 0)],
+				[20, b(120, 0)],
+				[30, b(240, 0)],
+			],
+			{ display: "grid", gridAutoFlow: "column" },
+		);
+
+		expect(dropPlacement(oneRow, slot, { x: 230, y: 20 })).toEqual({ index: 2, line: b(230, 0, 0, 50) });
+
+		const columns = layout(
+			[
+				[10, b(0, 0)],
+				[20, b(0, 60)],
+				[30, b(120, 0)],
+				[40, b(120, 60)],
+			],
+			{ display: "grid", gridAutoFlow: "column", gridColumns: 2 },
+		);
+
+		expect(dropPlacement(columns, slot, { x: 50, y: 58 })).toEqual({ index: 1, line: b(0, 55, 100, 0) });
+		expect(dropPlacement(columns, slot, { x: 150, y: 100 })).toEqual({ index: 4, line: b(120, 110, 100, 0) });
+	});
+
+	test("a wrapping flex column fills columns", () => {
+		const columns = layout(
+			[
+				[10, b(0, 0)],
+				[20, b(0, 60)],
+				[30, b(120, 0)],
+			],
+			{ display: "flex", flexDirection: "column", flexWrap: "wrap" },
+		);
+
+		expect(dropPlacement(columns, slot, { x: 150, y: 40 })).toEqual({ index: 3, line: b(120, 50, 100, 0) });
+	});
+
 	test("an empty container gets a drop zone", () => {
 		expect(dropPlacement(layout([]), slot, { x: 0, y: 0 })).toEqual({ index: 0, line: null });
 	});

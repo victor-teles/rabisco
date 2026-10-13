@@ -95,19 +95,44 @@ function wrapped(items: Item[], point: Point, forward: number): Placement {
 		: { index: nearest.slot + 1, line: lineBetween(nearest.box, beside, true, forward) };
 }
 
+const transpose = (box: Box): Box => ({ x: box.y, y: box.x, width: box.height, height: box.width });
+
+/** Column-major wrapping: the same as `wrapped` with the axes swapped */
+function wrappedColumns(items: Item[], point: Point, forward: number): Placement {
+	const across = items.map((item) => ({ slot: item.slot, box: transpose(item.box) }));
+	const { index, line } = wrapped(across, { x: point.y, y: point.x }, forward);
+
+	return { index, line: line && transpose(line) };
+}
+
+/** Lines come from the boxes, not from `display`: inline children share a row, `grid-auto-flow: column` fills columns */
+function flowed(items: Item[], point: Point, layout: DropLayout, rtl: number): Placement {
+	const columns = layout.display.includes("grid") && layout.gridAutoFlow.startsWith("column");
+	const overlapsColumn = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width;
+	const sameLine = columns ? overlapsColumn : overlapsRow;
+	const pairs = items.slice(1).map((item, i) => sameLine(items[i]!.box, item.box));
+
+	if (pairs.length && pairs.every(Boolean))
+		return columns ? linear(items, point, false, 1) : linear(items, point, true, rtl);
+
+	if (!pairs.some(Boolean)) return columns ? linear(items, point, true, rtl) : linear(items, point, false, 1);
+
+	return columns ? wrappedColumns(items, point, 1) : wrapped(items, point, rtl);
+}
+
 /** `slotOf` maps a child's start to its slot in the target container, -1 for children it doesn't hold */
 export function dropPlacement(layout: DropLayout, slotOf: (start: number) => number, point: Point): Placement {
 	const items = itemsOf(layout, slotOf);
 
 	if (!items.length) return { index: 0, line: null };
 	const rtl = layout.direction === "rtl" ? -1 : 1;
-	const flex = layout.display.includes("flex");
-	const row = flex && layout.flexDirection.startsWith("row");
-	const reverse = flex && layout.flexDirection.endsWith("reverse") ? -1 : 1;
-	const wraps = row && layout.flexWrap.startsWith("wrap");
 
-	if ((layout.display.includes("grid") && layout.gridColumns > 1) || wraps)
-		return wrapped(items, point, rtl * (row ? reverse : 1));
+	if (!layout.display.includes("flex")) return flowed(items, point, layout, rtl);
+	const row = layout.flexDirection.startsWith("row");
+	const reverse = layout.flexDirection.endsWith("reverse") ? -1 : 1;
+	const wraps = layout.flexWrap.startsWith("wrap");
 
-	return row ? linear(items, point, true, rtl * reverse) : linear(items, point, false, flex ? reverse : 1);
+	if (row) return wraps ? wrapped(items, point, rtl * reverse) : linear(items, point, true, rtl * reverse);
+
+	return wraps ? wrappedColumns(items, point, reverse) : linear(items, point, false, reverse);
 }

@@ -278,6 +278,11 @@ function gridColumns(style: CSSStyleDeclaration) {
 		.filter((track) => track && track !== "none").length;
 }
 
+/** A `display: contents` wrapper has no box of its own: its children stand in for it */
+function rendered(element: Element): Element[] {
+	return getComputedStyle(element).display === "contents" ? [...element.children].flatMap(rendered) : [element];
+}
+
 /** Without `version`, which the caller checks against the rendered one. */
 export function dropLayoutOf(
 	container: Element,
@@ -308,7 +313,10 @@ export function dropLayoutOf(
 	if (!chosen) return null;
 
 	const children = chosen.children().flatMap((child) => {
-		const box = Number.isInteger(child.start) && child.start >= 0 ? unionBox(child.elements) : null;
+		const box =
+			Number.isInteger(child.start) && child.start >= 0
+				? (unionBox(child.elements) ?? unionBox(child.elements.flatMap(rendered)))
+				: null;
 
 		return box ? [{ start: child.start, box, first: child.elements[0] }] : [];
 	});
