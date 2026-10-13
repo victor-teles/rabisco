@@ -1,4 +1,5 @@
 import type { PasteData } from "./clipboard";
+import { isMac } from "./platform";
 
 /** One key combination. `mod` is ⌘ on macOS and Ctrl elsewhere */
 export type Chord = {
@@ -37,7 +38,7 @@ export type Action = {
 
 export type KeyInput = Pick<KeyboardEvent, "code" | "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
-export function matchesChord(chord: Chord, event: KeyInput) {
+export function matchesChord(chord: Chord, event: KeyInput, mac = isMac) {
 	const hit = chord.code !== undefined ? event.code === chord.code : event.key === chord.key;
 
 	if (!hit) return false;
@@ -45,7 +46,7 @@ export function matchesChord(chord: Chord, event: KeyInput) {
 	if (chord.ctrl) {
 		if (!event.ctrlKey || event.metaKey) return false;
 	} else if (chord.mod) {
-		if (!event.metaKey && !event.ctrlKey) return false;
+		if (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey) return false;
 	} else if (event.metaKey || event.ctrlKey) return false;
 
 	if (Boolean(chord.alt) !== event.altKey) return false;
@@ -53,11 +54,11 @@ export function matchesChord(chord: Chord, event: KeyInput) {
 	return chord.shift === "any" || Boolean(chord.shift) === event.shiftKey;
 }
 
-function firstForKey(actions: readonly Action[], event: KeyInput, fits: (chord: Chord) => boolean) {
+function firstForKey(actions: readonly Action[], event: KeyInput, mac: boolean, fits: (chord: Chord) => boolean) {
 	let disabled: Action | undefined;
 
 	for (const action of actions) {
-		if (!action.chords?.some((chord) => fits(chord) && matchesChord(chord, event))) continue;
+		if (!action.chords?.some((chord) => fits(chord) && matchesChord(chord, event, mac))) continue;
 
 		if (action.enabled) return action;
 
@@ -67,9 +68,11 @@ function firstForKey(actions: readonly Action[], event: KeyInput, fits: (chord: 
 	return disabled;
 }
 
-/** The first enabled action bound to the keys, else the first disabled one that isn't passive, so its keys still don't reach the page. A literal ⌃ chord wins over a ⌘ one, which also takes Ctrl */
-export function actionForKey(actions: readonly Action[], event: KeyInput) {
-	return firstForKey(actions, event, (chord) => chord.ctrl === true) ?? firstForKey(actions, event, () => true);
+/** The first enabled action bound to the keys, else the first disabled one that isn't passive, so its keys still don't reach the page. A literal ⌃ chord wins over a ⌘ one, which is Ctrl off macOS */
+export function actionForKey(actions: readonly Action[], event: KeyInput, mac = isMac) {
+	return (
+		firstForKey(actions, event, mac, (chord) => chord.ctrl === true) ?? firstForKey(actions, event, mac, () => true)
+	);
 }
 
 const KEY_LABELS = new Map([

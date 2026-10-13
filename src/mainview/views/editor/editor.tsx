@@ -59,6 +59,7 @@ import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
 import { alignElements, distributeElements, type Arranged } from "@/lib/element-align";
 import { outermost } from "@/lib/element-selection";
+import { isMac } from "@/lib/platform";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { restoredSnapshot } from "@/lib/versions";
 import { sourceVersion } from "@/lib/render/protocol";
@@ -170,7 +171,7 @@ type EditorProps = {
 
 const NO_FRAMES: Frame[] = [];
 
-const PASTE_KEY: KeyInput = { code: "KeyV", key: "v", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false };
+const PASTE_KEY: KeyInput = { code: "KeyV", key: "v", metaKey: isMac, ctrlKey: !isMac, altKey: false, shiftKey: false };
 
 const NO_FILES: ProjectFiles = {};
 

@@ -130,7 +130,7 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 			label: "Rename section",
 			group: "Arrange",
 			chords: [{ code: "KeyR", mod: true }],
-			enabled: current !== undefined,
+			enabled: current !== undefined && !screensSelected,
 			run: () => current && setRenaming(current.id),
 		},
 		{

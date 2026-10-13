@@ -21,14 +21,22 @@ const action = (id: string, chords: Chord[], enabled = true): Action => ({
 });
 
 describe("matchesChord", () => {
-	test("⌘ chords take ⌘ or Ctrl, and nothing else", () => {
+	test("⌘ chords take only ⌘ on macOS", () => {
 		const duplicate: Chord = { code: "KeyD", mod: true };
 
-		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true }))).toBe(true);
-		expect(matchesChord(duplicate, press({ code: "KeyD", ctrlKey: true }))).toBe(true);
-		expect(matchesChord(duplicate, press({ code: "KeyD" }))).toBe(false);
-		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true, shiftKey: true }))).toBe(false);
-		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true, altKey: true }))).toBe(false);
+		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true }), true)).toBe(true);
+		expect(matchesChord(duplicate, press({ code: "KeyD", ctrlKey: true }), true)).toBe(false);
+		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true, ctrlKey: true }), true)).toBe(false);
+		expect(matchesChord(duplicate, press({ code: "KeyD" }), true)).toBe(false);
+		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true, shiftKey: true }), true)).toBe(false);
+		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true, altKey: true }), true)).toBe(false);
+	});
+
+	test("⌘ chords take only Ctrl off macOS", () => {
+		const duplicate: Chord = { code: "KeyD", mod: true };
+
+		expect(matchesChord(duplicate, press({ code: "KeyD", ctrlKey: true }), false)).toBe(true);
+		expect(matchesChord(duplicate, press({ code: "KeyD", metaKey: true }), false)).toBe(false);
 	});
 
 	test("plain keys don't fire with ⌘ or Ctrl held", () => {
@@ -50,8 +58,8 @@ describe("matchesChord", () => {
 	test('shift "any" ignores ⇧, for symbols like +', () => {
 		const zoomIn: Chord = { key: "+", mod: true, shift: "any" };
 
-		expect(matchesChord(zoomIn, press({ key: "+", metaKey: true, shiftKey: true }))).toBe(true);
-		expect(matchesChord(zoomIn, press({ key: "+", metaKey: true }))).toBe(true);
+		expect(matchesChord(zoomIn, press({ key: "+", metaKey: true, shiftKey: true }), true)).toBe(true);
+		expect(matchesChord(zoomIn, press({ key: "+", metaKey: true }), true)).toBe(true);
 	});
 });
 
@@ -74,23 +82,33 @@ describe("actionForKey", () => {
 	test("returns a disabled action when it's the only match, so its keys are still consumed", () => {
 		const duplicate = action("duplicate", [{ code: "KeyD", mod: true }], false);
 
-		expect(actionForKey([duplicate], press({ code: "KeyD", metaKey: true }))?.id).toBe("duplicate");
-		expect(actionForKey([duplicate], press({ code: "KeyX", metaKey: true }))).toBeUndefined();
+		expect(actionForKey([duplicate], press({ code: "KeyD", metaKey: true }), true)?.id).toBe("duplicate");
+		expect(actionForKey([duplicate], press({ code: "KeyX", metaKey: true }), true)).toBeUndefined();
 	});
 
-	test("a ⌃ chord wins over a ⌘ chord on the same keys, since ⌘ chords also take Ctrl", () => {
+	test("a ⌃ chord wins over a ⌘ chord on the same keys, since ⌘ chords take Ctrl off macOS", () => {
 		const pasteProperties = action("paste-properties", [{ code: "KeyV", mod: true, alt: true }]);
 		const distribute = action("distribute-vertical", [{ code: "KeyV", ctrl: true, alt: true }]);
 		const actions = [pasteProperties, distribute];
+		const ctrlAlt = press({ code: "KeyV", ctrlKey: true, altKey: true });
 
-		expect(actionForKey(actions, press({ code: "KeyV", ctrlKey: true, altKey: true }))?.id).toBe("distribute-vertical");
-		expect(actionForKey(actions, press({ code: "KeyV", metaKey: true, altKey: true }))?.id).toBe("paste-properties");
-		expect(
-			actionForKey(
-				[pasteProperties, { ...distribute, enabled: false }],
-				press({ code: "KeyV", ctrlKey: true, altKey: true }),
-			)?.id,
-		).toBe("distribute-vertical");
+		expect(actionForKey(actions, ctrlAlt, false)?.id).toBe("distribute-vertical");
+		expect(actionForKey(actions, ctrlAlt, true)?.id).toBe("distribute-vertical");
+		expect(actionForKey(actions, press({ code: "KeyV", metaKey: true, altKey: true }), true)?.id).toBe(
+			"paste-properties",
+		);
+		expect(actionForKey([pasteProperties, { ...distribute, enabled: false }], ctrlAlt, false)?.id).toBe(
+			"distribute-vertical",
+		);
+	});
+
+	test("⌃R and ⌃V don't run the ⌘R and ⌘V actions on macOS", () => {
+		const rename = action("rename-screen", [{ code: "KeyR", mod: true }]);
+		const paste = action("paste", [{ code: "KeyV", mod: true }]);
+
+		expect(actionForKey([rename, paste], press({ code: "KeyR", ctrlKey: true }), true)).toBeUndefined();
+		expect(actionForKey([rename, paste], press({ code: "KeyV", ctrlKey: true }), true)).toBeUndefined();
+		expect(actionForKey([rename, paste], press({ code: "KeyR", metaKey: true }), true)?.id).toBe("rename-screen");
 	});
 });
 
