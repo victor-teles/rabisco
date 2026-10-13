@@ -34,18 +34,27 @@ export type ShareServiceOptions = {
 	now?: () => Date;
 };
 
-export function lanAddress(): string | null {
-	const candidates: string[] = [];
+const VIRTUAL = /^(utun|bridge|vmnet|vboxnet|ipsec|ppp|tun|tap|awdl|llw|docker)/;
 
-	for (const addresses of Object.values(networkInterfaces())) {
+export function lanAddress(interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces()): string | null {
+	const candidates: { name: string; ip: string }[] = [];
+
+	for (const [name, addresses] of Object.entries(interfaces)) {
 		for (const address of addresses ?? []) {
-			if (address.family === "IPv4" && !address.internal) candidates.push(address.address);
+			if (address.family === "IPv4" && !address.internal) candidates.push({ name, ip: address.address });
 		}
 	}
 
 	const isPrivate = (ip: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
+	const privates = candidates.filter((candidate) => isPrivate(candidate.ip));
 
-	return candidates.find(isPrivate) ?? candidates[0] ?? null;
+	const best =
+		privates.find((candidate) => candidate.name.startsWith("en")) ??
+		privates.find((candidate) => !VIRTUAL.test(candidate.name)) ??
+		privates[0] ??
+		candidates[0];
+
+	return best?.ip ?? null;
 }
 
 export function readScreenRuntime(dirs: string[]): ScreenRuntime {

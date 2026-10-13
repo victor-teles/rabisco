@@ -21,7 +21,7 @@ import {
 	SNAPSHOT_GLOBAL,
 	viewerFiles,
 } from "../shared/share/viewer";
-import { createShareService, readScreenRuntime } from "./share";
+import { createShareService, lanAddress, readScreenRuntime } from "./share";
 import { tempDir } from "./test-utils";
 
 const snapshot = (name = "Shop </title>"): ShareSnapshot => ({
@@ -239,6 +239,39 @@ describe("share service", () => {
 		expect(() => shares.publish("/p", { ...snapshot(), start: "screens/nope.tsx" })).toThrow();
 		expect(() => shares.publish("/p", { ...snapshot(), modules: {} })).toThrow();
 		expect(shares.status("/p")).toBeNull();
+	});
+});
+
+describe("lanAddress", () => {
+	const ipv4 = (address: string, internal = false) => ({
+		address,
+		netmask: "255.255.255.0",
+		family: "IPv4" as const,
+		mac: "00:00:00:00:00:00",
+		internal,
+		cidr: null,
+	});
+
+	test("prefers Wi-Fi or Ethernet over a VPN or VM bridge listed first", () => {
+		expect(
+			lanAddress({
+				lo0: [ipv4("127.0.0.1", true)],
+				utun4: [ipv4("10.8.0.2")],
+				bridge100: [ipv4("192.168.64.1")],
+				vmnet8: [ipv4("172.16.5.1")],
+				en0: [ipv4("192.168.1.20")],
+			}),
+		).toBe("192.168.1.20");
+	});
+
+	test("skips virtual interfaces when there is no en interface", () => {
+		expect(lanAddress({ utun4: [ipv4("10.8.0.2")], eth1: [ipv4("10.0.0.5")] })).toBe("10.0.0.5");
+	});
+
+	test("falls back to the first private address, then any address", () => {
+		expect(lanAddress({ en0: [ipv4("8.8.4.4")], utun4: [ipv4("10.8.0.2")] })).toBe("10.8.0.2");
+		expect(lanAddress({ en0: [ipv4("8.8.4.4")] })).toBe("8.8.4.4");
+		expect(lanAddress({ lo0: [ipv4("127.0.0.1", true)] })).toBeNull();
 	});
 });
 
