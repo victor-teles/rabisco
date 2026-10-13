@@ -92,7 +92,7 @@ import { withDesignTokens } from "../../../shared/context/brand-kit";
 import { designTokensOf, type DesignTokens } from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
-import { FRAME_GAP, FRAME_SIZE, uniqueScreenPath } from "../../../shared/project";
+import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
@@ -118,7 +118,9 @@ import { DebugMenuItems } from "./screen-menu";
 import { ActionMenuItems, type MenuEntry, SEPARATOR } from "./action-menu";
 import { ELEMENT_MENU, elementActions } from "./element-actions";
 import { copyCode } from "./export/code-export";
+import { copyForAgent } from "./export/agent-export";
 import { copyImage, exportFlowPdf, exportImages } from "./export/image-export";
+import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
 import { checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog } from "./design-check-dialog";
@@ -1503,6 +1505,22 @@ export function EditorView({
 			enabled: single !== null,
 			run: () => single && void copyImage(single, files, appliedTokens),
 		},
+		{
+			id: "copy-for-agent",
+			label: "Copy for agent",
+			group: "Export",
+			chords: [{ code: "KeyC", mod: true, alt: true, shift: true }],
+			enabled: selected.some((frame) => isScreenFile(frame.file)),
+			run: () => void copyForAgent({ projectName, selected, files, theme: appliedTokens, elements: nodes }),
+		},
+		{
+			id: "sync-to-repo",
+			label: "Sync to repository…",
+			group: "Export",
+			chords: [{ code: "KeyS", mod: true, alt: true, shift: true }],
+			enabled: single !== null && isScreenFile(single.file),
+			run: () => single && askRepoSync({ projectPath, screen: single, files }),
+		},
 		...ALIGN_SHORTCUTS.map((item): Action => ({
 			id: `align-${item.alignment}`,
 			label: item.label,
@@ -2531,6 +2549,7 @@ export function EditorView({
 			<ShortcutSheet open={sheetOpen} onOpenChange={setSheetOpen} actions={actions} />
 			<CustomSizeDialog />
 			<ImportPageDialog />
+			<RepoSyncDialog />
 		</ScreenTheme>
 	);
 }
@@ -2555,6 +2574,8 @@ const SCREEN_MENU: MenuEntry[] = [
 	SEPARATOR,
 	"copy-screens",
 	"duplicate-screens",
+	"copy-for-agent",
+	"sync-to-repo",
 	{ label: "Export", items: ["export-png", "export-svg", "export-pdf", SEPARATOR, "copy-code", "copy-png"] },
 	SEPARATOR,
 	"delete-screens",

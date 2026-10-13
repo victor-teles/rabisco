@@ -109,8 +109,8 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 - ✅ An "agent is editing" marker on the frames an agent touches, and a log of agent changes in the History panel. Each write shows "<agent> is editing" on the screens it changed for 15 seconds, and lands in History with the agent's name
 - ✅ One-click setup for Claude Code, Codex, Cursor, VS Code and Claude Desktop, from Settings → Agents. It writes a `rabisco` server that launches the stdio bridge into each client's config (through `claude mcp add-json` for Claude Code), never a port or a token, and shows which clients are set up and which connected. The bridge itself ships with the `rabisco` CLI
 - ✅ A `rabisco` CLI: `open`, `check`, `screenshot`, `export` and `mcp` (the stdio bridge). It ships in the app bundle and runs on the app's own runtime; `rabisco open` works with the MCP server off
-- ⬜ "Send to agent": copy a screen or selection with its code, tokens and screenshot as context for a coding agent
-- ⬜ Sync a screen into an existing app repository: write it as a component at a path the user picks, with its imports
+- ✅ "Send to agent": copy a screen or selection with its code, tokens and screenshot as context for a coding agent. "Copy for agent" (`⌥⇧⌘C`, in the screen and element menus) copies Markdown with each selected screen's TSX, the selected elements' lines, the components the screens import, the DESIGN.md tokens as CSS, and the path of a PNG screenshot it saves in the system's temp folder
+- ✅ Sync a screen into an existing app repository: write it as a component at a path the user picks, with its imports. "Sync to repository…" (`⌥⇧⌘S`) writes the screen and the components it imports, points relative imports at their new places and uses the repository's shadcn aliases from `components.json`. It shows which files it replaces and which shadcn primitives and packages the repository still needs, and it remembers the repository and paths per screen
 
 **Done when** Claude Code can read the selected screen, change it, and the user can undo that change in Rabisco.
 

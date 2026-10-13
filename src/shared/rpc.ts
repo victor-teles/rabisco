@@ -5,6 +5,7 @@ import type { StyleId } from "./context/styles";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
+import type { RepoInfo } from "./export/repo-sync";
 import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
@@ -130,6 +131,11 @@ export type RabiscoRPC = {
 				params: { dir: string; name?: string; files: ExportFile[]; reveal?: boolean };
 				response: { dir: string };
 			};
+
+			/** Into a new folder in the system's temp folder, for "Copy for agent" screenshots */
+			writeAgentContext: { params: { files: ExportFile[] }; response: { dir: string } };
+			/** `paths` are repository-relative; the ones that exist come back in `existing` */
+			repoInfo: { params: { dir: string; paths: string[] }; response: RepoInfo };
 
 			/** Random link on the local network; republishing updates what it shows. */
 			sharePublish: { params: { path: string; snapshot: ShareSnapshot }; response: ShareStatus };

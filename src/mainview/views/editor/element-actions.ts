@@ -52,6 +52,7 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	{ label: "Distribute", items: ["distribute-horizontal", "distribute-vertical"] },
 	SEPARATOR,
 	"copy-element-code",
+	"copy-for-agent",
 	"go-to-source",
 	SEPARATOR,
 	"delete-element",

@@ -160,7 +160,7 @@ function frameOf(context: AgentContext, file: string): Frame {
 	return frame;
 }
 
-function describeElement(files: ProjectFiles, element: AgentElement) {
+export function describeElement(files: ProjectFiles, element: AgentElement) {
 	const source = files[element.file];
 
 	if (source === undefined) return null;

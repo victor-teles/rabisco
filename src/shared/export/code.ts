@@ -8,6 +8,15 @@ export function importSpecifiers(source: string): string[] {
 	return [...new Set([...source.matchAll(SPECIFIER)].map((match) => match[2]!))];
 }
 
+/** Replaces each import specifier with what `to` returns for it */
+export function rewriteSpecifiers(source: string, to: (specifier: string) => string): string {
+	return source.replace(SPECIFIER, (match, quote: string, specifier: string) => {
+		const head = match.slice(0, match.length - specifier.length - 1);
+
+		return `${head}${to(specifier)}${quote}`;
+	});
+}
+
 /** Transitive, in first-import order, without `path` itself. */
 export function localDependencies(files: ProjectFiles, path: string): string[] {
 	const exists = (file: string) => Object.hasOwn(files, file);

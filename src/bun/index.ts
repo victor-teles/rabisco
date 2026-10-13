@@ -8,6 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/main";
 import { existsSync } from "fs";
+import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { isString } from "../shared/guards";
 import type { Json } from "../shared/json";
@@ -18,6 +19,7 @@ import { createSecretStore } from "./ai/keychain";
 import { IMAGE_EXTENSIONS } from "./assets";
 import { createAiService } from "./ai/service";
 import { freeExportDir, writeExportFiles } from "./export";
+import { readRepoInfo } from "./repo-sync";
 import { createGit } from "./git";
 import { fetchBrandKit } from "./brand-kit";
 import { importCapturedImages } from "./import/images";
@@ -295,6 +297,17 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 
 				return { dir: target };
 			},
+			writeAgentContext: ({ files }) => {
+				const dir = freeExportDir(
+					join(tmpdir(), "rabisco-agent-context"),
+					new Date().toISOString().replace(/[:.]/g, "-"),
+				);
+
+				writeExportFiles(dir, files);
+
+				return { dir };
+			},
+			repoInfo: ({ dir, paths }) => readRepoInfo(dir, paths),
 			sharePublish: ({ path, snapshot }) => shares.publish(path, snapshot),
 			shareStatus: ({ path }) => shares.status(path),
 			shareStop: ({ path }) => (shares.stop(path), ok),

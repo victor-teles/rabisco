@@ -374,6 +374,12 @@ function createBrowserApi(): RabiscoApi {
 
 			return { dir };
 		},
+		async writeAgentContext() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async repoInfo() {
+			throw new Error(DESKTOP_ONLY);
+		},
 		// Share links and git need the main process (a server, the git CLI)
 		async sharePublish() {
 			throw new Error(DESKTOP_ONLY);

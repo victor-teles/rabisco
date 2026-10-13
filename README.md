@@ -146,6 +146,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥C`                                                      | Comments list                                                                      |
 | `⌥⌘S`                                                     | Save a checkpoint in version history (a git commit when git is set up)             |
 | `⌘C`, `⌘V`                                                | Copy the selected screens, paste screens or screen code as new screens             |
+| `⌥⇧⌘C`                                                    | Copy for agent: the selected screens' code, tokens and screenshot as Markdown      |
+| `⌥⇧⌘S`                                                    | Sync the selected screen and its components into an app repository                 |
 | Drop or paste (`⌘V`) an image on the canvas               | Add it to the moodboard; it goes with prompts about the screen it sits next to     |
 | `⌫` (moodboard image selected)                            | Delete the image; drag a corner to resize it (`⇧` frees the ratio)                 |
 | "Recreate from screenshot" (moodboard image selected)     | Make an editable screen that matches the image, placed beside it, as one undo step |
