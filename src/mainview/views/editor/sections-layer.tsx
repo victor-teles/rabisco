@@ -46,7 +46,15 @@ const COLOR_NAMES: Record<SectionColor, string> = {
 const tint = (color: SectionColor, percent: number) =>
 	`color-mix(in oklab, ${SECTION_COLOR[color]} ${percent}%, transparent)`;
 
-type Drag = { id: string; dragId: string; startX: number; startY: number; moved: boolean; targets: HTMLElement[] };
+type Drag = {
+	id: string;
+	dragId: string;
+	startX: number;
+	startY: number;
+	moved: boolean;
+	targets: HTMLElement[];
+	labels: HTMLElement[];
+};
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -92,8 +100,13 @@ export function SectionsLayer(props: SectionsLayerProps) {
 	const drag = useRef<Drag | null>(null);
 	const resizing = useRef<Resize | null>(null);
 
-	const translate = (targets: HTMLElement[], dx: number, dy: number) => {
-		for (const target of targets) target.style.translate = dx || dy ? `${dx}px ${dy}px` : "";
+	const translate = ({ targets, labels }: Drag, dx: number, dy: number) => {
+		const moved = dx || dy;
+
+		for (const target of targets) target.style.translate = moved ? `${dx}px ${dy}px` : "";
+
+		for (const label of labels)
+			label.style.translate = moved ? `calc(${dx}px * var(--zoom)) calc(${dy}px * var(--zoom))` : "";
 	};
 
 	const start = (event: React.PointerEvent, section: CanvasSection) => {
@@ -109,6 +122,12 @@ export function SectionsLayer(props: SectionsLayerProps) {
 			),
 		].flatMap((target) => (target ? [target] : []));
 
+		const chrome = layer.parentElement?.querySelector<HTMLElement>("[data-chrome-layer]");
+
+		const labels = members.frames.flatMap(
+			(file) => chrome?.querySelector<HTMLElement>(`[data-frame-file="${CSS.escape(file)}"]`) ?? [],
+		);
+
 		drag.current = {
 			id: section.id,
 			dragId: crypto.randomUUID(),
@@ -116,6 +135,7 @@ export function SectionsLayer(props: SectionsLayerProps) {
 			startY: event.clientY,
 			moved: false,
 			targets,
+			labels,
 		};
 	};
 
@@ -138,7 +158,7 @@ export function SectionsLayer(props: SectionsLayerProps) {
 			return;
 		current.moved = true;
 		const { dx, dy } = offset(event, current);
-		translate(current.targets, dx, dy);
+		translate(current, dx, dy);
 	};
 
 	const onPointerUp = (event: React.PointerEvent) => {
@@ -152,7 +172,7 @@ export function SectionsLayer(props: SectionsLayerProps) {
 		const { dx, dy } = offset(event, current);
 		onMove(current.id, dx, dy, current.dragId);
 		onMoveEnd();
-		translate(current.targets, 0, 0);
+		translate(current, 0, 0);
 	};
 
 	const startResize = (event: React.PointerEvent, section: CanvasSection, handle: Handle) => {

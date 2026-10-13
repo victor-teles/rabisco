@@ -3,6 +3,8 @@ import { selectableParent } from "@/lib/element-nav";
 import { measure, measureLabel, type MeasureLine, type MeasureSegment } from "@/lib/measure";
 import type { FrameHost } from "@/lib/render/frame-host";
 import { sourceVersion, type Box } from "@/lib/render/protocol";
+import { cn } from "@/lib/utils";
+import { ChromePortal } from "./chrome-layer";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import type { Frame } from "../../../shared/types";
 
@@ -99,7 +101,7 @@ export function MeasureLayer({
 				<Guide key={`guide-${i}`} guide={guide} />
 			))}
 			{lines.map((line, i) => (
-				<Line key={i} line={line} />
+				<Line key={i} line={line} frame={frame} />
 			))}
 		</div>
 	);
@@ -120,7 +122,7 @@ function Guide({ guide }: { guide: MeasureSegment }) {
 	);
 }
 
-function Line({ line }: { line: MeasureLine }) {
+function Line({ line, frame }: { line: MeasureLine; frame: Frame }) {
 	const middle = (line.from + line.to) / 2;
 	const across = `calc(${line.at}px - 0.5px * var(--unzoom))`;
 
@@ -134,21 +136,22 @@ function Line({ line }: { line: MeasureLine }) {
 						: { left: across, top: line.from, width: THICKNESS, height: line.to - line.from, background: MEASURE_COLOR }
 				}
 			/>
-			<div
-				className="absolute rounded-[4px] px-1 font-mono text-[11px]/4 whitespace-nowrap text-white tabular-nums"
-				style={{
-					left: line.axis === "x" ? middle : line.at,
-					top: line.axis === "x" ? line.at : middle,
-					background: MEASURE_COLOR,
-					transform:
-						line.axis === "x"
-							? "translateX(-50%) scale(var(--unzoom)) translateY(4px)"
-							: "translateY(-50%) scale(var(--unzoom)) translateX(4px)",
-					transformOrigin: line.axis === "x" ? "top center" : "left center",
+			<ChromePortal
+				box={{
+					x: frame.x + (line.axis === "x" ? middle : line.at),
+					y: frame.y + (line.axis === "x" ? line.at : middle),
 				}}
 			>
-				{measureLabel(line.value)}
-			</div>
+				<div
+					className={cn(
+						"absolute rounded-[4px] px-1 font-mono text-[11px]/4 whitespace-nowrap text-white tabular-nums",
+						line.axis === "x" ? "-translate-x-1/2 translate-y-1" : "translate-x-1 -translate-y-1/2",
+					)}
+					style={{ background: MEASURE_COLOR }}
+				>
+					{measureLabel(line.value)}
+				</div>
+			</ChromePortal>
 		</>
 	);
 }

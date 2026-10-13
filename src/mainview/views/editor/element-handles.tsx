@@ -39,6 +39,7 @@ import {
 	type Side,
 	type SizeMode,
 } from "@/lib/resize";
+import { ChromePortal } from "./chrome-layer";
 
 type Point = { x: number; y: number };
 
@@ -152,6 +153,7 @@ function pending(
 type ElementHandlesProps = {
 	/** Frame-local, the first instance */
 	box: Box;
+	frame: Point;
 	layout: ElementLayout;
 	spacing: Spacing | null;
 	/** The element's classes, which the handles can write */
@@ -170,6 +172,7 @@ type ElementHandlesProps = {
  */
 export function ElementHandles({
 	box,
+	frame,
 	layout,
 	spacing,
 	classes,
@@ -344,38 +347,34 @@ export function ElementHandles({
 					{...handlers({ kind: "size", handle, start: { width: box.width, height: box.height } })}
 				/>
 			))}
-			<div
-				className="pointer-events-auto absolute flex items-center rounded-[4px] bg-primary font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums"
-				style={{
-					left: box.x + box.width / 2,
-					top: box.y + box.height,
-					transform: "translateX(-50%) scale(var(--unzoom)) translateY(4px)",
-					transformOrigin: "top center",
-				}}
-				onPointerDown={(event) => event.stopPropagation()}
-				onDoubleClick={(event) => event.stopPropagation()}
-			>
-				{label ? (
-					<span className="px-1 font-mono">{label}</span>
-				) : (
-					<>
-						{variant ? <span className="pl-1 font-mono opacity-80">{variant}:</span> : null}
-						<SizeMenu
-							dimension="width"
-							mode={sizeMode(classes, "width", layout.parent, variant)}
-							size={box.width}
-							onChange={setMode}
-						/>
-						<span className="opacity-80">×</span>
-						<SizeMenu
-							dimension="height"
-							mode={sizeMode(classes, "height", layout.parent, variant)}
-							size={box.height}
-							onChange={setMode}
-						/>
-					</>
-				)}
-			</div>
+			<ChromePortal box={{ ...box, x: frame.x + box.x, y: frame.y + box.y }}>
+				<div
+					className="pointer-events-auto absolute top-full left-1/2 flex -translate-x-1/2 translate-y-1 items-center rounded-[4px] bg-primary font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums"
+					onPointerDown={(event) => event.stopPropagation()}
+					onDoubleClick={(event) => event.stopPropagation()}
+				>
+					{label ? (
+						<span className="px-1 font-mono">{label}</span>
+					) : (
+						<>
+							{variant ? <span className="pl-1 font-mono opacity-80">{variant}:</span> : null}
+							<SizeMenu
+								dimension="width"
+								mode={sizeMode(classes, "width", layout.parent, variant)}
+								size={box.width}
+								onChange={setMode}
+							/>
+							<span className="opacity-80">×</span>
+							<SizeMenu
+								dimension="height"
+								mode={sizeMode(classes, "height", layout.parent, variant)}
+								size={box.height}
+								onChange={setMode}
+							/>
+						</>
+					)}
+				</div>
+			</ChromePortal>
 		</>
 	);
 }

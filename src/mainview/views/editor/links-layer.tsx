@@ -2,6 +2,7 @@ import { memo, useMemo, useSyncExternalStore } from "react";
 import { type Connector, connectorsOf, linkAnchors, OUTWARD, type Point, routesOf } from "@/lib/connectors";
 import { linkBoxes, subscribeLinkBoxes } from "@/lib/render/link-boxes";
 import { cn } from "@/lib/utils";
+import { ChromePortal } from "./chrome-layer";
 import type { ElementRef } from "../../../shared/prototype/links";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 
@@ -138,26 +139,19 @@ export const LinksLayer = memo(function LinksLayer({
 				const broken = missing !== null;
 
 				return (
-					<div
-						key={connector.key}
-						className="pointer-events-none absolute"
-						style={{ left: from.x, top: from.y, width: 0, height: 0 }}
-					>
+					<ChromePortal key={connector.key} box={from}>
 						<div
 							className={cn(
 								"absolute top-0 left-0 rounded-full border bg-background px-1.5 text-[11px] leading-[18px] whitespace-nowrap shadow-xs",
 								broken ? "border-destructive/40 text-destructive" : "text-muted-foreground",
 								isSelected(connector) && !broken && "border-primary/50 text-primary",
 							)}
-							style={{
-								transform: `scale(var(--unzoom)) translate(${out.x * (STUB + 4)}px, ${out.y * (STUB + 4)}px) translateY(-50%)`,
-								transformOrigin: "0 0",
-							}}
+							style={{ transform: `translate(${out.x * (STUB + 4)}px, ${out.y * (STUB + 4)}px) translateY(-50%)` }}
 							title={broken ? `${missing} is not a screen of this project` : "Goes back to the previous screen"}
 						>
 							{broken ? `Missing: ${missing}` : "Back"}
 						</div>
-					</div>
+					</ChromePortal>
 				);
 			})}
 		</>

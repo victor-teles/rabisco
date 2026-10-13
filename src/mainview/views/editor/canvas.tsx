@@ -50,6 +50,7 @@ import { guidesFor, snapMove, type Guide } from "@/lib/snapping";
 import type { Viewport, ViewportStore } from "@/lib/viewport";
 import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
+import { ChromeLayer, ChromePortal } from "./chrome-layer";
 import { ElementHandles } from "./element-handles";
 import { LayoutGrids } from "./layout-grids";
 import { LinksLayer } from "./links-layer";
@@ -388,6 +389,8 @@ export function Canvas({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const layerRef = useRef<HTMLDivElement>(null);
 	const gridRef = useRef<HTMLDivElement>(null);
+	const chromeRef = useRef<HTMLDivElement>(null);
+	const [chromeLayer, setChromeLayer] = useState<HTMLElement | null>(null);
 	const [drag, setDrag] = useState<Drag | null>(null);
 	/** Where the dragged frames are until the drag commits them */
 	const [moving, setMoving] = useState<FrameMove[] | null>(null);
@@ -523,11 +526,13 @@ export function Canvas({
 		state.request = 0;
 		const layer = layerRef.current;
 		const grid = gridRef.current;
+		const chrome = chromeRef.current;
 
-		if (!layer || !grid) return;
+		if (!layer || !grid || !chrome) return;
 		const { x, y, zoom } = view.get();
 		const size = GRID * zoom;
 		layer.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+		chrome.style.transform = `translate(${x}px, ${y}px)`;
 
 		// The grid layer is a cell larger than the view on every side and moves by less than a cell
 		const offset = (value: number) => ((value % size) + size) % size;
@@ -537,10 +542,13 @@ export function Canvas({
 		state.zoom = zoom;
 		layer.style.setProperty("--zoom", String(zoom));
 		layer.style.setProperty("--unzoom", String(1 / zoom));
+		chrome.style.setProperty("--zoom", String(zoom));
 		grid.style.inset = `${-size}px`;
 		grid.style.backgroundSize = `${size}px ${size}px`;
 		grid.style.backgroundImage = zoom > 0.25 ? GRID_DOTS : "none";
 	}, [view]);
+
+	useLayoutEffect(() => setChromeLayer(chromeRef.current), []);
 
 	useLayoutEffect(() => {
 		paint();
@@ -1827,7 +1835,7 @@ export function Canvas({
 			: undefined;
 
 	return (
-		<>
+		<ChromeLayer value={chromeLayer}>
 			<div
 				ref={containerRef}
 				data-canvas
@@ -2011,6 +2019,7 @@ export function Canvas({
 						/>
 					) : null}
 				</div>
+				<div ref={chromeRef} data-chrome-layer className="absolute top-0 left-0" />
 				{/* WebKit sends drag events into iframes despite `pointer-events: none`, and a frame
 				    would swallow the drop: while a component drags, this layer takes them all */}
 				{draggingComponent && onDropItem ? <div className="absolute inset-0" /> : null}
@@ -2038,7 +2047,7 @@ export function Canvas({
 					</ContextMenuContent>
 				</ContextMenu>
 			) : null}
-		</>
+		</ChromeLayer>
 	);
 }
 
@@ -2082,93 +2091,98 @@ const FrameView = memo(function FrameView({
 	live?: boolean;
 }) {
 	const streaming = writing && !writing.done;
+	const [hovered, setHovered] = useState(false);
 
 	return (
 		<div
 			data-frame-file={draft ? undefined : frame.file}
 			className={cn("group/frame absolute", draft && "pointer-events-none")}
 			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+			onPointerEnter={() => setHovered(true)}
+			onPointerLeave={() => setHovered(false)}
 		>
-			<div
-				className={cn(
-					"absolute bottom-full left-0 flex origin-bottom-left items-center gap-1.5 pb-1 text-xs font-medium whitespace-nowrap",
-					selected ? "text-primary" : "text-muted-foreground",
-				)}
-				style={{ transform: "scale(var(--unzoom))", maxWidth: `calc(${frame.width}px * var(--zoom))` }}
-			>
-				{renaming && onRename ? (
-					<input
-						autoFocus
-						defaultValue={frame.name}
-						aria-label="Screen name"
-						className="-my-0.5 h-5 rounded-sm bg-background px-1 font-medium text-foreground ring-1 ring-primary outline-none select-text"
-						style={{ width: `${Math.max(frame.name.length, 8) + 2}ch` }}
-						onFocus={(event) => event.currentTarget.select()}
-						onPointerDown={(event) => event.stopPropagation()}
-						onDoubleClick={(event) => event.stopPropagation()}
-						onKeyDown={(event) => {
-							if (event.key === "Enter") onRename(frame.file, event.currentTarget.value);
-							else if (event.key === "Escape") onRename(frame.file, null);
-						}}
-						onBlur={(event) => onRename(frame.file, event.currentTarget.value)}
-					/>
-				) : (
-					<span data-frame-label className={cn("truncate", agent && "max-w-full shrink-0")}>
-						{frame.name}
-					</span>
-				)}
-				{failure && !streaming && !draft ? (
-					<span className="flex shrink-0 items-center gap-0.5 font-normal text-destructive" title={failure.message}>
-						<TriangleAlert className="size-3" />
-						Didn’t render
-					</span>
-				) : null}
-				{failure && onFix && !streaming && !draft ? (
-					<Button
-						variant="ghost"
-						size="xs"
-						className="-my-0.5 h-5 shrink-0 px-1.5 text-foreground"
-						title={failure.message}
-						onPointerDown={(event) => event.stopPropagation()}
-						onClick={() => onFix(frame.file)}
-					>
-						Fix
-					</Button>
-				) : null}
-				{variation === "picked" ? (
-					<span className="flex shrink-0 items-center gap-0.5 font-normal text-muted-foreground">
-						<Check className="size-3" />
-						Picked
-					</span>
-				) : null}
-				{streaming ? (
-					<span className="shrink-0 font-normal text-primary motion-safe:animate-pulse">Writing…</span>
-				) : null}
-				{agent && !streaming && !draft ? (
-					<span
-						className="flex min-w-0 items-center gap-1 overflow-hidden font-normal text-primary"
-						title={`${agent} is editing`}
-					>
-						<Bot className="size-3 shrink-0" />
-						<span className="truncate">{agent} is editing</span>
-					</span>
-				) : null}
-				{variation === "alternate" && onPick && !draft ? (
-					<Button
-						variant="ghost"
-						size="xs"
-						className={cn(
-							"-my-0.5 h-5 shrink-0 px-1.5 text-foreground",
-							!selected &&
-								"opacity-0 group-hover/frame:opacity-100 focus-visible:opacity-100 motion-safe:transition-opacity",
-						)}
-						onPointerDown={(event) => event.stopPropagation()}
-						onClick={() => onPick(frame.file)}
-					>
-						Pick
-					</Button>
-				) : null}
-			</div>
+			<ChromePortal box={frame} data-frame-file={draft ? undefined : frame.file}>
+				<div
+					className={cn(
+						"absolute bottom-full left-0 flex max-w-full items-center gap-1.5 pb-1 text-xs font-medium whitespace-nowrap",
+						!draft && "pointer-events-auto",
+						selected ? "text-primary" : "text-muted-foreground",
+					)}
+				>
+					{renaming && onRename ? (
+						<input
+							autoFocus
+							defaultValue={frame.name}
+							aria-label="Screen name"
+							className="-my-0.5 h-5 rounded-sm bg-background px-1 font-medium text-foreground ring-1 ring-primary outline-none select-text"
+							style={{ width: `${Math.max(frame.name.length, 8) + 2}ch` }}
+							onFocus={(event) => event.currentTarget.select()}
+							onPointerDown={(event) => event.stopPropagation()}
+							onDoubleClick={(event) => event.stopPropagation()}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") onRename(frame.file, event.currentTarget.value);
+								else if (event.key === "Escape") onRename(frame.file, null);
+							}}
+							onBlur={(event) => onRename(frame.file, event.currentTarget.value)}
+						/>
+					) : (
+						<span data-frame-label className={cn("truncate", agent && "max-w-full shrink-0")}>
+							{frame.name}
+						</span>
+					)}
+					{failure && !streaming && !draft ? (
+						<span className="flex shrink-0 items-center gap-0.5 font-normal text-destructive" title={failure.message}>
+							<TriangleAlert className="size-3" />
+							Didn’t render
+						</span>
+					) : null}
+					{failure && onFix && !streaming && !draft ? (
+						<Button
+							variant="ghost"
+							size="xs"
+							className="-my-0.5 h-5 shrink-0 px-1.5 text-foreground"
+							title={failure.message}
+							onPointerDown={(event) => event.stopPropagation()}
+							onClick={() => onFix(frame.file)}
+						>
+							Fix
+						</Button>
+					) : null}
+					{variation === "picked" ? (
+						<span className="flex shrink-0 items-center gap-0.5 font-normal text-muted-foreground">
+							<Check className="size-3" />
+							Picked
+						</span>
+					) : null}
+					{streaming ? (
+						<span className="shrink-0 font-normal text-primary motion-safe:animate-pulse">Writing…</span>
+					) : null}
+					{agent && !streaming && !draft ? (
+						<span
+							className="flex min-w-0 items-center gap-1 overflow-hidden font-normal text-primary"
+							title={`${agent} is editing`}
+						>
+							<Bot className="size-3 shrink-0" />
+							<span className="truncate">{agent} is editing</span>
+						</span>
+					) : null}
+					{variation === "alternate" && onPick && !draft ? (
+						<Button
+							variant="ghost"
+							size="xs"
+							className={cn(
+								"-my-0.5 h-5 shrink-0 px-1.5 text-foreground",
+								!selected && !hovered && "opacity-0",
+								"focus-visible:opacity-100 motion-safe:transition-opacity",
+							)}
+							onPointerDown={(event) => event.stopPropagation()}
+							onClick={() => onPick(frame.file)}
+						>
+							Pick
+						</Button>
+					) : null}
+				</div>
+			</ChromePortal>
 			<div
 				className={cn(
 					"h-full w-full overflow-hidden bg-white",
@@ -2255,17 +2269,11 @@ function FrameHandles({ frame, resizing }: { frame: Frame; resizing: boolean }) 
 				);
 			})}
 			{resizing ? (
-				<div
-					className="absolute rounded-[4px] bg-primary px-1 font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums"
-					style={{
-						left: "50%",
-						top: "100%",
-						transform: "translateX(-50%) scale(var(--unzoom)) translateY(6px)",
-						transformOrigin: "top center",
-					}}
-				>
-					{px(frame.width)} × {px(frame.height)}
-				</div>
+				<ChromePortal box={frame}>
+					<div className="absolute top-full left-1/2 -translate-x-1/2 translate-y-1.5 rounded-[4px] bg-primary px-1 font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums">
+						{px(frame.width)} × {px(frame.height)}
+					</div>
+				</ChromePortal>
 			) : null}
 		</div>
 	);
@@ -2398,35 +2406,22 @@ function ElementOutline({
 					}}
 				/>
 			))}
-			{label ? (
-				<div
-					className="absolute origin-bottom-left rounded-[4px] px-1 font-mono text-[11px]/4 whitespace-nowrap text-white"
-					style={{
-						left: first.x,
-						top: first.y,
-						transform: "translateY(-100%) scale(var(--unzoom)) translateY(-2px)",
-						transformOrigin: "top left",
-						background: color,
-					}}
-				>
-					{label}
-					{dimensions && !selected ? <span className="ml-1.5 font-sans opacity-80">{dimensions}</span> : null}
-				</div>
-			) : null}
-			{dimensions && selected ? (
-				<div
-					className="absolute rounded-[4px] px-1 font-sans text-[11px]/4 whitespace-nowrap text-white tabular-nums"
-					style={{
-						left: first.x + first.width / 2,
-						top: first.y + first.height,
-						transform: "translateX(-50%) scale(var(--unzoom)) translateY(4px)",
-						transformOrigin: "top center",
-						background: color,
-					}}
-				>
-					{dimensions}
-				</div>
-			) : null}
+			<ChromePortal box={{ ...first, x: frame.x + first.x, y: frame.y + first.y }}>
+				{label ? (
+					<div className={OUTLINE_LABEL} style={{ left: 0, top: 0, transform: LABEL_ABOVE, background: color }}>
+						{label}
+						{dimensions && !selected ? <span className="ml-1.5 font-sans opacity-80">{dimensions}</span> : null}
+					</div>
+				) : null}
+				{dimensions && selected ? (
+					<div
+						className={cn(OUTLINE_LABEL, "top-full left-1/2 -translate-x-1/2 translate-y-1 font-sans tabular-nums")}
+						style={{ background: color }}
+					>
+						{dimensions}
+					</div>
+				) : null}
+			</ChromePortal>
 		</div>
 	);
 }
@@ -2520,7 +2515,7 @@ function SuggestionOutlines({
 const OUTLINE_LABEL = "absolute rounded-[4px] px-1 font-mono text-[11px]/4 whitespace-nowrap text-white";
 
 /** Raises a label above its box, at any zoom */
-const LABEL_ABOVE = "translateY(-100%) scale(var(--unzoom)) translateY(-2px)";
+const LABEL_ABOVE = "translateY(calc(-100% - 2px))";
 
 function InsertOutline({ drag }: { drag: Extract<Drag, { kind: "insert" }> }) {
 	const rect = rectFromPoints(drag.start, drag.current);
@@ -2536,17 +2531,16 @@ function InsertOutline({ drag }: { drag: Extract<Drag, { kind: "insert" }> }) {
 				outline: "calc(1px * var(--unzoom)) solid var(--primary)",
 			}}
 		>
-			<div
-				className={cn(OUTLINE_LABEL, "bg-primary font-sans tabular-nums")}
-				style={{
-					left: rect.width / 2,
-					top: "100%",
-					transform: "translateX(-50%) scale(var(--unzoom)) translateY(4px)",
-					transformOrigin: "top center",
-				}}
-			>
-				{drag.tool === "text" ? px(rect.width) : sizeOf(rect)}
-			</div>
+			<ChromePortal box={{ ...rect, height: drag.tool === "text" ? 0 : rect.height }}>
+				<div
+					className={cn(
+						OUTLINE_LABEL,
+						"top-full left-1/2 -translate-x-1/2 translate-y-1 bg-primary font-sans tabular-nums",
+					)}
+				>
+					{drag.tool === "text" ? px(rect.width) : sizeOf(rect)}
+				</div>
+			</ChromePortal>
 		</div>
 	);
 }
@@ -2571,17 +2565,16 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 					boxShadow: "0 0 0 calc(2px * var(--unzoom)) var(--destructive)",
 				}}
 			>
-				<div
-					className={cn(OUTLINE_LABEL, "bg-destructive font-sans font-medium")}
-					style={{
-						left: frame.width / 2,
-						top: 0,
-						transform: "translateX(-50%) scale(var(--unzoom)) translateY(12px)",
-						transformOrigin: "top center",
-					}}
-				>
-					Can't drop here
-				</div>
+				<ChromePortal box={frame}>
+					<div
+						className={cn(
+							OUTLINE_LABEL,
+							"top-0 left-1/2 -translate-x-1/2 translate-y-3 bg-destructive font-sans font-medium",
+						)}
+					>
+						Can't drop here
+					</div>
+				</ChromePortal>
 			</div>
 		);
 	const box = clip(spot.box, frame);
@@ -2610,12 +2603,11 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 						outline: `calc(1.5px * var(--unzoom)) ${solid ? "solid" : "dashed"} var(--primary)`,
 					}}
 				>
-					<div
-						className={cn(OUTLINE_LABEL, "bg-primary")}
-						style={{ left: 0, top: 0, transform: LABEL_ABOVE, transformOrigin: "top left" }}
-					>
-						{spot.name}
-					</div>
+					<ChromePortal box={{ x: frame.x + box.x, y: frame.y + box.y }}>
+						<div className={cn(OUTLINE_LABEL, "bg-primary")} style={{ left: 0, top: 0, transform: LABEL_ABOVE }}>
+							{spot.name}
+						</div>
+					</ChromePortal>
 				</div>
 			) : null}
 			{line && shownLine ? (
@@ -2712,6 +2704,7 @@ function SelectedElement({
 				>
 					<ElementHandles
 						box={handles.first}
+						frame={frame}
 						layout={handles.layout}
 						spacing={spacing}
 						classes={handles.info.classes}
@@ -2823,34 +2816,41 @@ function GroupOutline({
 
 	return (
 		<div className="pointer-events-none absolute" style={style}>
-			{/* As wide as the group on screen, so the label can drop "Compare" when it's narrow */}
-			<div
-				className="@container absolute bottom-full left-0 mb-1.5 origin-bottom-left"
-				style={{ transform: "scale(var(--unzoom))", width: `calc((${bounds.width}px + var(--pad) * 2) * var(--zoom))` }}
-			>
+			<ChromePortal box={bounds}>
+				{/* As wide as the group on screen, so the label can drop "Compare" when it's narrow */}
 				<div
-					className="pointer-events-auto flex w-fit max-w-full items-center gap-1 text-xs whitespace-nowrap text-muted-foreground"
-					onPointerDown={(event) => event.stopPropagation()}
+					className="@container absolute"
+					style={{
+						"--pad": `min(${GROUP_PADDING}px, calc(${FRAME_GAP / 3}px * var(--zoom)))`,
+						left: "calc(var(--pad) * -1)",
+						bottom: `calc(100% + var(--pad) + ${GROUP_LABEL_ROOM}px + 6px * var(--zoom))`,
+						width: "calc(100% + var(--pad) * 2)",
+					}}
 				>
-					<span className="min-w-0 truncate pl-1">
-						<span className="font-medium text-foreground/80">{name}</span> · {count}{" "}
-						{count === 1 ? "variation" : "variations"}
-					</span>
-					{onCompare && count > 1 ? (
-						<Button
-							variant="ghost"
-							size="xs"
-							className="h-5 shrink-0 px-1.5"
-							aria-label="Compare"
-							title="Compare"
-							onClick={() => onCompare(group.base)}
-						>
-							<Columns2 />
-							<span className="hidden @min-[240px]:inline">Compare</span>
-						</Button>
-					) : null}
+					<div
+						className="pointer-events-auto flex w-fit max-w-full items-center gap-1 text-xs whitespace-nowrap text-muted-foreground"
+						onPointerDown={(event) => event.stopPropagation()}
+					>
+						<span className="min-w-0 truncate pl-1">
+							<span className="font-medium text-foreground/80">{name}</span> · {count}{" "}
+							{count === 1 ? "variation" : "variations"}
+						</span>
+						{onCompare && count > 1 ? (
+							<Button
+								variant="ghost"
+								size="xs"
+								className="h-5 shrink-0 px-1.5"
+								aria-label="Compare"
+								title="Compare"
+								onClick={() => onCompare(group.base)}
+							>
+								<Columns2 />
+								<span className="hidden @min-[240px]:inline">Compare</span>
+							</Button>
+						) : null}
+					</div>
 				</div>
-			</div>
+			</ChromePortal>
 		</div>
 	);
 }
