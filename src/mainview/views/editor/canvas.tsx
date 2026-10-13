@@ -405,6 +405,7 @@ export function Canvas({
 	const pendingMarquee = useRef(0);
 	const pendingInsert = useRef(0);
 	const probeRef = useRef<((clientX: number, clientY: number) => Promise<DropPreview | null>) | null>(null);
+	const updateDropRef = useRef((_clientX: number, _clientY: number) => {});
 
 	const shown = useMemo(() => {
 		const moved = moving ? withMoves(frames, moving) : frames;
@@ -1089,6 +1090,10 @@ export function Canvas({
 		void run();
 	};
 
+	useLayoutEffect(() => {
+		updateDropRef.current = updateDrop;
+	});
+
 	const isFileDrag = (event: React.DragEvent) =>
 		!!onDropFiles && !isComponentDrag(event) && event.dataTransfer.types.includes("Files");
 
@@ -1295,6 +1300,18 @@ export function Canvas({
 
 		return () => window.removeEventListener("keydown", onKey, true);
 	}, [draggingElement, cancelElementDrag]);
+
+	useEffect(() => {
+		if (!draggingElement || !dropFile) return;
+
+		return onFrameStatus((status) => {
+			const last = lastPointer.current;
+
+			if (status.entry !== dropFile || status.status === "loading" || status.status === "ready") return;
+
+			if (last && containerRef.current?.contains(status.frame)) updateDropRef.current(last.clientX, last.clientY);
+		});
+	}, [draggingElement, dropFile]);
 
 	const zoomOf = useCallback(() => view.get().zoom, [view]);
 
@@ -1548,6 +1565,9 @@ export function Canvas({
 				shiftEntries();
 			}
 
+			const file = frameAt(event.clientX, event.clientY)?.file ?? null;
+
+			if (file !== dropFile) setDropFile(file);
 			updateDrop(event.clientX, event.clientY);
 		} else if (drag.kind === "frames") {
 			const dx = event.clientX - drag.startX;
