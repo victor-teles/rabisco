@@ -69,16 +69,11 @@ export async function sealText(text: string, password: string, rounds = SEAL_ROU
 	const encoder = new TextEncoder();
 
 	const base = await crypto.subtle.importKey("raw", encoder.encode(password.normalize("NFC")), "PBKDF2", false, [
-		"deriveKey",
+		"deriveBits",
 	]);
 
-	const key = await crypto.subtle.deriveKey(
-		{ name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds },
-		base,
-		{ name: "AES-GCM", length: 256 },
-		false,
-		["encrypt"],
-	);
+	const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds }, base, 256);
+	const key = await crypto.subtle.importKey("raw", bits, "AES-GCM", false, ["encrypt"]);
 
 	const data = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(text)));
 

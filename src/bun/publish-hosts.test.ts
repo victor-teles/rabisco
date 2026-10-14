@@ -265,9 +265,11 @@ describe("Vercel", () => {
 		const bad = createVercel({
 			fetch: forbidden({ code: "forbidden", message: "Not authorized", invalidToken: true }),
 		});
+
 		await expect(bad.verify("bad")).rejects.toThrow("Vercel didn't accept the token");
 
 		const narrow = createVercel({ fetch: forbidden({ code: "forbidden", message: "Not allowed for this scope" }) });
+
 		await expect(narrow.verify("narrow")).rejects.toThrow(
 			"Vercel refused the request: Not allowed for this scope. Make a token with an expiry date",
 		);
