@@ -434,6 +434,17 @@ function textBoxes(node: CapturedNode, out: CapturedBox[]) {
 	return out;
 }
 
+const truncates = (styles: CssValues) =>
+	styles["text-overflow"] === "ellipsis" || Number(styles["-webkit-line-clamp"]) > 0;
+
+function clipped(text: CapturedBox, node: CapturedNode): CapturedBox {
+	if (!truncates(node.styles)) return text;
+	const content = contentBox(node.box, paddingOf(node.styles));
+	const left = Math.max(text.x, content.x);
+
+	return { ...text, x: left, width: Math.max(0, Math.min(end(text, "x"), end(content, "x")) - left) };
+}
+
 const sameStyle = (a: TextStyle, b: TextStyle) => JSON.stringify(a) === JSON.stringify(b);
 
 type TextOptions = { box: CapturedBox; owner: CapturedNode | null; fits: boolean };
@@ -828,8 +839,9 @@ function elementLayer(node: CapturedNode, parentInherited: Inherited, context: C
 		const display = node.styles.display ?? "block";
 		const container = /flex|grid/.test(display);
 
-		const truncated = node.styles["text-overflow"] === "ellipsis" || Number(node.styles["-webkit-line-clamp"]) > 0;
-		const unclipped = truncated ? { ...node, styles: { ...node.styles, "overflow-x": "", "overflow-y": "" } } : node;
+		const unclipped = truncates(node.styles)
+			? { ...node, styles: { ...node.styles, "overflow-x": "", "overflow-y": "" } }
+			: node;
 
 		if (textOnly && !root && !hasVisuals(unclipped) && !container) {
 			const text = unionBox(textBoxes(node, []));
@@ -868,7 +880,8 @@ function childItems(node: CapturedNode, inherited: Inherited, decoration: string
 	let run: CapturedNode[] = [];
 
 	const flush = () => {
-		const box = unionBox(run.flatMap((child) => textBoxes(child, [])));
+		const text = unionBox(run.flatMap((child) => textBoxes(child, [])));
+		const box = text && clipped(text, node);
 
 		if (box) {
 			const layer = textLayer(run, inherited, decoration, { box, owner: node, fits: true });
@@ -1098,12 +1111,13 @@ function gridLayout(node: CapturedNode, children: Layer[]): Layout | null {
 
 	if (children.some((child) => !near(child.box.width, tracks[0]!))) return null;
 	const single = tracks.length === 1;
+	const oneRow = children.length <= tracks.length;
 
 	return {
 		mode: single ? "VERTICAL" : "HORIZONTAL",
 		spacing: single ? rowGap : columnGap,
-		counterSpacing: single ? 0 : rowGap,
-		wrap: !single,
+		counterSpacing: single || oneRow ? 0 : rowGap,
+		wrap: !single && !oneRow,
 		padding,
 		justify: "MIN",
 		align: "MIN",
@@ -1203,7 +1217,9 @@ function hugs(layout: Layout, frame: CapturedBox, children: Layer[]) {
 	const pads = (axis: Axis) => (axis === "x" ? padding.left + padding.right : padding.top + padding.bottom);
 	const spacing = layout.justify === "SPACE_BETWEEN" ? null : layout.spacing;
 	const right = Math.max(...children.map((child) => end(child.box, primary) - frame[primary]));
-	const bottom = Math.max(...children.map((child) => end(child.box, counter) - frame[counter]));
+	const sized = children.filter((_, i) => !layout.stretch[i]);
+	const top = Math.min(...sized.map((child) => child.box[counter] - frame[counter]));
+	const bottom = Math.max(...sized.map((child) => end(child.box, counter) - frame[counter]));
 
 	const total =
 		children.reduce((sum, child) => sum + size(child.box, primary), 0) + (spacing ?? 0) * (children.length - 1);
@@ -1211,10 +1227,14 @@ function hugs(layout: Layout, frame: CapturedBox, children: Layer[]) {
 	const primaryHug =
 		!layout.wrap &&
 		spacing !== null &&
+		!layout.grow.some(Boolean) &&
 		near(size(frame, primary), total + pads(primary)) &&
 		near(right + (primary === "x" ? padding.right : padding.bottom), size(frame, primary));
 
-	const counterHug = near(bottom + (counter === "x" ? padding.right : padding.bottom), size(frame, counter));
+	const counterHug =
+		sized.length > 0 &&
+		near(top, counter === "x" ? padding.left : padding.top) &&
+		near(bottom + (counter === "x" ? padding.right : padding.bottom), size(frame, counter));
 
 	return { primaryHug, counterHug };
 }
@@ -1272,8 +1292,9 @@ function applyLayout(layer: Layer, layout: Layout, children: Layer[]) {
 			child.props.textAutoResize = "HEIGHT";
 
 		if (child.props.stackMode) {
-			const fillsPrimary = (child.props.stackMode === "HORIZONTAL") === row ? grow : stretch;
-			const fillsCounter = (child.props.stackMode === "HORIZONTAL") === row ? stretch : grow;
+			const along = (child.props.stackMode === "HORIZONTAL") === row;
+			const fillsPrimary = along ? grow || layout.wrap : stretch;
+			const fillsCounter = along ? stretch : grow || layout.wrap;
 
 			if (fillsPrimary) child.props.stackPrimarySizing = "FIXED";
 
@@ -1446,6 +1467,12 @@ export function screensToFigma(screens: FigmaScreen[], fonts: FontSet | null = n
 		if (!Array.isArray(layer.props.fillPaints) || !layer.props.fillPaints.length)
 			layer.props.fillPaints = [solid({ r: 255, g: 255, b: 255, a: 1 })];
 		layer.positioned = null;
+
+		if (layer.props.stackMode) {
+			layer.props.stackPrimarySizing = "FIXED";
+			layer.props.stackCounterSizing = "FIXED";
+		}
+
 		drawText(layer, context);
 		roots.push(
 			writeLayer(

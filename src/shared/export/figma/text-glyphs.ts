@@ -129,13 +129,25 @@ function laidOutLines(source: GlyphSource, frame: TextFrame, fonts: FontSet): Me
 	return lines;
 }
 
+function collapsedAt(line: Measured[]) {
+	return line.findIndex((glyph, i) => {
+		const previous = line[i - 1];
+
+		return !!previous && (glyph.width <= 0 || glyph.x < previous.x + previous.width / 2);
+	});
+}
+
 function truncate(lines: Measured[][], frame: TextFrame, fonts: FontSet): Measured[][] {
 	const right = frame.box.width;
 	const kept = frame.maxLines ? lines.slice(0, frame.maxLines) : lines;
 	const last = kept[kept.length - 1];
 	const endOf = (glyph: Measured | undefined) => (glyph ? glyph.x + glyph.width : 0);
+	const collapsed = last ? collapsedAt(last) : -1;
 
-	if (!last?.length || (kept.length === lines.length && endOf(last[last.length - 1]) <= right)) return kept;
+	if (collapsed > 0) last?.splice(collapsed);
+
+	if (!last?.length || (collapsed < 0 && kept.length === lines.length && endOf(last[last.length - 1]) <= right))
+		return kept;
 	const { size, weight, y } = last[last.length - 1]!;
 	const ellipsis = (fonts.outline(ELLIPSIS, weight)?.advance ?? 0) * size;
 

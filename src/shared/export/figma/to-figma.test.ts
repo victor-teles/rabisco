@@ -250,6 +250,61 @@ describe("auto layout", () => {
 			verticalConstraint: "MIN",
 		});
 	});
+
+	test("grid cells keep their track width and one full row doesn't wrap", () => {
+		const field = (i: number) =>
+			el("div", box(i * 136, 0, 128, 60), { display: "flex", "flex-direction": "column", "row-gap": "4px" }, [
+				el("label", box(i * 136, 0, 40, 20), { display: "block" }, [text(`F${i}`, box(i * 136, 0, 40, 20))]),
+				el("div", box(i * 136, 24, 128, 36), { display: "block", "background-color": "red" }, [], {
+					name: `Input ${i}`,
+				}),
+			]);
+
+		const grid = el(
+			"div",
+			box(0, 0, 400, 60),
+			{ display: "grid", "grid-template-columns": "128px 128px 128px", "column-gap": "8px" },
+			[0, 1, 2].map(field),
+		);
+
+		const { copy } = changes(body([grid]));
+		const gridChange = copy.nodeChanges.find((change) => change.name === "Grid");
+		const cells = copy.nodeChanges.filter((change) => change.stackMode === "VERTICAL" && change.size?.x === 128);
+
+		expect(gridChange?.stackWrap).toBe("NO_WRAP");
+		expect(cells).toHaveLength(3);
+		expect(cells.every((cell) => cell.stackCounterSizing === "FIXED")).toBe(true);
+	});
+
+	test("right-aligned text keeps the width of its box", () => {
+		const paragraph = el(
+			"p",
+			box(0, 0, 384, 20),
+			{ display: "block", "text-align": "right", "background-color": "red" },
+			[text("Right-aligned text", box(255, 0, 129, 20))],
+		);
+
+		const { copy } = changes(body([paragraph]));
+		const frame = copy.nodeChanges.find((change) => change.type === "FRAME" && change.size?.x === 384);
+
+		expect(frame?.stackCounterSizing).toBe("FIXED");
+	});
+
+	test("the screen frame keeps its size", () => {
+		const sidebar = el("aside", box(0, 0, 100, 800), { display: "block", "background-color": "red" }, [], {
+			name: "Sidebar",
+		});
+
+		const main = el("main", box(100, 0, 300, 200), { display: "block", "background-color": "blue" }, [], {
+			name: "Main",
+		});
+
+		const page = el("div", box(0, 0, 400, 800), { display: "flex", "align-items": "flex-start" }, [sidebar, main]);
+		const { copy } = changes(body([page]));
+		const root = copy.nodeChanges.find((change) => change.name === "Home");
+
+		expect(root).toMatchObject({ stackPrimarySizing: "FIXED", stackCounterSizing: "FIXED" });
+	});
 });
 
 describe("layers", () => {
@@ -643,6 +698,36 @@ describe("text outlines", () => {
 		expect(copy.blobs[last?.commandsBlob ?? -1]).toBeDefined();
 		expect((last?.position.x ?? 0) + (last?.advance ?? 0) * 14).toBeLessThanOrEqual(60);
 		expect(glyphs.length).toBeLessThan(14);
+	});
+
+	test("truncated text in a filled box clips to the box, even when the overflow measures collapsed", async () => {
+		const measured = measuredText("A very long title", box(0, 0, 136, 20), 1000);
+		const glyphs = (measured.glyphs ?? []).map((value, i) => (i % 7 === 1 ? Math.min(value, 44) : value));
+
+		const line = el(
+			"p",
+			box(0, 0, 60, 20),
+			{
+				display: "block",
+				"text-overflow": "ellipsis",
+				"overflow-x": "hidden",
+				"white-space": "nowrap",
+				"background-color": "red",
+			},
+			[{ ...measured, glyphs }],
+		);
+
+		const copy = screensToFigma([screen(body([line]))], await interFonts());
+		const layer = copy.nodeChanges.find((change) => change.type === "TEXT");
+		const drawn = glyphsOf(layer);
+		const xs = drawn.map((glyph) => glyph.position.x);
+		const last = drawn[drawn.length - 1];
+
+		expect(layer?.size?.x).toBe(60);
+		expect(new Set(xs).size).toBe(xs.length);
+		expect(copy.blobs[last?.commandsBlob ?? -1]).toBeDefined();
+		expect((last?.position.x ?? 0) + (last?.advance ?? 0) * 14).toBeLessThanOrEqual(60);
+		expect(last?.advance).toBe((await interFonts())?.outline(0x2026, 400)?.advance ?? -1);
 	});
 
 	test("characters the shipped font lacks are skipped and counted", async () => {

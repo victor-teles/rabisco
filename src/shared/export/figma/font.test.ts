@@ -3,7 +3,9 @@ import { fontSet, glyphCommands, readFont, type FontFile } from "./font";
 
 const FILES = new URL("../../../../node_modules/@fontsource/inter/files/", import.meta.url);
 
-const bytesOf = async (name: string) => new Uint8Array(await Bun.file(new URL(name, FILES)).arrayBuffer());
+const SYMBOLS = new URL("../../../mainview/lib/fonts/", import.meta.url);
+
+const bytesOf = async (name: string, from = FILES) => new Uint8Array(await Bun.file(new URL(name, from)).arrayBuffer());
 
 async function interFiles(): Promise<FontFile[]> {
 	const files: FontFile[] = [];
@@ -11,6 +13,9 @@ async function interFiles(): Promise<FontFile[]> {
 	for (const subset of ["latin", "latin-ext"])
 		for (const weight of [400, 500, 600, 700])
 			files.push({ weight, unicodeRange: "", bytes: await bytesOf(`inter-${subset}-${weight}-normal.woff`) });
+
+	for (const weight of [400, 500, 600, 700])
+		files.push({ weight, unicodeRange: "", bytes: await bytesOf(`inter-symbols-${weight}-normal.woff`, SYMBOLS) });
 
 	return files;
 }
@@ -68,5 +73,14 @@ describe("the font set", () => {
 		expect(fonts?.outline(0x0142, 400)?.commands).toBeTruthy();
 		expect(fonts?.outline(0x20, 400)).toEqual({ commands: null, advance: 576 / 2048 });
 		expect(fonts?.outline(0x4e2d, 400)).toBeNull();
+	});
+
+	test("the symbols subset draws arrows and UI symbols the fontsource files lack", async () => {
+		const fonts = fontSet(await interFiles());
+
+		for (const codepoint of [0x2192, 0x2190, 0x21b5, 0x2318, 0x2713, 0x2605])
+			expect(fonts?.outline(codepoint, 400)?.commands).toBeTruthy();
+
+		expect(fonts?.outline(0x2192, 400)?.advance).toBe(1954 / 2048);
 	});
 });
