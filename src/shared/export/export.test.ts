@@ -6,12 +6,15 @@ import { createPdf, jpegSize, pdfString, pdfTextString, PT_PER_PX } from "./pdf"
 import {
 	fitRadii,
 	inset,
+	insetShadowPath,
+	joinTextRuns,
 	parseBoxShadow,
 	parseLinearGradient,
 	rectPath,
 	sceneToSvg,
 	splitTopLevel,
 	type Scene,
+	type SceneOp,
 } from "./scene";
 import { exportSlug, imageFileNames, imageTargets } from "./targets";
 
@@ -118,6 +121,46 @@ describe("parseBoxShadow", () => {
 		expect(parseBoxShadow("inset 0 2px 4px #0000001a")[0]).toMatchObject({ inset: true, offsetY: 2, blur: 4 });
 		expect(parseBoxShadow("none")).toEqual([]);
 	});
+
+	test("keeps inset rings and drops empty inset layers", () => {
+		const shadows = parseBoxShadow("inset 0 0 0 2px oklch(0.708 0 0), rgba(0, 0, 0, 0.1) 0px 0px 0px 0px inset");
+
+		expect(shadows).toHaveLength(1);
+		expect(shadows[0]).toMatchObject({ inset: true, spread: 2, blur: 0 });
+	});
+});
+
+describe("joinTextRuns", () => {
+	const run = (text: string, x: number, width: number, extra: Partial<Extract<SceneOp, { type: "text" }>> = {}) =>
+		({
+			type: "text",
+			x,
+			y: 20,
+			width,
+			text,
+			font: { family: "Inter", size: 14, weight: "600", style: "normal" },
+			paint: { kind: "color", color: { r: 0, g: 0, b: 0, a: 1 } },
+			letterSpacing: 0,
+			numeric: "tabular-nums",
+			...extra,
+		}) satisfies SceneOp;
+
+	test("touching runs with one style become one run", () => {
+		expect(joinTextRuns([run("71", 10, 17), run("%", 27.25, 12)])).toEqual([run("71%", 10, 29.25)]);
+		expect(joinTextRuns([run("18", 0, 17), run("-day streak", 17.5, 70)])).toEqual([run("18-day streak", 0, 87.5)]);
+	});
+
+	test("runs apart, on another line or in another style stay separate", () => {
+		expect(joinTextRuns([run("Hello", 0, 30), run("world", 34, 30)])).toHaveLength(2);
+		expect(joinTextRuns([run("a", 0, 8), run("b", 8, 8, { y: 40 })])).toHaveLength(2);
+		expect(joinTextRuns([run("a", 0, 8), run("b", 8, 8, { numeric: undefined })])).toHaveLength(2);
+		expect(
+			joinTextRuns([
+				run("a", 0, 8),
+				run("b", 8, 8, { font: { family: "Inter", size: 14, weight: "400", style: "normal" } }),
+			]),
+		).toHaveLength(2);
+	});
 });
 
 describe("parseLinearGradient", () => {
@@ -202,6 +245,50 @@ describe("sceneToSvg", () => {
 			},
 		],
 	};
+
+	test("inset shadows fill inside the box only, around a shifted hole", () => {
+		const ring: Extract<SceneOp, { type: "inset-shadow" }> = {
+			type: "inset-shadow",
+			rect: { x: 0, y: 0, width: 20, height: 20, radii: [0, 0, 0, 0] },
+			color: { r: 0, g: 0, b: 0, a: 1 },
+			offsetX: 0,
+			offsetY: 3,
+			blur: 0,
+			spread: 0,
+		};
+
+		expect(insetShadowPath(ring)).toBe("M-5 -5h30v30h-30ZM0 3h20v20h-20Z");
+		expect(insetShadowPath({ ...ring, offsetY: 0, spread: 2 })).toEndWith("M2 2h16v16h-16Z");
+		expect(insetShadowPath({ ...ring, spread: 10 })).toBe("M-15 -15h50v50h-50Z");
+
+		const svg = sceneToSvg({ ...scene, ops: [ring, { ...ring, blur: 4 }] });
+		expect(svg).toContain(`<clipPath id="c1"><path d="M0 0h20v20h-20Z"/></clipPath>`);
+		expect(svg).toContain(
+			'<g clip-path="url(#c1)"><path fill-rule="evenodd" d="M-5 -5h30v30h-30ZM0 3h20v20h-20Z" fill="#000000"/></g>',
+		);
+		expect(svg).toContain("<feGaussianBlur");
+	});
+
+	test("tabular numbers keep their figures", () => {
+		const svg = sceneToSvg({
+			...scene,
+			ops: [
+				{
+					type: "text",
+					x: 0,
+					y: 20,
+					width: 30,
+					text: "71%",
+					font: { family: "Inter", size: 14, weight: "400", style: "normal" },
+					paint: { kind: "color", color: { r: 0, g: 0, b: 0, a: 1 } },
+					letterSpacing: 0,
+					numeric: "tabular-nums",
+				},
+			],
+		});
+
+		expect(svg).toContain('style="font-variant-numeric: tabular-nums"');
+	});
 
 	test("writes a standalone SVG with real shapes and escaped text", () => {
 		const svg = sceneToSvg(scene, "Welcome");

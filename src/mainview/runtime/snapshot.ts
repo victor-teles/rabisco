@@ -1,7 +1,8 @@
-// Not captured: non-translate transforms, filters, masks, inset shadows, ::before/::after, text ellipses.
+// Not captured: non-translate transforms, filters, masks, ::before/::after, text ellipses.
 import { isVisible, parseColor, type Rgba } from "../../shared/export/color";
 import {
 	fitRadii,
+	joinTextRuns,
 	parseBoxShadow,
 	parseLinearGradient,
 	rectPath,
@@ -330,7 +331,9 @@ class SceneBuilder {
 		if (borderBox.width <= 0 || borderBox.height <= 0) return;
 
 		// The first shadow is on top
-		for (const shadow of parseBoxShadow(style.boxShadow).reverse()) {
+		const shadows = parseBoxShadow(style.boxShadow).reverse();
+
+		for (const shadow of shadows) {
 			if (!shadow.inset)
 				out.push({
 					type: "shadow",
@@ -373,6 +376,22 @@ class SceneBuilder {
 					this.image(url, area, (natural) => placeImage(natural, area, fit, style.backgroundPosition), out);
 				}
 			}
+		}
+
+		const paddingBox = shrink(borderBox, borders);
+
+		// Above the background, below the border
+		for (const shadow of shadows) {
+			if (shadow.inset && paddingBox.width > 0 && paddingBox.height > 0)
+				out.push({
+					type: "inset-shadow",
+					rect: paddingBox,
+					color: shadow.color,
+					offsetX: shadow.offsetX,
+					offsetY: shadow.offsetY,
+					blur: shadow.blur,
+					spread: shadow.spread,
+				});
 		}
 
 		if (borders.some((w) => w > 0)) {
@@ -615,6 +634,8 @@ class SceneBuilder {
 			};
 
 			if (decoration) op.decoration = decoration;
+
+			if (style.fontVariantNumeric && style.fontVariantNumeric !== "normal") op.numeric = style.fontVariantNumeric;
 			out.push(op);
 		}
 	}
@@ -840,7 +861,7 @@ export async function captureScene(container: Element): Promise<Scene> {
 }
 
 function prune(ops: SceneOp[]): SceneOp[] {
-	return ops.flatMap((op) => {
+	const pruned = ops.flatMap((op): SceneOp[] => {
 		if (op.type !== "group") return [op];
 		const inner = prune(op.ops);
 
@@ -848,4 +869,6 @@ function prune(ops: SceneOp[]): SceneOp[] {
 
 		return op.opacity >= 1 && !op.clip ? inner : [{ ...op, ops: inner }];
 	});
+
+	return joinTextRuns(pruned);
 }

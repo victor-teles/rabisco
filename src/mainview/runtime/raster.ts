@@ -1,6 +1,6 @@
 // Paints scenes directly because an SVG `<foreignObject>` would taint the canvas in WKWebView.
 import { toCss } from "../../shared/export/color";
-import { inset, rectPath, type Paint, type Scene, type SceneOp } from "../../shared/export/scene";
+import { inset, insetShadowPath, rectPath, type Paint, type Scene, type SceneOp } from "../../shared/export/scene";
 import { canvasFont } from "./snapshot";
 
 /** Canvas limits that hold in WebKit and Chromium. */
@@ -35,6 +35,29 @@ function fillStyle(ctx: CanvasRenderingContext2D, paint: Paint): string | Canvas
 	for (const stop of paint.stops) gradient.addColorStop(Math.min(1, Math.max(0, stop.offset)), toCss(stop.color));
 
 	return gradient;
+}
+
+const DIGIT = /\p{Nd}/u;
+
+function fillTabular(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, width: number) {
+	const chars = [...text];
+	const widths = chars.map((char) => ctx.measureText(char).width);
+	const digits = chars.reduce((count, char) => count + (DIGIT.test(char) ? 1 : 0), 0);
+	const extra = digits ? (width - widths.reduce((sum, w) => sum + w, 0)) / digits : 0;
+
+	if (extra <= 0) {
+		ctx.fillText(text, x, y);
+
+		return;
+	}
+
+	let at = x;
+
+	chars.forEach((char, i) => {
+		const pad = DIGIT.test(char) ? extra : 0;
+		ctx.fillText(char, at + pad / 2, y);
+		at += widths[i]! + pad;
+	});
 }
 
 async function loadImages(ops: SceneOp[], into = new Map<string, HTMLImageElement>()) {
@@ -112,6 +135,25 @@ export async function rasterize(
 				break;
 			}
 
+			case "inset-shadow": {
+				ctx.save();
+				ctx.clip(new Path2D(rectPath(op.rect)));
+
+				if (op.blur > 0) {
+					ctx.shadowColor = toCss(op.color);
+					ctx.shadowBlur = op.blur * scale;
+					ctx.shadowOffsetX = shift * scale;
+					ctx.fillStyle = "#000";
+					ctx.fill(new Path2D(insetShadowPath(op, -shift)), "evenodd");
+				} else {
+					ctx.fillStyle = toCss(op.color);
+					ctx.fill(new Path2D(insetShadowPath(op)), "evenodd");
+				}
+
+				ctx.restore();
+				break;
+			}
+
 			case "border": {
 				const [top, right, bottom, left] = op.widths;
 				const first = toCss(op.colors[0]);
@@ -153,7 +195,9 @@ export async function rasterize(
 				ctx.textAlign = "left";
 
 				if ("letterSpacing" in ctx) ctx.letterSpacing = `${op.letterSpacing}px`;
-				ctx.fillText(op.text, op.x, op.y);
+
+				if (op.numeric?.includes("tabular-nums")) fillTabular(ctx, op.text, op.x, op.y, op.width);
+				else ctx.fillText(op.text, op.x, op.y);
 
 				if (op.decoration) {
 					const { line, thickness } = op.decoration;

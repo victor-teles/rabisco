@@ -28,6 +28,15 @@ export type SceneOp =
 	/** Drawn outside `rect` only */
 	| { type: "shadow"; rect: RoundedRect; color: Rgba; offsetX: number; offsetY: number; blur: number; spread: number }
 	| {
+			type: "inset-shadow";
+			rect: RoundedRect;
+			color: Rgba;
+			offsetX: number;
+			offsetY: number;
+			blur: number;
+			spread: number;
+	  }
+	| {
 			type: "border";
 			rect: RoundedRect;
 			widths: [number, number, number, number];
@@ -44,6 +53,7 @@ export type SceneOp =
 			font: TextFont;
 			paint: Paint;
 			letterSpacing: number;
+			numeric?: string;
 			decoration?: { line: "underline" | "line-through" | "overline"; color: Rgba; thickness: number };
 	  }
 	/** `src` is a data URL */
@@ -112,6 +122,42 @@ export function rectPath({ x, y, width: w, height: h, radii }: RoundedRect): str
 	);
 }
 
+export function insetShadowPath(op: Extract<SceneOp, { type: "inset-shadow" }>, shiftX = 0): string {
+	const margin = op.blur * 2 + Math.abs(op.spread) + Math.abs(op.offsetX) + Math.abs(op.offsetY) + 2;
+	const { x, y, width, height } = op.rect;
+	const hole = inset({ ...op.rect, x: x + op.offsetX + shiftX, y: y + op.offsetY }, op.spread);
+	const outer = `M${num(x - margin + shiftX)} ${num(y - margin)}h${num(width + margin * 2)}v${num(height + margin * 2)}h${num(-(width + margin * 2))}Z`;
+
+	return hole.width > 0 && hole.height > 0 ? outer + rectPath(hole) : outer;
+}
+
+type TextOp = Extract<SceneOp, { type: "text" }>;
+
+const sameStyle = (a: TextOp, b: TextOp) =>
+	a.letterSpacing === b.letterSpacing &&
+	a.numeric === b.numeric &&
+	JSON.stringify([a.font, a.paint, a.decoration]) === JSON.stringify([b.font, b.paint, b.decoration]);
+
+export function joinTextRuns(ops: SceneOp[]): SceneOp[] {
+	const joined: SceneOp[] = [];
+
+	for (const op of ops) {
+		const last = joined.at(-1);
+
+		if (
+			op.type === "text" &&
+			last?.type === "text" &&
+			Math.abs(op.y - last.y) < 0.5 &&
+			Math.abs(op.x - (last.x + last.width)) < 1 &&
+			sameStyle(last, op)
+		)
+			joined[joined.length - 1] = { ...last, text: last.text + op.text, width: op.x + op.width - last.x };
+		else joined.push(op);
+	}
+
+	return joined;
+}
+
 /** `a(b, c), d` → `["a(b, c)", "d"]` */
 export function splitTopLevel(value: string, separator = ","): string[] {
 	const parts: string[] = [];
@@ -170,7 +216,7 @@ export function parseBoxShadow(value: string): BoxShadow[] {
 		if (!isVisible(color) || lengths.length < 2 || lengths.some(Number.isNaN)) continue;
 		const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] = lengths;
 
-		if (!inset && blur === 0 && spread <= 0 && offsetX === 0 && offsetY === 0) continue;
+		if (blur === 0 && spread <= 0 && offsetX === 0 && offsetY === 0) continue;
 		shadows.push({ color, offsetX, offsetY, blur: Math.max(0, blur), spread, inset });
 	}
 
@@ -383,6 +429,23 @@ export function sceneToSvg(scene: Scene, title?: string): string {
 				return `<g clip-path="url(#${outside})">${rectElement(grown, `${colorAttrs("fill", op.color)}${filter}`)}</g>`;
 			}
 
+			case "inset-shadow": {
+				const inside = id("c");
+				defs.push(`<clipPath id="${inside}"><path d="${rectPath(op.rect)}"/></clipPath>`);
+				let filter = "";
+
+				if (op.blur > 0) {
+					const blur = id("f");
+					const { x, y, width, height } = inset(op.rect, -op.blur * 2);
+					defs.push(
+						`<filter id="${blur}" filterUnits="userSpaceOnUse" x="${num(x)}" y="${num(y)}" width="${num(width)}" height="${num(height)}"><feGaussianBlur stdDeviation="${num(op.blur / 2)}"/></filter>`,
+					);
+					filter = ` filter="url(#${blur})"`;
+				}
+
+				return `<g clip-path="url(#${inside})"><path fill-rule="evenodd" d="${insetShadowPath(op)}" ${colorAttrs("fill", op.color)}${filter}/></g>`;
+			}
+
 			case "border": {
 				const [top, right, bottom, left] = op.widths;
 				const uniform = op.widths.every((w) => w === top) && op.colors.every((c) => toCss(c) === toCss(op.colors[0]));
@@ -421,11 +484,12 @@ export function sceneToSvg(scene: Scene, title?: string): string {
 				const { font } = op;
 				const decoration = op.decoration ? ` text-decoration="${op.decoration.line}"` : "";
 				const spacing = op.letterSpacing ? ` letter-spacing="${num(op.letterSpacing)}"` : "";
+				const numeric = op.numeric ? ` style="font-variant-numeric: ${escapeXml(op.numeric)}"` : "";
 
 				return (
 					`<text x="${num(op.x)}" y="${num(op.y)}" font-family="${escapeXml(font.family)}" font-size="${num(font.size)}"` +
 					`${font.weight !== "400" && font.weight !== "normal" ? ` font-weight="${escapeXml(font.weight)}"` : ""}` +
-					`${font.style !== "normal" ? ` font-style="${escapeXml(font.style)}"` : ""}${spacing}${decoration} ${paintAttr(op.paint)} xml:space="preserve">${escapeXml(op.text)}</text>`
+					`${font.style !== "normal" ? ` font-style="${escapeXml(font.style)}"` : ""}${spacing}${numeric}${decoration} ${paintAttr(op.paint)} xml:space="preserve">${escapeXml(op.text)}</text>`
 				);
 			}
 
