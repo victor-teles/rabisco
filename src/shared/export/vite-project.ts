@@ -147,7 +147,9 @@ export const VITE: Framework = {
 		{ path: "src/vite-env.d.ts", content: '/// <reference types="vite/client" />\n' },
 	],
 	readme: {
-		app: "`src/App.tsx` shows them in canvas order, starting with the first.",
+		intro: "The screens and components are the same code the canvas renders.",
+		pages: "`src/screens/`: one file per screen. `src/App.tsx` shows them in canvas order, starting with the first.",
+		list: "Screens",
 		links:
 			"`src/App.tsx` handles them with a small hash router (`#/settings`). Replace it with your app's router when you wire the screens to real data.",
 	},

@@ -30,10 +30,21 @@ export type AppProject = {
 	warnings: string[];
 };
 
-/** `screens/welcome.alt-1.tsx` is `welcome.alt-1`, imported as `WelcomeAlt1Screen` from `screens/welcome.alt-1` */
+/** A page the app routes to: `screens/welcome.alt-1.tsx` is `welcome.alt-1`, imported as `WelcomeAlt1Screen` from `screens/welcome.alt-1` */
 export type ProjectScreen = { file: string; id: string; identifier: string; module: string };
 
 export type FrameworkContext = { name: string; screens: ProjectScreen[] };
+
+export type FrameworkReadme = {
+	/** What the project is, after "Exported from Rabisco as a … project." */
+	intro: string;
+	/** The README line about the pages' folder */
+	pages: string;
+	/** Before the list of pages, e.g. `Screens` */
+	list: string;
+	/** How prototype links work, when the pages have them */
+	links?: string;
+};
 
 export type Framework = {
 	name: string;
@@ -44,8 +55,7 @@ export type Framework = {
 	stylesheet: string;
 	files: (context: FrameworkContext) => ExportFile[];
 	gitignore: string;
-	/** README lines about how the screens are routed and how links work */
-	readme: { app: string; links: string };
+	readme: FrameworkReadme;
 };
 
 /** Same as the canvas runtime, so the export renders the same way. */
@@ -112,7 +122,7 @@ function screenIdentifier(id: string) {
 	return `${/^[0-9]/.test(pascal) ? "_" : ""}${pascal}Screen`;
 }
 
-const screenId = (file: string) => file.replace(/^screens\//, "").replace(/\.tsx$/, "");
+const pageId = (file: string) => file.replace(/^[^/]+\//, "").replace(/\.tsx$/, "");
 
 /** Canvas order first, then screens without a frame, sorted */
 function exportedScreens(input: AppProjectInput) {
@@ -229,16 +239,17 @@ function stylesheet(theme: DesignTokens) {
 function readme(
 	name: string,
 	framework: Framework,
-	screens: string[],
+	pages: string[],
 	components: string[],
 	ui: string[],
 	images: number,
 ) {
 	const list = (items: string[]) => items.map((item) => `- \`${item}\``).join("\n");
+	const { readme } = framework;
 
 	return `# ${name}
 
-Exported from Rabisco as a ${framework.name} project. The screens and components are the same code the canvas renders.
+Exported from Rabisco as a ${framework.name} project. ${readme.intro}
 
 ## Run it
 
@@ -251,31 +262,40 @@ npm run dev
 
 ## What's inside
 
-- \`src/screens/\`: one file per screen. ${framework.readme.app}
+- ${readme.pages}
 - \`src/components/\`: the project's components${components.length ? "" : " (none yet)"}.
 - \`src/components/ui/\`: the [shadcn/ui](https://ui.shadcn.com) components the screens use, and the [uai](https://uaiblocks.vercel.app) blocks in \`uai/\`.
 - \`${framework.stylesheet}\`: Tailwind, the theme tokens and the \`DESIGN.md\` tokens applied on the canvas.
 - \`tokens/\`: the same tokens for your own app, as \`tokens.css\`, a Tailwind theme and DTCG \`tokens.json\`.
 ${images ? `- \`public/\`: the images the screens show. The app serves them at \`/\`, so \`/images/logo.png\` is \`public/images/logo.png\`.\n` : ""}- \`PRODUCT.md\` and \`DESIGN.md\`: the product and design context, when the project has them.
 
-Screens: ${screens.length ? `\n\n${list(screens.map((file) => `src/${file}`))}` : "none"}
-${ui.length ? `\nUI components: ${ui.map((module) => `\`${module}\``).join(", ")}\n` : ""}
+${readme.list}: ${pages.length ? `\n\n${list(pages.map((file) => `src/${file}`))}` : "none"}
+${ui.length ? `\nUI components: ${ui.map((module) => `\`${module}\``).join(", ")}\n` : ""}${
+		readme.links
+			? `
 ## Prototype links
 
-Elements with \`data-link-to="screens/settings.tsx"\` open that screen when clicked, and \`data-link-to="back"\` goes back. ${framework.readme.links}
+Elements with \`data-link-to="screens/settings.tsx"\` open that screen when clicked, and \`data-link-to="back"\` goes back. ${readme.links}
 
 \`data-link-transition\` (\`dissolve\`, \`slide\`, \`push\`) and \`data-link-mode\` (\`overlay\`, \`sheet\`) say how Rabisco plays a link: with an animation, or as a modal or sheet over the current screen. The app here ignores them and opens the screen; keep them as notes for your own transitions and dialogs, or remove them.
-`;
+`
+			: ""
+	}`;
 }
 
 export function appProject(input: AppProjectInput, framework: Framework): AppProject {
-	const { files, name } = input;
 	const screens = exportedScreens(input);
 
 	if (!screens.length) throw new Error("There are no screens to export");
-	const warnings: string[] = [];
 
-	const roots = [...screens, ...Object.keys(files).filter(isComponentFile).sort()];
+	return buildProject(input, framework, screens);
+}
+
+/** `pages` are files in `input.files` the framework routes to; every component comes too */
+export function buildProject(input: AppProjectInput, framework: Framework, pages: string[]): AppProject {
+	const { files, name } = input;
+	const warnings: string[] = [];
+	const roots = [...pages, ...Object.keys(files).filter(isComponentFile).sort()];
 	const included = new Set(roots);
 
 	for (const file of roots) for (const dep of localDependencies(files, file)) included.add(dep);
@@ -300,10 +320,10 @@ export function appProject(input: AppProjectInput, framework: Framework): AppPro
 
 	const context: FrameworkContext = {
 		name,
-		screens: screens.map((file) => ({
+		screens: pages.map((file) => ({
 			file,
-			id: screenId(file),
-			identifier: screenIdentifier(screenId(file)),
+			id: pageId(file),
+			identifier: screenIdentifier(pageId(file)),
 			module: file.replace(/\.tsx$/, ""),
 		})),
 	};
@@ -313,7 +333,7 @@ export function appProject(input: AppProjectInput, framework: Framework): AppPro
 	const out: ExportFile[] = [
 		{ path: "package.json", content: packageJson(name, framework, [...projectSources, ...uiSources], warnings) },
 		{ path: ".gitignore", content: framework.gitignore },
-		{ path: "README.md", content: readme(name, framework, screens, components, ui, assets.length) },
+		{ path: "README.md", content: readme(name, framework, pages, components, ui, assets.length) },
 		...framework.files(context),
 		{ path: framework.stylesheet, content: stylesheet(input.theme) },
 		{ path: "src/lib/utils.ts", content: UTILS },

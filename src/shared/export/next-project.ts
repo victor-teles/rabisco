@@ -142,7 +142,10 @@ export const NEXT: Framework = {
 		...screens.map((screen) => ({ path: `src/app/${screen.id}/page.tsx`, content: page(screen) })),
 	],
 	readme: {
-		app: "Each one is a route in `src/app/` (`/settings`), and `/` opens the first.",
+		intro: "The screens and components are the same code the canvas renders.",
+		pages:
+			"`src/screens/`: one file per screen. Each one is a route in `src/app/` (`/settings`), and `/` opens the first.",
+		list: "Screens",
 		links: "`src/app/screen-links.tsx` handles them with the Next.js router.",
 	},
 };

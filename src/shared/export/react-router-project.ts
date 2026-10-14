@@ -176,7 +176,10 @@ export const REACT_ROUTER: Framework = {
 		...screens.map((screen) => ({ path: routeFile(screen), content: route(screen) })),
 	],
 	readme: {
-		app: "Each one is a route in `src/app/routes.ts` (`/settings`), and `/` opens the first.",
+		intro: "The screens and components are the same code the canvas renders.",
+		pages:
+			"`src/screens/`: one file per screen. Each one is a route in `src/app/routes.ts` (`/settings`), and `/` opens the first.",
+		list: "Screens",
 		links: "`src/app/screen-links.tsx` handles them with the React Router `navigate`.",
 	},
 };

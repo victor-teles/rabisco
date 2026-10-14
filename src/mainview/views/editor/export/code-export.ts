@@ -8,7 +8,14 @@ import { UI_SOURCES } from "@/lib/ui-sources";
 import { codeToCopy, localDependencies } from "../../../../shared/export/code";
 import { htmlScreen } from "../../../../shared/export/html";
 import { tokenFiles } from "../../../../shared/export/tokens";
-import { appProject, packageName, type Framework } from "../../../../shared/export/app-project";
+import {
+	appProject,
+	packageName,
+	type AppProject,
+	type AppProjectInput,
+	type Framework,
+} from "../../../../shared/export/app-project";
+import { componentLibrary } from "../../../../shared/export/component-library";
 import { isScreenFile, toKebab } from "../../../../shared/project";
 import type { ExportContext } from "./export-menu";
 
@@ -46,38 +53,51 @@ export async function copyCode(context: ExportContext, withComponents: boolean) 
 	}
 }
 
-export async function exportProject(context: ExportContext, framework: Framework) {
+async function writeProject(
+	context: ExportContext,
+	build: (input: AppProjectInput) => AppProject,
+	folder: string,
+	exported: string,
+) {
 	try {
-		const project = appProject(
-			{
-				name: context.projectName,
-				frames: context.frames,
-				files: context.files,
-				theme: context.theme,
-				uiSources: UI_SOURCES,
-				assets: await projectAssets.base64(),
-			},
-			framework,
-		);
+		const project = build({
+			name: context.projectName,
+			frames: context.frames,
+			files: context.files,
+			theme: context.theme,
+			uiSources: UI_SOURCES,
+			assets: await projectAssets.base64(),
+		});
 
 		const parent = await api.pickExportFolder({});
 
 		if (!parent) return;
 
-		const { dir } = await api.writeExport({
-			dir: parent,
-			name: packageName(context.projectName),
-			files: project.files,
-			reveal: true,
-		});
+		const { dir } = await api.writeExport({ dir: parent, name: folder, files: project.files, reveal: true });
 
-		toast.success(`Exported a ${framework.name} project`, { description: dir });
+		toast.success(exported, { description: dir });
 
 		for (const warning of project.warnings) toast.warning(warning);
 	} catch (error) {
 		toast.error("Couldn't export the project", { description: error instanceof Error ? error.message : String(error) });
 	}
 }
+
+export const exportProject = (context: ExportContext, framework: Framework) =>
+	writeProject(
+		context,
+		(input) => appProject(input, framework),
+		packageName(context.projectName),
+		`Exported a ${framework.name} project`,
+	);
+
+export const exportComponentLibrary = (context: ExportContext) =>
+	writeProject(
+		context,
+		componentLibrary,
+		`${packageName(context.projectName)}-components`,
+		"Exported the component library",
+	);
 
 export async function exportTokens(context: ExportContext) {
 	try {

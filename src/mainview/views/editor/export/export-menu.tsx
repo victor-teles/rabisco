@@ -10,11 +10,19 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DesignTokens } from "../../../../shared/context/tokens";
+import { isComponentFile } from "../../../../shared/project";
 import type { Frame, ProjectFiles } from "../../../../shared/types";
 import { NEXT } from "../../../../shared/export/next-project";
 import { REACT_ROUTER } from "../../../../shared/export/react-router-project";
 import { VITE } from "../../../../shared/export/vite-project";
-import { copyCode, exportHtml, exportProject, exportTokens, hasLocalImports } from "./code-export";
+import {
+	copyCode,
+	exportComponentLibrary,
+	exportHtml,
+	exportProject,
+	exportTokens,
+	hasLocalImports,
+} from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
 
 export type ExportContext = {
@@ -60,6 +68,12 @@ export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void exportProject(props, REACT_ROUTER)} disabled={frames.length === 0}>
 					React Router project…
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onSelect={() => void exportComponentLibrary(props)}
+					disabled={!Object.keys(props.files).some(isComponentFile)}
+				>
+					Component library…
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void exportHtml(props)} disabled={props.selected.length === 0}>
 					HTML and CSS of the screen…
