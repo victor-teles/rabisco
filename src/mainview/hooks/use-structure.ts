@@ -408,7 +408,7 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	);
 
 	const arrangeNodes = useCallback(
-		(arrange: (source: string, starts: number[]) => Arranged) => {
+		async (arrange: (source: string, starts: number[]) => Arranged | Promise<Arranged>) => {
 			const source = node ? stateRef.current?.files[node.file] : undefined;
 
 			if (!node || source === undefined) return;
@@ -419,7 +419,9 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 				return;
 			}
 
-			const result = arrange(source, outermost(source, [node.start, ...node.extras]));
+			const result = await arrange(source, outermost(source, [node.start, ...node.extras]));
+
+			if (stateRef.current?.files[node.file] !== source) return;
 
 			if ("refusal" in result) {
 				toast(result.refusal);

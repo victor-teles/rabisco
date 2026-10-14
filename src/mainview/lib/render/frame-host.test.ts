@@ -339,6 +339,29 @@ describe("hit testing", () => {
 		host.dispose();
 	});
 
+	test("placements asks the frame where elements sit in their containing block", async () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		expect(await host.placements([40], "v")).toBeNull();
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "");
+		const pending = host.placements([40, 60], "v");
+		const request = lastPosted(posted, "placements");
+		expect(request).toMatchObject({ type: "placements", starts: [40, 60], version: "v" });
+
+		const placement = {
+			box: { x: 1, y: 2, width: 3, height: 4 },
+			margin: { x: 0, y: 8 },
+			container: { width: 320, height: 160 },
+		};
+
+		host.receive({ type: "placements", id: request.id, placements: [placement, placement] });
+		expect(await pending).toEqual([placement, placement]);
+		expect(isFrameMessage({ type: "placements", id: 1, placements: [{ ...placement, margin: null }] })).toBe(false);
+		expect(isFrameMessage({ type: "placements", id: 1, placements: null })).toBe(true);
+		host.dispose();
+	});
+
 	test("sends the linked elements of the entry and stores where they render", () => {
 		const { frame, posted } = fakeFrame();
 		const host = new FrameHost(frame);

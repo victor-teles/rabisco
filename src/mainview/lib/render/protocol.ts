@@ -40,6 +40,8 @@ export type HostMessage =
 	| { type: "drop-layout"; id: number; start: number; version: string; x: number; y: number }
 	/** Answered by an `element-boxes` with the same `id`: where the element at `start` renders, without tracking it. */
 	| { type: "element-boxes"; id: number; start: number; version: string }
+	/** Answered by a `placements` with the same `id`: where each element sits in its containing block. */
+	| { type: "placements"; id: number; starts: number[]; version: string }
 	/** Stream `boxes` for the element at `start` on every layout change until the next `track`; `null` stops. */
 	| { type: "track"; start: number | null; version: string }
 	| { type: "links"; starts: number[]; version: string }
@@ -94,6 +96,8 @@ export type FrameMessage =
 	| { type: "drop-layout"; id: number; layout: DropLayout | null }
 	/** `null` when `version` isn't the rendered one. */
 	| { type: "element-boxes"; id: number; boxes: Box[] | null }
+	/** In the order asked; `null` when `version` isn't the rendered one or an element isn't rendered. */
+	| { type: "placements"; id: number; placements: Placement[] | null }
 	/** One box per rendered instance; `spacing` and `layout` describe the first instance. */
 	| {
 			type: "boxes";
@@ -120,6 +124,9 @@ export type FrameMessage =
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };
+
+/** `box` is the first instance's border box from its containing block's padding edge, `container` that block's padding box. */
+export type Placement = { box: Box; margin: { x: number; y: number }; container: { width: number; height: number } };
 
 export type LinkBox = { start: number; box: Box };
 
@@ -296,6 +303,23 @@ function isDropLayout(layout: unknown): layout is DropLayout {
 
 const isBoxList = (boxes: unknown): boxes is Box[] => Array.isArray(boxes) && boxes.every(isBox);
 
+const isPlacement = (placement: unknown): placement is Placement =>
+	isObject(placement) &&
+	"box" in placement &&
+	"margin" in placement &&
+	"container" in placement &&
+	isBox(placement.box) &&
+	isObject(placement.margin) &&
+	"x" in placement.margin &&
+	"y" in placement.margin &&
+	isNumber(placement.margin.x) &&
+	isNumber(placement.margin.y) &&
+	isObject(placement.container) &&
+	"width" in placement.container &&
+	"height" in placement.container &&
+	isNumber(placement.container.width) &&
+	isNumber(placement.container.height);
+
 const isLinkBox = (link: unknown): link is LinkBox =>
 	isObject(link) && "start" in link && "box" in link && isOffset(link.start) && isBox(link.box);
 
@@ -381,6 +405,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 			return hasId(data) && "layout" in data && (data.layout === null || isDropLayout(data.layout));
 		case "element-boxes":
 			return hasId(data) && "boxes" in data && (data.boxes === null || isBoxList(data.boxes));
+		case "placements":
+			return (
+				hasId(data) &&
+				"placements" in data &&
+				(data.placements === null || (Array.isArray(data.placements) && data.placements.every(isPlacement)))
+			);
 		case "boxes":
 			return (
 				isTracked(data) &&

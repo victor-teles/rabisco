@@ -43,7 +43,7 @@ import { isVoidElement, readChildrenText } from "@/lib/props";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
 import { styleState } from "@/lib/style-state";
 import { suggestionHover, type SuggestionHover } from "@/lib/suggestion-hover";
-import { sourceVersion, type Box, type DropLayout, type FrameError } from "@/lib/render/protocol";
+import { sourceVersion, type Box, type DropLayout, type FrameError, type Placement } from "@/lib/render/protocol";
 import type { ElementLayout, Spacing } from "@/lib/render/spacing";
 import { contextSelection, marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { guidesFor, snapMove, type Guide } from "@/lib/snapping";
@@ -73,6 +73,8 @@ export type CanvasHandle = {
 	zoomBy: (factor: number) => void;
 	fitTo: (rects: Rect[], maxZoom?: number) => void;
 	selectedElementRect: (element: ElementRef) => Rect | null;
+	/** Null unless the frame shows `source` */
+	elementPlacements: (file: string, source: string, starts: readonly number[]) => Promise<Placement[] | null>;
 	resetZoom: () => void;
 	editText: (element: ElementRef) => void;
 	editTextOnceShown: (element: ElementRef) => Promise<void>;
@@ -764,6 +766,8 @@ export function Canvas({
 
 				return frame && bounds ? { ...bounds, x: frame.x + bounds.x, y: frame.y + bounds.y } : null;
 			},
+			elementPlacements: async (file, source, starts) =>
+				(await hostFor(file)?.placements(starts, sourceVersion(source))) ?? null,
 			resetZoom: () => {
 				zoomAround(1 / view.get().zoom);
 				settle();

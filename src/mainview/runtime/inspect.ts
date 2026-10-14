@@ -8,6 +8,7 @@ import {
 	type Box,
 	type DropLayout,
 	type LinkBox,
+	type Placement,
 } from "../lib/render/protocol";
 import {
 	gapRects,
@@ -197,6 +198,42 @@ export function instancesOf(container: Element, loc: string): Element[][] {
 export const boxesOf = (instances: Element[][]) => instances.flatMap((elements) => unionBox(elements) ?? []);
 
 export const boxOf = (elements: Element[]) => unionBox(elements);
+
+function containingBlock(element: HTMLElement): Box {
+	const root = document.documentElement;
+	const parent = getComputedStyle(element).position === "fixed" ? null : element.offsetParent;
+
+	if (parent instanceof HTMLElement && getComputedStyle(parent).position !== "static") {
+		const rect = parent.getBoundingClientRect();
+
+		return {
+			x: rect.left + parent.clientLeft,
+			y: rect.top + parent.clientTop,
+			width: parent.clientWidth,
+			height: parent.clientHeight,
+		};
+	}
+
+	const origin = parent ? root.getBoundingClientRect() : { left: 0, top: 0 };
+
+	return { x: origin.left, y: origin.top, width: root.clientWidth, height: window.innerHeight };
+}
+
+export function placementOf(elements: Element[]): Placement | null {
+	const [element] = elements;
+
+	if (!(element instanceof HTMLElement)) return null;
+
+	const rect = element.getBoundingClientRect();
+	const style = getComputedStyle(element);
+	const block = containingBlock(element);
+
+	return {
+		box: { x: rect.left - block.x, y: rect.top - block.y, width: rect.width, height: rect.height },
+		margin: { x: parseFloat(style.marginLeft) || 0, y: parseFloat(style.marginTop) || 0 },
+		container: { width: block.width, height: block.height },
+	};
+}
 
 export function linkBoxesOf(container: Element, entry: string, starts: readonly number[]): LinkBox[] {
 	const wanted = new Map(starts.map((start) => [locationOf(entry, start), start]));

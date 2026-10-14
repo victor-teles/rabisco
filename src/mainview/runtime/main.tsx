@@ -14,7 +14,17 @@ import { lintScreen } from "./design-lint";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
 import { preloadIcons } from "./icons";
-import { boxesOf, boxOf, dropLayoutOf, instancesOf, layoutOf, linkBoxesOf, locatedAt, spacingOf } from "./inspect";
+import {
+	boxesOf,
+	boxOf,
+	dropLayoutOf,
+	instancesOf,
+	layoutOf,
+	linkBoxesOf,
+	locatedAt,
+	placementOf,
+	spacingOf,
+} from "./inspect";
 import { createPlay } from "./play";
 import { colorAt } from "./pick-color";
 import { clearOrder, previewOrder } from "./reorder";
@@ -373,6 +383,23 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			entry && boxesVersion === renderedVersion ? boxesOf(instancesOf(rootElement, locationOf(entry, start))) : null;
 
 		post({ type: "element-boxes", id, boxes });
+	} else if (message?.type === "placements") {
+		const { id, starts, version: placementsVersion } = message;
+
+		const placements =
+			entry && placementsVersion === renderedVersion
+				? starts.flatMap((start) => {
+						const [first] = instancesOf(rootElement, locationOf(entry, start));
+
+						return (first && placementOf(first)) ?? [];
+					})
+				: null;
+
+		post({
+			type: "placements",
+			id,
+			placements: placements?.length === starts.length ? placements : null,
+		});
 	} else if (message?.type === "track") {
 		tracked = message.start === null ? null : { start: message.start, version: message.version, sent: "" };
 		reportBoxes();

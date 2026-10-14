@@ -20,6 +20,7 @@ import {
 	type LinkOptions,
 	type ModulePayload,
 	type OrderPreview,
+	type Placement,
 	type SnapshotRaster,
 } from "./protocol";
 import type { ElementLayout, Spacing } from "./spacing";
@@ -348,6 +349,18 @@ export class FrameHost {
 		return reply?.type === "element-boxes" ? reply.boxes : null;
 	}
 
+	/** `null` when the frame shows another version, doesn't render one of the elements or doesn't answer. */
+	async placements(starts: readonly number[], version: string): Promise<Placement[] | null> {
+		if (!this.#sentEntry) return null;
+
+		const reply = await this.#request(
+			{ type: "placements", id: ++requestId, starts: [...starts], version },
+			HIT_TEST_TIMEOUT_MS,
+		);
+
+		return reply?.type === "placements" ? reply.placements : null;
+	}
+
 	async colorAt(x: number, y: number): Promise<string | null> {
 		if (!this.#sentEntry) return null;
 		const reply = await this.#request({ type: "pick-color", id: ++requestId, x, y }, HIT_TEST_TIMEOUT_MS);
@@ -450,6 +463,7 @@ export class FrameHost {
 			message?.type === "lint" ||
 			message?.type === "drop-layout" ||
 			message?.type === "element-boxes" ||
+			message?.type === "placements" ||
 			message?.type === "picked-color"
 		) {
 			this.#requests.get(message.id)?.(message);

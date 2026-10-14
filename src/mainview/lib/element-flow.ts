@@ -17,14 +17,15 @@ const BREAKPOINTS: { variant: string; width: number }[] = [
 	{ variant: "2xl", width: 1536 },
 ];
 
+export const activeVariants = (width: number | null) => [
+	"",
+	...BREAKPOINTS.flatMap((breakpoint) => (width !== null && width >= breakpoint.width ? [breakpoint.variant] : [])),
+];
+
 export function styleAt(classes: string, prop: SimpleProp, width: number | null): string | null {
-	let value = getStyle(classes, prop);
+	let value: string | null = null;
 
-	for (const breakpoint of BREAKPOINTS) {
-		if (width === null || width < breakpoint.width) break;
-
-		value = getStyle(classes, prop, breakpoint.variant) ?? value;
-	}
+	for (const variant of activeVariants(width)) value = getStyle(classes, prop, variant) ?? value;
 
 	return value;
 }

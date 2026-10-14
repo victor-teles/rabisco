@@ -57,12 +57,12 @@ import { setResolved } from "../../../shared/comments";
 import { useChatCommands } from "@/hooks/use-chat-commands";
 import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
-import { alignElements, distributeElements, type Arranged } from "@/lib/element-align";
+import { alignElements, distributeElements, needsPlacements, type Arranged } from "@/lib/element-align";
 import { outermost } from "@/lib/element-selection";
 import { isMac } from "@/lib/platform";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { restoredSnapshot } from "@/lib/versions";
-import { sourceVersion } from "@/lib/render/protocol";
+import { sourceVersion, type Placement } from "@/lib/render/protocol";
 import { themeCss } from "@/lib/render/styles";
 import { reorderFrames } from "@/lib/screen-list";
 import { styleState } from "@/lib/style-state";
@@ -1234,14 +1234,36 @@ export function EditorView({
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
 	const elementWidth = (element && frames.find((frame) => frame.file === element.file)?.width) ?? null;
 
+	const elementFile = element?.file;
+
+	const arrangeMeasured = useCallback(
+		(arrange: (source: string, starts: number[], placements: Placement[] | null) => Arranged) =>
+			arrangeNodes(async (source, starts) => {
+				if (!elementFile || !needsPlacements(source, starts, elementWidth)) return arrange(source, starts, null);
+
+				const placements = await canvasRef.current?.elementPlacements(elementFile, source, starts);
+
+				return placements
+					? arrange(source, starts, placements)
+					: { refusal: "Wait for the screen to finish rendering, then try again" };
+			}),
+		[arrangeNodes, elementFile, elementWidth],
+	);
+
 	const alignElementSelection = useCallback(
-		(alignment: Alignment) => arrangeNodes((source, starts) => alignElements(source, starts, alignment, elementWidth)),
-		[arrangeNodes, elementWidth],
+		(alignment: Alignment) =>
+			arrangeMeasured((source, starts, placements) =>
+				alignElements(source, starts, alignment, elementWidth, placements),
+			),
+		[arrangeMeasured, elementWidth],
 	);
 
 	const distributeElementSelection = useCallback(
-		(axis: Axis) => arrangeNodes((source, starts) => distributeElements(source, starts, axis, elementWidth)),
-		[arrangeNodes, elementWidth],
+		(axis: Axis) =>
+			arrangeMeasured((source, starts, placements) =>
+				distributeElements(source, starts, axis, elementWidth, placements),
+			),
+		[arrangeMeasured, elementWidth],
 	);
 
 	const elementSource = element ? files[element.file] : undefined;

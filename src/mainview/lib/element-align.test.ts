@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { alignElements, distributeElements, type Arranged } from "./element-align";
+import { alignElements, distributeElements, needsPlacements, type Arranged } from "./element-align";
+import type { Placement } from "./render/protocol";
 
 const screen = (parent: string, children: string[]) =>
 	`export default function Screen() {\n\treturn (\n\t\t<div className="${parent}">\n${children.map((child) => `\t\t\t${child}`).join("\n")}\n\t\t</div>\n\t);\n}\n`;
@@ -13,6 +14,22 @@ const sourceOf = (result: Arranged) => {
 const ROW = screen("flex gap-4", [`<a className="p-2">A</a>`, `<b className="mx-2">B</b>`, `<i>C</i>`]);
 
 const at = (source: string, text: string) => source.indexOf(text);
+
+const placed = (x: number, y: number, width: number, height: number, margin = { x: 0, y: 0 }): Placement => ({
+	box: { x, y, width, height },
+	margin,
+	container: { width: 320, height: 160 },
+});
+
+const FREE = screen("relative h-40 w-80", [
+	`<a className="absolute left-2 top-2 size-10">A</a>`,
+	`<b className="absolute left-20 top-8 size-16">B</b>`,
+	`<i className="absolute right-4 bottom-6 h-8 w-12">C</i>`,
+]);
+
+const FREE_STARTS = [at(FREE, "<a"), at(FREE, "<b"), at(FREE, "<i")];
+
+const FREE_PLACEMENTS = [placed(8, 8, 40, 40), placed(80, 32, 64, 64), placed(256, 120, 48, 32)];
 
 describe("alignElements", () => {
 	test("aligns some children of a row on the cross axis with self-*", () => {
@@ -72,29 +89,83 @@ describe("alignElements", () => {
 		);
 	});
 
-	test("refuses absolutely positioned elements on both axes and adds no classes", () => {
-		const source = screen("relative h-40", [
-			`<a className="absolute left-2 top-2">A</a>`,
-			`<b className="absolute left-10 top-8">B</b>`,
-		]);
+	test("aligns absolutely positioned elements by rewriting left-* and top-*", () => {
+		const aligned = (alignment: Parameters<typeof alignElements>[2]) =>
+			sourceOf(alignElements(FREE, FREE_STARTS, alignment, null, FREE_PLACEMENTS));
 
-		const starts = [at(source, "<a"), at(source, "<b")];
-		const refusal = { refusal: "Absolutely positioned elements can't be aligned yet" };
-
-		expect(alignElements(source, starts, "h-center", null)).toEqual(refusal);
-		expect(alignElements(source, starts, "right", null)).toEqual(refusal);
-		expect(alignElements(source, starts, "v-middle", null)).toEqual(refusal);
-		expect(alignElements(source, [at(source, "<a")], "top", 1024)).toEqual(refusal);
+		expect(aligned("left")).toContain(`<i className="absolute bottom-6 left-2 h-8 w-12">C</i>`);
+		expect(aligned("left")).toContain(`<b className="absolute top-8 left-2 size-16">B</b>`);
+		expect(aligned("right")).toContain(`<a className="absolute top-2 left-66 size-10">A</a>`);
+		expect(aligned("h-center")).toContain(`<a className="absolute top-2 left-34 size-10">A</a>`);
+		expect(aligned("top")).toContain(`<i className="absolute top-2 right-4 h-8 w-12">C</i>`);
+		expect(aligned("v-middle")).toContain(`<b className="absolute top-12 left-20 size-16">B</b>`);
+		expect(aligned("bottom")).toContain(`<a className="absolute top-28 left-2 size-10">A</a>`);
 	});
 
-	test("refuses a fixed element at the breakpoint where it is fixed", () => {
+	test("aligns one absolutely positioned element in its containing block", () => {
+		const source = screen("relative", [`<a className="absolute left-1/2 top-4 -translate-x-1/2 w-20">A</a>`]);
+		const result = alignElements(source, [at(source, "<a")], "right", null, [placed(120, 16, 80, 20)]);
+
+		expect(sourceOf(result)).toContain(`<a className="absolute top-4 left-60 w-20">A</a>`);
+	});
+
+	test("subtracts the margin and keeps a stretched element's size", () => {
+		const source = screen("relative", [`<a className="absolute inset-x-4 top-0 mx-2">A</a>`]);
+		const placement = placed(24, 0, 272, 20, { x: 8, y: 0 });
+		const result = alignElements(source, [at(source, "<a")], "left", null, [placement]);
+
+		expect(sourceOf(result)).toContain(`<a className="absolute top-0 -left-2 mx-2 w-68">A</a>`);
+	});
+
+	test("splits both-axis translate and leaves the other axis", () => {
+		const source = screen("relative", [`<a className="absolute left-1/2 top-1/2 -translate-1/2">A</a>`]);
+		const result = alignElements(source, [at(source, "<a")], "top", null, [placed(150, 70, 20, 20)]);
+
+		expect(sourceOf(result)).toContain(`<a className="absolute top-0 left-1/2 -translate-x-1/2">A</a>`);
+	});
+
+	test("writes at the breakpoint that places the element", () => {
+		const source = screen("relative", [`<a className="absolute right-4 top-2 md:left-8 md:-translate-y-1 w-10">A</a>`]);
+		const starts = [at(source, "<a")];
+
+		expect(sourceOf(alignElements(source, starts, "left", 800, [placed(32, 4, 40, 40)]))).toContain(
+			`<a className="absolute right-4 top-2 md:right-auto md:left-0 md:-translate-y-1 w-10">A</a>`,
+		);
+		expect(sourceOf(alignElements(source, starts, "top", 400, [placed(272, 8, 40, 40)]))).toContain(
+			`<a className="absolute top-0 right-4 md:left-8 md:-translate-y-1 w-10">A</a>`,
+		);
+		expect(sourceOf(alignElements(source, starts, "top", 800, [placed(32, 4, 40, 40)]))).toContain(
+			`<a className="absolute right-4 top-2 md:top-0 md:left-8 w-10">A</a>`,
+		);
+	});
+
+	test("resets a translate the breakpoint inherits", () => {
+		const source = screen("relative", [`<a className="absolute -translate-x-1/2 md:left-8">A</a>`]);
+		const result = alignElements(source, [at(source, "<a")], "left", 800, [placed(12, 0, 40, 40)]);
+
+		expect(sourceOf(result)).toContain(`<a className="absolute -translate-x-1/2 md:left-0 md:translate-x-0">A</a>`);
+	});
+
+	test("allows absolutely positioned elements before they are measured", () => {
+		expect(needsPlacements(FREE, FREE_STARTS, null)).toBe(true);
+		expect(alignElements(FREE, FREE_STARTS, "left", null)).toEqual({ source: FREE, starts: FREE_STARTS });
+	});
+
+	test("refuses absolutely positioned and flowing elements together", () => {
+		const source = screen("relative flex", [`<a className="absolute left-0">A</a>`, `<b>B</b>`]);
+		const starts = [at(source, "<a"), at(source, "<b")];
+
+		expect(alignElements(source, starts, "top", null)).toEqual({
+			refusal: "Absolutely positioned elements can't be arranged with elements in the flow",
+		});
+	});
+
+	test("arranges a fixed element only at the breakpoint where it is fixed", () => {
 		const source = screen("flex", [`<a className="md:fixed">A</a>`, `<b>B</b>`]);
 		const starts = [at(source, "<a"), at(source, "<b")];
 
-		expect("refusal" in alignElements(source, starts, "top", 400)).toBe(false);
-		expect(alignElements(source, starts, "top", 800)).toEqual({
-			refusal: "Absolutely positioned elements can't be aligned yet",
-		});
+		expect(needsPlacements(source, starts, 400)).toBe(false);
+		expect(needsPlacements(source, starts, 800)).toBe(true);
 	});
 
 	test("refuses elements in different parents", () => {
@@ -126,14 +197,16 @@ describe("distributeElements", () => {
 		expect("refusal" in distributeElements(block, [at(block, "<a"), at(block, "<b")], "vertical", null)).toBe(true);
 	});
 
-	test("refuses absolutely positioned children of a row", () => {
-		const source = screen("relative flex", [
-			`<a className="absolute left-0">A</a>`,
-			`<b className="absolute left-8">B</b>`,
-		]);
+	test("spaces absolutely positioned elements with equal gaps along either axis", () => {
+		const horizontal = sourceOf(distributeElements(FREE, FREE_STARTS, "horizontal", null, FREE_PLACEMENTS));
 
-		expect(distributeElements(source, [at(source, "<a"), at(source, "<b")], "horizontal", null)).toEqual({
-			refusal: "Absolutely positioned elements can't be distributed yet",
-		});
+		expect(horizontal).toContain(`<a className="absolute left-2 top-2 size-10">A</a>`);
+		expect(horizontal).toContain(`<b className="absolute top-8 left-30 size-16">B</b>`);
+		expect(horizontal).toContain(`<i className="absolute bottom-6 left-64 h-8 w-12">C</i>`);
+
+		const vertical = sourceOf(distributeElements(FREE, FREE_STARTS, "vertical", null, FREE_PLACEMENTS));
+
+		expect(vertical).toContain(`<b className="absolute top-13 left-20 size-16">B</b>`);
+		expect(vertical).toContain(`<i className="absolute top-30 right-4 h-8 w-12">C</i>`);
 	});
 });
