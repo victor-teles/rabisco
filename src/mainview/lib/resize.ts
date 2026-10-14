@@ -78,11 +78,21 @@ function growing(classes: string, variant: string) {
 	return flex !== null ? flex === "1" : grows(classes, variant) || grows(classes);
 }
 
-export function sizeMode(classes: string, dimension: Dimension, parent: ParentAxis, variant = ""): SizeMode {
-	if (mainDimension(parent) === dimension && growing(classes, variant)) return "fill";
+export function sizeMode(
+	classes: string,
+	dimension: Dimension,
+	parent: ParentAxis,
+	variant = "",
+	stretched = false,
+): SizeMode {
+	const main = mainDimension(parent);
+
+	if (main === dimension && growing(classes, variant)) return "fill";
 	const value = sizeOf(classes, dimension, variant);
 
 	if (value === "full") return "fill";
+
+	if (value === null && stretched && parent !== null && main !== dimension) return "fill";
 
 	if (value === null || value === "fit" || value === "auto") return "hug";
 

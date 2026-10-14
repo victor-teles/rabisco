@@ -388,17 +388,27 @@ export function spacingOf(elements: Element[]): Spacing | null {
 const flexAxis = (style: CSSStyleDeclaration): Axis | null =>
 	style.display.includes("flex") ? (style.flexDirection.startsWith("column") ? "column" : "row") : null;
 
+const STRETCH: readonly string[] = ["stretch", "normal"];
+
+function stretches(style: CSSStyleDeclaration, parent: CSSStyleDeclaration) {
+	const align = style.alignSelf === "auto" ? parent.alignItems : style.alignSelf;
+
+	return STRETCH.includes(align);
+}
+
 /** Padding, gap and flow of an instance with one root element, and its parent's flex direction. */
 export function layoutOf(elements: Element[]): ElementLayout | null {
 	if (elements.length !== 1) return null;
 	const element = elements[0]!;
 	const style = getComputedStyle(element);
-	const parent = element.parentElement;
+	const parentStyle = element.parentElement ? getComputedStyle(element.parentElement) : null;
+	const parent = parentStyle ? flexAxis(parentStyle) : null;
 
 	return {
 		padding: insets(style, "padding"),
 		gap: { row: pixels(style.rowGap), column: pixels(style.columnGap) },
 		flow: style.display.includes("grid") ? "grid" : flexAxis(style),
-		parent: parent ? flexAxis(getComputedStyle(parent)) : null,
+		parent,
+		stretched: !!parentStyle && parent !== null && stretches(style, parentStyle),
 	};
 }

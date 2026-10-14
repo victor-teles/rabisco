@@ -16,6 +16,7 @@ export type ElementLayout = {
 	flow: Axis | "grid" | null;
 	/** The parent's flex direction; `null` when the parent isn't a flex container */
 	parent: Axis | null;
+	stretched: boolean;
 };
 
 /** Sub-pixel slivers from rounding aren't padding or gaps */

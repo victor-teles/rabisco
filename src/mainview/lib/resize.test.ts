@@ -61,6 +61,17 @@ describe("sizes", () => {
 		expect(sizeMode("flex-1", "width", "column")).toBe("hug");
 	});
 
+	test("reads a child the parent stretches across its cross axis as fill", () => {
+		expect(sizeMode("p-4", "width", "column", "", true)).toBe("fill");
+		expect(sizeMode("p-4", "height", "row", "", true)).toBe("fill");
+		expect(sizeMode("p-4", "height", "column", "", true)).toBe("hug");
+		expect(sizeMode("p-4", "width", "column", "", false)).toBe("hug");
+		expect(sizeMode("w-fit", "width", "column", "", true)).toBe("hug");
+		expect(sizeMode("w-64", "width", "column", "", true)).toBe("fixed");
+		expect(sizeMode("p-4", "width", null, "", true)).toBe("hug");
+		expect(sizeMode("w-64 hover:w-auto", "width", "column", "hover", true)).toBe("hug");
+	});
+
 	test("writes a fixed size and stops a grown child", () => {
 		expect(setFixedSize("p-4", "width", "64", null)).toBe("p-4 w-64");
 		expect(setFixedSize("flex-1 p-4", "width", "64", "row")).toBe("p-4 w-64");

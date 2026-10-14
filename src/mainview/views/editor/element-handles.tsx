@@ -148,6 +148,7 @@ function pending(
 }
 
 type ElementHandlesProps = {
+	file: string;
 	/** Frame-local, the first instance */
 	box: Box;
 	frame: Point;
@@ -168,6 +169,7 @@ type ElementHandlesProps = {
  * the size pill below with Figma's fixed, hug and fill. Drags preview on the live frame and commit once, on release.
  */
 export function ElementHandles({
+	file,
 	box,
 	frame,
 	layout,
@@ -346,8 +348,9 @@ export function ElementHandles({
 			))}
 			<ChromePortal box={{ ...box, x: frame.x + box.x, y: frame.y + box.y }}>
 				<div
-					className="pointer-events-auto absolute top-full left-1/2 flex -translate-x-1/2 translate-y-1 items-center rounded-[4px] bg-primary font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums"
-					onPointerDown={(event) => event.stopPropagation()}
+					data-frame-file={file}
+					className="absolute top-full left-1/2 flex -translate-x-1/2 translate-y-1 items-center rounded-[4px] bg-primary font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums"
+					onPointerDown={(event) => !event.shiftKey && event.stopPropagation()}
 					onDoubleClick={(event) => event.stopPropagation()}
 				>
 					{label ? (
@@ -357,14 +360,14 @@ export function ElementHandles({
 							{variant ? <span className="pl-1 font-mono opacity-80">{variant}:</span> : null}
 							<SizeMenu
 								dimension="width"
-								mode={sizeMode(classes, "width", layout.parent, variant)}
+								mode={sizeMode(classes, "width", layout.parent, variant, layout.stretched)}
 								size={box.width}
 								onChange={setMode}
 							/>
 							<span className="opacity-80">×</span>
 							<SizeMenu
 								dimension="height"
-								mode={sizeMode(classes, "height", layout.parent, variant)}
+								mode={sizeMode(classes, "height", layout.parent, variant, layout.stretched)}
 								size={box.height}
 								onChange={setMode}
 							/>
@@ -492,8 +495,9 @@ function SizeMenu({
 	return (
 		<DropdownMenu modal={false}>
 			<DropdownMenuTrigger
-				className="rounded-[4px] px-1 outline-none hover:bg-primary-foreground/15 focus-visible:bg-primary-foreground/15"
+				className="pointer-events-auto rounded-[4px] px-1 outline-none hover:bg-primary-foreground/15 focus-visible:bg-primary-foreground/15"
 				aria-label={dimension === "width" ? "Width sizing" : "Height sizing"}
+				onPointerDown={(event) => event.shiftKey && event.preventDefault()}
 			>
 				{text}
 			</DropdownMenuTrigger>

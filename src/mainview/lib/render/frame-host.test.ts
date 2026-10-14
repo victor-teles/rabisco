@@ -409,6 +409,7 @@ describe("hit testing", () => {
 			gap: { row: 0, column: 8 },
 			flow: "row" as const,
 			parent: null,
+			stretched: false,
 		};
 
 		host.receive({ type: "boxes", start: 40, version: "v1", boxes: [box], spacing, layout });

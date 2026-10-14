@@ -332,7 +332,9 @@ function isElementLayout(layout: unknown): layout is ElementLayout {
 		Number.isFinite(gap.row) &&
 		Number.isFinite(gap.column) &&
 		(layout.flow === "grid" || layout.flow === null || (isString(layout.flow) && AXES.includes(layout.flow))) &&
-		(layout.parent === null || (isString(layout.parent) && AXES.includes(layout.parent)))
+		(layout.parent === null || (isString(layout.parent) && AXES.includes(layout.parent))) &&
+		"stretched" in layout &&
+		typeof layout.stretched === "boolean"
 	);
 }
 

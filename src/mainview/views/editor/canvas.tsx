@@ -88,6 +88,11 @@ export type CanvasHandle = {
 /** `start` is the element's offset in the file's current source */
 export type ElementRef = { file: string; start: number };
 
+const isSelectedElement = (hover: ElementRef, element: ElementRef | null, extras: ElementRef[]) =>
+	!!element &&
+	hover.file === element.file &&
+	(hover.start === element.start || extras.some((extra) => extra.start === hover.start));
+
 export type FrameMove = { file: string; x: number; y: number };
 
 /** What the canvas edits on a frame by itself: its place, size and name */
@@ -1931,16 +1936,15 @@ export function Canvas({
 					))}
 					<LayoutGrids frames={shown} />
 					<LinksLayer frames={shown} files={rendered} selected={element} />
-					{hover && !(element && hover.file === element.file && hover.start === element.start) ? (
+					{hover && !isSelectedElement(hover, element, elements) ? (
 						<ElementOutline
 							frame={shown.find((f) => f.file === hover.file)}
 							boxes={[hover.box]}
-							label={dropPreview ? undefined : nameAt(rendered[hover.file], hover.start)}
+							label={dropPreview || elements.length ? undefined : nameAt(rendered[hover.file], hover.start)}
 							size
 						/>
 					) : null}
-					{layerHover?.from === "layers" &&
-					!(element && layerHover.file === element.file && layerHover.start === element.start) ? (
+					{layerHover?.from === "layers" && !isSelectedElement(layerHover, element, elements) ? (
 						<LayerHover
 							hover={layerHover}
 							frame={shown.find((f) => f.file === layerHover.file)}
@@ -2047,6 +2051,7 @@ export function Canvas({
 					{/* Releasing the right button that opened the menu must not pick the item that shifted under it */}
 					<ContextMenuContent
 						className="w-52"
+						collisionPadding={8}
 						onPointerUpCapture={(event) => (event.button === 2 || isControlClick(event)) && event.stopPropagation()}
 						// Rename focuses the inspector's name field; focus coming back here would take it away
 						onCloseAutoFocus={(event) => event.preventDefault()}
@@ -2675,6 +2680,7 @@ function SelectedElement({
 			{handles && frame ? (
 				<ChromePortal box={frame}>
 					<ElementHandles
+						file={element.file}
 						box={handles.first}
 						frame={frame}
 						layout={handles.layout}
