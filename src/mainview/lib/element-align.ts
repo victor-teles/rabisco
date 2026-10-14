@@ -1,6 +1,7 @@
-import { getBox, setBoxParts, setClassName, setStyle, splitClasses } from "../../shared/tailwind/classes";
+import { findElement, parseJsx } from "../../shared/jsx";
+import { classNameOf, getBox, setBoxParts, setClassName, setStyle, splitClasses } from "../../shared/tailwind/classes";
 import type { Alignment, Axis } from "./align";
-import { parentOf, type ParentOf } from "./element-flow";
+import { parentOf, styleAt, type ParentOf } from "./element-flow";
 import { editEach, restyle, type Edited } from "./element-selection";
 
 export type Arranged = { source: string; starts: number[] } | { refusal: string };
@@ -36,6 +37,18 @@ function siblings(source: string, starts: readonly number[], width: number | nul
 	if (!parents.every((other) => other?.start === parent.start)) return { refusal: NOT_SIBLINGS };
 
 	return starts.every((start) => parent.children.includes(start)) ? parent : { refusal: NOT_SIBLINGS };
+}
+
+function anyPositioned(source: string, starts: readonly number[], width: number | null) {
+	const root = parseJsx(source);
+
+	return starts.some((start) => {
+		const element = findElement(root, start);
+		const info = element && classNameOf(source, element);
+		const position = info?.editable ? styleAt(info.classes, "position", width) : null;
+
+		return position === "absolute" || position === "fixed";
+	});
 }
 
 const everyChild = (parent: ParentOf, starts: readonly number[]) =>
@@ -91,6 +104,8 @@ export function alignElements(
 
 	if ("refusal" in parent) return parent;
 
+	if (anyPositioned(source, starts, width)) return { refusal: "Absolutely positioned elements can't be aligned yet" };
+
 	const axis = axisOf(alignment);
 	const position = POSITIONS[alignment];
 	const { flow } = parent;
@@ -143,6 +158,9 @@ export function distributeElements(
 	const parent = siblings(source, starts, width);
 
 	if ("refusal" in parent) return parent;
+
+	if (anyPositioned(source, starts, width))
+		return { refusal: "Absolutely positioned elements can't be distributed yet" };
 
 	const { flow } = parent;
 

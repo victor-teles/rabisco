@@ -72,6 +72,31 @@ describe("alignElements", () => {
 		);
 	});
 
+	test("refuses absolutely positioned elements on both axes and adds no classes", () => {
+		const source = screen("relative h-40", [
+			`<a className="absolute left-2 top-2">A</a>`,
+			`<b className="absolute left-10 top-8">B</b>`,
+		]);
+
+		const starts = [at(source, "<a"), at(source, "<b")];
+		const refusal = { refusal: "Absolutely positioned elements can't be aligned yet" };
+
+		expect(alignElements(source, starts, "h-center", null)).toEqual(refusal);
+		expect(alignElements(source, starts, "right", null)).toEqual(refusal);
+		expect(alignElements(source, starts, "v-middle", null)).toEqual(refusal);
+		expect(alignElements(source, [at(source, "<a")], "top", 1024)).toEqual(refusal);
+	});
+
+	test("refuses a fixed element at the breakpoint where it is fixed", () => {
+		const source = screen("flex", [`<a className="md:fixed">A</a>`, `<b>B</b>`]);
+		const starts = [at(source, "<a"), at(source, "<b")];
+
+		expect("refusal" in alignElements(source, starts, "top", 400)).toBe(false);
+		expect(alignElements(source, starts, "top", 800)).toEqual({
+			refusal: "Absolutely positioned elements can't be aligned yet",
+		});
+	});
+
 	test("refuses elements in different parents", () => {
 		const source = screen("flex", [`<a><b>B</b></a>`, `<i>C</i>`]);
 
@@ -99,5 +124,16 @@ describe("distributeElements", () => {
 		const block = screen("p-4", [`<a>A</a>`, `<b>B</b>`]);
 
 		expect("refusal" in distributeElements(block, [at(block, "<a"), at(block, "<b")], "vertical", null)).toBe(true);
+	});
+
+	test("refuses absolutely positioned children of a row", () => {
+		const source = screen("relative flex", [
+			`<a className="absolute left-0">A</a>`,
+			`<b className="absolute left-8">B</b>`,
+		]);
+
+		expect(distributeElements(source, [at(source, "<a"), at(source, "<b")], "horizontal", null)).toEqual({
+			refusal: "Absolutely positioned elements can't be distributed yet",
+		});
 	});
 });
