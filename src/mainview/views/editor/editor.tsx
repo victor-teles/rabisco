@@ -2366,6 +2366,7 @@ export function EditorView({
 							onPatchFrame={patchFrame}
 							onFixRender={busy ? undefined : fix}
 							overlay={overlay}
+							sections={sections.sections}
 							underlay={
 								<>
 									<SectionsLayer

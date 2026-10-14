@@ -48,6 +48,7 @@ import type { ElementLayout, Spacing } from "@/lib/render/spacing";
 import { contextSelection, marqueeSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { guidesFor, snapMove, type Guide } from "@/lib/snapping";
 import type { Viewport, ViewportStore } from "@/lib/viewport";
+import { labelLimits } from "@/lib/label-collisions";
 import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
 import { ChromeLayer, ChromePortal } from "./chrome-layer";
@@ -62,7 +63,7 @@ import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
 import { screenNameFromPath } from "../../../shared/project";
-import type { ElementLock, Frame, ProjectFiles } from "../../../shared/types";
+import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../shared/types";
 import { FRAME_GAP } from "../../../shared/project";
 import { isAlternate, variationGroups, type VariationGroup } from "../../../shared/variations";
 
@@ -146,6 +147,8 @@ const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b
 
 const NO_ELEMENTS: ElementRef[] = [];
 
+const NO_SECTIONS: CanvasSection[] = [];
+
 type CanvasProps = {
 	frames: Frame[];
 	files: ProjectFiles;
@@ -205,6 +208,8 @@ type CanvasProps = {
 	/** Drawn in canvas coordinates; `frames` include a drag in progress */
 	overlay?: (frames: Frame[]) => React.ReactNode;
 	underlay?: React.ReactNode;
+	/** Screen names that would run into a section's name hide */
+	sections?: CanvasSection[];
 	children?: React.ReactNode;
 };
 
@@ -385,6 +390,7 @@ export function Canvas({
 	onFixRender,
 	overlay,
 	underlay,
+	sections = NO_SECTIONS,
 	children,
 }: CanvasProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -421,6 +427,7 @@ export function Canvas({
 			: moved;
 	}, [frames, moving, resized]);
 
+	const crowded = useMemo(() => labelLimits(shown, sections, labelWidth), [shown, sections]);
 	const framesRef = useRef(shown);
 	const [spaceHeld, setSpaceHeld] = useState(false);
 	const altHeld = useAltHeld();
@@ -1888,6 +1895,8 @@ export function Canvas({
 								files={rendered}
 								selected={selected.has(frame.file)}
 								dropTarget={dropFile === frame.file && dropPreview?.file !== frame.file}
+								view={view}
+								hideLabelBelow={crowded.get(frame.file)}
 								writing={writing}
 								agent={agentEditing?.get(frame.file)}
 								variation={variationOf(frame.file)}
@@ -1914,6 +1923,7 @@ export function Canvas({
 							frame={frame}
 							files={drafts.files}
 							selected={false}
+							view={view}
 							writing={drafts.writing[frame.file]}
 							variation={variationOf(frame.file)}
 							draft
@@ -1925,7 +1935,7 @@ export function Canvas({
 						<ElementOutline
 							frame={shown.find((f) => f.file === hover.file)}
 							boxes={[hover.box]}
-							label={nameAt(rendered[hover.file], hover.start)}
+							label={dropPreview ? undefined : nameAt(rendered[hover.file], hover.start)}
 							size
 						/>
 					) : null}
@@ -1958,6 +1968,7 @@ export function Canvas({
 							source={rendered[element.file]}
 							host={hostFor}
 							zoom={zoomOf}
+							dropping={!!dropPreview}
 							onBoxes={reportSelectedBoxes}
 							onEditClasses={
 								editing ||
@@ -2066,6 +2077,8 @@ const FrameView = memo(function FrameView({
 	frame,
 	files,
 	selected,
+	view,
+	hideLabelBelow = 0,
 	writing,
 	agent,
 	variation,
@@ -2082,6 +2095,9 @@ const FrameView = memo(function FrameView({
 	frame: Frame;
 	files: ProjectFiles;
 	selected: boolean;
+	view: ViewportStore;
+	/** The zoom below which the name would run into a neighbor */
+	hideLabelBelow?: number;
 	writing?: WritingFile;
 	/** The coding agent editing this screen */
 	agent?: string;
@@ -2102,6 +2118,8 @@ const FrameView = memo(function FrameView({
 }) {
 	const streaming = writing && !writing.done;
 	const [hovered, setHovered] = useState(false);
+	const crowded = useSyncExternalStore(view.subscribe, () => view.get().zoom < hideLabelBelow);
+	const hideLabel = crowded && !selected && !renaming && !streaming && !agent && !failure;
 
 	return (
 		<div
@@ -2117,6 +2135,7 @@ const FrameView = memo(function FrameView({
 						"absolute bottom-full left-0 flex max-w-full items-center gap-1.5 pb-1 text-xs font-medium whitespace-nowrap",
 						!draft && "pointer-events-auto",
 						selected ? "text-primary" : "text-muted-foreground",
+						hideLabel && "invisible",
 					)}
 				>
 					{renaming && onRename ? (
@@ -2337,6 +2356,19 @@ function clip(box: Box, frame: Frame): Box | null {
 	const bottom = Math.min(frame.height, box.y + box.height);
 
 	return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+}
+
+let labelContext: CanvasRenderingContext2D | null = null;
+
+/** A screen name's width in screen pixels, in the label's font */
+function labelWidth(name: string) {
+	if (!labelContext) {
+		labelContext = document.createElement("canvas").getContext("2d");
+
+		if (labelContext) labelContext.font = `500 12px ${getComputedStyle(document.body).fontFamily}`;
+	}
+
+	return labelContext?.measureText(name).width ?? name.length * 7;
 }
 
 /** `null` when the source has no element there */
@@ -2653,6 +2685,7 @@ function SelectedElement({
 	source,
 	host,
 	zoom,
+	dropping,
 	onBoxes,
 	onEditClasses,
 }: {
@@ -2662,6 +2695,8 @@ function SelectedElement({
 	source: string | undefined;
 	host: (file: string) => FrameHost | undefined;
 	zoom: () => number;
+	/** The drop container's label takes the corner */
+	dropping: boolean;
 	onBoxes: (file: string, start: number, boxes: Box[]) => void;
 	/** Shows the handles that write classes */
 	onEditClasses?: (element: ElementRef, edit: (classes: string) => string) => void;
@@ -2702,7 +2737,7 @@ function SelectedElement({
 			<ElementOutline
 				frame={frame}
 				boxes={boxes}
-				label={node.name ?? "Fragment"}
+				label={dropping ? undefined : (node.name ?? "Fragment")}
 				component={!node.intrinsic && node.name !== null}
 				selected
 				size={!handles}
