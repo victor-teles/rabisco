@@ -4,6 +4,7 @@ import { linkStarts } from "../../../shared/prototype/links";
 import type { ProjectFiles } from "../../../shared/types";
 import { projectAssets } from "./assets";
 import { compileCache, type CompiledModule } from "./compile";
+import { cssPatch } from "./css-patch";
 import { collectGraph } from "./graph";
 import { setLinkBoxes } from "./link-boxes";
 import {
@@ -73,6 +74,8 @@ const HIT_TEST_TIMEOUT_MS = 500;
 
 const CSS_PUSH_DELAY_MS = 300;
 
+const CSS_RECONCILE_DELAY_MS = 2000;
+
 let hitTestId = 0;
 
 let requestId = 0;
@@ -114,6 +117,8 @@ export class FrameHost {
 	#sent = new Map<string, string>();
 	#sentEntry = "";
 	#sentCss = "";
+	/** The frame styles like `#sentCss` through patches until the next full push */
+	#patched = false;
 	#cssTimer: ReturnType<typeof setTimeout> | undefined;
 	#sentTheme = "";
 	#sentAssets = new Map<string, Blob>();
@@ -378,6 +383,7 @@ export class FrameHost {
 			this.#sent.clear();
 			this.#sentEntry = "";
 			this.#sentCss = "";
+			this.#patched = false;
 			this.#sentTheme = "";
 			this.#sentAssets.clear();
 			this.#sentAssetsVersion = -1;
@@ -483,14 +489,36 @@ export class FrameHost {
 		this.frame.contentWindow?.postMessage(message, "*");
 	}
 
+	get #cssStale() {
+		return this.#ready && this.#sentEntry !== "" && (this.#patched || screenStyles.css !== this.#sentCss);
+	}
+
+	#patchTo(css: string) {
+		return this.#sentCss ? cssPatch(this.#sentCss, css) : null;
+	}
+
+	/** New rules go out as a patch once edits pause; the whole sheet replaces the patches when the CSS stays idle. */
 	#pushCss() {
-		if (!this.#ready || !this.#sentEntry || screenStyles.css === this.#sentCss) return;
+		if (!this.#cssStale) return;
+		const changed = screenStyles.css !== this.#sentCss;
+
 		clearTimeout(this.#cssTimer);
-		this.#cssTimer = setTimeout(() => {
-			if (!this.#ready || !this.#sentEntry || screenStyles.css === this.#sentCss) return;
-			this.#sentCss = screenStyles.css;
-			this.#post({ type: "css", css: this.#sentCss });
-		}, CSS_PUSH_DELAY_MS);
+		this.#cssTimer = setTimeout(
+			() => {
+				if (!this.#cssStale) return;
+				const css = screenStyles.css;
+				const patch = changed ? this.#patchTo(css) : null;
+
+				this.#sentCss = css;
+				this.#patched = patch !== null;
+
+				if (patch === null) this.#post({ type: "css", css });
+				else this.#post({ type: "css-patch", css: patch });
+
+				if (patch !== null) this.#pushCss();
+			},
+			changed ? CSS_PUSH_DELAY_MS : CSS_RECONCILE_DELAY_MS,
+		);
 	}
 
 	/** Before modules, so the first render already finds the images */
@@ -550,7 +578,10 @@ export class FrameHost {
 			return;
 		}
 
-		this.#post({ type: "modules", entry: this.#entry, modules, css, theme, reset });
+		const patch = css !== undefined && !reset ? this.#patchTo(css) : null;
+
+		if (patch === null) this.#post({ type: "modules", entry: this.#entry, modules, css, theme, reset });
+		else this.#post({ type: "modules", entry: this.#entry, modules, cssPatch: patch, theme, reset });
 
 		for (const [path, payload] of Object.entries(modules)) {
 			if (payload) this.#sent.set(path, graph.modules.get(path)!.hash);
@@ -562,5 +593,9 @@ export class FrameHost {
 		if (css !== undefined) this.#sentCss = css;
 
 		if (theme !== undefined) this.#sentTheme = theme;
+
+		if (patch === null) return;
+		this.#patched = true;
+		this.#pushCss();
 	}
 }

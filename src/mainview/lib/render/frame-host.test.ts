@@ -173,6 +173,45 @@ describe("FrameHost: CSS", () => {
 		hostA.dispose();
 		hostB.dispose();
 	});
+
+	test("new rules go out as patches, and the whole sheet replaces them once the CSS stays idle", async () => {
+		const a = fakeFrame();
+		const b = fakeFrame();
+		const hostA = new FrameHost(a.frame);
+		const hostB = new FrameHost(b.frame);
+		styles.css = ".p-6 {\n\tpadding: 1.5rem;\n}";
+
+		for (const [host, entry] of [
+			[hostA, "screens/a.tsx"],
+			[hostB, "screens/b.tsx"],
+		] as const) {
+			host.receive({ type: "ready" });
+			host.update(entry, PROJECT, "");
+		}
+
+		expect(lastPosted(a.posted, "modules").css).toBe(styles.css);
+
+		const beforeA = a.posted.length;
+		const beforeB = b.posted.length;
+		const edited = { ...PROJECT, "screens/a.tsx": screen("A2") };
+		styles.css += "\n.p-8 {\n\tpadding: 2rem;\n}";
+		hostA.update("screens/a.tsx", edited, "");
+		hostB.update("screens/b.tsx", edited, "");
+		const modules = lastPosted(a.posted, "modules");
+		expect(modules.css).toBeUndefined();
+		expect(modules.cssPatch).toBe(".p-8 {\n\tpadding: 2rem;\n}");
+
+		await Bun.sleep(400);
+		expect(a.posted.length).toBe(beforeA + 1);
+		expect(b.posted.slice(beforeB)).toEqual([{ type: "css-patch", css: ".p-8 {\n\tpadding: 2rem;\n}" }]);
+
+		await Bun.sleep(2000);
+		expect(a.posted.slice(beforeA + 1)).toEqual([{ type: "css", css: styles.css }]);
+		expect(b.posted.slice(beforeB + 1)).toEqual([{ type: "css", css: styles.css }]);
+		styles.css = "";
+		hostA.dispose();
+		hostB.dispose();
+	}, 5000);
 });
 
 describe("FrameHost: theme", () => {

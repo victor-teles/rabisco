@@ -21,12 +21,16 @@ export type HostMessage =
 			entry: string;
 			modules: Record<string, ModulePayload | null>;
 			css?: string;
+			/** Appended after the frame's CSS; the next `css` replaces both. */
+			cssPatch?: string;
 			/** DESIGN.md token overrides; loads after `css`. */
 			theme?: string;
 			/** Drop everything the frame knew before this message. */
 			reset?: boolean;
 	  }
 	| { type: "css"; css: string }
+	/** Appended after the frame's CSS until the next `css` */
+	| { type: "css-patch"; css: string }
 	/** Project images by `src` (decision 0010); only what changed unless `reset`. `null` deletes. */
 	| { type: "assets"; assets: Record<string, AssetPayload | null>; reset?: boolean }
 	| { type: "theme"; css: string }

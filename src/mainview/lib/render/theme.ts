@@ -36,7 +36,7 @@ export const SCREEN_THEME_CSS = `
 }
 
 /* The motion the uai blocks use */
-@theme {
+@theme static {
 	--ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
 	--animate-shimmer: shimmer 2s linear infinite;
 	--animate-skeleton-shimmer: skeleton-shimmer 1.6s ease-in-out infinite;

@@ -37,9 +37,22 @@ const themeStyle = document.head.appendChild(document.createElement("style"));
 /** As the host sent it: `url()`s to project images are rewritten again when the images change */
 let css = "";
 
+/** New rules sent while typing; adding them skips re-parsing the whole stylesheet. Before the theme, which wins ties */
+const patches: { element: HTMLStyleElement; css: string }[] = [];
+
 function setCss(next: string) {
 	css = next;
 	style.textContent = frameAssets.css(next);
+
+	for (const patch of patches) patch.element.remove();
+	patches.length = 0;
+}
+
+function patchCss(next: string) {
+	const element = document.createElement("style");
+
+	element.textContent = frameAssets.css(next);
+	patches.push({ element: document.head.insertBefore(element, themeStyle), css: next });
 }
 
 let entry = "";
@@ -442,14 +455,20 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		if (!frameAssets.apply(message.assets, message.reset)) return;
 		style.textContent = frameAssets.css(css);
 
+		for (const patch of patches) patch.element.textContent = frameAssets.css(patch.css);
+
 		// Props are resolved while rendering, so the screen renders again with the new URLs
 		if (entry && registry.isLoaded(entry)) requestRender(null);
 	} else if (message?.type === "css") {
 		setCss(message.css);
+	} else if (message?.type === "css-patch") {
+		patchCss(message.css);
 	} else if (message?.type === "theme") {
 		themeStyle.textContent = message.css;
 	} else if (message?.type === "modules") {
 		if (message.css !== undefined) setCss(message.css);
+
+		if (message.cssPatch !== undefined) patchCss(message.cssPatch);
 
 		if (message.theme !== undefined) themeStyle.textContent = message.theme;
 		const invalid = registry.apply(message.modules, message.reset);

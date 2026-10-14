@@ -8,7 +8,7 @@ export type StylesheetSources = Record<string, string>;
 
 /** `tokenNames` are the custom DESIGN.md tokens; their values come with the theme stylesheet (decision 0013) */
 export function screenInput(stylesheets: StylesheetSources, tokenNames: Iterable<string> = []) {
-	const imports = Object.keys(stylesheets).map((id) => `@import "${id}";`);
+	const imports = Object.keys(stylesheets).map((id) => `@import "${id}" theme(static);`);
 
 	return `${imports.join("\n")}\n${SCREEN_THEME_CSS}\n${tokenThemeCss(tokenNames)}`;
 }
