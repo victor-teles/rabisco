@@ -393,6 +393,24 @@ function createBrowserApi(): RabiscoApi {
 		async exportViewer() {
 			throw new Error(DESKTOP_ONLY);
 		},
+		async publishHosts() {
+			return [];
+		},
+		async publishConnect() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async publishDisconnect() {
+			return [];
+		},
+		async publishTarget() {
+			return null;
+		},
+		async publishSite() {
+			throw new Error(DESKTOP_ONLY);
+		},
+		async unpublishSite() {
+			return ok;
+		},
 		async gitStatus() {
 			return { state: "unavailable", error: DESKTOP_ONLY } as const;
 		},

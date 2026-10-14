@@ -9,6 +9,7 @@ import type { RepoInfo } from "./export/repo-sync";
 import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
+import type { PublishHost, PublishHostStatus, PublishParams, PublishTarget } from "./share/publish";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
 	CanvasDoc,
@@ -142,6 +143,17 @@ export type RabiscoRPC = {
 			sharePublish: { params: { path: string; snapshot: ShareSnapshot }; response: ShareStatus };
 			shareStatus: { params: { path: string }; response: ShareStatus | null };
 			shareStop: { params: { path: string }; response: { ok: true } };
+			/** Hosts with a token in the keychain (decision 0038) */
+			publishHosts: { params: {}; response: PublishHostStatus[] };
+			/** Checks the token with the host, then saves it in the keychain */
+			publishConnect: { params: { host: PublishHost; token: string }; response: PublishHostStatus[] };
+			/** Deletes the token; published sites stay up */
+			publishDisconnect: { params: { host: PublishHost }; response: PublishHostStatus[] };
+			publishTarget: { params: { path: string }; response: PublishTarget | null };
+			/** Uploads the website to the project's site, or a new one. The password is never saved. */
+			publishSite: { params: PublishParams & { snapshot: ShareSnapshot }; response: PublishTarget };
+			/** Deletes the site on the host */
+			unpublishSite: { params: { path: string }; response: { ok: true } };
 			/** Into `<dir>/<name>` (`-2`… when taken) */
 			exportViewer: {
 				params: { dir: string; name: string; snapshot: ShareSnapshot; reveal?: boolean };

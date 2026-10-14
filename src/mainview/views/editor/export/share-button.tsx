@@ -14,7 +14,8 @@ import { shareScreens, type ShareStatus } from "../../../../shared/share/snapsho
 import type { Frame, ProjectFiles } from "../../../../shared/types";
 import type { ExportContext } from "./export-menu";
 import { GitSection } from "./git-section";
-import { errorMessage, timeAgo } from "./share-utils";
+import { PublishSection } from "./publish-section";
+import { copyLater, copyText, errorMessage, timeAgo } from "./share-utils";
 
 /** Lets the popover tell when a shared link is out of date */
 const publishedFingerprints = new Map<string, string>();
@@ -22,9 +23,9 @@ const publishedFingerprints = new Map<string, string>();
 const fingerprintOf = (frames: Frame[], files: ProjectFiles, theme: DesignTokens) =>
 	hashString(JSON.stringify([shareScreens(frames, files), files, theme]));
 
-type ShareTab = "link" | "git";
+type ShareTab = "link" | "web" | "git";
 
-const isShareTab = (value: string): value is ShareTab => value === "link" || value === "git";
+const isShareTab = (value: string): value is ShareTab => value === "link" || value === "web" || value === "git";
 
 /** Decision 0008 */
 export const ShareButton = memo(function ShareButton(props: ExportContext) {
@@ -77,6 +78,9 @@ export const ShareButton = memo(function ShareButton(props: ExportContext) {
 							<TabsTrigger value="link" className="px-2 text-[13px]">
 								Link
 							</TabsTrigger>
+							<TabsTrigger value="web" className="px-2 text-[13px]">
+								Web
+							</TabsTrigger>
 							<TabsTrigger value="git" className="px-2 text-[13px]">
 								Git
 							</TabsTrigger>
@@ -84,6 +88,9 @@ export const ShareButton = memo(function ShareButton(props: ExportContext) {
 					</div>
 					<TabsContent value="link" className="p-4">
 						<LinkSection context={props} status={status} onStatus={setStatus} />
+					</TabsContent>
+					<TabsContent value="web" className="p-4">
+						<PublishSection context={props} />
 					</TabsContent>
 					<TabsContent value="git" className="p-4">
 						<GitSection
@@ -99,33 +106,6 @@ export const ShareButton = memo(function ShareButton(props: ExportContext) {
 		</Popover>
 	);
 });
-
-/** Falls back to a selected field and `execCommand` where the Clipboard API is blocked */
-async function copyText(text: string, field: HTMLInputElement | null) {
-	try {
-		await navigator.clipboard.writeText(text);
-
-		return true;
-	} catch {
-		if (!field) return false;
-		field.select();
-
-		return document.execCommand("copy");
-	}
-}
-
-function copyLater(text: Promise<string>) {
-	try {
-		const blob = text.then((value) => new Blob([value], { type: "text/plain" }));
-
-		return navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]).then(
-			() => true,
-			() => false,
-		);
-	} catch {
-		return Promise.resolve(false);
-	}
-}
 
 function LinkSection({
 	context,
@@ -306,7 +286,8 @@ function LinkSection({
 					Export as website…
 				</Button>
 				<p className="mt-1 text-xs text-muted-foreground">
-					The same viewer as a folder: open it from disk, or host it on Netlify or GitHub Pages.
+					The same viewer as a folder: open it from disk, or drag it onto any static host's upload page. To publish it
+					for you, use the Web tab.
 				</p>
 			</div>
 

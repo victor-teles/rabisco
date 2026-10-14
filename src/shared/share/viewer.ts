@@ -10,9 +10,17 @@ import {
 } from "../prototype/transitions";
 import { iconFile } from "../icons";
 import type { ExportFile } from "../types";
+import { OPEN_SEALED_JS, type SealedSnapshot } from "./publish";
 import type { ScreenRuntime, ShareSnapshot } from "./snapshot";
 
 export const SNAPSHOT_GLOBAL = "__RABISCO_SHARE__";
+
+export const SEALED_GLOBAL = "__RABISCO_SEALED__";
+
+export const EXPIRES_GLOBAL = "__RABISCO_EXPIRES__";
+
+/** Decision 0038: a published site can be sealed with a password, stop at a date and ask not to be indexed */
+export type ViewerOptions = { sealed?: SealedSnapshot; expiresAt?: string; noindex?: boolean };
 
 /** Browser copy of `normalizeTarget` in `src/shared/prototype/links.ts`; a test keeps them in step. */
 export const NORMALIZE_TARGET_JS = `function normalizeTarget(to) {
@@ -74,7 +82,7 @@ const escapeHtml = (text: string) =>
 	text.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
 /** JSON that is also safe inside an HTML `<script>` (should the file ever be inlined). */
-const scriptJson = (value: ShareSnapshot) => JSON.stringify(value).replace(/</g, "\\u003c");
+const scriptJson = (value: ShareSnapshot | SealedSnapshot | string) => JSON.stringify(value).replace(/</g, "\\u003c");
 
 const VIEWER_CSS = `
 *,*::before,*::after{box-sizing:border-box}
@@ -109,6 +117,16 @@ iframe{display:block;border:0;width:100%;height:100%}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;padding:8px 14px;border-radius:8px;background:#18181b;color:#fafafa;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
 :focus-visible{outline:2px solid #a1a1aa;outline-offset:1px}
+#gate{display:none;flex:1;align-items:center;justify-content:center;padding:24px}
+body.gated>header,body.gated>.body{display:none}
+body.gated #gate{display:flex}
+#gate form{display:flex;flex-direction:column;gap:8px;width:100%;max-width:320px}
+#gate h1{margin:0;font-size:15px;font-weight:600}
+#gate p{margin:0;color:#52525b}
+#gate input{height:40px;padding:0 10px;border:1px solid #d4d4d8;border-radius:6px;font:inherit;font-size:16px;background:#fff}
+#gate button{height:36px;border:0;border-radius:6px;background:#18181b;color:#fafafa;cursor:pointer}
+#gate button:disabled{opacity:.6;cursor:default}
+#gate .error{color:#b91c1c;min-height:1.4em}
 @media (max-width:700px){nav{display:none}}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 `;
@@ -117,8 +135,8 @@ const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 const ICON_RESTART = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
 
-function indexHtml(snapshot: ShareSnapshot) {
-	const name = escapeHtml(snapshot.name || "Untitled design");
+function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
+	const name = options.sealed ? "Shared design" : escapeHtml(snapshot.name || "Untitled design");
 
 	return `<!doctype html>
 <html lang="en">
@@ -127,7 +145,7 @@ function indexHtml(snapshot: ShareSnapshot) {
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="referrer" content="no-referrer" />
 		<meta name="generator" content="Rabisco" />
-		<title>${name}</title>
+		${options.noindex ? '<meta name="robots" content="noindex" />\n\t\t' : ""}		<title>${name}</title>
 		<style>${VIEWER_CSS}</style>
 	</head>
 	<body>
@@ -135,7 +153,7 @@ function indexHtml(snapshot: ShareSnapshot) {
 			<button class="icon" id="back" type="button" aria-label="Back" title="Back" disabled>${ICON_BACK}</button>
 			<button class="icon" id="restart" type="button" aria-label="Restart" title="Restart">${ICON_RESTART}</button>
 			<span class="sep"></span>
-			<h1>${name}</h1>
+			<h1 id="name">${name}</h1>
 			<span class="current" id="current"></span>
 		</header>
 		<div class="body">
@@ -144,8 +162,17 @@ function indexHtml(snapshot: ShareSnapshot) {
 				<p>Read-only prototype. Click links to move between screens.</p>
 			</nav>
 			<main id="stage">
-				<div id="device"><div id="scaler"><div class="layer"><iframe id="frame" title="Screen" sandbox="allow-scripts" src="runtime/frame.html"></iframe></div></div></div>
+				<div id="device"><div id="scaler"><div class="layer"><iframe id="frame" title="Screen" sandbox="allow-scripts"${options.sealed ? "" : ' src="runtime/frame.html"'}></iframe></div></div></div>
 			</main>
+		</div>
+		<div id="gate">
+			<form id="gate-form">
+				<h1 id="gate-title">This design is protected</h1>
+				<p id="gate-text">Type the password you got with the link.</p>
+				<input id="gate-password" type="password" autocomplete="current-password" aria-label="Password" />
+				<button id="gate-submit" type="submit">Open</button>
+				<p class="error" id="gate-error" role="alert"></p>
+			</form>
 		</div>
 		<div id="toast" role="status" aria-live="polite"></div>
 		<script src="snapshot.js"></script>
@@ -158,7 +185,46 @@ function indexHtml(snapshot: ShareSnapshot) {
 /** Same messages as `FrameHost`; the screen lives in the URL hash so links and the back button work. */
 const viewerJs = () => `(function () {
 	"use strict";
-	var data = window.${SNAPSHOT_GLOBAL};
+
+	${OPEN_SEALED_JS}
+
+	function gate(title, text, form) {
+		document.body.className = "gated";
+		document.getElementById("gate-title").textContent = title;
+		document.getElementById("gate-text").textContent = text;
+		var password = document.getElementById("gate-password");
+		var submit = document.getElementById("gate-submit");
+		if (!form) {
+			password.remove();
+			submit.remove();
+		}
+		return { password: password, submit: submit };
+	}
+
+	function boot() {
+		var expires = window.${EXPIRES_GLOBAL};
+		if (expires && Date.now() >= Date.parse(expires)) return gate("This link has expired", "Ask the person who sent it for a new one.", false);
+		var sealed = window.${SEALED_GLOBAL};
+		if (!sealed) return start(window.${SNAPSHOT_GLOBAL});
+		var fields = gate("This design is protected", "Type the password you got with the link.", true);
+		var error = document.getElementById("gate-error");
+		fields.password.focus();
+		document.getElementById("gate-form").addEventListener("submit", function (event) {
+			event.preventDefault();
+			fields.submit.disabled = true;
+			error.textContent = "";
+			openSealed(sealed, fields.password.value).then(function (data) {
+				document.body.className = "";
+				start(data);
+			}, function (cause) {
+				fields.submit.disabled = false;
+				error.textContent = cause && cause.message === "unsupported" ? "This browser can't open protected links." : "Wrong password";
+				fields.password.select();
+			});
+		});
+	}
+
+	function start(data) {
 	var MOTIONS = ${JSON.stringify(motionTables())};
 	var PADDING = 32;
 	var PAINT_TIMEOUT_MS = 1000;
@@ -457,9 +523,16 @@ const viewerJs = () => `(function () {
 		}
 	});
 
-	layers.push({ element: scaler.querySelector(".layer"), record: watch(document.getElementById("frame"), data.start) });
+	var first = document.getElementById("frame");
+	layers.push({ element: scaler.querySelector(".layer"), record: watch(first, data.start) });
+	// A sealed site loads the frame only now, so its "ready" doesn't arrive before the listener
+	if (!first.getAttribute("src")) first.src = "runtime/frame.html";
 	try { history.replaceState({ depth: 0, transition: "instant" }, "", location.hash || "#" + encodeURIComponent(data.start)); } catch (error) {}
+	document.getElementById("name").textContent = data.name || "Untitled design";
 	show(fromHash(), null);
+	}
+
+	boot();
 })();
 `;
 
@@ -495,11 +568,23 @@ function iconFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[
 	return result;
 }
 
-export function viewerFiles(snapshot: ShareSnapshot, runtime: ScreenRuntime): ExportFile[] {
+function snapshotJs(snapshot: ShareSnapshot, options: ViewerOptions) {
+	const data = options.sealed
+		? `window.${SEALED_GLOBAL} = ${scriptJson(options.sealed)};\n`
+		: `window.${SNAPSHOT_GLOBAL} = ${scriptJson(snapshot)};\n`;
+
+	return options.expiresAt ? `${data}window.${EXPIRES_GLOBAL} = ${scriptJson(options.expiresAt)};\n` : data;
+}
+
+export function viewerFiles(
+	snapshot: ShareSnapshot,
+	runtime: ScreenRuntime,
+	options: ViewerOptions = {},
+): ExportFile[] {
 	return [
-		{ path: "index.html", content: indexHtml(snapshot) },
+		{ path: "index.html", content: indexHtml(snapshot, options) },
 		{ path: "viewer.js", content: viewerJs() },
-		{ path: "snapshot.js", content: `window.${SNAPSHOT_GLOBAL} = ${scriptJson(snapshot)};\n` },
+		{ path: "snapshot.js", content: snapshotJs(snapshot, options) },
 		{ path: "runtime/frame.html", content: inlineRuntime(runtime) },
 		...iconFiles(snapshot, runtime),
 	];

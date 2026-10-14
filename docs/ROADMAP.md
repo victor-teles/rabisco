@@ -142,10 +142,11 @@ _Principle: UX first (no dead ends)_
 
 The share link works only on the local network ([0008](./decisions/0008-share-link-and-git-sync.md)). Competitors share a public link that needs no account. A new decision must pick how, and keep the app working with no account.
 
-- ⬜ Publish "Export as website" to a static host the user owns: GitHub Pages, Vercel, Netlify or Cloudflare Pages, with their CLI or token
+- ✅ Publish "Export as website" to a static host the user owns: Netlify and Vercel, through their APIs with a token in the keychain. The Web tab of the Share popover publishes, updates and removes the site ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-39](/LIT/issues/LIT-39))
+- ⬜ Publish to GitHub Pages through git sync, as the second step of [0038](./decisions/0038-publish-to-a-host-the-user-owns.md). Cloudflare Pages waits for a stable upload API
 - ⬜ A QR code for the LAN link, to open a prototype on a phone
 - ⬜ Comments from viewers on a shared link, collected back into the project
-- ⬜ A password or an expiry on a published link
+- ✅ A password or an expiry on a published link. The password encrypts the snapshot, and the viewer decrypts it in the browser. After the expiry date the viewer stops, and Rabisco removes the site the next time it runs ([LIT-39](/LIT/issues/LIT-39))
 - ⬜ An inspect mode in the viewer: element size, spacing, colors as tokens, and the TSX of a selected element
 - ⬜ Record a prototype walkthrough as a video or GIF
 

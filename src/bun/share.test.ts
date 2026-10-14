@@ -18,9 +18,12 @@ import {
 	NORMALIZE_TARGET_JS,
 	overlayMotionKey,
 	screenMotionKey,
+	EXPIRES_GLOBAL,
+	SEALED_GLOBAL,
 	SNAPSHOT_GLOBAL,
 	viewerFiles,
 } from "../shared/share/viewer";
+import { sealText } from "../shared/share/publish";
 import { createShareService, lanAddress, readScreenRuntime } from "./share";
 import { tempDir } from "./test-utils";
 
@@ -158,6 +161,34 @@ describe("viewerFiles", () => {
 			"isn't an image",
 		);
 		expect(() => assertSnapshot({ ...snapshot(), assets: { "../a.png": "data:image/png;base64,AA==" } })).toThrow();
+	});
+
+	test("a sealed site holds only ciphertext and hides the project name", async () => {
+		const sealed = await sealText(JSON.stringify(snapshot()), "password", 1000);
+
+		const files = Object.fromEntries(
+			viewerFiles(snapshot(), runtime, { sealed, expiresAt: "2026-11-01T00:00:00.000Z", noindex: true }).map((file) => [
+				file.path,
+				file.content,
+			]),
+		);
+
+		const window = {};
+		new Function("window", files["snapshot.js"]!)(window);
+		expect(window).toEqual({ [SEALED_GLOBAL]: sealed, [EXPIRES_GLOBAL]: "2026-11-01T00:00:00.000Z" });
+		expect(files["index.html"]).not.toContain("Shop");
+		expect(files["index.html"]).toContain("<title>Shared design</title>");
+		expect(files["index.html"]).toContain('<meta name="robots" content="noindex" />');
+		expect(files["index.html"]).toContain('<iframe id="frame" title="Screen" sandbox="allow-scripts"></iframe>');
+		expect(files["viewer.js"]).toContain("Wrong password");
+		expect(files["viewer.js"]).toContain("This link has expired");
+		expect(() => new Function(files["viewer.js"]!)).not.toThrow();
+	});
+
+	test("an export is not sealed, indexed or dated", () => {
+		const files = Object.fromEntries(viewerFiles(snapshot(), runtime).map((file) => [file.path, file.content]));
+		expect(files["index.html"]).not.toContain("robots");
+		expect(files["snapshot.js"]).not.toContain(EXPIRES_GLOBAL);
 	});
 
 	test("viewer.js parses", () => {

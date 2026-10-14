@@ -28,6 +28,8 @@ import { findContextFiles } from "./import-context";
 import { createAgentService, DISCOVERY_FILE } from "./mcp/agents";
 import { OPEN_REQUEST_FILE, watchOpenRequests } from "./mcp/open-request";
 import { bridgeLaunch, listClients, removeClient, setUpClient, systemClientEnv } from "./mcp/clients";
+import { createPublishService } from "./publish";
+import { createHostClients } from "./publish-hosts";
 import { createShareService, readScreenRuntime } from "./share";
 import { createProjectStore } from "./store";
 
@@ -94,10 +96,12 @@ const claudeExecutable = join(
 	process.platform === "win32" ? "claude.exe" : "claude",
 );
 
+const secrets = createSecretStore();
+
 const ai = createAiService({
 	userDataDir: Utils.paths.userData,
 	claudeExecutable: existsSync(claudeExecutable) ? claudeExecutable : undefined,
-	secrets: createSecretStore(),
+	secrets,
 	// The Phase 0 mock generator never ships
 	includeMock: channel === "dev",
 	send: (message) => {
@@ -137,6 +141,24 @@ const runtimeDirs = () => [
 const shares = createShareService({
 	readRuntime: () => readScreenRuntime(runtimeDirs()),
 });
+
+// Published sites go to a host the user owns (decision 0038)
+const publishing = createPublishService({
+	userDataDir: Utils.paths.userData,
+	secrets,
+	hosts: createHostClients({ fetch: (url, init) => fetch(url, init) }),
+	readRuntime: () => readScreenRuntime(runtimeDirs()),
+});
+
+const SWEEP_MS = 60 * 60_000;
+
+// Expiry needs Rabisco running: take sites down at launch and every hour after
+const sweepExpired = () =>
+	publishing.sweep().catch((error) => console.warn("Could not take down expired sites:", error));
+
+void sweepExpired();
+
+setInterval(sweepExpired, SWEEP_MS);
 
 const git = createGit();
 
@@ -311,6 +333,12 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			sharePublish: ({ path, snapshot }) => shares.publish(path, snapshot),
 			shareStatus: ({ path }) => shares.status(path),
 			shareStop: ({ path }) => (shares.stop(path), ok),
+			publishHosts: () => publishing.hosts(),
+			publishConnect: ({ host, token }) => publishing.connect(host, token),
+			publishDisconnect: ({ host }) => publishing.disconnect(host),
+			publishTarget: ({ path }) => publishing.target(path),
+			publishSite: ({ snapshot, ...params }) => publishing.publish(params, snapshot),
+			unpublishSite: async ({ path }) => (await publishing.unpublish(path), ok),
 			exportViewer: ({ dir, name, snapshot, reveal }) => {
 				const target = freeExportDir(dir, name);
 				writeExportFiles(target, viewerFiles(assertSnapshot(snapshot), readScreenRuntime(runtimeDirs())));
