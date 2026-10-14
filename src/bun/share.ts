@@ -149,11 +149,11 @@ export function createShareService(options: ShareServiceOptions) {
 			return plain("Not a comment", 400);
 		}
 
-		const comment = parseViewerComment(parsed, share.screens);
 		// Sharing may have stopped or updated while the body arrived
 		const live = byToken.get(share.token);
 
 		if (!live) return plain("Not found", 404);
+		const comment = parseViewerComment(parsed, live.screens);
 
 		if (!comment) return plain("Not a comment", 400);
 		live.commentTimes.push(at);
@@ -198,7 +198,12 @@ export function createShareService(options: ShareServiceOptions) {
 
 	function ensureServer() {
 		if (server) return server;
-		server = Bun.serve({ hostname: options.hostname ?? "0.0.0.0", port: options.port ?? 0, fetch: handle });
+		server = Bun.serve({
+			hostname: options.hostname ?? "0.0.0.0",
+			port: options.port ?? 0,
+			maxRequestBodySize: COMMENT_BODY_LIMIT,
+			fetch: handle,
+		});
 
 		return server;
 	}

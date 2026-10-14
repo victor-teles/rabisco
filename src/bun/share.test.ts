@@ -327,6 +327,30 @@ describe("share service", () => {
 			expect(received).toEqual([]);
 		});
 
+		test("refuses a long body sent without a length", async () => {
+			const { localUrl } = withComments().publish("/p/app.rabisco", snapshot());
+			const chunk = new TextEncoder().encode("x".repeat(4096));
+			let sent = 0;
+
+			const body = new ReadableStream<Uint8Array>({
+				pull(controller) {
+					if (sent++ < 8) controller.enqueue(chunk);
+					else controller.close();
+				},
+			});
+
+			const status = await fetch(`${localUrl}comments`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body,
+			}).then(
+				(response) => response.status,
+				() => 413,
+			);
+
+			expect(status).toBe(413);
+		});
+
 		test("limits how fast comments arrive", async () => {
 			const { localUrl } = withComments().publish("/p/app.rabisco", snapshot());
 			const statuses = [];
