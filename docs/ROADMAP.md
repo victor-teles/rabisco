@@ -41,7 +41,7 @@ Phases 1–17 were checked mostly in Chrome and unit tests. This phase runs ever
 
 **Performance targets** (packaged app, 30-screen project)
 
-- ✅ Pan and zoom hold 60 fps with no editor render per event (p95 18 ms). The marquee on 33 screens now holds 60 fps (was 34–45). Bug: pinch zoom below 20% drops frames, p95 23–31 ms ([LIT-90](/LIT/issues/LIT-90))
+- ✅ Pan and zoom hold 60 fps with no editor render per event (p95 18 ms). The marquee on 33 screens now holds 60 fps (was 34–45). Pinch zoom below 25% draws the snapshot frames on one canvas and holds 60 fps (p95 18 ms, was 23–31) ([LIT-90](/LIT/issues/LIT-90))
 - ✅ Dragging a frame or a pin holds 60 fps (p95 18–19 ms) and is one history commit
 - ✅ A keystroke in the code view or a style field shows in the frame within 50 ms (median 26–28 ms, p95 37–46 ms). Fixed: frames that didn't change got new CSS in the same task as the edited frame, which held a new class back to 100–125 ms. Bug: a keystroke that adds a new class still takes 70–90 ms ([LIT-91](/LIT/issues/LIT-91))
 - ✅ Opening a project shows the first frames within 500 ms (270–380 ms at fit, about 200 ms live at 100%), with one Tailwind build

@@ -56,6 +56,7 @@ import { LayoutGrids } from "./layout-grids";
 import { LinksLayer } from "./links-layer";
 import { MeasureLayer, useAltHeld } from "./measure-layer";
 import { Minimap } from "./minimap";
+import { PinchCanvas } from "./pinch-canvas";
 import { focusOwnsKey, isTyping } from "./shortcuts";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
@@ -389,6 +390,8 @@ export function Canvas({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const layerRef = useRef<HTMLDivElement>(null);
 	const gridRef = useRef<HTMLDivElement>(null);
+	const pinchRef = useRef<HTMLCanvasElement>(null);
+	const [pinch] = useState(() => new PinchCanvas());
 	const chromeRef = useRef<HTMLDivElement>(null);
 	const [chromeLayer, setChromeLayer] = useState<HTMLElement | null>(null);
 	const [drag, setDrag] = useState<Drag | null>(null);
@@ -538,6 +541,11 @@ export function Canvas({
 		const offset = (value: number) => ((value % size) + size) % size;
 		grid.style.transform = `translate(${offset(x)}px, ${offset(y)}px)`;
 
+		if (state.gesture && zoom !== state.zoom && zoom < LIVE_MIN_ZOOM && !pinch.active && pinchRef.current)
+			pinch.start(pinchRef.current, layer, chrome, framesRef.current, selectionRef.current);
+
+		if (pinch.active) pinch.draw({ x, y, zoom });
+
 		if (zoom === state.zoom) return;
 		state.zoom = zoom;
 		layer.style.setProperty("--zoom", String(zoom));
@@ -546,7 +554,7 @@ export function Canvas({
 		grid.style.inset = `${-size}px`;
 		grid.style.backgroundSize = `${size}px ${size}px`;
 		grid.style.backgroundImage = zoom > 0.25 ? GRID_DOTS : "none";
-	}, [view]);
+	}, [view, pinch]);
 
 	useLayoutEffect(() => setChromeLayer(chromeRef.current), []);
 
@@ -585,9 +593,10 @@ export function Canvas({
 			layer.style.willChange = "";
 			grid.style.willChange = "";
 			layer.style.removeProperty("--frame-shadow");
+			pinch.stop();
 			updateVisible();
 		}, GESTURE_IDLE_MS);
-	}, [updateVisible]);
+	}, [updateVisible, pinch]);
 
 	useLayoutEffect(updateVisible, [shown, selection, updateVisible]);
 
@@ -1865,6 +1874,7 @@ export function Canvas({
 				onDrop={onDrop}
 			>
 				<div ref={gridRef} aria-hidden className="pointer-events-none absolute" />
+				<canvas ref={pinchRef} aria-hidden hidden className="pointer-events-none absolute inset-0 size-full" />
 				{/* `--zoom` and `--unzoom` (set with the transform) counter-scale the chrome without re-rendering it */}
 				<div ref={layerRef} className="absolute top-0 left-0 origin-top-left">
 					{underlay}
@@ -2184,6 +2194,7 @@ const FrameView = memo(function FrameView({
 				</div>
 			</ChromePortal>
 			<div
+				data-frame-body
 				className={cn(
 					"h-full w-full overflow-hidden bg-white",
 					frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
