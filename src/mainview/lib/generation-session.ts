@@ -16,6 +16,8 @@ import type {
 	PromptDocument,
 	ScreenMeta,
 } from "../../shared/ai/contract";
+import { resolveFocused } from "../../shared/ai/focus";
+import { focusNotes } from "../../shared/ai/focus-guard";
 import { planRevisionPrompt, plansFirst, revisedPrompt } from "../../shared/ai/plan";
 import { changeSummaryOf } from "../../shared/change-summary";
 import { setResolved } from "../../shared/comments";
@@ -152,6 +154,7 @@ type Polishing = {
 	screens: string[];
 	prompt: string;
 	reference?: Attachment;
+	focus?: ElementFocus[];
 };
 
 type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: string | null };
@@ -403,6 +406,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			problems: request.problems,
 			chatId: polishing.chatId,
 			review: request.review,
+			focus: polishing.focus,
 		});
 
 		const latest = session.state();
@@ -473,12 +477,17 @@ export function createGenerationController(session: ProjectSession, env: Control
 			const latest = session.state();
 			const step = polished.length ? (latest?.history.present ?? polishing.step) : polishing.step;
 			const notes = designNotesOf(checks, latest?.files ?? {});
-			const summary = changeSummaryOf(polishing.before, mergeChanges(polishing.changes, polished), polishing.problems);
+			const changes = mergeChanges(polishing.changes, polished);
+			const summary = changeSummaryOf(polishing.before, changes, polishing.problems);
+			let content = polishing.done.content;
 
-			const done: ChatMessage = {
-				...polishing.done,
-				content: note ? `${polishing.done.content}\n\n${note}` : polishing.done.content,
-			};
+			if (polished.length && polishing.focus) {
+				for (const first of focusNotes(polishing.focus, polishing.before, polishing.changes))
+					content = content === first ? "" : content.replace(`\n\n${first}`, "");
+				content = [content, ...focusNotes(polishing.focus, polishing.before, changes)].filter(Boolean).join("\n\n");
+			}
+
+			const done: ChatMessage = { ...polishing.done, content: [content, note].filter(Boolean).join("\n\n") };
 
 			if (summary) done.summary = notes.length ? { ...summary, design: notes } : summary;
 
@@ -654,6 +663,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 					prompt,
 					reference: options.recreate?.reference,
 				};
+
+				const focus = task === "edit" ? resolveFocused(options.focus, latest.files) : null;
+
+				if (focus) polishing.focus = focus;
 			} else {
 				if (summary) done.summary = summary;
 				session.addMessages([done], chatId);
@@ -697,7 +710,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			const failed = [...new Set(failures.map((f) => f.problem.path))];
 			say(chatId, `${failed.join(", ")} failed to render. Fixing it…`);
 			const repair = renderRepairOf(failures, check.via);
-			void run(prompt, { targets: repair.targets, repair: { problems: repair.problems } }, model);
+			void run(prompt, { targets: repair.targets, repair: { problems: repair.problems }, focus: options.focus }, model);
 		}
 
 		return { applied, outcome };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { elementFocus } from "../../shared/ai/focus";
+import { elementFocus } from "./focus";
 import { changesOutside, focusNotes, lineRanges } from "./focus-guard";
 
 const BEFORE = `import { Button } from "@/components/ui/button";

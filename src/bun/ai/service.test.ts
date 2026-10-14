@@ -657,6 +657,25 @@ describe("visual review", () => {
 		expect(sent.some((m) => m.event.type === "status" && m.event.label === NO_IMAGES_STEP)).toBe(true);
 	});
 
+	test("a review of a focused edit keeps the focus, though the element changed since", async () => {
+		const { ai, requests, projectPath } = setupFake(() => events({ type: "done" }), true);
+		const before = screenSource("Home");
+		const focus = elementFocus(before, "screens/home.tsx", before.indexOf("<"))!;
+
+		put(projectPath, "screens/home.tsx", screenSource("Welcome"));
+
+		await ai.generate({
+			...params(projectPath),
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems: [],
+			review,
+			focus: [focus],
+		});
+
+		expect(requests[0]?.focus).toEqual([focus]);
+	});
+
 	test("without images and without errors there is nothing to run", async () => {
 		const { ai, requests, projectPath } = setupFake(() => events({ type: "done" }));
 

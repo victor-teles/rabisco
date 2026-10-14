@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { AttachCallbacks } from "./generation-session";
 import { createProjectSessions, type Landed, type SessionsApi } from "./project-sessions";
 import type { GenerationPlan } from "../../shared/ai/contract";
+import { elementFocus } from "../../shared/ai/focus";
 import type { PolishMode } from "../../shared/design/polish";
 import { emptyCanvas } from "../../shared/project";
 import type { SavedHistory } from "../../shared/saved-history";
@@ -582,6 +583,90 @@ describe("project sessions", () => {
 		expect(placed).toMatchObject({ x: 1000 + 480 + 80, y: 200, width: 1280, height: 800, reference: "shot" });
 		expect(session.state()!.files["screens/home.tsx"]).toBe(POLISHED);
 		expect(session.state()!.history.past.length).toBe(steps + 1);
+	});
+
+	test("the review of a focused edit keeps the focus, and the guard sees its edits too", async () => {
+		const { open, nextCall, finish } = setup({ polish: "polish" });
+		const { session, controller } = await open("/p/a");
+		const path = "screens/home.tsx";
+		const card = `export default function Home() {\n\treturn (\n\t\t<main>\n\t\t\t<p className="text-success">+5 this week</p>\n\t\t\t<button>Log watering</button>\n\t\t</main>\n\t);\n}\n`;
+		const edited = card.replace("Log watering", "Water Monstera now");
+		const reviewed = edited.replace("text-success", "text-foreground");
+		const focus = elementFocus(card, path, card.indexOf("<button>"))!;
+		const home = { file: path, name: "Home", device: "mobile" as const, x: 0, y: 0, width: 390, height: 844 };
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [path]: card }, frames: [home] }));
+
+		const running = controller.run(
+			"Make this button say 'Water Monstera now'",
+			{ targets: [path], focus: [focus] },
+			MODEL,
+		);
+
+		const edit = await nextCall(1);
+
+		expect(edit.focus).toEqual([focus]);
+		finish(edit, {
+			ok: true,
+			changes: [{ path, content: edited }],
+			frames: [],
+			reply: "Done.",
+			problems: [],
+			context: [],
+		});
+		const review = await nextCall(2);
+
+		expect(review.task).toBe("repair");
+		expect(review.focus).toEqual([focus]);
+		finish(review, {
+			ok: true,
+			changes: [{ path, content: reviewed }],
+			frames: [],
+			reply: "",
+			problems: [],
+			context: [],
+		});
+		await running;
+
+		expect(session.state()!.files[path]).toBe(reviewed);
+		expect(session.state()!.messages.at(-1)?.content).toBe(
+			`Done.\n\nNote: this also changed ${path} outside <button> “Log watering” (line 4). Undo reverts the whole edit.\n\nPolished 1 design problem the check found.`,
+		);
+	});
+
+	test("a focused edit's note is not repeated when its review stays inside the element", async () => {
+		const { open, nextCall, finish } = setup({ polish: "polish" });
+		const { session, controller } = await open("/p/a");
+		const path = "screens/home.tsx";
+		const card = `export default function Home() {\n\treturn (\n\t\t<main>\n\t\t\t<p>+5 this week</p>\n\t\t\t<button>Log watering</button>\n\t\t</main>\n\t);\n}\n`;
+		const edited = card.replace("Log watering", "Water now").replace("+5", "+6");
+		const reviewed = edited.replace("<button>", "<button className='font-medium'>");
+		const focus = elementFocus(card, path, card.indexOf("<button>"))!;
+		const note = `Note: this also changed ${path} outside <button> “Log watering” (line 4). Undo reverts the whole edit.`;
+		const home = { file: path, name: "Home", device: "mobile" as const, x: 0, y: 0, width: 390, height: 844 };
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [path]: card }, frames: [home] }));
+		const running = controller.run("Water now", { targets: [path], focus: [focus] }, MODEL);
+		const reply = `Done.\n\n${note}`;
+		finish(await nextCall(1), {
+			ok: true,
+			changes: [{ path, content: edited }],
+			frames: [],
+			reply,
+			problems: [],
+			context: [],
+		});
+		finish(await nextCall(2), {
+			ok: true,
+			changes: [{ path, content: reviewed }],
+			frames: [],
+			reply: "",
+			problems: [],
+			context: [],
+		});
+		await running;
+
+		expect(session.state()!.messages.at(-1)?.content).toBe(`${reply}\n\nPolished 1 design problem the check found.`);
 	});
 
 	test("a polish that fails says so in the reply", async () => {

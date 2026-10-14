@@ -420,7 +420,11 @@ export function createAiService(options: AiServiceOptions) {
 					return { ok: true, ...planned, context: contextFilesOf(request) };
 				}
 
-				if (params.task === "repair") Object.assign(request, { task: "repair", problems: params.problems ?? [] });
+				if (params.task === "repair") {
+					Object.assign(request, { task: "repair", problems: params.problems ?? [] });
+
+					if (params.focus?.length) request.focus = params.focus;
+				}
 
 				// `create` runs variant 0 (the primary) to N-1; `vary` runs 1 to N, all alternates
 				const count = vary || task === "create" ? clampVariations(params.variations) : 1;

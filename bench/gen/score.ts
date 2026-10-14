@@ -16,7 +16,7 @@ import { isComponentFile, isScreenFile } from "../../src/shared/project";
 import { parseClass, splitModifier } from "../../src/shared/tailwind/classes";
 import type { FileChange, GenerateResult, ProjectFiles } from "../../src/shared/types";
 import { baseOf } from "../../src/shared/variations";
-import { changesOutside } from "../../src/bun/ai/focus-guard";
+import { changesOutside } from "../../src/shared/ai/focus-guard";
 import { objectOr, optionalNumber } from "../../src/bun/json";
 import type { BriefDevice, BriefTask, SeedScreen } from "./briefs";
 

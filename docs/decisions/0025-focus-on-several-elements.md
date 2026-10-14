@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-10
 - **Supersedes:** in [0003](./0003-ai-provider-contract.md), "a **focus** for point and prompt: one element of the target"
-- **Code:** `focus` in [`src/shared/ai/contract.ts`](../../src/shared/ai/contract.ts), [`src/shared/ai/focus.ts`](../../src/shared/ai/focus.ts), [`src/bun/ai/prompt.ts`](../../src/bun/ai/prompt.ts), [`src/bun/ai/focus-guard.ts`](../../src/bun/ai/focus-guard.ts), [`src/mainview/hooks/use-generation.ts`](../../src/mainview/hooks/use-generation.ts)
+- **Code:** `focus` in [`src/shared/ai/contract.ts`](../../src/shared/ai/contract.ts), [`src/shared/ai/focus.ts`](../../src/shared/ai/focus.ts), [`src/bun/ai/prompt.ts`](../../src/bun/ai/prompt.ts), [`src/shared/ai/focus-guard.ts`](../../src/shared/ai/focus-guard.ts), [`src/mainview/hooks/use-generation.ts`](../../src/mainview/hooks/use-generation.ts)
 
 ## Context
 

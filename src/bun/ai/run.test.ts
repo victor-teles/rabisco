@@ -620,6 +620,15 @@ describe("point and prompt", () => {
 		]);
 	});
 
+	test("a repair's focus is a reminder, so it gives no note", async () => {
+		const outside = source.replace("<h1>Hello</h1>", "<h1>Hi</h1>").replace("Body", "Text");
+		const { provider, requests } = fakeProvider([[...file(path, outside), { type: "done" }]]);
+		const { result } = await run(provider, project, undefined, { ...build(), task: "repair", problems: [] });
+		expect(requests[0]!.focus).toEqual([focus]);
+		expect(result.changes).toEqual([{ path, content: outside }]);
+		expect(result.notes).toEqual([]);
+	});
+
 	test("no note when only the element changed", async () => {
 		const { provider } = fakeProvider([[...file(path, source.replace("Hello", "Welcome back")), { type: "done" }]]);
 		const { result } = await run(provider, project, undefined, build());

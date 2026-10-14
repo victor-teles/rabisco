@@ -1,9 +1,9 @@
 // Reports edits outside the focused element (never fails the run). Imports and new top-level
 // declarations are allowed; lines only added right next to the element count as part of it.
 
-import type { ElementFocus } from "../../shared/ai/contract";
-import { focusLabel } from "../../shared/ai/focus";
-import type { FileChange, ProjectFiles } from "../../shared/types";
+import type { ElementFocus } from "./contract";
+import { focusLabel } from "./focus";
+import type { FileChange, ProjectFiles } from "../types";
 
 /** LCS table cells; roughly two ~2000-line files after trimming common ends */
 const MAX_CELLS = 4_000_000;

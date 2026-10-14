@@ -17,9 +17,9 @@ import { contextBody } from "../../shared/context/body";
 import { designTokensOf, type DesignTokens } from "../../shared/context/tokens";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocused } from "../../shared/ai/focus";
+import { focusNotes } from "../../shared/ai/focus-guard";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
-import { focusNotes } from "./focus-guard";
 import { EDIT_MISMATCH_STATUS } from "./protocol";
 import { validateFiles, type ValidateOptions } from "./validate";
 
@@ -248,7 +248,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 		...[...settled.keptDeletes].map((path) => ({ path, content: null })),
 	];
 
-	const notes = focusNotes(request.focus, projectFiles, changes);
+	const notes = request.task === "repair" ? [] : focusNotes(request.focus, projectFiles, changes);
 
 	return {
 		changes,
