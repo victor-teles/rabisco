@@ -148,7 +148,9 @@ function textNode(node, computed) {
 	if (!text) return null;
 	const range = document.createRange();
 	range.selectNodeContents(node);
-	return { tag: "#text", text, box: boxOf(range.getBoundingClientRect()), styles: {}, children: [] };
+	const captured = { tag: "#text", text, box: boxOf(range.getBoundingClientRect()), styles: {}, children: [] };
+	if (annotate) annotate(node, captured, computed);
+	return captured;
 }
 function childrenOf(element, computed) {
 	const children = [];

@@ -96,6 +96,9 @@ export type NodeFields = TextFields & {
 	textCase?: string;
 	textTruncation?: string;
 	maxLines?: number;
+	derivedTextData?: {
+		glyphs: { commandsBlob: number; position: { x: number; y: number }; fontSize: number; advance: number }[];
+	};
 	vectorData?: { vectorNetworkBlob: number; normalizedSize: { x: number; y: number } };
 	fillGeometry?: { windingRule: string; commandsBlob: number; styleID: number }[];
 };

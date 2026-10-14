@@ -1,4 +1,5 @@
 import type { DesignFinding } from "../../../shared/design/findings";
+import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
 import { linkStarts } from "../../../shared/prototype/links";
 import type { ProjectFiles } from "../../../shared/types";
@@ -234,9 +235,12 @@ export class FrameHost {
 		return reply.html;
 	}
 
-	async figmaCapture(timeoutMs = 60_000): Promise<{ tree: string; images: Record<string, FrameImage> }> {
+	async figmaCapture(
+		fonts: FontFile[],
+		timeoutMs = 60_000,
+	): Promise<{ tree: string; images: Record<string, FrameImage> }> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
-		const reply = await this.#request({ type: "figma-capture", id: ++requestId }, timeoutMs);
+		const reply = await this.#request({ type: "figma-capture", id: ++requestId, fonts }, timeoutMs);
 
 		if (reply?.type !== "figma-capture")
 			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");

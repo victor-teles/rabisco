@@ -1,4 +1,5 @@
 import { DESIGN_RULES, type DesignFinding } from "../../../shared/design/findings";
+import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
@@ -60,7 +61,7 @@ export type HostMessage =
 	| { type: "measure"; id: number }
 	/** Answered by a `snapshot` with the same `id`. */
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
-	| { type: "figma-capture"; id: number }
+	| { type: "figma-capture"; id: number; fonts: FontFile[] }
 	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
 	| { type: "lint"; id: number }
 	/** Answered by a `markup` with the same `id`: the rendered HTML, with project images at their own paths. */

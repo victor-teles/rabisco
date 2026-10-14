@@ -10,6 +10,8 @@ import { readFigmaClipboard } from "../../import/figma/clipboard";
 import { isKiwiList, isKiwiRecord, type KiwiRecord } from "../../import/figma/kiwi";
 import { figmaToCaptured } from "../../import/figma/to-captured";
 import { figmaClipboard } from "./clipboard";
+import { fontSet, type FontFile, type FontSet } from "./font";
+import type { NodeFields } from "./node-change";
 import { screensToFigma, type FigmaImage, type FigmaScreen } from "./to-figma";
 
 const box = (x: number, y: number, width: number, height: number): CapturedBox => ({ x, y, width, height });
@@ -539,5 +541,123 @@ describe("round trip through our reader", () => {
 
 			if (node.type !== "DOCUMENT") expect(ids.has(key(parent))).toBe(true);
 		}
+	});
+});
+
+const FONT_FILES = new URL("../../../../node_modules/@fontsource/inter/files/", import.meta.url);
+
+let inter: FontSet | null = null;
+
+async function interFonts() {
+	if (inter) return inter;
+	const files: FontFile[] = [];
+
+	for (const subset of ["latin", "latin-ext"]) {
+		for (const weight of [400, 500, 600, 700]) {
+			const file = Bun.file(new URL(`inter-${subset}-${weight}-normal.woff`, FONT_FILES));
+
+			files.push({ weight, unicodeRange: "", bytes: new Uint8Array(await file.arrayBuffer()) });
+		}
+	}
+
+	inter = fontSet(files);
+
+	return inter;
+}
+
+const glyphsOf = (layer: NodeFields | undefined) => layer?.derivedTextData?.glyphs ?? [];
+
+const baselinesOf = (layer: NodeFields | undefined) => [
+	...new Set(glyphsOf(layer).map((glyph) => Math.round(glyph.position.y))),
+];
+
+function measuredText(value: string, at: CapturedBox, lineWidth: number, size = 14, weight = 400): CapturedNode {
+	const glyphs: number[] = [];
+	let [x, top] = [at.x, at.y + 3];
+
+	for (const char of value) {
+		if (x + 8 > at.x + lineWidth) [x, top] = [at.x, top + 20];
+
+		if (char !== " ") glyphs.push(char.codePointAt(0) ?? 0, x, top, 8, 17, size, weight);
+		x += 8;
+	}
+
+	return { ...text(value, at), glyphs };
+}
+
+describe("text outlines", () => {
+	test("measured text draws at its measured lines, inside the layer", async () => {
+		const paragraph = el("p", box(0, 0, 80, 40), { display: "block" }, [
+			measuredText("Hello world again", box(0, 0, 80, 40), 80),
+		]);
+
+		const copy = screensToFigma([screen(body([paragraph]))], await interFonts());
+		const layer = copy.nodeChanges.find((change) => change.type === "TEXT");
+		const glyphs = glyphsOf(layer);
+
+		expect(glyphs).toHaveLength(15);
+		expect(baselinesOf(layer)).toEqual([14, 34]);
+		expect(glyphs.every(({ position }) => position.x >= 0 && position.x < 80)).toBe(true);
+		expect(glyphs.every((glyph) => glyph.fontSize === 14)).toBe(true);
+		expect(new Set(glyphs.map((glyph) => glyph.commandsBlob)).size).toBe(11);
+		expect(copy.skipped).toBe(0);
+	});
+
+	test("centered text is centered in the layer", async () => {
+		const label = el("p", box(0, 0, 200, 20), { display: "block", "text-align": "center" }, [
+			measuredText("OK", box(92, 0, 16, 20), 200),
+		]);
+
+		const copy = screensToFigma([screen(body([label]))], await interFonts());
+		const [first, second] = glyphsOf(copy.nodeChanges.find((change) => change.type === "TEXT"));
+
+		expect(first?.position.x).toBe(92);
+		expect(second?.position.x).toBe(100);
+	});
+
+	test("unmeasured text is laid out from the font, with word wrap and a line height", async () => {
+		const paragraph = el("p", box(0, 0, 120, 40), { display: "block" }, [
+			text("Make every screen count", box(0, 0, 120, 40)),
+		]);
+
+		const copy = screensToFigma([screen(body([paragraph]))], await interFonts());
+		const layer = copy.nodeChanges.find((change) => change.type === "TEXT");
+		const widths = glyphsOf(layer).map((glyph) => glyph.position.x + glyph.advance * glyph.fontSize);
+
+		expect(baselinesOf(layer)).toEqual([15, 35]);
+		expect(Math.max(...widths)).toBeLessThanOrEqual(120);
+	});
+
+	test("truncated text ends with an ellipsis inside its box", async () => {
+		const line = el(
+			"p",
+			box(0, 0, 60, 20),
+			{ display: "block", "text-overflow": "ellipsis", "overflow-x": "hidden", "white-space": "nowrap" },
+			[measuredText("A very long title", box(0, 0, 136, 20), 1000)],
+		);
+
+		const copy = screensToFigma([screen(body([line]))], await interFonts());
+		const glyphs = glyphsOf(copy.nodeChanges.find((change) => change.type === "TEXT"));
+		const last = glyphs[glyphs.length - 1];
+
+		expect(copy.blobs[last?.commandsBlob ?? -1]).toBeDefined();
+		expect((last?.position.x ?? 0) + (last?.advance ?? 0) * 14).toBeLessThanOrEqual(60);
+		expect(glyphs.length).toBeLessThan(14);
+	});
+
+	test("characters the shipped font lacks are skipped and counted", async () => {
+		const paragraph = el("p", box(0, 0, 200, 20), { display: "block" }, [text("Hi 你好", box(0, 0, 60, 20))]);
+		const copy = screensToFigma([screen(body([paragraph]))], await interFonts());
+
+		expect(glyphsOf(copy.nodeChanges.find((change) => change.type === "TEXT"))).toHaveLength(2);
+		expect(copy.skipped).toBe(1);
+	});
+
+	test("without fonts text keeps no outlines", () => {
+		const { byName } = changes(
+			body([el("p", box(0, 0, 200, 20), { display: "block" }, [text("Hi", box(0, 0, 20, 20))])]),
+		);
+
+		expect(byName("Hi")?.derivedTextData).toBeUndefined();
 	});
 });

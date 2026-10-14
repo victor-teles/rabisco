@@ -1,4 +1,5 @@
 import { figmaClipboard } from "../../shared/export/figma/clipboard";
+import { fontSet, type FontFile } from "../../shared/export/figma/font";
 import type { FigmaImage, FigmaScreen } from "../../shared/export/figma/to-figma";
 import { parseCapturedTree } from "../../shared/import/captured-tree";
 import type { FrameImage } from "./render/protocol";
@@ -11,7 +12,9 @@ export type FigmaExportScreen = {
 	images: Record<string, FrameImage>;
 };
 
-export type FigmaExportReply = { html: string; copied: number; fixed: number } | { error: string };
+export type FigmaExportRequest = { screens: FigmaExportScreen[]; fonts: FontFile[] };
+
+export type FigmaExportReply = { html: string; copied: number; fixed: number; skipped: number } | { error: string };
 
 async function hashed(images: Record<string, FrameImage>) {
 	const entries = await Promise.all(
@@ -25,18 +28,18 @@ async function hashed(images: Record<string, FrameImage>) {
 	return new Map(entries);
 }
 
-addEventListener("message", async (event: MessageEvent<FigmaExportScreen[]>) => {
+addEventListener("message", async (event: MessageEvent<FigmaExportRequest>) => {
 	try {
 		const screens: FigmaScreen[] = [];
 
-		for (const { name, x, y, tree: json, images } of event.data) {
+		for (const { name, x, y, tree: json, images } of event.data.screens) {
 			const tree = parseCapturedTree(json);
 
 			if (tree) screens.push({ name, x, y, tree, images: await hashed(images) });
 		}
 
 		if (!screens.length) throw new Error("The screens didn't render");
-		const reply: FigmaExportReply = figmaClipboard(screens);
+		const reply: FigmaExportReply = figmaClipboard(screens, fontSet(event.data.fonts));
 
 		postMessage(reply);
 	} catch (error) {

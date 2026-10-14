@@ -3,6 +3,7 @@ import { parseCapturedTree, TEXT_TAG, type CapturedNode, type CapturedTree } fro
 import { readFigmaClipboard } from "../../import/figma/clipboard";
 import { figmaToCaptured } from "../../import/figma/to-captured";
 import { figmaClipboard } from "./clipboard";
+import { fontSet, type FontFile } from "./font";
 import type { NodeFields } from "./node-change";
 import { screensToFigma, type FigmaScreen } from "./to-figma";
 
@@ -186,6 +187,55 @@ describe("Copy to Figma round trip on captured screens", () => {
 			expect(problems).toEqual([]);
 		});
 	}
+
+	test("every text layer carries glyph outlines that sit inside it, one baseline per line", async () => {
+		const files: FontFile[] = [];
+
+		for (const subset of ["latin", "latin-ext"]) {
+			for (const weight of [400, 500, 600, 700]) {
+				const file = Bun.file(
+					new URL(
+						`../../../../node_modules/@fontsource/inter/files/inter-${subset}-${weight}-normal.woff`,
+						import.meta.url,
+					),
+				);
+
+				files.push({ weight, unicodeRange: "", bytes: new Uint8Array(await file.arrayBuffer()) });
+			}
+		}
+
+		const fonts = fontSet(files);
+		const problems: Problem[] = [];
+
+		for (const name of FIXTURES) {
+			const { name: title, tree } = await fixture(name);
+			const { html } = figmaClipboard([{ name: title, x: 0, y: 0, tree, images: new Map() }], fonts);
+			const { message } = readFigmaClipboard(html);
+			const changes: NodeFields[] = Array.isArray(message.nodeChanges) ? message.nodeChanges : [];
+
+			for (const change of changes) {
+				if (change.type !== "TEXT") continue;
+				const glyphs = change.derivedTextData?.glyphs ?? [];
+				const height = change.size?.y ?? 0;
+
+				const lineHeight =
+					change.lineHeight?.units === "PIXELS" ? change.lineHeight.value : (change.fontSize ?? 16) * 1.21;
+
+				const lines = new Set(glyphs.map((glyph) => Math.round(glyph.position.y))).size;
+				const at = `${name} "${change.textData?.characters}"`;
+
+				if (!glyphs.length) problems.push(`${at}: no glyphs`);
+
+				if (glyphs.some((glyph) => glyph.position.y <= 0 || glyph.position.y > height + 1))
+					problems.push(`${at}: a baseline outside the layer`);
+
+				if (!change.maxLines && lines !== Math.max(1, Math.round(height / lineHeight)))
+					problems.push(`${at}: ${lines} lines in a layer ${height}px tall`);
+			}
+		}
+
+		expect(problems).toEqual([]);
+	});
 
 	test("layers have names a designer would keep", async () => {
 		for (const name of FIXTURES) {

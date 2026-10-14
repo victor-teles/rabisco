@@ -479,8 +479,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			}
 		})();
 	} else if (message?.type === "figma-capture") {
-		const { id } = message;
-		void captureForFigma((type) => type === Rendered || type === Boundary)
+		const { id, fonts } = message;
+		void captureForFigma((type) => type === Rendered || type === Boundary, fonts)
 			.then(({ tree, images }) => post({ type: "figma-capture", id, tree, images }))
 			.catch((error) =>
 				post({ type: "figma-capture", id, error: error instanceof Error ? error.message : String(error) }),

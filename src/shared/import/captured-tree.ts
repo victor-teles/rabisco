@@ -7,6 +7,8 @@ export const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
 
 export const TEXT_TAG = "#text";
 
+export const GLYPH_FIELDS = 7;
+
 export type CssValues = Record<string, string>;
 
 export type CapturedBox = { x: number; y: number; width: number; height: number };
@@ -15,6 +17,7 @@ export type CapturedNode = {
 	tag: string;
 	name?: string;
 	text?: string;
+	glyphs?: number[];
 	box: CapturedBox;
 	styles: CssValues;
 	tokens?: CssValues;
@@ -182,6 +185,19 @@ function parseRecord(json: Json | undefined, keep: (key: string, value: string) 
 	return Object.fromEntries(record);
 }
 
+function parseGlyphs(json: Json | undefined): number[] | null {
+	if (!isJsonArray(json) || !json.length || json.length % GLYPH_FIELDS || json.length > MAX_TEXT * GLYPH_FIELDS)
+		return null;
+	const glyphs: number[] = [];
+
+	for (const value of json) {
+		if (!isFiniteNumber(value)) return null;
+		glyphs.push(value);
+	}
+
+	return glyphs;
+}
+
 const keepStyle = (key: string, value: string) => PROPERTIES.has(key) && STYLE_VALUE.test(value);
 
 const keepToken = (key: string, value: string) => PROPERTIES.has(key) && /^[a-z][a-z0-9-]*$/.test(value);
@@ -194,7 +210,7 @@ function keepAttribute(key: string, value: string) {
 
 function parseNode(json: Json | undefined, budget: { nodes: number }): CapturedNode | null {
 	if (!isJsonObject(json) || budget.nodes >= MAX_CAPTURED_NODES) return null;
-	const { tag, name, text, box: rawBox, styles, tokens, attrs, children } = json;
+	const { tag, name, text, glyphs, box: rawBox, styles, tokens, attrs, children } = json;
 
 	if (!isString(tag) || !TAG.test(tag) || DROPPED_TAGS.has(tag)) return null;
 	const box = parseBox(rawBox);
@@ -202,8 +218,16 @@ function parseNode(json: Json | undefined, budget: { nodes: number }): CapturedN
 	if (!box) return null;
 	budget.nodes++;
 
-	if (tag === TEXT_TAG)
-		return isString(text) ? { tag, text: `${text}`.slice(0, MAX_TEXT), box, styles: {}, children: [] } : null;
+	if (tag === TEXT_TAG) {
+		if (!isString(text)) return null;
+		const node: CapturedNode = { tag, text: `${text}`.slice(0, MAX_TEXT), box, styles: {}, children: [] };
+		const parsed = parseGlyphs(glyphs);
+
+		if (parsed) node.glyphs = parsed;
+
+		return node;
+	}
+
 	const node: CapturedNode = { tag, box, styles: parseRecord(styles, keepStyle), children: [] };
 
 	if (isString(name) && NAME.test(name)) node.name = `${name}`;

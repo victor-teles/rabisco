@@ -1,5 +1,7 @@
 import { toast } from "sonner";
-import type { FigmaExportReply, FigmaExportScreen } from "@/lib/figma-export-worker";
+import { figmaFonts } from "@/lib/figma-fonts";
+import type { FigmaExportReply, FigmaExportRequest, FigmaExportScreen } from "@/lib/figma-export-worker";
+import type { FontFile } from "../../../../shared/export/figma/font";
 import { renderOffstage } from "@/lib/render/offstage-render";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import { screenNameFromPath } from "../../../../shared/project";
@@ -17,13 +19,15 @@ const nameOf = (frame: Frame) => frame.name || screenNameFromPath(frame.file);
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
-async function capture(frames: Frame[], files: ProjectFiles, theme: DesignTokens) {
+type Encoded = { html: string; copied: number; fixed: number; skipped: number };
+
+async function capture(frames: Frame[], files: ProjectFiles, theme: DesignTokens, fonts: FontFile[]) {
 	const left = Math.min(...frames.map((frame) => frame.x));
 	const top = Math.min(...frames.map((frame) => frame.y));
 	const screens: FigmaExportScreen[] = [];
 
 	for (const frame of frames) {
-		const { tree, images } = await renderOffstage(frame, files, theme, (host) => host.figmaCapture());
+		const { tree, images } = await renderOffstage(frame, files, theme, (host) => host.figmaCapture(fonts));
 
 		screens.push({ name: nameOf(frame), x: frame.x - left, y: frame.y - top, tree, images });
 	}
@@ -31,10 +35,10 @@ async function capture(frames: Frame[], files: ProjectFiles, theme: DesignTokens
 	return screens;
 }
 
-function encode(screens: FigmaExportScreen[]): Promise<{ html: string; copied: number; fixed: number }> {
+function encode(request: FigmaExportRequest): Promise<Encoded> {
 	const worker = new Worker(new URL("../../../lib/figma-export-worker.ts", import.meta.url), { type: "module" });
 
-	return new Promise<{ html: string; copied: number; fixed: number }>((resolve, reject) => {
+	return new Promise<Encoded>((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error("Encoding for Figma took too long")), ENCODE_TIMEOUT_MS);
 
 		worker.addEventListener("message", (event: MessageEvent<FigmaExportReply>) => {
@@ -47,7 +51,7 @@ function encode(screens: FigmaExportScreen[]): Promise<{ html: string; copied: n
 			clearTimeout(timer);
 			reject(new Error("Encoding for Figma failed"));
 		});
-		worker.postMessage(screens);
+		worker.postMessage(request);
 	}).finally(() => worker.terminate());
 }
 
@@ -60,7 +64,10 @@ export async function copyToFigma({ selected, files, theme }: FigmaCopyInput) {
 
 	const label = selected.length === 1 ? nameOf(selected[0]!) : plural(selected.length, "screen");
 	const id = toast.loading(`Copying ${label} to Figma…`);
-	const encoded = capture(selected, files, theme).then(encode);
+
+	const encoded = figmaFonts().then(async (fonts) =>
+		encode({ screens: await capture(selected, files, theme, fonts), fonts }),
+	);
 
 	try {
 		await navigator.clipboard.write([
@@ -72,11 +79,12 @@ export async function copyToFigma({ selected, files, theme }: FigmaCopyInput) {
 			}),
 		]);
 
-		const { copied, fixed } = await encoded;
+		const { copied, fixed, skipped } = await encoded;
 		const what = copied === selected.length ? label : `${copied} of ${selected.length} screens`;
 
 		const notes = [
 			fixed ? `${plural(fixed, "layout")} kept as fixed positions.` : "",
+			skipped ? `${plural(skipped, "text")} ${skipped === 1 ? "uses" : "use"} characters that draw after an edit.` : "",
 			copied < selected.length ? "The rest are over Figma's paste size; copy them separately." : "",
 		];
 

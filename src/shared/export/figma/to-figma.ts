@@ -9,7 +9,9 @@ import {
 import { ROOT_INHERITED } from "../../import/capture-script";
 import { parseColor, type Rgba } from "../color";
 import { parseBoxShadow, parseLinearGradient, splitTopLevel } from "../scene";
+import type { FontSet } from "./font";
 import type { FigmaEffect, FigmaPaint, Guid, NodeFields, TextFields } from "./node-change";
+import { firstTopOf, measuredOf, placeGlyphs, type GlyphSource } from "./text-glyphs";
 import { svgVectors } from "./vector";
 
 export type FigmaImage = { hash: Uint8Array; bytes: Uint8Array; width: number; height: number };
@@ -22,7 +24,13 @@ export type FigmaScreen = {
 	images: ReadonlyMap<string, FigmaImage>;
 };
 
-export type FigmaCopy = { nodeChanges: NodeFields[]; roots: Guid[]; blobs: Uint8Array[]; fixed: number };
+export type FigmaCopy = {
+	nodeChanges: NodeFields[];
+	roots: Guid[];
+	blobs: Uint8Array[];
+	fixed: number;
+	skipped: number;
+};
 
 type Axis = "x" | "y";
 
@@ -41,6 +49,7 @@ type Layer = {
 	margin?: Insets;
 	alignSelf?: string;
 	grow?: boolean;
+	glyphs?: GlyphSource;
 };
 
 type Context = {
@@ -48,6 +57,9 @@ type Context = {
 	imageBlobs: Map<string, number>;
 	blobs: Uint8Array[];
 	fixed: number;
+	fonts: FontSet | null;
+	glyphBlobs: Map<string, number>;
+	skipped: number;
 };
 
 type Inherited = Record<string, string>;
@@ -283,9 +295,10 @@ function fontFamily(value: string) {
 	return /mono/.test(generic) ? "Roboto Mono" : /serif/.test(generic) && !/sans/.test(generic) ? "Noto Serif" : "Inter";
 }
 
+const weightOf = (weight: string) => Math.min(900, Math.max(100, Math.round((Number(weight) || 400) / 100) * 100));
+
 function fontStyle(weight: string, italic: boolean) {
-	const rounded = Math.min(900, Math.max(100, Math.round((Number(weight) || 400) / 100) * 100));
-	const name = WEIGHT_STYLES.get(rounded) ?? "Regular";
+	const name = WEIGHT_STYLES.get(weightOf(weight)) ?? "Regular";
 
 	if (!italic) return name;
 
@@ -295,6 +308,7 @@ function fontStyle(weight: string, italic: boolean) {
 type TextStyle = {
 	family: string;
 	style: string;
+	weight: number;
 	size: number;
 	color: Rgba;
 	decoration: string;
@@ -308,6 +322,7 @@ function textStyleOf(inherited: Inherited, decoration: string): TextStyle {
 	return {
 		family: fontFamily(inherited["font-family"] ?? ""),
 		style: fontStyle(inherited["font-weight"] ?? "400", /italic|oblique/.test(inherited["font-style"] ?? "")),
+		weight: weightOf(inherited["font-weight"] ?? "400"),
 		size: px(inherited["font-size"]) || 16,
 		color: parseColor(inherited.color ?? "") ?? { r: 0, g: 0, b: 0, a: 1 },
 		decoration,
@@ -492,6 +507,17 @@ function textLayer(
 		props,
 		children: [],
 		positioned: null,
+		glyphs: {
+			measured: measuredOf(nodes),
+			firstTop: firstTopOf(nodes),
+			runs: runs.map(({ text, style }) => ({
+				text,
+				size: style.size,
+				weight: style.weight,
+				letterSpacing: style.letterSpacing,
+			})),
+			lineHeight: base.lineHeight,
+		},
 	};
 }
 
@@ -1298,6 +1324,54 @@ function writeLayer(
 	return guid;
 }
 
+function drawText(layer: Layer, context: Context) {
+	for (const child of layer.children) drawText(child, context);
+	const { fonts } = context;
+
+	if (!layer.glyphs || !fonts) return;
+	const { props } = layer;
+	const lineHeight = layer.glyphs.lineHeight ?? (props.fontSize ?? 16) * (fonts.ascent + fonts.descent);
+
+	const placed = placeGlyphs(
+		layer.glyphs,
+		{
+			box: layer.box,
+			align: props.textAlignHorizontal ?? "LEFT",
+			textCase: props.textCase ?? "ORIGINAL",
+			maxLines: props.maxLines ?? null,
+			truncated: props.textTruncation === "ENDING",
+			wraps: props.textAutoResize !== "WIDTH_AND_HEIGHT" && layer.box.height >= lineHeight * 1.5,
+		},
+		fonts,
+	);
+
+	const glyphs: NonNullable<NodeFields["derivedTextData"]>["glyphs"] = [];
+	let skipped = false;
+
+	for (const { codepoint, x, y, size, weight } of placed) {
+		const outline = fonts.outline(codepoint, weight);
+
+		if (!outline) {
+			skipped ||= !/\s/.test(String.fromCodePoint(codepoint));
+			continue;
+		}
+
+		if (!outline.commands) continue;
+		const key = `${weight}:${codepoint}`;
+		let blob = context.glyphBlobs.get(key);
+
+		if (blob === undefined) {
+			blob = context.blobs.push(outline.commands) - 1;
+			context.glyphBlobs.set(key, blob);
+		}
+
+		glyphs.push({ commandsBlob: blob, position: { x, y }, fontSize: size, advance: outline.advance });
+	}
+
+	if (skipped) context.skipped++;
+	props.derivedTextData = { glyphs };
+}
+
 const sameBox = (a: CapturedBox, b: CapturedBox) =>
 	near(a.x, b.x) && near(a.y, b.y) && near(a.width, b.width) && near(a.height, b.height);
 
@@ -1320,7 +1394,7 @@ function screenLayer(root: Layer): Layer {
 	};
 }
 
-export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
+export function screensToFigma(screens: FigmaScreen[], fonts: FontSet | null = null): FigmaCopy {
 	const document = { sessionID: 0, localID: 0 };
 	const canvas = { sessionID: 0, localID: 1 };
 
@@ -1339,7 +1413,16 @@ export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
 		next: 1,
 	};
 
-	const context: Context = { images: new Map(), imageBlobs: new Map(), blobs: [], fixed: 0 };
+	const context: Context = {
+		images: new Map(),
+		imageBlobs: new Map(),
+		blobs: [],
+		fixed: 0,
+		fonts,
+		glyphBlobs: new Map(),
+		skipped: 0,
+	};
+
 	const roots: Guid[] = [];
 
 	screens.forEach((screen, i) => {
@@ -1363,6 +1446,7 @@ export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
 		if (!Array.isArray(layer.props.fillPaints) || !layer.props.fillPaints.length)
 			layer.props.fillPaints = [solid({ r: 255, g: 255, b: 255, a: 1 })];
 		layer.positioned = null;
+		drawText(layer, context);
 		roots.push(
 			writeLayer(
 				writer,
@@ -1377,5 +1461,5 @@ export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
 		);
 	});
 
-	return { nodeChanges: writer.changes, roots, blobs: context.blobs, fixed: context.fixed };
+	return { nodeChanges: writer.changes, roots, blobs: context.blobs, fixed: context.fixed, skipped: context.skipped };
 }

@@ -1,3 +1,4 @@
+import type { FontFile } from "../../shared/export/figma/font";
 import { CAPTURE_BODY } from "../../shared/import/capture-script";
 import type { FrameImage } from "../lib/render/protocol";
 import { frameAssets } from "./assets";
@@ -7,19 +8,24 @@ import { settle } from "./snapshot";
 
 type CapturedJson = {
 	tag: string;
+	glyphs?: number[];
 	name?: string;
 	attrs?: Record<string, string>;
 	styles: Record<string, string>;
 	children: CapturedJson[];
 };
 
-type Annotate = (element: Element, node: CapturedJson, computed: CSSStyleDeclaration) => void;
+type Annotate = (target: Node, node: CapturedJson, computed: CSSStyleDeclaration) => void;
 
 const FIGMA_TYPES = new Set(["image/png", "image/jpeg", "image/gif"]);
 
 const RASTER_SCALE = 2;
 
 const MAX_RASTER_SIDE = 4096;
+
+const GLYPH_FAMILY = "Rabisco Figma Inter";
+
+const MEASURE_CSS = `* { font-family: "${GLYPH_FAMILY}" !important; font-style: normal !important; font-variant-ligatures: none !important; }`;
 
 const URL_PATTERN = /url\(\s*(["']?)(.*?)\1\s*\)/g;
 
@@ -130,6 +136,92 @@ async function load(url: string, box: { width: number; height: number }): Promis
 	}
 }
 
+let fontsLoaded: Promise<void> | null = null;
+
+function loadFonts(fonts: FontFile[]) {
+	fontsLoaded ??= Promise.all(
+		fonts.map(async ({ weight, unicodeRange, bytes }) => {
+			const face = new FontFace(GLYPH_FAMILY, bytes.slice(), { weight: String(weight), unicodeRange });
+
+			document.fonts.add(await face.load());
+		}),
+	).then(() => undefined);
+
+	return fontsLoaded;
+}
+
+const round = (value: number) => Math.round(value * 100) / 100;
+
+function shownCase(char: string, previous: string, transform: string) {
+	if (transform === "uppercase" || (transform === "capitalize" && /^\s?$/.test(previous))) return char.toUpperCase();
+
+	return transform === "lowercase" ? char.toLowerCase() : char;
+}
+
+function glyphsOf(text: Text, range: Range, origin: DOMRect): number[] {
+	const parent = text.parentElement;
+
+	if (!parent) return [];
+	const computed = getComputedStyle(parent);
+	const size = parseFloat(computed.fontSize) || 16;
+	const weight = Number(computed.fontWeight) || 400;
+	const glyphs: number[] = [];
+	let offset = 0;
+	let previous = "";
+
+	for (const char of text.data) {
+		const start = offset;
+
+		offset += char.length;
+		const shown = shownCase(char, previous, computed.textTransform);
+
+		previous = char;
+
+		if (/\s/.test(char)) continue;
+		range.setStart(text, start);
+		range.setEnd(text, offset);
+		const rect = range.getBoundingClientRect();
+
+		if (!rect.width && !rect.height) continue;
+		glyphs.push(
+			shown.codePointAt(0) ?? 0,
+			round(rect.left - origin.left),
+			round(rect.top - origin.top),
+			round(rect.width),
+			round(rect.height),
+			size,
+			weight,
+		);
+	}
+
+	return glyphs;
+}
+
+function measureGlyphs(): Map<Text, number[]> {
+	const glyphs = new Map<Text, number[]>();
+	const style = document.head.appendChild(document.createElement("style"));
+
+	style.textContent = MEASURE_CSS;
+
+	try {
+		const root = document.body;
+		const origin = root.getBoundingClientRect();
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+		const range = document.createRange();
+
+		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+			if (!(node instanceof Text) || !node.data.trim()) continue;
+			const measured = glyphsOf(node, range, origin);
+
+			if (measured.length) glyphs.set(node, measured);
+		}
+	} finally {
+		style.remove();
+	}
+
+	return glyphs;
+}
+
 const kitNames = new WeakMap<FiberType, string>();
 
 for (const [path, exported] of Object.entries(externals)) {
@@ -139,10 +231,12 @@ for (const [path, exported] of Object.entries(externals)) {
 		if (/^[A-Z]/.test(name) && value instanceof Object) kitNames.set(value, name);
 }
 
-export async function captureForFigma(stop: ComponentNaming["stop"]) {
+export async function captureForFigma(stop: ComponentNaming["stop"], fonts: FontFile[]) {
 	const naming: ComponentNaming = { stop, known: (type) => (type instanceof Object ? kitNames.get(type) : undefined) };
 
+	if (fonts.length) await loadFonts(fonts);
 	await settle();
+	const glyphs = fonts.length ? measureGlyphs() : new Map<Text, number[]>();
 	const keys = new Map<string, { key: string; box: { width: number; height: number } }>();
 
 	const keyOf = (url: string, element: Element) => {
@@ -158,6 +252,15 @@ export async function captureForFigma(stop: ComponentNaming["stop"]) {
 	};
 
 	const tree = capture((element, node, computed) => {
+		if (element instanceof Text) {
+			const measured = glyphs.get(element);
+
+			if (measured) node.glyphs = measured;
+
+			return;
+		}
+
+		if (!(element instanceof Element)) return;
 		const name = componentNameOf(element, naming);
 
 		if (name) node.name = name;
