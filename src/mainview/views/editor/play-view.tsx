@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, CircleDot, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import { currentVisit, pushVisit, startHistory, stepBack, stepForward, type PlayStep } from "@/lib/play-history";
-import type { LinkOptions } from "@/lib/render/protocol";
+import type { FrameHost } from "@/lib/render/frame-host";
+import type { LinkOptions, SnapshotRaster } from "@/lib/render/protocol";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,12 +31,22 @@ import {
 	type ScreenTransition,
 	type Size,
 } from "../../../shared/prototype/transitions";
+import type { StepMotion } from "../../../shared/prototype/walkthrough";
 import type { Frame, ProjectFiles } from "../../../shared/types";
+import { saveWalkthrough, type CapturedImage, type CapturedStep } from "./export/walkthrough-export";
 import { isTyping, PLAY_BACK_KEYS, PLAY_FORWARD_KEYS } from "./shortcuts";
 
 const PADDING = 48;
 
 const PAINT_TIMEOUT_MS = 1_000;
+
+const CAPTURE_MS = 1_000;
+
+const SETTLE_MS = 400;
+
+const MAX_STEPS = 120;
+
+const RASTER_MAX_SIDE = 1_280;
 
 type Layer = { id: number; file: string };
 
@@ -43,19 +54,43 @@ type LayerMotion = { id: number; plan: ScreenTransition; running: boolean };
 
 type Overlay = { id: number; file: string; mode: OverlayMode; transition: LinkTransition | null; closing: boolean };
 
+type Recording = { steps: CapturedStep[]; last: string; pending: StepMotion | null; busy: boolean };
+
 const prefersReducedMotion = () =>
 	"matchMedia" in window && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const rasterFor = (size: Size): SnapshotRaster => ({
+	type: "image/png",
+	scale: Math.min(2, RASTER_MAX_SIDE / Math.max(size.width, size.height)),
+});
+
+async function captureFrame(host: FrameHost | undefined, size: Size): Promise<CapturedImage> {
+	if (!host) throw new Error("The screen isn't ready");
+	const { scene, raster } = await host.snapshot(rasterFor(size));
+
+	if (!raster) throw new Error("The screen sent no image");
+
+	return { src: raster.dataUrl, width: scene.width, height: scene.height };
+}
+
+const elapsedLabel = (ms: number) => {
+	const seconds = Math.max(0, Math.floor(ms / 1000));
+
+	return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+};
 
 /** Play mode (decision 0007): clicks on `data-link-to` elements move between screens */
 export function PlayView({
 	start,
 	frames,
 	files,
+	projectName,
 	onClose,
 }: {
 	start: string;
 	frames: Frame[];
 	files: ProjectFiles;
+	projectName: string;
 	onClose: () => void;
 }) {
 	const rootRef = useRef<HTMLDivElement>(null);
@@ -66,6 +101,10 @@ export function PlayView({
 	const [overlays, setOverlays] = useState<Overlay[]>([]);
 	const nextId = useRef(1);
 	const layerRefs = useRef(new Map<number, HTMLDivElement>());
+	const hosts = useRef(new Map<number, FrameHost>());
+	const recording = useRef<Recording | null>(null);
+	const [recordingSince, setRecordingSince] = useState<number | null>(null);
+	const [now, setNow] = useState(0);
 	const [stage, setStage] = useState({ width: 0, height: 0 });
 	const current = currentVisit(history).file;
 	const frame = frames.find((f) => f.file === current);
@@ -95,18 +134,27 @@ export function PlayView({
 		? Math.max(0.1, Math.min(1, (stage.width - PADDING * 2) / size.width, (stage.height - PADDING * 2) / size.height))
 		: 1;
 
-	const show = useCallback((file: string, plan: ScreenTransition | null) => {
-		if (!plan) {
-			setMotion(null);
-			setLayers((list) => [{ id: list.at(-1)!.id, file }]);
-
-			return;
-		}
-
-		const id = nextId.current++;
-		setMotion({ id, plan, running: false });
-		setLayers((list) => [list.at(-1)!, { id, file }]);
+	const noteMotion = useCallback((motion: StepMotion | null) => {
+		if (recording.current) recording.current.pending = motion;
 	}, []);
+
+	const show = useCallback(
+		(file: string, plan: ScreenTransition | null) => {
+			noteMotion(plan ? { kind: "screen", plan } : null);
+
+			if (!plan) {
+				setMotion(null);
+				setLayers((list) => [{ id: list.at(-1)!.id, file }]);
+
+				return;
+			}
+
+			const id = nextId.current++;
+			setMotion({ id, plan, running: false });
+			setLayers((list) => [list.at(-1)!, { id, file }]);
+		},
+		[noteMotion],
+	);
 
 	const apply = useCallback(
 		(step: PlayStep | null) => {
@@ -154,12 +202,13 @@ export function PlayView({
 	}, [motion]);
 
 	const closeOverlay = useCallback(() => {
-		setOverlays((list) => {
-			const top = list.filter((overlay) => !overlay.closing).at(-1);
+		const top = overlays.filter((overlay) => !overlay.closing).at(-1);
 
-			return top ? list.map((overlay) => (overlay === top ? { ...overlay, closing: true } : overlay)) : list;
-		});
-	}, []);
+		if (!top) return;
+		const motion = overlayMotion(top.mode, top.transition, false, prefersReducedMotion());
+		noteMotion(motion ? { kind: "overlay", motion, opening: false } : null);
+		setOverlays((list) => list.map((overlay) => (overlay.id === top.id ? { ...overlay, closing: true } : overlay)));
+	}, [overlays, noteMotion]);
 
 	const removeOverlay = useCallback((id: number) => {
 		setOverlays((list) => list.filter((overlay) => overlay.id !== id));
@@ -189,10 +238,32 @@ export function PlayView({
 		show(start, null);
 	}, [start, show]);
 
+	const startRecording = useCallback(() => {
+		const at = performance.now();
+		recording.current = { steps: [], last: "", pending: null, busy: false };
+		setRecordingSince(at);
+		setNow(at);
+	}, []);
+
+	const stopRecording = useCallback(() => {
+		const active = recording.current;
+
+		if (!active) return;
+		recording.current = null;
+		setRecordingSince(null);
+		void saveWalkthrough(projectName, active.steps);
+	}, [projectName]);
+
+	const close = useCallback(() => {
+		stopRecording();
+		onClose();
+	}, [stopRecording, onClose]);
+
 	const escape = useCallback(() => {
 		if (overlayOpen) closeOverlay();
+		else if (recording.current) stopRecording();
 		else onClose();
-	}, [overlayOpen, closeOverlay, onClose]);
+	}, [overlayOpen, closeOverlay, stopRecording, onClose]);
 
 	const navigate = useCallback(
 		(to: string, options: LinkOptions) => {
@@ -203,11 +274,15 @@ export function PlayView({
 				const mode = parseOverlayMode(options.mode);
 
 				if (!mode) go(target.file, transition ?? "instant");
-				else
+				else {
+					const motion = overlayMotion(mode, transition, true, prefersReducedMotion());
+					noteMotion(motion ? { kind: "overlay", motion, opening: true } : null);
+
 					setOverlays((list) => [
 						...list,
 						{ id: nextId.current++, file: target.file, mode, transition, closing: false },
 					]);
+				}
 			} else if (target.kind === "back") {
 				if (canBack || overlayOpen) back();
 				else toast("This is the first screen", { description: "There's nothing to go back to yet." });
@@ -216,13 +291,79 @@ export function PlayView({
 					description: `No screen at ${target.to}. Pick a target in the inspector.`,
 				});
 		},
-		[files, go, back, canBack, overlayOpen],
+		[files, go, back, canBack, overlayOpen, noteMotion],
 	);
 
 	const sizeOf = (file: string): Size => {
 		const target = frames.find((f) => f.file === file);
 
 		return target ?? FRAME_SIZE[device];
+	};
+
+	const capture = useEffectEvent(async () => {
+		const active = recording.current;
+		const top = layers.at(-1);
+
+		if (!active || active.busy || !top || !exists || (motion && !motion.running)) return;
+		const open = overlays.filter((overlay) => !overlay.closing);
+		const rects = open.map((overlay) => overlayRect(overlay.mode, size, sizeOf(overlay.file)));
+		const at = performance.now();
+		active.busy = true;
+
+		try {
+			const captured = await Promise.all([
+				captureFrame(hosts.current.get(top.id), size),
+				...open.map((overlay, i) => captureFrame(hosts.current.get(overlay.id), rects[i]!)),
+			]).catch(() => null);
+
+			if (!captured) return;
+			const [screen, ...stack] = captured;
+
+			const signature = [screen.src, ...stack.map((image, i) => `${JSON.stringify(rects[i])}${image.src}`)].join("|");
+
+			if (recording.current !== active || signature === active.last) return;
+
+			active.steps.push({
+				at,
+				motion: active.pending,
+				size: { width: size.width, height: size.height },
+				screen,
+				overlays: stack.map((image, i) => ({ rect: rects[i]!, image })),
+			});
+
+			active.pending = null;
+			active.last = signature;
+
+			if (active.steps.length >= MAX_STEPS) {
+				stopRecording();
+				toast("Recording stopped", { description: `A walkthrough keeps up to ${MAX_STEPS} steps.` });
+			}
+		} finally {
+			active.busy = false;
+		}
+	});
+
+	useEffect(() => {
+		if (recordingSince === null) return;
+		const timer = setTimeout(() => void capture(), SETTLE_MS);
+
+		return () => clearTimeout(timer);
+	}, [recordingSince, layers, overlays, motion]);
+
+	useEffect(() => {
+		if (recordingSince === null) return;
+
+		const timer = setInterval(() => {
+			setNow(performance.now());
+			void capture();
+		}, CAPTURE_MS);
+
+		return () => clearInterval(timer);
+	}, [recordingSince]);
+
+	const hostFor = (id: number) => (host: FrameHost | null) => {
+		if (host) hosts.current.set(id, host);
+		else hosts.current.delete(id);
 	};
 
 	// Owns the keyboard while open: the editor's shortcuts would act on a canvas the user can't see
@@ -334,11 +475,41 @@ export function PlayView({
 					</NoDrag>
 				</div>
 				<div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
-					<span>Click links to move between screens</span>
+					<span>
+						{recordingSince === null
+							? "Click links to move between screens"
+							: "Recording. Click through the prototype, then stop"}
+					</span>
 				</div>
+				<NoDrag>
+					{recordingSince === null ? (
+						<BarButton label="Record a walkthrough as a GIF" disabled={!exists} onClick={startRecording}>
+							<CircleDot />
+						</BarButton>
+					) : (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="gap-2 px-2 text-[13px] font-medium"
+									aria-label="Stop recording and save the GIF"
+									onClick={stopRecording}
+								>
+									<span aria-hidden className="size-2 rounded-full bg-destructive motion-safe:animate-pulse" />
+									<span className="text-muted-foreground tabular-nums">{elapsedLabel(now - recordingSince)}</span>
+									Stop
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								Stop and save the GIF <Kbd>Esc</Kbd>
+							</TooltipContent>
+						</Tooltip>
+					)}
+				</NoDrag>
 				<Separator orientation="vertical" className="h-5!" />
 				<NoDrag>
-					<BarButton label="Close" keys="Esc" onClick={onClose}>
+					<BarButton label="Close" keys="Esc" onClick={close}>
 						<X />
 					</BarButton>
 				</NoDrag>
@@ -384,6 +555,7 @@ export function PlayView({
 										onNavigate={navigate}
 										onEscape={escape}
 										onPainted={() => runMotion(layer.id)}
+										onHost={hostFor(layer.id)}
 									/>
 								</div>
 							))}
@@ -398,6 +570,7 @@ export function PlayView({
 									onEscape={escape}
 									onDismiss={closeOverlay}
 									onClosed={removeOverlay}
+									onHost={hostFor(overlay.id)}
 								/>
 							))}
 						</div>
@@ -425,6 +598,7 @@ function OverlayLayer({
 	onEscape,
 	onDismiss,
 	onClosed,
+	onHost,
 }: {
 	overlay: Overlay;
 	screen: Size;
@@ -434,6 +608,7 @@ function OverlayLayer({
 	onEscape: () => void;
 	onDismiss: () => void;
 	onClosed: (id: number) => void;
+	onHost: (host: FrameHost | null) => void;
 }) {
 	const panelRef = useRef<HTMLDivElement>(null);
 	const backdropRef = useRef<HTMLDivElement>(null);
@@ -497,6 +672,7 @@ function OverlayLayer({
 					onNavigate={onNavigate}
 					onEscape={onEscape}
 					onPainted={() => setShown(true)}
+					onHost={onHost}
 				/>
 			</div>
 		</div>
@@ -511,7 +687,7 @@ function BarButton({
 	children,
 }: {
 	label: string;
-	keys: string;
+	keys?: string;
 	disabled?: boolean;
 	onClick: () => void;
 	children: React.ReactNode;
@@ -524,7 +700,7 @@ function BarButton({
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent side="bottom">
-				{label} <Kbd>{keys}</Kbd>
+				{label} {keys ? <Kbd>{keys}</Kbd> : null}
 			</TooltipContent>
 		</Tooltip>
 	);

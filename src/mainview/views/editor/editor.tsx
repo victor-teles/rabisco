@@ -2522,7 +2522,13 @@ export function EditorView({
 							onFit={fitAll}
 						/>
 						{playStart ? (
-							<PlayView start={playStart} frames={frames} files={files} onClose={() => setPlayStart(null)} />
+							<PlayView
+								start={playStart}
+								frames={frames}
+								files={files}
+								projectName={projectName}
+								onClose={() => setPlayStart(null)}
+							/>
 						) : null}
 						{screenshotCompare ? (
 							<ScreenshotCompare

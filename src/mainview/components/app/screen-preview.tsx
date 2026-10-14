@@ -62,6 +62,7 @@ export function ScreenFrame({
 	onNavigate,
 	onEscape,
 	onPainted,
+	onHost,
 }: {
 	entry: string;
 	files: ProjectFiles;
@@ -75,6 +76,7 @@ export function ScreenFrame({
 	onNavigate?: (to: string, options: LinkOptions) => void;
 	onEscape?: () => void;
 	onPainted?: () => void;
+	onHost?: (host: FrameHost | null) => void;
 }) {
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const wrapperRef = useRef<HTMLDivElement>(null);
@@ -82,6 +84,7 @@ export function ScreenFrame({
 	const contentHeightChanged = useEffectEvent((contentHeight: number) => onContentHeight?.(contentHeight));
 	const navigated = useEffectEvent((to: string, options: LinkOptions) => onNavigate?.(to, options));
 	const escaped = useEffectEvent(() => onEscape?.());
+	const hosted = useEffectEvent((host: FrameHost | null) => onHost?.(host));
 	const theme = useContext(ScreenTheme);
 	const virtual = live !== undefined;
 	const isLive = live ?? true;
@@ -113,6 +116,7 @@ export function ScreenFrame({
 		host.onNavigate = (to, options) => navigated(to, options);
 		host.onEscape = () => escaped();
 		hostRef.current = host;
+		hosted(host);
 
 		const unsubscribe = onFrameStatus((status) => {
 			if (status.frame === host.frame && (status.status === "rendered" || status.status === "error")) setPainted(true);
@@ -126,6 +130,7 @@ export function ScreenFrame({
 			unsubscribe();
 			host.dispose();
 			hostRef.current = null;
+			hosted(null);
 			setPainted(false);
 		};
 	}, [mounted]);

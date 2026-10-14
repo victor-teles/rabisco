@@ -20,7 +20,7 @@ The share link works only on the local network ([0008](./decisions/0008-share-li
 - ✅ Comments from viewers on a shared link, collected back into the project. On the LAN link only: the share server takes a comment with a screen and a pin, and it lands as a new thread in one undo step ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-40](/LIT/issues/LIT-40))
 - ✅ A password or an expiry on a published link. The password encrypts the snapshot, and the viewer decrypts it in the browser. After the expiry date the viewer stops, and Rabisco removes the site the next time it runs ([LIT-39](/LIT/issues/LIT-39))
 - ✅ An inspect mode in the viewer: element size, spacing, colors as tokens, and the TSX of a selected element. It works on the LAN link and on a published site ([LIT-40](/LIT/issues/LIT-40))
-- ⬜ Record a prototype walkthrough as a video or GIF ([LIT-141](/LIT/issues/LIT-141))
+- ✅ Record a prototype walkthrough as a GIF. Play mode has a record button; each step is a snapshot from the frame, transitions are rebuilt from the motion tables, and the GIF is made in the webview. Video waits for `VideoEncoder` ([0040](./decisions/0040-record-walkthrough-as-gif.md), [LIT-141](/LIT/issues/LIT-141))
 
 **Done when** a user can send a link that a stakeholder opens on their phone, anywhere.
 

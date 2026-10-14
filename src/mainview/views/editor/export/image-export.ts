@@ -71,7 +71,7 @@ function bytesOf(dataUrl: string) {
 	return bytes;
 }
 
-function base64OfBytes(bytes: Uint8Array) {
+export function base64OfBytes(bytes: Uint8Array) {
 	let binary = "";
 
 	for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
