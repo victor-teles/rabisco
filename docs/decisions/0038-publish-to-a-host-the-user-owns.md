@@ -1,9 +1,9 @@
 # 0038 · Publish the exported website to a host the user owns, with a token in the keychain; a password encrypts the snapshot in the browser
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-13
 - **Extends:** [0008](./0008-share-link-and-git-sync.md)
-- **Code:** not built yet. The build is Phase 23 in [`docs/ROADMAP.md`](../ROADMAP.md).
+- **Code:** [`src/bun/publish.ts`](../../src/bun/publish.ts), [`src/bun/publish-hosts.ts`](../../src/bun/publish-hosts.ts), [`src/shared/share/publish.ts`](../../src/shared/share/publish.ts), [`src/mainview/views/editor/export/publish-section.tsx`](../../src/mainview/views/editor/export/publish-section.tsx)
 
 ## Context
 

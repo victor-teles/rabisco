@@ -67,6 +67,7 @@ export async function sealText(text: string, password: string, rounds = SEAL_ROU
 	const salt = crypto.getRandomValues(new Uint8Array(16));
 	const iv = crypto.getRandomValues(new Uint8Array(12));
 	const encoder = new TextEncoder();
+
 	const base = await crypto.subtle.importKey("raw", encoder.encode(password.normalize("NFC")), "PBKDF2", false, [
 		"deriveKey",
 	]);
