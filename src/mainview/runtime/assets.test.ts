@@ -17,6 +17,16 @@ describe("FrameAssets", () => {
 		expect(assets.apply({ "not a path": png() })).toBe(false);
 	});
 
+	test("restores the paths the screen wrote in rendered HTML", () => {
+		const assets = new FrameAssets();
+		assets.apply({ "/images/a.png": png(), "/b.svg": "data:image/svg+xml;base64,PHN2Zy8+" });
+		const url = assets.url("/images/a.png")!;
+		const html = `<img src="${url}"><div style="background-image: url(&quot;data:image/svg+xml;base64,PHN2Zy8+&quot;)"></div>`;
+		expect(assets.restore(html)).toBe(
+			'<img src="/images/a.png"><div style="background-image: url(&quot;/b.svg&quot;)"></div>',
+		);
+	});
+
 	test("replacing and deleting revoke the old URL", () => {
 		const assets = new FrameAssets();
 		assets.apply({ "/a.png": png() });

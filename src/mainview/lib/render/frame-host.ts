@@ -220,6 +220,19 @@ export class FrameHost {
 		return image ? { scene, raster: image } : { scene };
 	}
 
+	/** The screen's rendered HTML, for a static page */
+	async markup(timeoutMs = 15_000): Promise<string> {
+		if (!this.#ready) throw new Error("The frame isn't ready");
+		const reply = await this.#request({ type: "markup", id: ++requestId }, timeoutMs);
+
+		if (reply?.type !== "markup")
+			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+
+		if ("error" in reply) throw new Error(reply.error);
+
+		return reply.html;
+	}
+
 	/** The layout and contrast checks on the rendered screen; findings have `path` and `start` but no `line` */
 	async lint(timeoutMs = 15_000): Promise<DesignFinding[]> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
@@ -461,6 +474,7 @@ export class FrameHost {
 			message?.type === "measured" ||
 			message?.type === "snapshot" ||
 			message?.type === "lint" ||
+			message?.type === "markup" ||
 			message?.type === "drop-layout" ||
 			message?.type === "element-boxes" ||
 			message?.type === "placements" ||

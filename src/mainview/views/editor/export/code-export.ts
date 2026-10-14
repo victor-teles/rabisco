@@ -1,10 +1,15 @@
 import { toast } from "sonner";
 import { projectAssets } from "@/lib/render/assets";
+import { extractCandidates } from "@/lib/render/candidates";
+import { renderOffstage } from "@/lib/render/offstage-render";
+import { standaloneCss } from "@/lib/render/styles";
 import { api } from "@/lib/rpc";
 import { UI_SOURCES } from "@/lib/ui-sources";
 import { codeToCopy, localDependencies } from "../../../../shared/export/code";
+import { htmlScreen } from "../../../../shared/export/html";
 import { tokenFiles } from "../../../../shared/export/tokens";
 import { packageName, viteProject } from "../../../../shared/export/vite-project";
+import { isScreenFile, toKebab } from "../../../../shared/project";
 import type { ExportContext } from "./export-menu";
 
 /** The component open in the Components tab, else the first selected screen */
@@ -87,5 +92,37 @@ export async function exportTokens(context: ExportContext) {
 		toast.success("Exported the design tokens", { description: dir });
 	} catch (error) {
 		toast.error("Couldn't export the tokens", { description: error instanceof Error ? error.message : String(error) });
+	}
+}
+
+export async function exportHtml(context: ExportContext) {
+	const frame = context.selected.find(
+		(selected) => isScreenFile(selected.file) && Object.hasOwn(context.files, selected.file),
+	);
+
+	if (!frame) {
+		toast("Select a screen to export it as HTML and CSS");
+
+		return;
+	}
+
+	try {
+		const parent = await api.pickExportFolder({});
+
+		if (!parent) return;
+		const markup = await renderOffstage(frame, context.files, context.theme, (host) => host.markup());
+		const css = await standaloneCss(extractCandidates(markup), context.theme);
+		const files = htmlScreen({ title: frame.name, markup, css, assets: await projectAssets.base64() });
+
+		const { dir } = await api.writeExport({
+			dir: parent,
+			name: `${packageName(context.projectName)}-${toKebab(frame.name)}`,
+			files,
+			reveal: true,
+		});
+
+		toast.success(`Exported ${frame.name} as HTML and CSS`, { description: dir });
+	} catch (error) {
+		toast.error("Couldn't export the screen", { description: error instanceof Error ? error.message : String(error) });
 	}
 }

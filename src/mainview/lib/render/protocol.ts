@@ -62,6 +62,8 @@ export type HostMessage =
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
 	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
 	| { type: "lint"; id: number }
+	/** Answered by a `markup` with the same `id`: the rendered HTML, with project images at their own paths. */
+	| { type: "markup"; id: number }
 	| { type: "pick-color"; id: number; x: number; y: number };
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
@@ -120,6 +122,8 @@ export type FrameMessage =
 	| { type: "snapshot"; id: number; error: string }
 	| { type: "lint"; id: number; findings: DesignFinding[] }
 	| { type: "lint"; id: number; error: string }
+	| { type: "markup"; id: number; html: string }
+	| { type: "markup"; id: number; error: string }
 	| { type: "picked-color"; id: number; color: string | null };
 
 /** Frame-local CSS pixels. */
@@ -469,6 +473,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 			if ("error" in data) return isString(data.error);
 
 			return "findings" in data && Array.isArray(data.findings) && data.findings.every(isDesignFinding);
+		case "markup":
+			if (!hasId(data)) return false;
+
+			if ("error" in data) return isString(data.error);
+
+			return "html" in data && isString(data.html);
 		case "picked-color":
 			return hasId(data) && "color" in data && (data.color === null || isString(data.color));
 		default:

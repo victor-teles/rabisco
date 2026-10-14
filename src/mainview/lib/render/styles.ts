@@ -8,6 +8,8 @@ import { UI_SOURCES } from "../ui-sources";
 import { extractCandidates } from "./candidates";
 import { createCompiler, TailwindBuilder } from "./tailwind";
 
+const STYLESHEETS = { tailwindcss: tailwindIndex, "tw-animate-css": twAnimate };
+
 /** Scanned so the classes inside the modules screens can import (shadcn and uai) are always built. */
 const runtimeSources = Object.entries(UI_SOURCES).flatMap(([name, source]) => (isUiModule(name) ? [source] : []));
 
@@ -15,7 +17,7 @@ const runtimeSources = Object.entries(UI_SOURCES).flatMap(([name, source]) => (i
 const tokenNames = new Set<string>();
 
 export const screenStyles = new TailwindBuilder(
-	() => createCompiler({ tailwindcss: tailwindIndex, "tw-animate-css": twAnimate }, tokenNames),
+	() => createCompiler(STYLESHEETS, tokenNames),
 	runtimeSources.flatMap(extractCandidates),
 );
 
@@ -38,4 +40,11 @@ export function themeCss(tokens: DesignTokens): string {
 	themeCache.set(tokens, (css = tokensToCss(tokens)));
 
 	return css;
+}
+
+/** A stylesheet of its own for a static page: Tailwind with only these classes, then the applied tokens */
+export async function standaloneCss(candidates: string[], tokens: DesignTokens): Promise<string> {
+	const compiler = await createCompiler(STYLESHEETS, customTokenNames(tokens));
+
+	return `${compiler.build(candidates)}\n${tokensToCss(tokens)}`;
 }

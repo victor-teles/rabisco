@@ -61,6 +61,15 @@ export class FrameAssets {
 		return this.#blobs.get(url);
 	}
 
+	/** `text` with this frame's image URLs back to the paths the screen wrote, as `/images/a.png` */
+	restore(text: string): string {
+		let restored = text;
+
+		for (const [key, url] of this.#urls) restored = restored.replaceAll(url, key);
+
+		return restored;
+	}
+
 	css(css: string): string {
 		return this.#urls.size ? rewriteCssUrls(css, (key) => this.#urls.get(key)) : css;
 	}

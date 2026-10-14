@@ -90,6 +90,18 @@ function reportError(cause: unknown) {
 
 const rootElement = document.getElementById("root")!;
 
+/** The screen's HTML without the attributes Rabisco adds (`data-rabisco-loc`, link marks) */
+function publishedMarkup(root: HTMLElement) {
+	const copy = root.cloneNode(true);
+
+	if (!(copy instanceof HTMLElement)) return "";
+
+	for (const element of copy.querySelectorAll("*"))
+		for (const name of element.getAttributeNames()) if (name.startsWith("data-rabisco-")) element.removeAttribute(name);
+
+	return copy.innerHTML;
+}
+
 const play = createPlay(rootElement, post);
 
 const reportHeight = heightReporter((height) => post({ type: "size", height }));
@@ -470,6 +482,16 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				post({ type: "lint", id, findings: entry && renderedVersion ? lintScreen(rootElement) : [] });
 			} catch (error) {
 				post({ type: "lint", id, error: error instanceof Error ? error.message : String(error) });
+			}
+		})();
+	} else if (message?.type === "markup") {
+		const { id } = message;
+		void (async () => {
+			try {
+				await settle();
+				post({ type: "markup", id, html: frameAssets.restore(publishedMarkup(rootElement)) });
+			} catch (error) {
+				post({ type: "markup", id, error: error instanceof Error ? error.message : String(error) });
 			}
 		})();
 	} else if (message?.type === "pick-color") {

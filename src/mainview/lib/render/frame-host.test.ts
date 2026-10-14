@@ -708,6 +708,25 @@ describe("FrameHost: image export", () => {
 		host.dispose();
 	});
 
+	test("markup pairs replies by id, passes on frame errors and is validated", async () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		const reading = host.markup();
+		const request = lastPosted(posted, "markup");
+		host.receive({ type: "markup", id: request.id + 100, html: "<p>other</p>" });
+		host.receive({ type: "markup", id: request.id, html: "<main>Hi</main>" });
+		expect(await reading).toBe("<main>Hi</main>");
+
+		const failing = host.markup();
+		host.receive({ type: "markup", id: lastPosted(posted, "markup").id, error: "detached" });
+		await expect(failing).rejects.toThrow("detached");
+		host.dispose();
+
+		expect(isFrameMessage({ type: "markup", id: 1, html: 3 })).toBe(false);
+		expect(isFrameMessage({ type: "markup", html: "" })).toBe(false);
+	});
+
 	test("lint replies are validated", () => {
 		const finding = { rule: "contrast", severity: "error", message: "low", path: "screens/a.tsx", start: 0, line: 1 };
 
