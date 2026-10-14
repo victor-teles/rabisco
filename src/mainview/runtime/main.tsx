@@ -457,10 +457,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 	} else if (message?.type === "measure") {
 		post({ type: "measured", id: message.id, height: contentHeight() });
 	} else if (message?.type === "snapshot") {
-		const { id, raster } = message;
+		const { id, raster, starts } = message;
 		void (async () => {
 			try {
-				const scene = await captureScene(rootElement);
+				const elements = starts?.flatMap((start) => instancesOf(rootElement, locationOf(entry, start))[0] ?? []);
+				const scene = await captureScene(rootElement, elements);
 
 				const image = raster
 					? await rasterize(

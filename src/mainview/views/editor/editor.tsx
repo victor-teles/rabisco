@@ -121,7 +121,8 @@ import { ELEMENT_MENU, elementActions } from "./element-actions";
 import { copyCode } from "./export/code-export";
 import { copyForAgent } from "./export/agent-export";
 import { copyToFigma } from "./export/figma-export";
-import { copyImage, exportFlowPdf, exportImages } from "./export/image-export";
+import { copyImage, exportFlowPdf } from "./export/image-export";
+import { askImageExport, ImageExportDialog } from "./export/image-export-dialog";
 import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
 import { checkDesign, type ScreenCheck } from "./design-check";
@@ -1421,6 +1422,7 @@ export function EditorView({
 				setSourceReveal((key) => key + 1);
 			},
 			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
+			copyImage: (format, starts) => single && void copyImage(format, single, files, appliedTokens, starts),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		{
@@ -1495,18 +1497,13 @@ export function EditorView({
 			run: () => setStyleDialogOpen(true),
 		},
 		{
-			id: "export-png",
-			label: "Export PNG…",
+			// Figma's Export: the selected screens, else every screen
+			id: "export-images",
+			label: "Export images…",
 			group: "Export",
-			enabled: selected.length > 0,
-			run: () => void exportImages("png", scopedExport),
-		},
-		{
-			id: "export-svg",
-			label: "Export SVG…",
-			group: "Export",
-			enabled: selected.length > 0,
-			run: () => void exportImages("svg", scopedExport),
+			chords: [{ code: "KeyE", mod: true, shift: true }],
+			enabled: frames.length > 0,
+			run: () => askImageExport(scopedExport),
 		},
 		{
 			id: "export-pdf",
@@ -1526,8 +1523,16 @@ export function EditorView({
 			id: "copy-png",
 			label: "Copy as PNG",
 			group: "Export",
+			chords: [{ code: "KeyC", mod: true, shift: true }],
 			enabled: single !== null,
-			run: () => single && void copyImage(single, files, appliedTokens),
+			run: () => single && void copyImage("png", single, files, appliedTokens),
+		},
+		{
+			id: "copy-svg",
+			label: "Copy as SVG",
+			group: "Export",
+			enabled: single !== null,
+			run: () => single && void copyImage("svg", single, files, appliedTokens),
 		},
 		{
 			id: "copy-figma",
@@ -2589,6 +2594,7 @@ export function EditorView({
 			<CustomSizeDialog />
 			<ImportPageDialog />
 			<RepoSyncDialog />
+			<ImageExportDialog />
 		</ScreenTheme>
 	);
 }
@@ -2617,7 +2623,7 @@ const SCREEN_MENU: MenuEntry[] = [
 	"sync-to-repo",
 	{
 		label: "Export",
-		items: ["export-png", "export-svg", "export-pdf", SEPARATOR, "copy-code", "copy-png", "copy-figma"],
+		items: ["export-images", "export-pdf", SEPARATOR, "copy-code", "copy-png", "copy-svg", "copy-figma"],
 	},
 	SEPARATOR,
 	"delete-screens",

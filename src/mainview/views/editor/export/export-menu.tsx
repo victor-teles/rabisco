@@ -24,7 +24,8 @@ import {
 	exportTokens,
 	hasLocalImports,
 } from "./code-export";
-import { exportFlowPdf, exportImages } from "./image-export";
+import { exportFlowPdf } from "./image-export";
+import { askImageExport } from "./image-export-dialog";
 import { copyToFigma } from "./figma-export";
 
 export type ExportContext = {
@@ -83,10 +84,10 @@ export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 				<DropdownMenuItem onSelect={() => void exportTokens(props)}>Design tokens…</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>Images</DropdownMenuLabel>
-				<DropdownMenuItem onSelect={() => void exportImages("png", props)} disabled={frames.length === 0}>
+				<DropdownMenuItem onSelect={() => askImageExport(props, "png")} disabled={frames.length === 0}>
 					PNG…
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => void exportImages("svg", props)} disabled={frames.length === 0}>
+				<DropdownMenuItem onSelect={() => askImageExport(props, "svg")} disabled={frames.length === 0}>
 					SVG…
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void exportFlowPdf(props)} disabled={frames.length === 0}>

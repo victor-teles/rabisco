@@ -266,8 +266,11 @@ export function isScreenReaderOnly(style: CSSStyleDeclaration, rect: DOMRect) {
 
 class SceneBuilder {
 	readonly pending: Promise<void>[] = [];
-	readonly scrollX = window.scrollX;
-	readonly scrollY = window.scrollY;
+
+	constructor(
+		readonly scrollX = window.scrollX,
+		readonly scrollY = window.scrollY,
+	) {}
 
 	box(rect: DOMRect): Box {
 		return { x: rect.left + this.scrollX, y: rect.top + this.scrollY, width: rect.width, height: rect.height };
@@ -838,8 +841,11 @@ function collectLinks(container: Element, scrollX: number, scrollY: number): Sce
 	return links;
 }
 
-export async function captureScene(container: Element): Promise<Scene> {
+/** Only `elements`, when given: the scene is their box, without the page's background */
+export async function captureScene(container: Element, elements?: Element[]): Promise<Scene> {
 	await settle();
+
+	if (elements) return captureElements(elements);
 	const builder = new SceneBuilder();
 	const ops: SceneOp[] = [];
 
@@ -858,6 +864,19 @@ export async function captureScene(container: Element): Promise<Scene> {
 		ops: prune(ops),
 		links: collectLinks(container, builder.scrollX, builder.scrollY),
 	};
+}
+
+async function captureElements(elements: Element[]): Promise<Scene> {
+	const box = boxOf(elements);
+
+	if (!box) throw new Error("The element isn't on the screen");
+	const builder = new SceneBuilder(-box.x, -box.y);
+	const ops: SceneOp[] = [];
+
+	for (const element of elements) builder.element(element, ops);
+	await Promise.all(builder.pending);
+
+	return { width: box.width, height: box.height, background: null, ops: prune(ops), links: [] };
 }
 
 function prune(ops: SceneOp[]): SceneOp[] {

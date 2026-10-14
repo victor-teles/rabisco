@@ -15,6 +15,7 @@ import { baseClasses, isHidden } from "../../../shared/tailwind/properties";
 import type { ElementLock, ProjectFiles } from "../../../shared/types";
 import { type MenuEntry, SEPARATOR } from "./action-menu";
 import type { ElementRef } from "./canvas";
+import type { ImageFormat } from "./export/image-export";
 import { LINK_MENU } from "./link-actions";
 
 /** Right-click on an element, on the canvas or in the structure tree */
@@ -32,7 +33,15 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	"duplicate-element",
 	{
 		label: "Copy/Paste as",
-		items: ["copy-element-code", "copy-for-agent", SEPARATOR, "copy-properties", "paste-properties"],
+		items: [
+			"copy-element-code",
+			"copy-element-png",
+			"copy-element-svg",
+			"copy-for-agent",
+			SEPARATOR,
+			"copy-properties",
+			"paste-properties",
+		],
 	},
 	SEPARATOR,
 	"toggle-hidden",
@@ -180,6 +189,8 @@ type Options = {
 	showSource: () => void;
 	/** ⌘V when the clipboard holds no element code: screens, or a screen's TSX */
 	pasteScreens: (data: PasteData) => void;
+	/** Renders the elements at `starts` in the element's screen */
+	copyImage: (format: ImageFormat, starts: number[]) => void;
 };
 
 /** Go after the editor's hidden Escape action, which wins the Esc key that `select-parent` only shows */
@@ -197,6 +208,7 @@ export function elementActions({
 	askAI,
 	showSource,
 	pasteScreens,
+	copyImage,
 }: Options): Action[] {
 	const source = element ? files[element.file] : undefined;
 	const child = element && source !== undefined ? firstChildStart(source, element.start) : null;
@@ -455,6 +467,22 @@ export function elementActions({
 			group: "Element",
 			enabled: on,
 			run: () => element && source !== undefined && void copyElementCode(source, starts),
+		},
+		{
+			// Figma's Copy as PNG. Before the screens' ⇧⌘C, which it wins while an element is selected
+			id: "copy-element-png",
+			label: "Copy as PNG",
+			group: "Element",
+			chords: [{ code: "KeyC", mod: true, shift: true }],
+			enabled: on,
+			run: () => element && source !== undefined && copyImage("png", outermost(source, starts)),
+		},
+		{
+			id: "copy-element-svg",
+			label: "Copy as SVG",
+			group: "Element",
+			enabled: on,
+			run: () => element && source !== undefined && copyImage("svg", outermost(source, starts)),
 		},
 		{
 			id: "go-to-source",

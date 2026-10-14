@@ -30,6 +30,14 @@ export function imageFileNames(paths: string[], extension: string): string[] {
 	});
 }
 
+/** `welcome.png` at 2x → `welcome@2x.png`, the suffix Figma gives scaled exports; 1x keeps the name */
+export function scaledFileName(name: string, scale: number) {
+	if (scale === 1) return name;
+	const dot = name.lastIndexOf(".");
+
+	return dot < 0 ? `${name}@${scale}x` : `${name.slice(0, dot)}@${scale}x${name.slice(dot)}`;
+}
+
 /** `My App` → `my-app` */
 export function exportSlug(projectName: string) {
 	const name = projectName.replace(/\.rabisco$/i, "").normalize("NFKD");

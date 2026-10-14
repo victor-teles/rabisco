@@ -59,8 +59,8 @@ export type HostMessage =
 	| { type: "pause"; on: boolean }
 	/** Answered by a `measured` with the same `id`. */
 	| { type: "measure"; id: number }
-	/** Answered by a `snapshot` with the same `id`. */
-	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
+	/** Answered by a `snapshot` with the same `id`; `starts` limits it to the first instance of those elements. */
+	| { type: "snapshot"; id: number; raster?: SnapshotRaster; starts?: number[] }
 	| { type: "figma-capture"; id: number; fonts: FontFile[] }
 	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
 	| { type: "lint"; id: number }

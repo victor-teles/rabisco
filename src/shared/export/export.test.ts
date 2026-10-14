@@ -16,7 +16,7 @@ import {
 	type Scene,
 	type SceneOp,
 } from "./scene";
-import { exportSlug, imageFileNames, imageTargets } from "./targets";
+import { exportSlug, imageFileNames, imageTargets, scaledFileName } from "./targets";
 
 const near = (color: Rgba | null, expected: [number, number, number, number?], tolerance = 2) => {
 	expect(color).not.toBeNull();
@@ -530,6 +530,9 @@ describe("targets", () => {
 			"welcome.alt-1.png",
 			"welcome-2.png",
 		]);
+		expect(scaledFileName("welcome.png", 1)).toBe("welcome.png");
+		expect(scaledFileName("welcome.png", 2)).toBe("welcome@2x.png");
+		expect(scaledFileName("welcome.alt-1.png", 3)).toBe("welcome.alt-1@3x.png");
 		expect(exportSlug("My App")).toBe("my-app");
 		expect(exportSlug("日本")).toBe("rabisco");
 	});

@@ -148,6 +148,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌘C`, `⌘V`                                                | Copy the selected screens, paste screens or screen code as new screens             |
 | `⌥⇧⌘C`                                                    | Copy for agent: the selected screens' code, tokens and screenshot as Markdown      |
 | `⌃⌘C`                                                     | Copy to Figma: the selected screens as Figma layers with auto layout and text      |
+| `⇧⌘C`                                                     | Copy as PNG: the selected element, else the selected screen                        |
+| `⇧⌘E`                                                     | Export images: PNG at 1x, 2x and 3x, or SVG, named after the screens               |
 | `⌥⇧⌘S`                                                    | Sync the selected screen and its components into an app repository                 |
 | Drop or paste (`⌘V`) an image on the canvas               | Add it to the moodboard; it goes with prompts about the screen it sits next to     |
 | `⌫` (moodboard image selected)                            | Delete the image; drag a corner to resize it (`⇧` frees the ratio)                 |

@@ -7,7 +7,7 @@ import type { DesignTokens } from "../../../../shared/context/tokens";
 import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/export/flow";
 import { createPdf, jpegSize } from "../../../../shared/export/pdf";
 import { sceneToSvg } from "../../../../shared/export/scene";
-import { exportSlug, imageFileNames, imageTargets } from "../../../../shared/export/targets";
+import { exportSlug, imageFileNames, imageTargets, scaledFileName } from "../../../../shared/export/targets";
 import { screenNameFromPath } from "../../../../shared/project";
 import type { ExportFile, Frame, ProjectFiles } from "../../../../shared/types";
 
@@ -18,19 +18,35 @@ const JPEG_QUALITY = 0.88;
 
 const PARALLEL = 3;
 
-type Rendered = { frame: Frame; snapshot: Snapshot };
+export type ImageFormat = "png" | "svg";
+
+export const EXPORT_SCALES = [1, 2, 3] as const;
+
+type Rendered = { frame: Frame; snapshots: Snapshot[] };
 
 type Failure = { frame: Frame; message: string };
 
-/** Renders in an `offstage()` frame */
-const renderScreen = (frame: Frame, files: ProjectFiles, theme: DesignTokens, raster?: SnapshotRaster) =>
-	renderOffstage(frame, files, theme, (host) => host.snapshot(raster));
+/** Renders in an `offstage()` frame once, then takes one snapshot per raster. `starts` limits it to those elements */
+const renderScreen = (
+	frame: Frame,
+	files: ProjectFiles,
+	theme: DesignTokens,
+	rasters: (SnapshotRaster | undefined)[],
+	starts?: number[],
+) =>
+	renderOffstage(frame, files, theme, async (host) => {
+		const snapshots: Snapshot[] = [];
+
+		for (const raster of rasters) snapshots.push(await host.snapshot(raster, undefined, starts));
+
+		return snapshots;
+	});
 
 async function renderAll(
 	frames: Frame[],
 	files: ProjectFiles,
 	theme: DesignTokens,
-	raster: SnapshotRaster | undefined,
+	rasters: (SnapshotRaster | undefined)[],
 	onProgress: (done: number) => void,
 ) {
 	const results: (Rendered | Failure)[] = [];
@@ -43,7 +59,7 @@ async function renderAll(
 			const frame = frames[index]!;
 
 			try {
-				results[index] = { frame, snapshot: await renderScreen(frame, files, theme, raster) };
+				results[index] = { frame, snapshots: await renderScreen(frame, files, theme, rasters) };
 			} catch (error) {
 				results[index] = { frame, message: error instanceof Error ? error.message : String(error) };
 			}
@@ -55,7 +71,7 @@ async function renderAll(
 	await Promise.all(Array.from({ length: Math.min(PARALLEL, frames.length) }, worker));
 
 	return {
-		rendered: results.filter((r): r is Rendered => "snapshot" in r),
+		rendered: results.filter((r): r is Rendered => "snapshots" in r),
 		failed: results.filter((r): r is Failure => "message" in r),
 	};
 }
@@ -114,10 +130,11 @@ export type ImageExportInput = {
 	theme: DesignTokens;
 };
 
-/** Without a selection, every screen except alternates */
+/** Without a selection, every screen except alternates. PNGs get one file per scale, `welcome@2x.png` beside `welcome.png` */
 export async function exportImages(
-	format: "png" | "svg",
+	format: ImageFormat,
 	{ projectName, frames, selected, files, theme }: ImageExportInput,
+	scales: readonly number[] = [SCALE],
 ) {
 	const targets = imageTargets(frames, selected, files);
 
@@ -129,9 +146,10 @@ export async function exportImages(
 	const id = toast.loading(`Rendering ${targets.length === 1 ? nameOf(targets[0]!) : `${targets.length} screens`}…`);
 
 	try {
-		const raster = format === "png" ? ({ type: "image/png", scale: SCALE } as const) : undefined;
+		const rasters =
+			format === "png" ? scales.map((scale): SnapshotRaster => ({ type: "image/png", scale })) : [undefined];
 
-		const { rendered, failed } = await renderAll(targets, files, theme, raster, (done) => {
+		const { rendered, failed } = await renderAll(targets, files, theme, rasters, (done) => {
 			if (targets.length > 1) toast.loading(`Rendering screens… ${done} of ${targets.length}`, { id });
 		});
 
@@ -142,10 +160,14 @@ export async function exportImages(
 			format,
 		);
 
-		const exported: ExportFile[] = rendered.map(({ frame, snapshot }, i) =>
+		const exported: ExportFile[] = rendered.flatMap(({ frame, snapshots }, i) =>
 			format === "png"
-				? { path: names[i]!, content: base64Of(snapshot.raster!.dataUrl), encoding: "base64" }
-				: { path: names[i]!, content: sceneToSvg(snapshot.scene, nameOf(frame)) },
+				? snapshots.map((snapshot, j): ExportFile => ({
+						path: scales.length > 1 ? scaledFileName(names[i]!, scales[j]!) : names[i]!,
+						content: base64Of(snapshot.raster!.dataUrl),
+						encoding: "base64",
+					}))
+				: [{ path: names[i]!, content: sceneToSvg(snapshots[0]!.scene, nameOf(frame)) }],
 		);
 
 		const written = await write(dir, exported, `${exportSlug(projectName)}-${format === "png" ? "images" : "svg"}`);
@@ -183,14 +205,14 @@ export async function exportFlowPdf(
 			ordered,
 			files,
 			theme,
-			{ type: "image/jpeg", scale: SCALE, quality: JPEG_QUALITY },
+			[{ type: "image/jpeg", scale: SCALE, quality: JPEG_QUALITY }],
 			(done) => toast.loading(`Rendering screens… ${done} of ${ordered.length}`, { id }),
 		);
 
 		if (!rendered.length) throw new Error(failureDescription(failed));
 		toast.loading("Writing the PDF…", { id });
 
-		const flow: FlowScreen[] = rendered.map(({ frame, snapshot }) => {
+		const flow: FlowScreen[] = rendered.map(({ frame, snapshots: [snapshot] }) => {
 			const jpeg = bytesOf(snapshot.raster!.dataUrl);
 			const size = jpegSize(jpeg);
 
@@ -217,17 +239,33 @@ export async function exportFlowPdf(
 	}
 }
 
-/** The PNG is a promise so WebKit keeps the click's user activation while the screen renders */
-export async function copyImage(frame: Frame, files: ProjectFiles, theme: DesignTokens) {
-	const id = toast.loading(`Rendering ${nameOf(frame)}…`);
+/** The image is a promise so WebKit keeps the click's user activation while the screen renders. `starts` copies those elements of the screen */
+export async function copyImage(
+	format: ImageFormat,
+	frame: Frame,
+	files: ProjectFiles,
+	theme: DesignTokens,
+	starts?: number[],
+) {
+	const what = !starts ? nameOf(frame) : starts.length > 1 ? "the elements" : "the element";
+	const id = toast.loading(`Rendering ${what}…`);
+	const raster: SnapshotRaster | undefined = format === "png" ? { type: "image/png", scale: SCALE } : undefined;
+	const snapshot = renderScreen(frame, files, theme, [raster], starts).then(([shot]) => shot!);
 
-	const png = renderScreen(frame, files, theme, { type: "image/png", scale: SCALE }).then(
-		(snapshot) => new Blob([bytesOf(snapshot.raster!.dataUrl)], { type: "image/png" }),
-	);
+	const item =
+		format === "png"
+			? new ClipboardItem({
+					"image/png": snapshot.then((shot) => new Blob([bytesOf(shot.raster!.dataUrl)], { type: "image/png" })),
+				})
+			: new ClipboardItem({
+					"text/plain": snapshot.then(
+						(shot) => new Blob([sceneToSvg(shot.scene, starts ? undefined : nameOf(frame))], { type: "text/plain" }),
+					),
+				});
 
 	try {
-		await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-		toast.success(`Copied ${nameOf(frame)} as PNG`, { id });
+		await navigator.clipboard.write([item]);
+		toast.success(`Copied ${what} as ${format.toUpperCase()}`, { id });
 	} catch (error) {
 		toast.error("Couldn't copy the image", { id, description: error instanceof Error ? error.message : String(error) });
 	}

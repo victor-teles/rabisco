@@ -204,11 +204,14 @@ export class FrameHost {
 		return reply?.type === "measured" && Number.isFinite(reply.height) ? reply.height : null;
 	}
 
-	async snapshot(raster?: SnapshotRaster, timeoutMs = 60_000): Promise<Snapshot> {
+	/** `starts` limits it to those elements, cropped to their box */
+	async snapshot(raster?: SnapshotRaster, timeoutMs = 60_000, starts?: number[]): Promise<Snapshot> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
 		const request: HostMessage & { id: number } = { type: "snapshot", id: ++requestId };
 
 		if (raster) request.raster = raster;
+
+		if (starts) request.starts = starts;
 		const reply = await this.#request(request, timeoutMs);
 
 		if (reply?.type !== "snapshot")
