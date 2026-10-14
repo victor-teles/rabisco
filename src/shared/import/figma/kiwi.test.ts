@@ -95,6 +95,6 @@ describe("Figma clipboard", () => {
 		expect(archive.version).toBe(48);
 		expect([...archive.schema]).toEqual([...schema]);
 		expect([...archive.data]).toEqual([...data]);
-		expect(() => readFigKiwi(figKiwi(schema, data).subarray(0, 20))).toThrow(FigmaFormatError);
+		expect(() => readFigKiwi(figKiwi(schema, data, 70).subarray(0, 20))).toThrow(FigmaFormatError);
 	});
 });

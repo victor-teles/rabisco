@@ -10,6 +10,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DesignTokens } from "../../../../shared/context/tokens";
+import { imageTargets } from "../../../../shared/export/targets";
 import { isComponentFile } from "../../../../shared/project";
 import type { Frame, ProjectFiles } from "../../../../shared/types";
 import { NEXT } from "../../../../shared/export/next-project";
@@ -24,6 +25,7 @@ import {
 	hasLocalImports,
 } from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
+import { copyToFigma } from "./figma-export";
 
 export type ExportContext = {
 	projectPath: string;
@@ -89,6 +91,14 @@ export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void exportFlowPdf(props)} disabled={frames.length === 0}>
 					PDF of the flow…
+				</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuLabel>Figma</DropdownMenuLabel>
+				<DropdownMenuItem
+					onSelect={() => void copyToFigma({ ...props, selected: imageTargets(frames, props.selected, props.files) })}
+					disabled={frames.length === 0}
+				>
+					Copy to Figma
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

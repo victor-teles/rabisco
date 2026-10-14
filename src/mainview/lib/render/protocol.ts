@@ -60,6 +60,7 @@ export type HostMessage =
 	| { type: "measure"; id: number }
 	/** Answered by a `snapshot` with the same `id`. */
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster }
+	| { type: "figma-capture"; id: number }
 	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
 	| { type: "lint"; id: number }
 	/** Answered by a `markup` with the same `id`: the rendered HTML, with project images at their own paths. */
@@ -90,6 +91,8 @@ export type InspectedElement = {
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
 export type AssetPayload = Blob | string;
+
+export type FrameImage = { bytes: Uint8Array; width: number; height: number };
 
 /** `scale` is device pixels per CSS pixel (lowered for very tall screens). */
 export type SnapshotRaster = {
@@ -142,6 +145,8 @@ export type FrameMessage =
 	| { type: "measured"; id: number; height: number }
 	| { type: "snapshot"; id: number; scene: Scene; raster?: { dataUrl: string; scale: number } }
 	| { type: "snapshot"; id: number; error: string }
+	| { type: "figma-capture"; id: number; tree: string; images: Record<string, FrameImage> }
+	| { type: "figma-capture"; id: number; error: string }
 	| { type: "lint"; id: number; findings: DesignFinding[] }
 	| { type: "lint"; id: number; error: string }
 	| { type: "markup"; id: number; html: string }
@@ -305,6 +310,18 @@ function isRaster(raster: unknown): raster is { dataUrl: string; scale: number }
 		isObject(raster) && "dataUrl" in raster && "scale" in raster && isString(raster.dataUrl) && isNumber(raster.scale)
 	);
 }
+
+const isFrameImage = (image: unknown): image is FrameImage =>
+	isObject(image) &&
+	"bytes" in image &&
+	"width" in image &&
+	"height" in image &&
+	image.bytes instanceof Uint8Array &&
+	isNumber(image.width) &&
+	isNumber(image.height);
+
+const isFrameImages = (images: unknown): images is Record<string, FrameImage> =>
+	isObject(images) && Object.entries(images).every(([key, image]) => /^#image-\d+$/.test(key) && isFrameImage(image));
 
 const isTracked = (value: unknown): value is { start: number; version: string } =>
 	isObject(value) && "start" in value && "version" in value && isNumber(value.start) && isString(value.version);
@@ -492,6 +509,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 				isScene(data.scene) &&
 				(!("raster" in data) || data.raster === undefined || isRaster(data.raster))
 			);
+		case "figma-capture":
+			if (!hasId(data)) return false;
+
+			if ("error" in data) return isString(data.error);
+
+			return "tree" in data && isString(data.tree) && "images" in data && isFrameImages(data.images);
 		case "lint":
 			if (!hasId(data)) return false;
 

@@ -43,7 +43,9 @@ export function matchesChord(chord: Chord, event: KeyInput, mac = isMac) {
 
 	if (!hit) return false;
 
-	if (chord.ctrl) {
+	if (chord.ctrl && chord.mod) {
+		if (!event.ctrlKey || !event.metaKey) return false;
+	} else if (chord.ctrl) {
 		if (!event.ctrlKey || event.metaKey) return false;
 	} else if (chord.mod) {
 		if (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey) return false;

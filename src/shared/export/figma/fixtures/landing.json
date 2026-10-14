@@ -1,0 +1,978 @@
+{
+	"name": "Landing",
+	"tree": {
+		"title": "",
+		"width": 1280,
+		"root": {
+			"tag": "body",
+			"box": { "x": 0, "y": 0, "width": 1280, "height": 800 },
+			"styles": {
+				"display": "block",
+				"background-color": "rgb(255, 255, 255)",
+				"color": "rgb(10, 10, 10)",
+				"font-family": "system-ui, \"Segoe UI\", Roboto, sans-serif",
+				"line-height": "24px"
+			},
+			"children": [
+				{
+					"tag": "div",
+					"box": { "x": 0, "y": 0, "width": 1280, "height": 800 },
+					"styles": { "display": "block" },
+					"attrs": {},
+					"children": [
+						{
+							"tag": "div",
+							"box": { "x": 0, "y": 0, "width": 1280, "height": 800 },
+							"styles": {
+								"display": "flex",
+								"flex-direction": "column",
+								"min-height": "100%",
+								"background-color": "rgb(255, 255, 255)"
+							},
+							"attrs": {},
+							"children": [
+								{
+									"tag": "header",
+									"box": { "x": 0, "y": 0, "width": 1280, "height": 64 },
+									"styles": {
+										"display": "flex",
+										"justify-content": "space-between",
+										"align-items": "center",
+										"padding-right": "56px",
+										"padding-left": "56px",
+										"border-bottom-width": "1px",
+										"border-bottom-style": "solid",
+										"border-bottom-color": "rgb(230, 230, 230)"
+									},
+									"attrs": {},
+									"children": [
+										{
+											"tag": "span",
+											"box": { "x": 56, "y": 18, "width": 123, "height": 28 },
+											"styles": {
+												"display": "block",
+												"font-size": "18px",
+												"font-weight": "600",
+												"line-height": "28px"
+											},
+											"attrs": {},
+											"children": [
+												{
+													"tag": "#text",
+													"text": "Saas Analytics",
+													"box": { "x": 56, "y": 21, "width": 123, "height": 21 },
+													"styles": {},
+													"children": []
+												}
+											]
+										},
+										{
+											"tag": "nav",
+											"box": { "x": 901, "y": 16, "width": 323, "height": 32 },
+											"styles": {
+												"display": "flex",
+												"align-items": "center",
+												"row-gap": "28px",
+												"column-gap": "28px",
+												"color": "rgb(99, 99, 99)",
+												"font-size": "14px",
+												"line-height": "20px"
+											},
+											"attrs": {},
+											"children": [
+												{
+													"tag": "span",
+													"box": { "x": 901, "y": 22, "width": 51, "height": 20 },
+													"styles": { "display": "block" },
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "Product",
+															"box": { "x": 901, "y": 23, "width": 51, "height": 17 },
+															"styles": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"tag": "span",
+													"box": { "x": 980, "y": 22, "width": 45, "height": 20 },
+													"styles": { "display": "block" },
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "Pricing",
+															"box": { "x": 980, "y": 23, "width": 45, "height": 17 },
+															"styles": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"tag": "span",
+													"box": { "x": 1052, "y": 22, "width": 70, "height": 20 },
+													"styles": { "display": "block" },
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "Customers",
+															"box": { "x": 1052, "y": 23, "width": 70, "height": 17 },
+															"styles": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"tag": "button",
+													"box": { "x": 1150, "y": 16, "width": 74, "height": 32 },
+													"styles": {
+														"display": "flex",
+														"justify-content": "center",
+														"align-items": "center",
+														"flex-shrink": "0",
+														"row-gap": "6px",
+														"column-gap": "6px",
+														"padding-right": "12px",
+														"padding-left": "12px",
+														"background-color": "oklch(0.646 0.222 41.116)",
+														"border-top-left-radius": "6px",
+														"border-top-right-radius": "6px",
+														"border-bottom-right-radius": "6px",
+														"border-bottom-left-radius": "6px",
+														"color": "rgb(255, 255, 255)",
+														"font-weight": "500",
+														"text-align": "center",
+														"white-space": "nowrap"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "Sign up",
+															"box": { "x": 1162, "y": 23, "width": 50, "height": 17 },
+															"styles": {},
+															"children": []
+														}
+													],
+													"name": "Button"
+												}
+											]
+										}
+									]
+								},
+								{
+									"tag": "main",
+									"box": { "x": 0, "y": 64, "width": 1280, "height": 736 },
+									"styles": {
+										"display": "grid",
+										"align-items": "center",
+										"flex-grow": "1",
+										"flex-basis": "0%",
+										"row-gap": "64px",
+										"column-gap": "64px",
+										"grid-template-columns": "578.281px 525.719px",
+										"padding-right": "56px",
+										"padding-left": "56px"
+									},
+									"attrs": {},
+									"children": [
+										{
+											"tag": "section",
+											"box": { "x": 56, "y": 257, "width": 578, "height": 350 },
+											"styles": { "display": "block" },
+											"attrs": {},
+											"children": [
+												{
+													"tag": "span",
+													"box": { "x": 56, "y": 260, "width": 157, "height": 22 },
+													"styles": {
+														"display": "inline-flex",
+														"justify-content": "center",
+														"align-items": "center",
+														"flex-shrink": "0",
+														"row-gap": "4px",
+														"column-gap": "4px",
+														"overflow-x": "hidden",
+														"overflow-y": "hidden",
+														"padding-top": "2px",
+														"padding-right": "8px",
+														"padding-bottom": "2px",
+														"padding-left": "8px",
+														"border-top-width": "1px",
+														"border-right-width": "1px",
+														"border-bottom-width": "1px",
+														"border-left-width": "1px",
+														"border-top-style": "solid",
+														"border-right-style": "solid",
+														"border-bottom-style": "solid",
+														"border-left-style": "solid",
+														"border-top-color": "oklch(0.901 0.076 70.697)",
+														"border-right-color": "oklch(0.901 0.076 70.697)",
+														"border-bottom-color": "oklch(0.901 0.076 70.697)",
+														"border-left-color": "oklch(0.901 0.076 70.697)",
+														"border-top-left-radius": "3.35544e+07px",
+														"border-top-right-radius": "3.35544e+07px",
+														"border-bottom-right-radius": "3.35544e+07px",
+														"border-bottom-left-radius": "3.35544e+07px",
+														"color": "oklch(0.553 0.195 38.402)",
+														"font-size": "12px",
+														"font-weight": "500",
+														"line-height": "16px",
+														"white-space": "nowrap"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "New · Built with Rabisco",
+															"box": { "x": 65, "y": 263, "width": 139, "height": 15 },
+															"styles": {},
+															"children": []
+														}
+													],
+													"name": "Badge"
+												},
+												{
+													"tag": "h1",
+													"box": { "x": 56, "y": 302, "width": 578, "height": 180 },
+													"styles": {
+														"display": "block",
+														"margin-top": "20px",
+														"font-size": "60px",
+														"font-weight": "600",
+														"line-height": "60px",
+														"letter-spacing": "-1.5px"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "Saas Analytics, designed for the way you work",
+															"box": { "x": 56, "y": 296, "width": 525, "height": 191 },
+															"styles": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"tag": "p",
+													"box": { "x": 56, "y": 502, "width": 576, "height": 29 },
+													"styles": {
+														"display": "block",
+														"max-width": "576px",
+														"margin-top": "20px",
+														"color": "rgb(99, 99, 99)",
+														"font-size": "18px",
+														"line-height": "29.25px"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "#text",
+															"text": "SaaS analytics dashboard",
+															"box": { "x": 56, "y": 506, "width": 207, "height": 21 },
+															"styles": {},
+															"children": []
+														}
+													]
+												},
+												{
+													"tag": "div",
+													"box": { "x": 56, "y": 563, "width": 448, "height": 44 },
+													"styles": {
+														"display": "flex",
+														"row-gap": "8px",
+														"column-gap": "8px",
+														"max-width": "448px",
+														"margin-top": "32px"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "input",
+															"box": { "x": 56, "y": 563, "width": 321, "height": 44 },
+															"styles": {
+																"display": "block",
+																"overflow-x": "clip",
+																"overflow-y": "clip",
+																"padding-top": "4px",
+																"padding-right": "12px",
+																"padding-bottom": "4px",
+																"padding-left": "12px",
+																"border-top-width": "1px",
+																"border-right-width": "1px",
+																"border-bottom-width": "1px",
+																"border-left-width": "1px",
+																"border-top-style": "solid",
+																"border-right-style": "solid",
+																"border-bottom-style": "solid",
+																"border-left-style": "solid",
+																"border-top-color": "rgb(224, 224, 224)",
+																"border-right-color": "rgb(224, 224, 224)",
+																"border-bottom-color": "rgb(224, 224, 224)",
+																"border-left-color": "rgb(224, 224, 224)",
+																"border-top-left-radius": "6px",
+																"border-top-right-radius": "6px",
+																"border-bottom-right-radius": "6px",
+																"border-bottom-left-radius": "6px",
+																"box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px",
+																"font-size": "14px",
+																"line-height": "20px"
+															},
+															"attrs": { "placeholder": "you@company.com" },
+															"children": [],
+															"name": "Input"
+														},
+														{
+															"tag": "button",
+															"box": { "x": 385, "y": 563, "width": 119, "height": 44 },
+															"styles": {
+																"display": "flex",
+																"justify-content": "center",
+																"align-items": "center",
+																"flex-shrink": "0",
+																"row-gap": "8px",
+																"column-gap": "8px",
+																"padding-top": "8px",
+																"padding-right": "12px",
+																"padding-bottom": "8px",
+																"padding-left": "12px",
+																"background-color": "oklch(0.646 0.222 41.116)",
+																"border-top-left-radius": "6px",
+																"border-top-right-radius": "6px",
+																"border-bottom-right-radius": "6px",
+																"border-bottom-left-radius": "6px",
+																"color": "rgb(255, 255, 255)",
+																"font-size": "14px",
+																"font-weight": "500",
+																"line-height": "20px",
+																"text-align": "center",
+																"white-space": "nowrap"
+															},
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "#text",
+																	"text": "Start free",
+																	"box": { "x": 397, "y": 576, "width": 63, "height": 17 },
+																	"styles": {},
+																	"children": []
+																},
+																{
+																	"tag": "svg",
+																	"box": { "x": 468, "y": 573, "width": 24, "height": 24 },
+																	"styles": {
+																		"display": "block",
+																		"flex-shrink": "0",
+																		"overflow-x": "hidden",
+																		"overflow-y": "hidden",
+																		"width": "24px",
+																		"height": "24px"
+																	},
+																	"attrs": {
+																		"xmlns": "http://www.w3.org/2000/svg",
+																		"width": "24",
+																		"height": "24",
+																		"viewBox": "0 0 24 24",
+																		"fill": "none",
+																		"stroke": "currentColor",
+																		"stroke-width": "2",
+																		"stroke-linecap": "round",
+																		"stroke-linejoin": "round"
+																	},
+																	"children": [
+																		{
+																			"tag": "path",
+																			"box": { "x": 473, "y": 585, "width": 14, "height": 0 },
+																			"styles": {},
+																			"attrs": { "d": "M5 12h14" },
+																			"children": []
+																		},
+																		{
+																			"tag": "path",
+																			"box": { "x": 480, "y": 578, "width": 7, "height": 14 },
+																			"styles": {},
+																			"attrs": { "d": "m12 5 7 7-7 7" },
+																			"children": []
+																		}
+																	],
+																	"name": "ArrowRight"
+																}
+															],
+															"name": "Button"
+														}
+													]
+												}
+											]
+										},
+										{
+											"tag": "div",
+											"box": { "x": 698, "y": 267, "width": 526, "height": 330 },
+											"styles": {
+												"display": "flex",
+												"flex-direction": "column",
+												"row-gap": "24px",
+												"column-gap": "24px",
+												"padding-top": "24px",
+												"padding-bottom": "24px",
+												"background-color": "rgb(255, 255, 255)",
+												"border-top-width": "1px",
+												"border-right-width": "1px",
+												"border-bottom-width": "1px",
+												"border-left-width": "1px",
+												"border-top-style": "solid",
+												"border-right-style": "solid",
+												"border-bottom-style": "solid",
+												"border-left-style": "solid",
+												"border-top-color": "rgb(230, 230, 230)",
+												"border-right-color": "rgb(230, 230, 230)",
+												"border-bottom-color": "rgb(230, 230, 230)",
+												"border-left-color": "rgb(230, 230, 230)",
+												"border-top-left-radius": "12px",
+												"border-top-right-radius": "12px",
+												"border-bottom-right-radius": "12px",
+												"border-bottom-left-radius": "12px",
+												"box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 20px 25px -5px, rgba(0, 0, 0, 0.1) 0px 8px 10px -6px"
+											},
+											"attrs": {},
+											"children": [
+												{
+													"tag": "div",
+													"box": { "x": 699, "y": 292, "width": 524, "height": 44 },
+													"styles": {
+														"display": "grid",
+														"align-items": "flex-start",
+														"row-gap": "8px",
+														"column-gap": "8px",
+														"grid-template-columns": "475.719px",
+														"padding-right": "24px",
+														"padding-left": "24px"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "div",
+															"box": { "x": 723, "y": 292, "width": 476, "height": 16 },
+															"styles": { "display": "block", "font-weight": "600", "line-height": "16px" },
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "#text",
+																	"text": "This month",
+																	"box": { "x": 723, "y": 291, "width": 85, "height": 18 },
+																	"styles": {},
+																	"children": []
+																}
+															],
+															"name": "CardTitle"
+														},
+														{
+															"tag": "div",
+															"box": { "x": 723, "y": 316, "width": 476, "height": 20 },
+															"styles": {
+																"display": "block",
+																"color": "rgb(99, 99, 99)",
+																"font-size": "14px",
+																"line-height": "20px"
+															},
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "#text",
+																	"text": "Your team at a glance",
+																	"box": { "x": 723, "y": 317, "width": 140, "height": 17 },
+																	"styles": {},
+																	"children": []
+																}
+															],
+															"name": "CardDescription"
+														}
+													],
+													"name": "CardHeader"
+												},
+												{
+													"tag": "div",
+													"box": { "x": 699, "y": 360, "width": 524, "height": 212 },
+													"styles": {
+														"display": "grid",
+														"row-gap": "12px",
+														"column-gap": "12px",
+														"grid-template-columns": "231.859px 231.859px",
+														"padding-right": "24px",
+														"padding-left": "24px"
+													},
+													"attrs": {},
+													"children": [
+														{
+															"tag": "div",
+															"box": { "x": 723, "y": 360, "width": 232, "height": 110 },
+															"styles": {
+																"display": "flex",
+																"flex-direction": "column",
+																"row-gap": "8px",
+																"column-gap": "8px",
+																"padding-top": "16px",
+																"padding-bottom": "16px",
+																"background-color": "rgb(255, 255, 255)",
+																"border-top-width": "1px",
+																"border-right-width": "1px",
+																"border-bottom-width": "1px",
+																"border-left-width": "1px",
+																"border-top-style": "solid",
+																"border-right-style": "solid",
+																"border-bottom-style": "solid",
+																"border-left-style": "solid",
+																"border-top-color": "rgb(230, 230, 230)",
+																"border-right-color": "rgb(230, 230, 230)",
+																"border-bottom-color": "rgb(230, 230, 230)",
+																"border-left-color": "rgb(230, 230, 230)",
+																"border-top-left-radius": "12px",
+																"border-top-right-radius": "12px",
+																"border-bottom-right-radius": "12px",
+																"border-bottom-left-radius": "12px",
+																"box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px"
+															},
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "div",
+																	"box": { "x": 724, "y": 377, "width": 230, "height": 76 },
+																	"styles": { "display": "block", "padding-right": "16px", "padding-left": "16px" },
+																	"attrs": {},
+																	"children": [
+																		{
+																			"tag": "div",
+																			"box": { "x": 740, "y": 377, "width": 198, "height": 20 },
+																			"styles": {
+																				"display": "flex",
+																				"justify-content": "space-between",
+																				"align-items": "center",
+																				"color": "rgb(99, 99, 99)",
+																				"font-size": "14px",
+																				"line-height": "20px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "span",
+																					"box": { "x": 740, "y": 377, "width": 79, "height": 20 },
+																					"styles": { "display": "block" },
+																					"attrs": {},
+																					"children": [
+																						{
+																							"tag": "#text",
+																							"text": "Active users",
+																							"box": { "x": 740, "y": 378, "width": 79, "height": 17 },
+																							"styles": {},
+																							"children": []
+																						}
+																					]
+																				},
+																				{
+																					"tag": "svg",
+																					"box": { "x": 922, "y": 379, "width": 16, "height": 16 },
+																					"styles": {
+																						"display": "block",
+																						"overflow-x": "hidden",
+																						"overflow-y": "hidden",
+																						"width": "16px",
+																						"height": "16px"
+																					},
+																					"attrs": {
+																						"xmlns": "http://www.w3.org/2000/svg",
+																						"width": "24",
+																						"height": "24",
+																						"viewBox": "0 0 24 24",
+																						"fill": "none",
+																						"stroke": "currentColor",
+																						"stroke-width": "2",
+																						"stroke-linecap": "round",
+																						"stroke-linejoin": "round"
+																					},
+																					"children": [
+																						{
+																							"tag": "path",
+																							"box": { "x": 923, "y": 389, "width": 9, "height": 4 },
+																							"styles": {},
+																							"attrs": { "d": "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" },
+																							"children": []
+																						},
+																						{
+																							"tag": "path",
+																							"box": { "x": 933, "y": 381, "width": 2, "height": 5 },
+																							"styles": {},
+																							"attrs": { "d": "M16 3.128a4 4 0 0 1 0 7.744" },
+																							"children": []
+																						},
+																						{
+																							"tag": "path",
+																							"box": { "x": 935, "y": 389, "width": 2, "height": 4 },
+																							"styles": {},
+																							"attrs": { "d": "M22 21v-2a4 4 0 0 0-3-3.87" },
+																							"children": []
+																						},
+																						{
+																							"tag": "circle",
+																							"box": { "x": 925, "y": 381, "width": 5, "height": 5 },
+																							"styles": {},
+																							"attrs": { "cx": "9", "cy": "7", "r": "4" },
+																							"children": []
+																						}
+																					],
+																					"name": "Users"
+																				}
+																			]
+																		},
+																		{
+																			"tag": "p",
+																			"box": { "x": 740, "y": 401, "width": 198, "height": 32 },
+																			"styles": {
+																				"display": "block",
+																				"margin-top": "4px",
+																				"font-size": "24px",
+																				"font-weight": "600",
+																				"line-height": "32px",
+																				"letter-spacing": "-0.6px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "#text",
+																					"text": "12,408",
+																					"box": { "x": 740, "y": 403, "width": 75, "height": 28 },
+																					"styles": {},
+																					"children": []
+																				}
+																			]
+																		},
+																		{
+																			"tag": "p",
+																			"box": { "x": 740, "y": 437, "width": 198, "height": 16 },
+																			"styles": {
+																				"display": "block",
+																				"margin-top": "4px",
+																				"color": "rgb(99, 99, 99)",
+																				"font-size": "12px",
+																				"line-height": "16px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "#text",
+																					"text": "+8% vs last month",
+																					"box": { "x": 740, "y": 437, "width": 105, "height": 15 },
+																					"styles": {},
+																					"children": []
+																				}
+																			]
+																		}
+																	],
+																	"name": "CardContent"
+																}
+															],
+															"name": "StatCard"
+														},
+														{
+															"tag": "div",
+															"box": { "x": 967, "y": 360, "width": 232, "height": 110 },
+															"styles": {
+																"display": "flex",
+																"flex-direction": "column",
+																"row-gap": "8px",
+																"column-gap": "8px",
+																"padding-top": "16px",
+																"padding-bottom": "16px",
+																"background-color": "rgb(255, 255, 255)",
+																"border-top-width": "1px",
+																"border-right-width": "1px",
+																"border-bottom-width": "1px",
+																"border-left-width": "1px",
+																"border-top-style": "solid",
+																"border-right-style": "solid",
+																"border-bottom-style": "solid",
+																"border-left-style": "solid",
+																"border-top-color": "rgb(230, 230, 230)",
+																"border-right-color": "rgb(230, 230, 230)",
+																"border-bottom-color": "rgb(230, 230, 230)",
+																"border-left-color": "rgb(230, 230, 230)",
+																"border-top-left-radius": "12px",
+																"border-top-right-radius": "12px",
+																"border-bottom-right-radius": "12px",
+																"border-bottom-left-radius": "12px",
+																"box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px"
+															},
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "div",
+																	"box": { "x": 968, "y": 377, "width": 230, "height": 76 },
+																	"styles": { "display": "block", "padding-right": "16px", "padding-left": "16px" },
+																	"attrs": {},
+																	"children": [
+																		{
+																			"tag": "div",
+																			"box": { "x": 984, "y": 377, "width": 198, "height": 20 },
+																			"styles": {
+																				"display": "flex",
+																				"justify-content": "space-between",
+																				"align-items": "center",
+																				"color": "rgb(99, 99, 99)",
+																				"font-size": "14px",
+																				"line-height": "20px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "span",
+																					"box": { "x": 984, "y": 377, "width": 47, "height": 20 },
+																					"styles": { "display": "block" },
+																					"attrs": {},
+																					"children": [
+																						{
+																							"tag": "#text",
+																							"text": "Growth",
+																							"box": { "x": 984, "y": 378, "width": 47, "height": 17 },
+																							"styles": {},
+																							"children": []
+																						}
+																					]
+																				},
+																				{
+																					"tag": "svg",
+																					"box": { "x": 1166, "y": 379, "width": 16, "height": 16 },
+																					"styles": {
+																						"display": "block",
+																						"overflow-x": "hidden",
+																						"overflow-y": "hidden",
+																						"width": "16px",
+																						"height": "16px"
+																					},
+																					"attrs": {
+																						"xmlns": "http://www.w3.org/2000/svg",
+																						"width": "24",
+																						"height": "24",
+																						"viewBox": "0 0 24 24",
+																						"fill": "none",
+																						"stroke": "currentColor",
+																						"stroke-width": "2",
+																						"stroke-linecap": "round",
+																						"stroke-linejoin": "round"
+																					},
+																					"children": [
+																						{
+																							"tag": "path",
+																							"box": { "x": 1177, "y": 384, "width": 4, "height": 4 },
+																							"styles": {},
+																							"attrs": { "d": "M16 7h6v6" },
+																							"children": []
+																						},
+																						{
+																							"tag": "path",
+																							"box": { "x": 1167, "y": 384, "width": 13, "height": 7 },
+																							"styles": {},
+																							"attrs": { "d": "m22 7-8.5 8.5-5-5L2 17" },
+																							"children": []
+																						}
+																					],
+																					"name": "TrendingUp"
+																				}
+																			]
+																		},
+																		{
+																			"tag": "p",
+																			"box": { "x": 984, "y": 401, "width": 198, "height": 32 },
+																			"styles": {
+																				"display": "block",
+																				"margin-top": "4px",
+																				"font-size": "24px",
+																				"font-weight": "600",
+																				"line-height": "32px",
+																				"letter-spacing": "-0.6px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "#text",
+																					"text": "+24%",
+																					"box": { "x": 984, "y": 403, "width": 64, "height": 28 },
+																					"styles": {},
+																					"children": []
+																				}
+																			]
+																		},
+																		{
+																			"tag": "p",
+																			"box": { "x": 984, "y": 437, "width": 198, "height": 16 },
+																			"styles": {
+																				"display": "block",
+																				"margin-top": "4px",
+																				"color": "rgb(99, 99, 99)",
+																				"font-size": "12px",
+																				"line-height": "16px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "#text",
+																					"text": "Best month so far",
+																					"box": { "x": 984, "y": 437, "width": 100, "height": 15 },
+																					"styles": {},
+																					"children": []
+																				}
+																			]
+																		}
+																	],
+																	"name": "CardContent"
+																}
+															],
+															"name": "StatCard"
+														},
+														{
+															"tag": "div",
+															"box": { "x": 723, "y": 482, "width": 476, "height": 90 },
+															"styles": {
+																"display": "flex",
+																"flex-direction": "column",
+																"row-gap": "8px",
+																"column-gap": "8px",
+																"padding-top": "16px",
+																"padding-bottom": "16px",
+																"background-color": "rgb(255, 255, 255)",
+																"border-top-width": "1px",
+																"border-right-width": "1px",
+																"border-bottom-width": "1px",
+																"border-left-width": "1px",
+																"border-top-style": "solid",
+																"border-right-style": "solid",
+																"border-bottom-style": "solid",
+																"border-left-style": "solid",
+																"border-top-color": "rgb(230, 230, 230)",
+																"border-right-color": "rgb(230, 230, 230)",
+																"border-bottom-color": "rgb(230, 230, 230)",
+																"border-left-color": "rgb(230, 230, 230)",
+																"border-top-left-radius": "12px",
+																"border-top-right-radius": "12px",
+																"border-bottom-right-radius": "12px",
+																"border-bottom-left-radius": "12px",
+																"box-shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px"
+															},
+															"attrs": {},
+															"children": [
+																{
+																	"tag": "div",
+																	"box": { "x": 724, "y": 499, "width": 474, "height": 56 },
+																	"styles": { "display": "block", "padding-right": "16px", "padding-left": "16px" },
+																	"attrs": {},
+																	"children": [
+																		{
+																			"tag": "div",
+																			"box": { "x": 740, "y": 499, "width": 442, "height": 20 },
+																			"styles": {
+																				"display": "flex",
+																				"justify-content": "space-between",
+																				"align-items": "center",
+																				"color": "rgb(99, 99, 99)",
+																				"font-size": "14px",
+																				"line-height": "20px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "span",
+																					"box": { "x": 740, "y": 499, "width": 106, "height": 20 },
+																					"styles": { "display": "block" },
+																					"attrs": {},
+																					"children": [
+																						{
+																							"tag": "#text",
+																							"text": "Automations run",
+																							"box": { "x": 740, "y": 500, "width": 106, "height": 17 },
+																							"styles": {},
+																							"children": []
+																						}
+																					]
+																				},
+																				{
+																					"tag": "svg",
+																					"box": { "x": 1166, "y": 501, "width": 16, "height": 16 },
+																					"styles": {
+																						"display": "block",
+																						"overflow-x": "hidden",
+																						"overflow-y": "hidden",
+																						"width": "16px",
+																						"height": "16px"
+																					},
+																					"attrs": {
+																						"xmlns": "http://www.w3.org/2000/svg",
+																						"width": "24",
+																						"height": "24",
+																						"viewBox": "0 0 24 24",
+																						"fill": "none",
+																						"stroke": "currentColor",
+																						"stroke-width": "2",
+																						"stroke-linecap": "round",
+																						"stroke-linejoin": "round"
+																					},
+																					"children": [
+																						{
+																							"tag": "path",
+																							"box": { "x": 1169, "y": 502, "width": 11, "height": 13 },
+																							"styles": {},
+																							"attrs": {
+																								"d": "M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"
+																							},
+																							"children": []
+																						}
+																					],
+																					"name": "Zap"
+																				}
+																			]
+																		},
+																		{
+																			"tag": "p",
+																			"box": { "x": 740, "y": 523, "width": 442, "height": 32 },
+																			"styles": {
+																				"display": "block",
+																				"margin-top": "4px",
+																				"font-size": "24px",
+																				"font-weight": "600",
+																				"line-height": "32px",
+																				"letter-spacing": "-0.6px"
+																			},
+																			"attrs": {},
+																			"children": [
+																				{
+																					"tag": "#text",
+																					"text": "1.2M",
+																					"box": { "x": 740, "y": 525, "width": 50, "height": 28 },
+																					"styles": {},
+																					"children": []
+																				}
+																			]
+																		}
+																	],
+																	"name": "CardContent"
+																}
+															],
+															"name": "StatCard"
+														}
+													],
+													"name": "CardContent"
+												}
+											],
+											"name": "Card"
+										}
+									]
+								}
+							],
+							"name": "Landing"
+						}
+					]
+				}
+			]
+		}
+	}
+}

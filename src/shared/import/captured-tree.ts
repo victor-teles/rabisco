@@ -13,6 +13,7 @@ export type CapturedBox = { x: number; y: number; width: number; height: number 
 
 export type CapturedNode = {
 	tag: string;
+	name?: string;
 	text?: string;
 	box: CapturedBox;
 	styles: CssValues;
@@ -80,6 +81,9 @@ export const STYLE_PROPERTIES = [
 	"opacity",
 	"object-fit",
 	"text-decoration-line",
+	"background-size",
+	"text-overflow",
+	"-webkit-line-clamp",
 ] as const;
 
 export const INHERITED_PROPERTIES = [
@@ -143,6 +147,8 @@ const ATTRIBUTES = new Set([
 
 const TAG = /^(?:#text|[a-z][a-zA-Z0-9-]*)$/;
 
+const NAME = /^[A-Za-z][\w .-]{0,79}$/;
+
 const DROPPED_TAGS = new Set(["script", "style", "iframe", "object", "embed", "link", "meta", "template", "noscript"]);
 
 const SAFE_URL = /^(?:https?:|mailto:|tel:|#|\/(?!\/)|\.{0,2}\/|data:image\/(?:png|jpe?g|gif|webp|avif);)/i;
@@ -188,7 +194,7 @@ function keepAttribute(key: string, value: string) {
 
 function parseNode(json: Json | undefined, budget: { nodes: number }): CapturedNode | null {
 	if (!isJsonObject(json) || budget.nodes >= MAX_CAPTURED_NODES) return null;
-	const { tag, text, box: rawBox, styles, tokens, attrs, children } = json;
+	const { tag, name, text, box: rawBox, styles, tokens, attrs, children } = json;
 
 	if (!isString(tag) || !TAG.test(tag) || DROPPED_TAGS.has(tag)) return null;
 	const box = parseBox(rawBox);
@@ -199,6 +205,8 @@ function parseNode(json: Json | undefined, budget: { nodes: number }): CapturedN
 	if (tag === TEXT_TAG)
 		return isString(text) ? { tag, text: `${text}`.slice(0, MAX_TEXT), box, styles: {}, children: [] } : null;
 	const node: CapturedNode = { tag, box, styles: parseRecord(styles, keepStyle), children: [] };
+
+	if (isString(name) && NAME.test(name)) node.name = `${name}`;
 	const bound = parseRecord(tokens, keepToken);
 	const attributes = parseRecord(attrs, keepAttribute);
 

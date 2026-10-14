@@ -21,6 +21,15 @@ const action = (id: string, chords: Chord[], enabled = true): Action => ({
 });
 
 describe("matchesChord", () => {
+	test("⌃⌘ chords need both keys", () => {
+		const figma: Chord = { code: "KeyC", mod: true, ctrl: true };
+
+		expect(matchesChord(figma, press({ code: "KeyC", metaKey: true, ctrlKey: true }), true)).toBe(true);
+		expect(matchesChord(figma, press({ code: "KeyC", metaKey: true }), true)).toBe(false);
+		expect(matchesChord(figma, press({ code: "KeyC", ctrlKey: true }), true)).toBe(false);
+		expect(formatChord(figma)).toBe("⌃⌘C");
+	});
+
 	test("⌘ chords take only ⌘ on macOS", () => {
 		const duplicate: Chord = { code: "KeyD", mod: true };
 

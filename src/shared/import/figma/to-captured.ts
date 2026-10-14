@@ -438,6 +438,9 @@ function convert(
 	const image = records(figma.fillPaints).some((paint) => isVisible(paint) && str(paint, "type") === "IMAGE");
 	const children = type === "TEXT" || VECTOR_TYPES.has(type) ? [] : tree.children;
 	const node: CapturedNode = { tag: tagOf(figma, image, children.length > 0), box, styles: {}, children: [] };
+	const name = str(figma, "name");
+
+	if (name) node.name = name.slice(0, 80);
 	const parentMode = parent ? str(parent, "stackMode") : undefined;
 
 	const inFlow =

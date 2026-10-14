@@ -13,6 +13,7 @@ import { frameAssets, resolveImageSources } from "./assets";
 import { lintScreen } from "./design-lint";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
+import { captureForFigma } from "./figma-capture";
 import { preloadIcons } from "./icons";
 import {
 	boxesOf,
@@ -477,6 +478,13 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				post({ type: "snapshot", id, error: error instanceof Error ? error.message : String(error) });
 			}
 		})();
+	} else if (message?.type === "figma-capture") {
+		const { id } = message;
+		void captureForFigma((type) => type === Rendered || type === Boundary)
+			.then(({ tree, images }) => post({ type: "figma-capture", id, tree, images }))
+			.catch((error) =>
+				post({ type: "figma-capture", id, error: error instanceof Error ? error.message : String(error) }),
+			);
 	} else if (message?.type === "lint") {
 		const { id } = message;
 		void (async () => {

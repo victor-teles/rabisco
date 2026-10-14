@@ -1,18 +1,18 @@
 import { deflateSync } from "fflate";
-import { isBoolean, isNumber, isString } from "../../guards";
-import type { KiwiValue } from "./kiwi";
+import {
+	encodeMessage,
+	encodeSchema,
+	enumOf,
+	figKiwi,
+	type SchemaDefinition,
+	type WriteValue,
+} from "../../export/figma/kiwi-writer";
 
-type FixtureField = [name: string, type: string, isArray?: boolean];
+export { encodeMessage, encodeSchema, figKiwi };
 
-type FixtureDefinition = { name: string; kind: "enum" | "struct" | "message"; fields: FixtureField[] | string[] };
+export type FixtureValue = WriteValue;
 
-const BUILTINS = ["bool", "byte", "int", "uint", "float", "string", "int64", "uint64"];
-
-const KINDS = ["enum", "struct", "message"];
-
-const enumOf = (name: string, values: string[]): FixtureDefinition => ({ name, kind: "enum", fields: values });
-
-export const FIGMA_SCHEMA: FixtureDefinition[] = [
+export const FIGMA_SCHEMA: SchemaDefinition[] = [
 	enumOf("MessageType", ["JOIN_START", "NODE_CHANGES"]),
 	enumOf("NodeType", [
 		"NONE",
@@ -232,185 +232,6 @@ export const FIGMA_SCHEMA: FixtureDefinition[] = [
 	},
 ];
 
-class Writer {
-	private bytes: number[] = [];
-
-	private readonly scratch = new DataView(new ArrayBuffer(4));
-
-	byte(value: number) {
-		this.bytes.push(value & 255);
-	}
-
-	varUint(value: number) {
-		let rest = value >>> 0;
-
-		do {
-			const byte = rest & 127;
-
-			rest >>>= 7;
-			this.byte(rest ? byte | 128 : byte);
-		} while (rest);
-	}
-
-	varInt(value: number) {
-		this.varUint((value << 1) ^ (value >> 31));
-	}
-
-	varInt64(value: bigint) {
-		let rest = value < 0n ? (~value << 1n) | 1n : value << 1n;
-
-		for (let i = 0; i < 8 && rest > 127n; i++) {
-			this.byte(Number(rest & 127n) | 128);
-			rest >>= 7n;
-		}
-
-		this.byte(Number(rest));
-	}
-
-	varFloat(value: number) {
-		this.scratch.setFloat32(0, value, true);
-		const raw = this.scratch.getInt32(0, true);
-		const bits = (raw >>> 23) | (raw << 9);
-
-		if ((bits & 255) === 0) {
-			this.byte(0);
-
-			return;
-		}
-
-		this.byte(bits);
-		this.byte(bits >> 8);
-		this.byte(bits >> 16);
-		this.byte(bits >> 24);
-	}
-
-	string(value: string) {
-		for (const byte of new TextEncoder().encode(value)) this.byte(byte);
-		this.byte(0);
-	}
-
-	done() {
-		return new Uint8Array(this.bytes);
-	}
-}
-
-export function encodeSchema(definitions: FixtureDefinition[]) {
-	const writer = new Writer();
-
-	const index = (type: string) => {
-		const builtin = BUILTINS.indexOf(type);
-
-		return builtin >= 0 ? ~builtin : definitions.findIndex((definition) => definition.name === type);
-	};
-
-	writer.varUint(definitions.length);
-
-	for (const definition of definitions) {
-		writer.string(definition.name);
-		writer.byte(KINDS.indexOf(definition.kind));
-		writer.varUint(definition.fields.length);
-		definition.fields.forEach((field, i) => {
-			const [name, type, isArray] = isString(field) ? [field, "", false] : field;
-
-			writer.string(name);
-			writer.varInt(type ? index(type) : 0);
-			writer.byte(isArray ? 1 : 0);
-			writer.varUint(definition.kind === "enum" ? i : i + 1);
-		});
-	}
-
-	return writer.done();
-}
-
-type FixtureRecord = { readonly [field: string]: FixtureValue };
-
-export type FixtureValue = KiwiValue | bigint | undefined | readonly FixtureValue[] | FixtureRecord;
-
-const isBigInt = (value: FixtureValue): value is bigint => typeof value === "bigint";
-
-const isFixtureRecord = (value: FixtureValue): value is FixtureRecord =>
-	typeof value === "object" && !Array.isArray(value) && !(value instanceof Uint8Array);
-
-function encodeValue(writer: Writer, definitions: FixtureDefinition[], type: string, value: FixtureValue) {
-	if (isBoolean(value) && type === "bool") return writer.byte(value ? 1 : 0);
-
-	if (isNumber(value)) {
-		if (type === "byte") return writer.byte(value);
-
-		if (type === "int") return writer.varInt(value);
-
-		if (type === "uint") return writer.varUint(value);
-
-		if (type === "float") return writer.varFloat(value);
-	}
-
-	if (isBigInt(value)) return writer.varInt64(value);
-	const definition = definitions.find((candidate) => candidate.name === type);
-
-	if (isString(value) && type === "string") return writer.string(value);
-
-	if (!definition) throw new Error(`Bad fixture value for ${type}`);
-
-	if (definition.kind === "enum") {
-		return writer.varUint(definition.fields.findIndex((field) => field === value));
-	}
-
-	if (!isFixtureRecord(value)) {
-		throw new Error(`Bad fixture value for ${type}`);
-	}
-
-	definition.fields.forEach((field, i) => {
-		if (isString(field)) return;
-		const [name, fieldType, isArray] = field;
-		const fieldValue = value[name];
-
-		if (definition.kind === "message") {
-			if (fieldValue === undefined) return;
-			writer.varUint(i + 1);
-		}
-
-		if (!isArray) return encodeValue(writer, definitions, fieldType, fieldValue);
-
-		const list = fieldValue instanceof Uint8Array ? [...fieldValue] : Array.isArray(fieldValue) ? fieldValue : [];
-
-		writer.varUint(list.length);
-
-		for (const item of list) encodeValue(writer, definitions, fieldType, item);
-	});
-
-	if (definition.kind === "message") writer.varUint(0);
-}
-
-export function encodeMessage(definitions: FixtureDefinition[], root: string, value: FixtureValue) {
-	const writer = new Writer();
-
-	encodeValue(writer, definitions, root, value);
-
-	return writer.done();
-}
-
-function chunk(view: DataView, bytes: Uint8Array, offset: number) {
-	view.setUint32(offset, bytes.length, true);
-
-	return offset + 4;
-}
-
-export function figKiwi(schema: Uint8Array, data: Uint8Array, version = 70) {
-	const prelude = new TextEncoder().encode("fig-kiwi");
-	const out = new Uint8Array(prelude.length + 4 + 4 + schema.length + 4 + data.length);
-	const view = new DataView(out.buffer);
-
-	out.set(prelude);
-	view.setUint32(prelude.length, version, true);
-	let offset = chunk(view, schema, prelude.length + 4);
-
-	out.set(schema, offset);
-	offset = chunk(view, data, offset + schema.length);
-	out.set(data, offset);
-
-	return out;
-}
-
 const base64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 
 export function figmaClipboardHtml(nodeChanges: FixtureValue[], options: { zstd?: boolean; version?: number } = {}) {
@@ -423,7 +244,7 @@ export function figmaClipboardHtml(nodeChanges: FixtureValue[], options: { zstd?
 		'<meta charset="utf-8"><span data-metadata="<!--(figmeta)',
 		meta,
 		'(/figmeta)-->"></span><span data-buffer="<!--(figma)',
-		base64(figKiwi(schema, data, options.version)),
+		base64(figKiwi(schema, data, options.version ?? 70)),
 		'(/figma)-->"></span><span style="white-space:pre-wrap;"></span>',
 	].join("");
 }

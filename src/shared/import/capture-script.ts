@@ -30,6 +30,9 @@ export const INITIAL_STYLES = {
 	opacity: ["1"],
 	"object-fit": ["fill"],
 	"text-decoration-line": ["none"],
+	"background-size": ["auto", "auto auto"],
+	"text-overflow": ["clip"],
+	"-webkit-line-clamp": ["none"],
 } satisfies Record<string, string[]>;
 
 export const ROOT_INHERITED = {
@@ -184,6 +187,7 @@ function elementNode(element, parent) {
 	if (tag === "svg") {
 		const node = svgNode(element);
 		if (node) node.styles = Object.assign(ownStyles(element, computed), inheritedStyles(computed, parent));
+		if (node && annotate) annotate(element, node, computed);
 		return node;
 	}
 	count++;
@@ -191,6 +195,7 @@ function elementNode(element, parent) {
 	const node = { tag, box: boxOf(rect), styles: Object.assign(ownStyles(element, computed), inheritedStyles(computed, parent)), attrs: attributesOf(element, tag), children: [] };
 	if (tag !== "img" && tag !== "textarea" && tag !== "select") node.children = childrenOf(element, computed);
 	if (tag === "textarea" && element.value) node.children = [{ tag: "#text", text: element.value, box: node.box, styles: {}, children: [] }];
+	if (annotate) annotate(element, node, computed);
 	return node;
 }
 const computed = getComputedStyle(root);
@@ -205,4 +210,6 @@ body.children = childrenOf(root, computed);
 return JSON.stringify({ title: document.title || "", width: Math.round(origin.width), root: body });
 `;
 
-export const CAPTURE_SCRIPT = `(() => {${script}})()`;
+export const CAPTURE_BODY = script;
+
+export const CAPTURE_SCRIPT = `((annotate) => {${script}})()`;

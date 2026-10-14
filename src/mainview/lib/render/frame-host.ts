@@ -14,6 +14,7 @@ import {
 	type Box,
 	type DropLayout,
 	type FrameError,
+	type FrameImage,
 	type FrameHit,
 	type FrameMessage,
 	type HostMessage,
@@ -231,6 +232,18 @@ export class FrameHost {
 		if ("error" in reply) throw new Error(reply.error);
 
 		return reply.html;
+	}
+
+	async figmaCapture(timeoutMs = 60_000): Promise<{ tree: string; images: Record<string, FrameImage> }> {
+		if (!this.#ready) throw new Error("The frame isn't ready");
+		const reply = await this.#request({ type: "figma-capture", id: ++requestId }, timeoutMs);
+
+		if (reply?.type !== "figma-capture")
+			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+
+		if ("error" in reply) throw new Error(reply.error);
+
+		return { tree: reply.tree, images: reply.images };
 	}
 
 	/** The layout and contrast checks on the rendered screen; findings have `path` and `start` but no `line` */
@@ -473,6 +486,7 @@ export class FrameHost {
 		} else if (
 			message?.type === "measured" ||
 			message?.type === "snapshot" ||
+			message?.type === "figma-capture" ||
 			message?.type === "lint" ||
 			message?.type === "markup" ||
 			message?.type === "drop-layout" ||

@@ -27,7 +27,10 @@ type FiberProps = {
 	[LINK_MODE_ATTRIBUTE]?: unknown;
 };
 
+export type FiberType = { name?: unknown; displayName?: unknown; render?: FiberType; type?: FiberType };
+
 export type Fiber = {
+	type?: FiberType | string | null;
 	memoizedProps: FiberProps | null;
 	stateNode: unknown;
 	return: Fiber | null;
@@ -94,6 +97,45 @@ export function textProp(fiber: Fiber, name: keyof FiberProps): string | null {
 }
 
 const locOf = (fiber: Fiber) => textProp(fiber, LOC_ATTRIBUTE);
+
+const COMPONENT_NAME = /^[A-Z][A-Za-z0-9]{2,}$/;
+
+function typeName(type: Fiber["type"]): string | null {
+	if (!(type instanceof Object)) return null;
+
+	for (const name of [type.displayName, type.name, type.render?.displayName, type.render?.name, type.type?.name]) {
+		if (isText(name) && COMPONENT_NAME.test(name)) return name;
+	}
+
+	return null;
+}
+
+export type ComponentNaming = {
+	stop: (type: Fiber["type"]) => boolean;
+	known: (type: Fiber["type"]) => string | undefined;
+};
+
+export function componentNameOf(element: Element, { stop, known }: ComponentNaming) {
+	const fiber = fiberOf(element);
+
+	if (!fiber) return null;
+	let found: string | null = null;
+	let first = true;
+
+	for (const ancestor of currentAncestors(fiber, propsOf(element))) {
+		if (first) {
+			first = false;
+			continue;
+		}
+
+		if (ancestor.stateNode instanceof Element || stop(ancestor.type)) break;
+		const name = known(ancestor.type) ?? typeName(ancestor.type);
+
+		if (name && hostElements(ancestor).length === 1) found = name;
+	}
+
+	return found;
+}
 
 export function hostElements(fiber: Fiber): Element[] {
 	if (fiber.stateNode instanceof Element) return [fiber.stateNode];

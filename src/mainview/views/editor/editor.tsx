@@ -120,6 +120,7 @@ import { ActionMenuItems, type MenuEntry, SEPARATOR } from "./action-menu";
 import { ELEMENT_MENU, elementActions } from "./element-actions";
 import { copyCode } from "./export/code-export";
 import { copyForAgent } from "./export/agent-export";
+import { copyToFigma } from "./export/figma-export";
 import { copyImage, exportFlowPdf, exportImages } from "./export/image-export";
 import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
@@ -1529,6 +1530,14 @@ export function EditorView({
 			run: () => single && void copyImage(single, files, appliedTokens),
 		},
 		{
+			id: "copy-figma",
+			label: "Copy to Figma",
+			group: "Export",
+			chords: [{ code: "KeyC", mod: true, ctrl: true }],
+			enabled: selected.length > 0,
+			run: () => void copyToFigma({ selected, files, theme: appliedTokens }),
+		},
+		{
 			id: "copy-for-agent",
 			label: "Copy for agent",
 			group: "Export",
@@ -2600,7 +2609,10 @@ const SCREEN_MENU: MenuEntry[] = [
 	"duplicate-screens",
 	"copy-for-agent",
 	"sync-to-repo",
-	{ label: "Export", items: ["export-png", "export-svg", "export-pdf", SEPARATOR, "copy-code", "copy-png"] },
+	{
+		label: "Export",
+		items: ["export-png", "export-svg", "export-pdf", SEPARATOR, "copy-code", "copy-png", "copy-figma"],
+	},
 	SEPARATOR,
 	"delete-screens",
 ];
