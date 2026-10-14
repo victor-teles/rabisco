@@ -248,4 +248,31 @@ describe("Vercel", () => {
 			createVercel({ fetch, ...noWait }).deploy({ token: "t", files, site: null, newName: "n" }),
 		).rejects.toThrow("File too large");
 	});
+
+	test("checks a token with a team-level call, so team-scoped tokens connect", async () => {
+		const { fetch, calls } = fakeFetch([
+			({ url }) => (url.includes("/v2/user") ? json({ error: { code: "forbidden" } }, 403) : undefined),
+			({ url }) => (url.includes("/v9/projects") ? json({ projects: [] }) : undefined),
+		]);
+
+		await createVercel({ fetch, ...noWait }).verify("team-token");
+		expect(calls.map((call) => call.url)).toEqual(["https://api.vercel.com/v9/projects?limit=1"]);
+	});
+
+	test("tells a bad token apart from a token without enough scope", async () => {
+		const forbidden = (error: JsonObject) => fakeFetch([() => json({ error }, 403)]).fetch;
+
+		const bad = createVercel({
+			fetch: forbidden({ code: "forbidden", message: "Not authorized", invalidToken: true }),
+		});
+		await expect(bad.verify("bad")).rejects.toThrow("Vercel didn't accept the token");
+
+		const narrow = createVercel({ fetch: forbidden({ code: "forbidden", message: "Not allowed for this scope" }) });
+		await expect(narrow.verify("narrow")).rejects.toThrow(
+			"Vercel refused the request: Not allowed for this scope. Make a token with an expiry date",
+		);
+		await expect(narrow.deploy({ token: "narrow", files, site: null, newName: "n" })).rejects.toThrow(
+			"Not allowed for this scope",
+		);
+	});
 });

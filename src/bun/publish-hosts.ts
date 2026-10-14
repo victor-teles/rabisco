@@ -48,6 +48,23 @@ function errorText(body: Json): string | undefined {
 	return optionalString(nested.message) ?? optionalString(root.message) ?? optionalString(root.error);
 }
 
+function refusal(host: PublishHost, status: number, body: Json) {
+	const { name, tokenHint } = PUBLISH_HOST_INFO[host];
+
+	if (status === 401 || objectOr(objectOr(body).error).invalidToken === true)
+		return new HostError(`${name} didn't accept the token. Connect again with a new token.`, status);
+
+	return new HostError(`${name} refused the request: ${errorText(body) ?? status}. ${tokenHint}`, status);
+}
+
+function parseBody(text: string): Json {
+	try {
+		return text ? parseJson(text) : null;
+	} catch {
+		return text;
+	}
+}
+
 function createApi(host: PublishHost, base: string, fetch: Fetch) {
 	const name = PUBLISH_HOST_INFO[host].name;
 
@@ -72,16 +89,9 @@ function createApi(host: PublishHost, base: string, fetch: Fetch) {
 		}
 
 		const text = await response.text();
-		let parsed: Json = null;
+		const parsed = parseBody(text);
 
-		try {
-			parsed = text ? parseJson(text) : null;
-		} catch {
-			parsed = text;
-		}
-
-		if (response.status === 401 || response.status === 403)
-			throw new HostError(`${name} didn't accept the token. Connect again with a new token.`, response.status);
+		if (response.status === 401 || response.status === 403) throw refusal(host, response.status, parsed);
 
 		if (!response.ok)
 			throw new HostError(
@@ -257,11 +267,11 @@ export function createVercel(options: HostOptions): HostClient {
 			throw new Error("Couldn't reach Vercel. Check your connection and try again.", { cause: error });
 		}
 
-		if (response.status === 401 || response.status === 403)
-			throw new Error("Vercel didn't accept the token. Connect again with a new token.");
-
 		if (!response.ok) {
 			const text = await response.text();
+
+			if (response.status === 401 || response.status === 403) throw refusal("vercel", response.status, parseBody(text));
+
 			throw new Error(`Vercel didn't take ${file.path} (${response.status}): ${text.slice(0, 200)}`);
 		}
 
@@ -287,7 +297,7 @@ export function createVercel(options: HostOptions): HostClient {
 
 	return {
 		async verify(token) {
-			await call(token, "GET", "/v2/user");
+			await call(token, "GET", "/v9/projects?limit=1");
 		},
 		async deploy({ token, files, site, newName }) {
 			const all = [...files, { path: "vercel.json", body: encoder.encode(JSON.stringify(vercelConfig())) }];

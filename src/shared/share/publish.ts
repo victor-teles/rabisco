@@ -17,7 +17,7 @@ export const PUBLISH_HOST_INFO: Record<PublishHost, PublishHostInfo> = {
 	vercel: {
 		name: "Vercel",
 		tokenUrl: "https://vercel.com/account/settings/tokens",
-		tokenHint: "Make a token with the Full Account scope and an expiry date.",
+		tokenHint: "Make a token with an expiry date and the Full Account scope, or a team with All Projects.",
 		planHint: "Vercel's free Hobby plan is for personal, non-commercial use.",
 	},
 };
