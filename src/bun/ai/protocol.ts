@@ -24,6 +24,8 @@ export const TRUNCATED_STATUS = "File cut off";
 
 export const EDIT_MISMATCH_STATUS = "Edit didn't match";
 
+export const DENIED_STATUS = "Skipped actions Rabisco doesn't allow";
+
 export type TextProtocolParser = {
 	push(chunk: string): GenerationEvent[];
 	/** A file still open gets a `status` instead of `file.end`. */

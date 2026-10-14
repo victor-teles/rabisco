@@ -15,6 +15,7 @@ import {
 } from "./run";
 import { designSourceOf } from "../../shared/context/theme";
 import { runTextGeneration } from "./providers/api-common";
+import { DENIED_STATUS } from "./protocol";
 
 const GOOD_SCREEN = `import { Row } from "../components/row";\nexport default function A() { return <Row /> }\n`;
 
@@ -298,6 +299,49 @@ describe("runGeneration", () => {
 		expect(result.attempts).toBe(2);
 		expect(result.changes.map((c) => c.path)).toEqual(["screens/b.tsx", "components/row.tsx"]);
 		expect(result.problems).toHaveLength(1);
+	});
+
+	test("a create that ends without writing a file throws a retryable invalid_output", async () => {
+		const { provider } = fakeProvider([[{ type: "message.delta", text: "Done." }, { type: "done" }]]);
+
+		await expect(run(provider)).rejects.toMatchObject({
+			code: "invalid_output",
+			message: "The agent finished without writing a screen.",
+			retryable: true,
+			fix: expect.any(String),
+		});
+	});
+
+	test("a create with no files names the actions Rabisco skipped", async () => {
+		const { provider } = fakeProvider([
+			[
+				{ type: "message.delta", text: "Done." },
+				{ type: "status", label: DENIED_STATUS, detail: "RunCommand, OpenBrowser" },
+				{ type: "done" },
+			],
+		]);
+
+		await expect(run(provider)).rejects.toMatchObject({
+			code: "invalid_output",
+			message: expect.stringContaining("RunCommand, OpenBrowser"),
+			retryable: true,
+		});
+	});
+
+	test("an edit answered with text only is a reply, not an error", async () => {
+		const { provider } = fakeProvider([
+			[{ type: "message.delta", text: "It already uses the brand color." }, { type: "done" }],
+		]);
+
+		const { result } = await run(provider, {}, undefined, { ...request, task: "edit" });
+		expect(result.changes).toEqual([]);
+		expect(result.reply).toBe("It already uses the brand color.");
+	});
+
+	test("a planned run that writes nothing leaves the outcome to the plan", async () => {
+		const { provider } = fakeProvider([[{ type: "message.delta", text: "Done." }, { type: "done" }]]);
+		const { result } = await run(provider, {}, undefined, { ...request, writes: ["components/row.tsx"] });
+		expect(result.changes).toEqual([]);
 	});
 
 	test("abort throws an aborted GenerationError", async () => {

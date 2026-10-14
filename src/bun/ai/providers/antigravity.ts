@@ -19,6 +19,7 @@ import {
 import type { JsonObject } from "../../../shared/json";
 import { arrayOr, objectOr, optionalNumber, optionalObject, optionalString } from "../../json";
 import { userPrompt } from "../prompt";
+import { DENIED_STATUS } from "../protocol";
 import { runInStaging } from "../staging";
 import type { CliProviderOptions } from "./claude-code";
 import { commandMethods } from "../command-template";
@@ -119,9 +120,7 @@ export function createAntigravityMapper(dir: string): LineMapper {
 				}
 			: { type: "done" };
 
-		return denied.length
-			? [{ type: "status", label: "Skipped actions Rabisco doesn't allow", detail: denied.join(", ") }, done]
-			: [done];
+		return denied.length ? [{ type: "status", label: DENIED_STATUS, detail: denied.join(", ") }, done] : [done];
 	};
 }
 

@@ -20,7 +20,7 @@ import { resolveFocused } from "../../shared/ai/focus";
 import { focusNotes } from "../../shared/ai/focus-guard";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
-import { EDIT_MISMATCH_STATUS } from "./protocol";
+import { DENIED_STATUS, EDIT_MISMATCH_STATUS } from "./protocol";
 import { validateFiles, type ValidateOptions } from "./validate";
 
 /** The first attempt failed, or the run was aborted. */
@@ -75,10 +75,27 @@ type Attempt = {
 	written: Map<string, string>;
 	deleted: Set<string>;
 	unmatched: Set<string>;
+	denied: string[];
 	reply: string;
 	usage?: Usage;
 	error?: { code: ProviderErrorCode; message: string; retryable: boolean; fix?: string };
 };
+
+function nothingWrittenError(denied: string[]) {
+	return denied.length
+		? new GenerationError(
+				"invalid_output",
+				`The agent finished without writing a screen. It tried actions Rabisco doesn't allow: ${denied.join(", ")}.`,
+				true,
+				"Try again, or pick another model.",
+			)
+		: new GenerationError(
+				"invalid_output",
+				"The agent finished without writing a screen.",
+				true,
+				"Try again, or describe the screens you want in more detail.",
+			);
+}
 
 const abortedError = () => new GenerationError("aborted", "Generation stopped.", true);
 
@@ -89,7 +106,7 @@ async function collect(
 	signal: AbortSignal,
 	onEvent: (event: GenerationEvent) => void,
 ): Promise<Attempt> {
-	const attempt: Attempt = { written: new Map(), deleted: new Set(), unmatched: new Set(), reply: "" };
+	const attempt: Attempt = { written: new Map(), deleted: new Set(), unmatched: new Set(), denied: [], reply: "" };
 
 	try {
 		for await (const event of provider.generate(request, signal)) {
@@ -102,6 +119,8 @@ async function collect(
 					break;
 				case "status":
 					if (event.label === EDIT_MISMATCH_STATUS && event.detail) attempt.unmatched.add(event.detail);
+
+					if (event.label === DENIED_STATUS && event.detail) attempt.denied.push(event.detail);
 					break;
 				case "file.end":
 					attempt.written.set(event.path, event.content);
@@ -185,6 +204,15 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 
 	if (first.error)
 		throw new GenerationError(first.error.code, first.error.message, first.error.retryable, first.error.fix);
+
+	if (
+		request.task === "create" &&
+		!request.writes &&
+		!first.written.size &&
+		!first.deleted.size &&
+		!first.unmatched.size
+	)
+		throw nothingWrittenError(first.denied);
 
 	const written = first.written;
 	const deleted = first.deleted;
