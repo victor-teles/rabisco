@@ -10,6 +10,7 @@ import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
 import type { PublishHost, PublishHostStatus, PublishParams, PublishTarget } from "./share/publish";
+import type { ViewerComment } from "./share/comments";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
 	CanvasDoc,
@@ -203,6 +204,8 @@ export type RabiscoRPC = {
 			openRequested: {};
 			/** The expiry sweep removed sites; read them with `takeExpiredSites` */
 			sitesExpired: {};
+			/** A viewer of a share link on the local network commented (decision 0038) */
+			viewerComment: { path: string; comment: ViewerComment };
 		};
 	}>;
 };

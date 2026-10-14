@@ -4,7 +4,15 @@ import { planMode } from "@/hooks/use-plan-mode";
 import type { RenderFailure } from "@/lib/generation-session";
 import { createProjectSessions } from "@/lib/project-sessions";
 import { onFrameStatus } from "@/lib/render/frame-host";
-import { api, handleSaveAll, onAssetsChanged, onCanvasChanged, onFilesChanged, onGenerationEvent } from "@/lib/rpc";
+import {
+	api,
+	handleSaveAll,
+	onAssetsChanged,
+	onCanvasChanged,
+	onFilesChanged,
+	onGenerationEvent,
+	onViewerComment,
+} from "@/lib/rpc";
 import { checkDesign } from "@/views/editor/design-check";
 
 const RENDER_CHECK_MS = 2500;
@@ -64,6 +72,8 @@ export const projectSessions = createProjectSessions({
 	onFilesChanged,
 	onAssetsChanged,
 	onCanvasChanged,
+	onViewerComment,
+	onViewerCommentAdded: (_path, text) => toast("New comment from the share link", { description: text }),
 	onGenerationEvent,
 	onSaveError: reportSaveError,
 	onBackup: reportBackup,

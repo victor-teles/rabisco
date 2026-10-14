@@ -6,7 +6,8 @@ import {
 	type Outcome,
 } from "@/lib/generation-session";
 import { createProjectSession, type ProjectApi, type ProjectSession } from "@/lib/project-session";
-import type { AssetsChanged, CanvasChanged, FilesChanged, RabiscoApi } from "@/lib/rpc";
+import type { AssetsChanged, CanvasChanged, FilesChanged, RabiscoApi, ViewerCommented } from "@/lib/rpc";
+import { viewerThread } from "../../shared/share/comments";
 import type { GenerationEventMessage } from "../../shared/types";
 
 export type Hold = "editor" | "work" | "unseen";
@@ -24,6 +25,9 @@ export type SessionsOptions = {
 	onFilesChanged: Subscribe<FilesChanged>;
 	onAssetsChanged: Subscribe<AssetsChanged>;
 	onCanvasChanged?: Subscribe<CanvasChanged>;
+	onViewerComment?: Subscribe<ViewerCommented>;
+	/** After a viewer's comment landed in an open project */
+	onViewerCommentAdded?: (path: string, text: string) => void;
 	onGenerationEvent: Subscribe<GenerationEventMessage>;
 	onSaveError: (cause: unknown) => void;
 	onBackup?: (dir: string) => void;
@@ -58,6 +62,22 @@ export function createProjectSessions(options: SessionsOptions) {
 	options.onFilesChanged((message) => entries.get(message.path)?.session.filesChanged(message.changes));
 	options.onAssetsChanged((message) => entries.get(message.path)?.session.assetsChanged(message.changes));
 	options.onCanvasChanged?.((message) => entries.get(message.path)?.session.canvasChanged(message.canvas));
+	options.onViewerComment?.(({ path, comment }) => {
+		const session = entries.get(path)?.session;
+		const state = session?.state();
+
+		if (!session || !state) return;
+
+		const thread = viewerThread(
+			comment,
+			state.history.present.frames.find((frame) => frame.file === comment.screen),
+			crypto.randomUUID(),
+			new Date().toISOString(),
+		);
+
+		session.change((snapshot) => ({ ...snapshot, comments: [...(snapshot.comments ?? []), thread] }));
+		options.onViewerCommentAdded?.(path, comment.text);
+	});
 
 	const notify = () => {
 		for (const listener of listeners) listener();

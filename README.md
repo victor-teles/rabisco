@@ -182,6 +182,9 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `↑` `↓` / `←` `→` (Structure)                             | Move through elements / collapse, expand                                           |
 | `⌥⌘K` or `Enter` (Structure)                              | Make component from the selected element, and replace its repeats                  |
 | `⌫` (Structure)                                           | Delete the selected element                                                        |
+| `I` (share viewer)                                        | Inspect: size, spacing, colors as tokens and the TSX of the element you click      |
+| `C` (share link on your network)                          | Comment: click the screen, type, `⌘↵` sends it to the project as a new thread      |
+| `Esc` (share viewer)                                      | Close the comment box, then leave inspect or comment mode                          |
 
 ## License
 

@@ -15,6 +15,7 @@ import type { Frame, ProjectFiles } from "../../../../shared/types";
 import type { ExportContext } from "./export-menu";
 import { GitSection } from "./git-section";
 import { PublishSection } from "./publish-section";
+import { QrCode } from "./qr-code";
 import { copyLater, copyText, errorMessage, timeAgo } from "./share-utils";
 
 /** Lets the popover tell when a shared link is out of date */
@@ -235,11 +236,26 @@ function LinkSection({
 							<ExternalLink />
 						</Button>
 					</div>
+					{status.url === status.localUrl ? (
+						<p className="text-xs text-muted-foreground">
+							This computer isn't on a network, so only this computer can open the link. Join a Wi-Fi network, then
+							update the link.
+						</p>
+					) : (
+						<div className="flex items-center gap-3">
+							<QrCode text={status.url} label="QR code for the share link" className="size-28 shrink-0" />
+							<p className="text-xs text-muted-foreground">
+								Scan with your phone's camera to open the prototype. The phone must be on the same Wi-Fi as this
+								computer.
+							</p>
+						</div>
+					)}
 					<p className="text-xs text-muted-foreground">
 						{stale
 							? "You changed the design since the last update. "
 							: `${status.screens} ${status.screens === 1 ? "screen" : "screens"}, updated ${timeAgo(status.updatedAt)}. `}
-						Anyone on your network with the link can click through the screens. It works while this project is open.
+						Anyone on your network with the link can click through the screens, inspect them and comment. Comments
+						arrive here as new threads. It works while this project is open.
 					</p>
 					<div className="flex items-center gap-2">
 						<Button
@@ -259,8 +275,8 @@ function LinkSection({
 			) : (
 				<>
 					<p className="text-[13px] text-muted-foreground">
-						A read-only link to click through your screens, for anyone on the same network. Nothing leaves this
-						computer, and the link stops when you stop sharing or close the project.
+						A link for anyone on the same network to click through your screens, inspect them and comment. Nothing
+						leaves this computer, and the link stops when you stop sharing or close the project.
 					</p>
 					<Button
 						size="sm"

@@ -140,6 +140,8 @@ const runtimeDirs = () => [
 // Share links serve the same screen runtime the canvas loads (decision 0008)
 const shares = createShareService({
 	readRuntime: () => readScreenRuntime(runtimeDirs()),
+	// The project adds it as an undoable change (decision 0038)
+	onComment: (path, comment) => mainWindow.webview.rpc?.send.viewerComment({ path, comment }),
 });
 
 // Published sites go to a host the user owns (decision 0038)

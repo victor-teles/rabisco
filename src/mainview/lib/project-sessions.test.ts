@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AttachCallbacks } from "./generation-session";
 import { createProjectSessions, type Landed, type SessionsApi } from "./project-sessions";
+import type { ViewerCommented } from "./rpc";
 import type { GenerationPlan } from "../../shared/ai/contract";
 import { elementFocus } from "../../shared/ai/focus";
 import type { PolishMode } from "../../shared/design/polish";
@@ -158,11 +159,19 @@ function setup({ polish = "off", plan = false }: { polish?: PolishMode; plan?: b
 	const events = new Set<(message: GenerationEventMessage) => void>();
 	const landed: Landed[] = [];
 	const checks: string[][] = [];
+	const viewerComments = new Set<(message: ViewerCommented) => void>();
+	const commented: string[] = [];
 
 	const sessions = createProjectSessions({
 		api: memory.api,
 		onFilesChanged: () => () => {},
 		onAssetsChanged: () => () => {},
+		onViewerComment: (listener) => {
+			viewerComments.add(listener);
+
+			return () => void viewerComments.delete(listener);
+		},
+		onViewerCommentAdded: (path, text) => void commented.push(`${path}: ${text}`),
 		onGenerationEvent: (listener) => {
 			events.add(listener);
 
@@ -227,10 +236,49 @@ function setup({ polish = "off", plan = false }: { polish?: PolishMode; plan?: b
 		return memory.calls[count - 1]!;
 	};
 
-	return { ...memory, sessions, landed, emit, open, nextCall, placed, checks };
+	const comment = (message: ViewerCommented) => {
+		for (const listener of viewerComments) listener(message);
+	};
+
+	return { ...memory, sessions, landed, emit, open, nextCall, placed, checks, comment, commented };
 }
 
 describe("project sessions", () => {
+	test("a viewer's comment is a new thread on its screen and one undo step", async () => {
+		const { open, comment, commented } = setup();
+		const { session } = await open("/p/a");
+
+		const home = {
+			file: "screens/home.tsx",
+			name: "Home",
+			device: "mobile" as const,
+			x: 0,
+			y: 0,
+			width: 390,
+			height: 844,
+		};
+
+		session.change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [home.file]: SCREEN }, frames: [home] }));
+		comment({ path: "/p/b", comment: { screen: home.file, x: 10, y: 10, text: "Not open" } });
+		comment({ path: "/p/a", comment: { screen: home.file, x: 500, y: 1200, text: "Bigger button" } });
+
+		expect(session.state()!.canvas.comments).toEqual([
+			{
+				id: expect.any(String),
+				file: home.file,
+				x: 390,
+				y: 1200,
+				text: "Bigger button",
+				createdAt: expect.any(String),
+			},
+		]);
+		expect(commented).toEqual(["/p/a: Bigger button"]);
+
+		session.undo();
+		expect(session.state()!.canvas.comments ?? []).toEqual([]);
+		expect(session.state()!.canvas.frames).toEqual([home]);
+	});
+
 	test("an outside edit of the canvas file lands in every undo step and isn't saved back", async () => {
 		const { open, stored, log } = setup();
 		const { session } = await open("/p/a");

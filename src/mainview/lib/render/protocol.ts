@@ -2,7 +2,7 @@ import { DESIGN_RULES, type DesignFinding } from "../../../shared/design/finding
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
-import type { ElementLayout, Spacing } from "./spacing";
+import type { ElementLayout, Insets, Spacing } from "./spacing";
 
 /** Where an error points to in project source. Lines and columns are 1-based. */
 export type SourceLocation = { line: number; column?: number };
@@ -64,7 +64,29 @@ export type HostMessage =
 	| { type: "lint"; id: number }
 	/** Answered by a `markup` with the same `id`: the rendered HTML, with project images at their own paths. */
 	| { type: "markup"; id: number }
-	| { type: "pick-color"; id: number; x: number; y: number };
+	| { type: "pick-color"; id: number; x: number; y: number }
+	/** The share viewer (decision 0038): a tap inspects an element or picks a point instead of reaching the screen. `null` ends it */
+	| { type: "pick-mode"; mode: PickMode | null }
+	/** Comment pins, in screen coordinates */
+	| { type: "pins"; pins: { x: number; y: number }[] };
+
+export type PickMode = "inspect" | "point";
+
+export type InspectedColor = { role: "fill" | "text" | "border"; hex: string; alpha: number; token: string | null };
+
+/** CSS pixels of the first rendered element; `font` only when it holds text */
+export type InspectedElement = {
+	start: number;
+	width: number;
+	height: number;
+	padding: Insets;
+	margin: Insets;
+	gap: { row: number; column: number } | null;
+	radius: [number, number, number, number];
+	font: { family: string; size: number; weight: string; lineHeight: number | null } | null;
+	colors: InspectedColor[];
+	opacity: number;
+};
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
 export type AssetPayload = Blob | string;
@@ -124,7 +146,10 @@ export type FrameMessage =
 	| { type: "lint"; id: number; error: string }
 	| { type: "markup"; id: number; html: string }
 	| { type: "markup"; id: number; error: string }
-	| { type: "picked-color"; id: number; color: string | null };
+	| { type: "picked-color"; id: number; color: string | null }
+	| { type: "inspected"; element: InspectedElement | null }
+	/** `x`, `y` in screen coordinates (scroll included); `clientX`, `clientY` in the frame's viewport */
+	| { type: "pointed"; x: number; y: number; clientX: number; clientY: number };
 
 /** Frame-local CSS pixels. */
 export type Box = { x: number; y: number; width: number; height: number };

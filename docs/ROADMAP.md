@@ -16,11 +16,11 @@ The share link works only on the local network ([0008](./decisions/0008-share-li
 
 - ✅ Publish "Export as website" to a static host the user owns: Netlify and Vercel, through their APIs with a token in the keychain. The Web tab of the Share popover publishes, updates and removes the site ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-39](/LIT/issues/LIT-39))
 - ⬜ Publish to GitHub Pages through git sync, as the second step of [0038](./decisions/0038-publish-to-a-host-the-user-owns.md). Cloudflare Pages waits for a stable upload API
-- ⬜ A QR code for the LAN link, to open a prototype on a phone
-- ⬜ Comments from viewers on a shared link, collected back into the project
+- ✅ A QR code for the LAN link, to open a prototype on a phone ([LIT-40](/LIT/issues/LIT-40))
+- ✅ Comments from viewers on a shared link, collected back into the project. On the LAN link only: the share server takes a comment with a screen and a pin, and it lands as a new thread in one undo step ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-40](/LIT/issues/LIT-40))
 - ✅ A password or an expiry on a published link. The password encrypts the snapshot, and the viewer decrypts it in the browser. After the expiry date the viewer stops, and Rabisco removes the site the next time it runs ([LIT-39](/LIT/issues/LIT-39))
-- ⬜ An inspect mode in the viewer: element size, spacing, colors as tokens, and the TSX of a selected element
-- ⬜ Record a prototype walkthrough as a video or GIF
+- ✅ An inspect mode in the viewer: element size, spacing, colors as tokens, and the TSX of a selected element. It works on the LAN link and on a published site ([LIT-40](/LIT/issues/LIT-40))
+- ⬜ Record a prototype walkthrough as a video or GIF ([LIT-141](/LIT/issues/LIT-141))
 
 **Done when** a user can send a link that a stakeholder opens on their phone, anywhere.
 

@@ -30,6 +30,8 @@ export type AssetsChanged = RabiscoRPC["webview"]["messages"]["assetsChanged"];
 
 export type CanvasChanged = RabiscoRPC["webview"]["messages"]["canvasChanged"];
 
+export type ViewerCommented = RabiscoRPC["webview"]["messages"]["viewerComment"];
+
 function listenerSet<T>() {
 	const listeners = new Set<(value: T) => void>();
 
@@ -57,6 +59,8 @@ const openRequests = listenerSet<{}>();
 
 const expiredSites = listenerSet<{}>();
 
+const viewerComments = listenerSet<ViewerCommented>();
+
 export const onGenerationEvent = generationEvents.add;
 
 export const onFilesChanged = fileChanges.add;
@@ -68,6 +72,8 @@ export const onCanvasChanged = canvasChanges.add;
 export const onOpenRequested = openRequests.add;
 
 export const onSitesExpired = expiredSites.add;
+
+export const onViewerComment = viewerComments.add;
 
 let saveAll = async () => true;
 
@@ -116,6 +122,7 @@ function createElectrobunApi(): RabiscoApi {
 				agentCall: (call) => void answerAgent(call),
 				openRequested: openRequests.emit,
 				sitesExpired: expiredSites.emit,
+				viewerComment: viewerComments.emit,
 			},
 		},
 	});

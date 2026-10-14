@@ -10,6 +10,8 @@ import {
 } from "../prototype/transitions";
 import { iconFile } from "../icons";
 import type { ExportFile } from "../types";
+import { COMMENT_MAX_LENGTH } from "./comments";
+import { GAP_FILL, PADDING_FILL } from "./marks";
 import { OPEN_SEALED_JS, type SealedSnapshot } from "./publish";
 import type { ScreenRuntime, ShareSnapshot } from "./snapshot";
 
@@ -19,8 +21,9 @@ export const SEALED_GLOBAL = "__RABISCO_SEALED__";
 
 export const EXPIRES_GLOBAL = "__RABISCO_EXPIRES__";
 
-/** Decision 0038: a published site can be sealed with a password, stop at a date and ask not to be indexed */
-export type ViewerOptions = { sealed?: SealedSnapshot; expiresAt?: string; noindex?: boolean };
+/** Decision 0038: a published site can be sealed with a password, stop at a date and ask not to be indexed. Only the
+ * LAN share has `comments`: a route on the same server takes them */
+export type ViewerOptions = { sealed?: SealedSnapshot; expiresAt?: string; noindex?: boolean; comments?: boolean };
 
 /** Browser copy of `normalizeTarget` in `src/shared/prototype/links.ts`; a test keeps them in step. */
 export const NORMALIZE_TARGET_JS = `function normalizeTarget(to) {
@@ -127,13 +130,62 @@ body.gated #gate{display:flex}
 #gate button{height:36px;border:0;border-radius:6px;background:#18181b;color:#fafafa;cursor:pointer}
 #gate button:disabled{opacity:.6;cursor:default}
 #gate .error{color:#b91c1c;min-height:1.4em}
-@media (max-width:700px){nav{display:none}}
+header .tools{display:flex;gap:4px}
+.tool{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:0;border-radius:6px;background:transparent;cursor:pointer;white-space:nowrap}
+.tool:hover{background:#f4f4f5}
+.tool[aria-pressed="true"]{background:#18181b;color:#fafafa}
+.tool svg{width:16px;height:16px;flex-shrink:0}
+#inspector{display:none;width:288px;flex-shrink:0;overflow:auto;background:#fff;border-left:1px solid #e4e4e7}
+body.inspecting #inspector{display:block}
+#inspector .empty{margin:16px;color:#71717a}
+#inspector section{padding:12px 16px;border-bottom:1px solid #f4f4f5}
+#inspector section:last-child{border-bottom:0}
+#inspector h2{margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#71717a}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.el-name{font-weight:600;overflow-wrap:anywhere}
+.el-where{margin-top:2px;color:#71717a;font-size:12px;overflow-wrap:anywhere}
+#inspector dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0}
+#inspector dt{color:#71717a;white-space:nowrap}
+#inspector dd{margin:0;min-width:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.key{display:inline-block;width:10px;height:10px;margin-right:6px;border-radius:2px;vertical-align:-1px}
+.swatch{display:inline-block;width:14px;height:14px;margin-right:6px;border-radius:4px;vertical-align:-3px;box-shadow:inset 0 0 0 1px rgb(0 0 0/.12)}
+.hex{margin-left:6px;color:#71717a}
+.code-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#inspector .code-head h2{margin:0}
+.small{height:28px;padding:0 10px;border:1px solid #e4e4e7;border-radius:6px;background:#fff;font-size:12px;cursor:pointer}
+.small:hover{background:#f4f4f5}
+#inspector pre{margin:0;padding:10px;max-height:320px;overflow:auto;border-radius:6px;background:#f4f4f5;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2;white-space:pre}
+#composer{position:fixed;z-index:30;display:none;flex-direction:column;gap:8px;width:288px;max-width:calc(100vw - 24px);padding:10px;border:1px solid #e4e4e7;border-radius:10px;background:#fff;box-shadow:0 10px 40px -12px rgb(0 0 0/.35)}
+#composer.open{display:flex}
+#composer textarea{min-height:84px;padding:8px 10px;border:1px solid #d4d4d8;border-radius:6px;font:inherit;resize:vertical}
+@media (hover:none){#composer textarea{font-size:16px}}
+#composer .row{display:flex;justify-content:flex-end;gap:6px}
+#composer .row button{height:32px;padding:0 12px;border:0;border-radius:6px;cursor:pointer}
+#composer-cancel{background:transparent}
+#composer-cancel:hover{background:#f4f4f5}
+#composer-send{background:#18181b;color:#fafafa}
+#composer-send:disabled{opacity:.6;cursor:default}
+#composer .error{margin:0;color:#b91c1c;font-size:12px}
+#composer .error:empty{display:none}
+@media (max-width:700px){nav{display:none}.tool{width:32px;padding:0;justify-content:center}.tool span{display:none}body.inspecting .body{flex-direction:column}#inspector{width:auto;max-height:45vh;border-left:0;border-top:1px solid #e4e4e7}#composer{left:12px!important;right:12px;top:auto!important;bottom:calc(12px + env(safe-area-inset-bottom));width:auto;max-width:none}}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 `;
 
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`;
 
 const ICON_RESTART = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
+
+const ICON_INSPECT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>`;
+
+const ICON_COMMENT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg>`;
+
+const COMMENT_BUTTON = `<button class="tool" id="comment" type="button" aria-pressed="false" aria-label="Comment" title="Comment (C)">${ICON_COMMENT}<span>Comment</span></button>`;
+
+const COMPOSER = `<form id="composer" aria-label="New comment">
+			<textarea id="composer-text" aria-label="Comment" placeholder="Add a comment" maxlength="${COMMENT_MAX_LENGTH}"></textarea>
+			<p class="error" id="composer-error" role="alert"></p>
+			<div class="row"><button type="button" id="composer-cancel">Cancel</button><button type="submit" id="composer-send">Send</button></div>
+		</form>`;
 
 function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
 	const name = options.sealed ? "Shared design" : escapeHtml(snapshot.name || "Untitled design");
@@ -142,7 +194,7 @@ function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 		<meta name="referrer" content="no-referrer" />
 		<meta name="generator" content="Rabisco" />
 		${options.noindex ? '<meta name="robots" content="noindex" />\n\t\t' : ""}		<title>${name}</title>
@@ -155,6 +207,10 @@ function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
 			<span class="sep"></span>
 			<h1 id="name">${name}</h1>
 			<span class="current" id="current"></span>
+			<div class="tools">
+				<button class="tool" id="inspect" type="button" aria-pressed="false" aria-label="Inspect" title="Inspect (I)">${ICON_INSPECT}<span>Inspect</span></button>
+				${options.comments ? COMMENT_BUTTON : ""}
+			</div>
 		</header>
 		<div class="body">
 			<nav aria-label="Screens">
@@ -164,6 +220,7 @@ function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
 			<main id="stage">
 				<div id="device"><div id="scaler"><div class="layer"><iframe id="frame" title="Screen" sandbox="allow-scripts"${options.sealed ? "" : ' src="runtime/frame.html"'}></iframe></div></div></div>
 			</main>
+			<aside id="inspector" aria-label="Inspect"></aside>
 		</div>
 		<div id="gate">
 			<form id="gate-form">
@@ -175,12 +232,265 @@ function indexHtml(snapshot: ShareSnapshot, options: ViewerOptions) {
 			</form>
 		</div>
 		<div id="toast" role="status" aria-live="polite"></div>
+		${options.comments ? COMPOSER : ""}
 		<script src="snapshot.js"></script>
 		<script src="viewer.js"></script>
 	</body>
 </html>
 `;
 }
+
+/** Inspect and comment modes (decision 0038); runs inside `start`, next to the frames it talks to */
+const PICK_JS = `var inspectButton = document.getElementById("inspect");
+	var commentButton = document.getElementById("comment");
+	var inspector = document.getElementById("inspector");
+	var composer = document.getElementById("composer");
+	var composerText = document.getElementById("composer-text");
+	var composerError = document.getElementById("composer-error");
+	var composerSend = document.getElementById("composer-send");
+	var TOUCH = !!(window.matchMedia && window.matchMedia("(hover: none)").matches);
+	var ROLES = { fill: "Fill", text: "Text", border: "Border" };
+	var pickMode = null;
+	var pending = null;
+	var sentPins = {};
+
+	function pinsFor(record) {
+		var pins = (sentPins[record.file] || []).slice();
+		if (pending && pending.record === record) pins.push({ x: pending.x, y: pending.y });
+		return pins;
+	}
+
+	function syncPick(record) {
+		post(record, { type: "play", on: !pickMode });
+		post(record, { type: "pick-mode", mode: pickMode });
+		post(record, { type: "pins", pins: pinsFor(record) });
+	}
+
+	function setPickMode(next) {
+		closeComposer();
+		pickMode = next;
+		inspectButton.setAttribute("aria-pressed", String(next === "inspect"));
+		if (commentButton) commentButton.setAttribute("aria-pressed", String(next === "point"));
+		document.body.classList.toggle("inspecting", next === "inspect");
+		showInspected(null, null);
+		frames.forEach(function (record) { if (record.ready) syncPick(record); });
+		if (next === "point") toast((TOUCH ? "Tap" : "Click") + " where you want to comment");
+	}
+
+	function node(tag, className, text) {
+		var element = document.createElement(tag);
+		if (className) element.className = className;
+		if (text !== undefined) element.textContent = text;
+		return element;
+	}
+
+	function num(value) {
+		return String(Math.round(value * 10) / 10);
+	}
+
+	function sides(values) {
+		if (values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) return num(values[0]);
+		if (values[0] === values[2] && values[1] === values[3]) return num(values[0]) + " " + num(values[1]);
+		return values.map(num).join(" ");
+	}
+
+	function insets(box) {
+		return sides([box.top, box.right, box.bottom, box.left]);
+	}
+
+	function elementCode(file, start) {
+		var module = data.modules[file];
+		var spans = module && module.elements;
+		if (!spans) return null;
+		for (var i = 0; i < spans.length; i += 2) {
+			if (spans[i] !== start) continue;
+			var lineStart = module.source.lastIndexOf("\\n", start - 1) + 1;
+			var indent = /^[ \\t]*/.exec(module.source.slice(lineStart, start))[0];
+			return module.source.slice(start, spans[i + 1]).split("\\n").map(function (line, index) {
+				return index > 0 && indent && line.indexOf(indent) === 0 ? line.slice(indent.length) : line;
+			}).join("\\n");
+		}
+		return null;
+	}
+
+	function section(title) {
+		var element = node("section");
+		if (title) element.appendChild(node("h2", "", title));
+		inspector.appendChild(element);
+		return element;
+	}
+
+	function rows(parent, items) {
+		var list = node("dl");
+		items.forEach(function (item) {
+			var term = node("dt");
+			if (item.key) {
+				var key = node("span", "key");
+				key.style.background = item.key;
+				term.appendChild(key);
+			}
+			term.appendChild(document.createTextNode(item.label));
+			var value = node("dd");
+			if (item.content) value.appendChild(item.content);
+			else value.textContent = item.value;
+			list.appendChild(term);
+			list.appendChild(value);
+		});
+		parent.appendChild(list);
+	}
+
+	function colorValue(color) {
+		var wrap = node("span");
+		var swatch = node("span", "swatch");
+		swatch.style.background = color.hex;
+		swatch.style.opacity = String(color.alpha);
+		wrap.appendChild(swatch);
+		var hex = color.hex + (color.alpha < 1 ? " " + Math.round(color.alpha * 100) + "%" : "");
+		wrap.appendChild(node("span", "mono", color.token || hex));
+		if (color.token) wrap.appendChild(node("span", "mono hex", hex));
+		return wrap;
+	}
+
+	function copyCode(text) {
+		function fallback() {
+			var area = document.createElement("textarea");
+			area.value = text;
+			area.setAttribute("readonly", "");
+			area.style.position = "fixed";
+			area.style.opacity = "0";
+			document.body.appendChild(area);
+			area.select();
+			var done = false;
+			try { done = document.execCommand("copy"); } catch (error) {}
+			area.remove();
+			toast(done ? "Code copied" : "Couldn't copy. Select the code and copy it.");
+		}
+		// A LAN link is plain http, where the Clipboard API is off
+		if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { toast("Code copied"); }, fallback);
+		else fallback();
+	}
+
+	function showInspected(record, element) {
+		inspector.replaceChildren();
+		if (!element) {
+			inspector.appendChild(node("p", "empty", (TOUCH ? "Tap" : "Click") + " an element to see its size, spacing, colors and code."));
+			layout();
+			return;
+		}
+		var module = data.modules[record.file];
+		var code = elementCode(record.file, element.start);
+		var tag = code && /^<([A-Za-z0-9_.:-]*)/.exec(code);
+		var line = module ? module.source.slice(0, element.start).split("\\n").length : 0;
+		var head = section("");
+		head.appendChild(node("div", "el-name mono", tag ? "<" + tag[1] + ">" : "Element"));
+		head.appendChild(node("div", "el-where", record.file + (line ? ", line " + line : "")));
+		var box = [{ label: "Size", value: num(element.width) + " × " + num(element.height) }];
+		box.push({ label: "Padding", value: insets(element.padding), key: "${PADDING_FILL}" });
+		if (element.margin.top || element.margin.right || element.margin.bottom || element.margin.left) box.push({ label: "Margin", value: insets(element.margin) });
+		if (element.gap && (element.gap.row || element.gap.column)) box.push({ label: "Gap", value: element.gap.row === element.gap.column ? num(element.gap.row) : num(element.gap.row) + " " + num(element.gap.column), key: "${GAP_FILL}" });
+		if (element.radius.some(Boolean)) box.push({ label: "Radius", value: sides(element.radius) });
+		if (element.opacity < 1) box.push({ label: "Opacity", value: Math.round(element.opacity * 100) + "%" });
+		rows(section("Layout"), box);
+		if (element.font) rows(section("Text"), [
+			{ label: "Font", value: element.font.family },
+			{ label: "Size", value: num(element.font.size) + (element.font.lineHeight ? " / " + num(element.font.lineHeight) : "") },
+			{ label: "Weight", value: element.font.weight },
+		]);
+		if (element.colors.length) rows(section("Colors"), element.colors.map(function (color) {
+			return { label: ROLES[color.role] || color.role, content: colorValue(color) };
+		}));
+		if (code) {
+			var block = section("");
+			var codeHead = node("div", "code-head");
+			codeHead.appendChild(node("h2", "", "Code"));
+			var copy = node("button", "small", "Copy");
+			copy.type = "button";
+			copy.addEventListener("click", function () { copyCode(code); });
+			codeHead.appendChild(copy);
+			block.appendChild(codeHead);
+			var pre = node("pre");
+			pre.appendChild(node("code", "", code));
+			block.appendChild(pre);
+		}
+		layout();
+	}
+
+	function openComposer(record, message) {
+		var rect = record.iframe.getBoundingClientRect();
+		var scale = record.iframe.offsetWidth ? rect.width / record.iframe.offsetWidth : 1;
+		var x = rect.left + message.clientX * scale;
+		var y = rect.top + message.clientY * scale;
+		pending = { record: record, file: record.file, x: message.x, y: message.y };
+		post(record, { type: "pins", pins: pinsFor(record) });
+		composerError.textContent = "";
+		composer.className = "open";
+		var left = x + 16 + composer.offsetWidth > window.innerWidth - 12 ? x - 16 - composer.offsetWidth : x + 16;
+		composer.style.left = Math.max(12, left) + "px";
+		composer.style.top = Math.max(12, Math.min(y - 12, window.innerHeight - composer.offsetHeight - 12)) + "px";
+		composerText.focus();
+	}
+
+	function closeComposer() {
+		if (!composer) return;
+		composer.className = "";
+		var record = pending && pending.record;
+		pending = null;
+		if (record && frames.indexOf(record) !== -1) post(record, { type: "pins", pins: pinsFor(record) });
+	}
+
+	function sendComment(event) {
+		event.preventDefault();
+		var text = composerText.value.trim();
+		if (!pending || !text) return composerText.focus();
+		var sending = pending;
+		composerSend.disabled = true;
+		composerError.textContent = "";
+		fetch("comments", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ screen: sending.file, x: sending.x, y: sending.y, text: text }),
+		}).then(function (response) {
+			if (response.ok) return null;
+			return response.status === 429 ? response.text() : "Couldn't send the comment. Rabisco must be open on the designer's computer.";
+		}, function () {
+			return "Couldn't reach Rabisco. Check that you're on the same network as the designer.";
+		}).then(function (error) {
+			composerSend.disabled = false;
+			if (error) {
+				composerError.textContent = error;
+				return;
+			}
+			(sentPins[sending.file] = sentPins[sending.file] || []).push({ x: sending.x, y: sending.y });
+			composerText.value = "";
+			if (pending === sending) closeComposer();
+			toast("Comment sent");
+		});
+	}
+
+	/** Composer, then mode, then overlay */
+	function escape() {
+		if (pending) closeComposer();
+		else if (pickMode) setPickMode(null);
+		else if (overlayOpen()) closeOverlay();
+	}
+
+	inspectButton.addEventListener("click", function () { setPickMode(pickMode === "inspect" ? null : "inspect"); });
+	if (commentButton) commentButton.addEventListener("click", function () { setPickMode(pickMode === "point" ? null : "point"); });
+	if (composer) {
+		composer.addEventListener("submit", sendComment);
+		document.getElementById("composer-cancel").addEventListener("click", closeComposer);
+		composerText.addEventListener("keydown", function (event) {
+			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) sendComment(event);
+		});
+	}
+	window.addEventListener("keydown", function (event) {
+		if (event.key === "Escape") return escape();
+		var target = event.target;
+		if (event.metaKey || event.ctrlKey || event.altKey || (target && /^(INPUT|TEXTAREA)$/.test(target.tagName))) return;
+		var key = event.key.toLowerCase();
+		if (key === "i") setPickMode(pickMode === "inspect" ? null : "inspect");
+		else if (key === "c" && commentButton) setPickMode(pickMode === "point" ? null : "point");
+	});`;
 
 /** Same messages as `FrameHost`; the screen lives in the URL hash so links and the back button work. */
 const viewerJs = () => `(function () {
@@ -249,6 +559,8 @@ const viewerJs = () => `(function () {
 	${NORMALIZE_TARGET_JS}
 
 	${LINK_OPTIONS_JS}
+
+	${PICK_JS}
 
 	function reducedMotion() {
 		return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -354,6 +666,8 @@ const viewerJs = () => `(function () {
 
 	function show(file, plan) {
 		settle();
+		closeComposer();
+		if (pickMode === "inspect") showInspected(null, null);
 		current = file;
 		var screen = byFile[file];
 		label.textContent = screen.name;
@@ -367,7 +681,10 @@ const viewerJs = () => `(function () {
 		var top = layers[0];
 		if (!plan || !top.record.ready) {
 			top.record.file = file;
-			if (top.record.ready) post(top.record, { type: "modules", entry: file, modules: {} });
+			if (top.record.ready) {
+				post(top.record, { type: "modules", entry: file, modules: {} });
+				syncPick(top.record);
+			}
 			return;
 		}
 		var element = document.createElement("div");
@@ -501,9 +818,6 @@ const viewerJs = () => `(function () {
 		show(fromHash(), plan);
 	});
 	window.addEventListener("resize", layout);
-	window.addEventListener("keydown", function (event) {
-		if (event.key === "Escape" && overlayOpen()) closeOverlay();
-	});
 	window.addEventListener("message", function (event) {
 		var record = frames.filter(function (frame) { return event.source === frame.iframe.contentWindow; })[0];
 		if (!record) return;
@@ -513,13 +827,19 @@ const viewerJs = () => `(function () {
 			record.ready = true;
 			if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });
 			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: data.theme, reset: true });
-			post(record, { type: "play", on: true });
+			syncPick(record);
 		} else if (message.type === "rendered" || message.type === "error") {
 			if (record.onRendered) record.onRendered();
 		} else if (message.type === "navigate" && typeof message.to === "string") {
 			follow(message);
-		} else if (message.type === "escape" && overlayOpen()) {
-			closeOverlay();
+		} else if (message.type === "escape") {
+			escape();
+		} else if (message.type === "inspected" && pickMode === "inspect") {
+			// One selection across the screen and its overlays
+			frames.forEach(function (other) { if (other !== record && other.ready) post(other, { type: "pick-mode", mode: "inspect" }); });
+			showInspected(record, message.element);
+		} else if (message.type === "pointed" && pickMode === "point" && composer) {
+			openComposer(record, message);
 		}
 	});
 

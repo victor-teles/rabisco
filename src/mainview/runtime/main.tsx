@@ -25,6 +25,7 @@ import {
 	placementOf,
 	spacingOf,
 } from "./inspect";
+import { createPickMode } from "./pick-mode";
 import { createPlay } from "./play";
 import { colorAt } from "./pick-color";
 import { clearOrder, previewOrder } from "./reorder";
@@ -103,6 +104,8 @@ function publishedMarkup(root: HTMLElement) {
 }
 
 const play = createPlay(rootElement, post);
+
+const pick = createPickMode(() => entry, post);
 
 const reportHeight = heightReporter((height) => post({ type: "size", height }));
 
@@ -498,6 +501,10 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		post({ type: "picked-color", id: message.id, color: entry ? colorAt(message.x, message.y) : null });
 	} else if (message?.type === "play") {
 		play.set(message.on === true);
+	} else if (message?.type === "pick-mode") {
+		pick.set(message.mode);
+	} else if (message?.type === "pins") {
+		pick.pins(message.pins);
 	} else if (message?.type === "pause") {
 		setPaused(message.on === true);
 	} else if (message?.type === "assets") {

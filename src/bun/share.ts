@@ -1,9 +1,10 @@
-// Decision 0008. Serves from memory only, GET/HEAD only: nothing on disk is ever served.
+// Decision 0008. Serves from memory only: nothing on disk is ever served. The one write is a viewer's comment (0038).
 import { randomBytes } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { networkInterfaces } from "os";
 import { join } from "path";
 import type { Json } from "../shared/json";
+import { COMMENT_BODY_LIMIT, parseViewerComment, type ViewerComment } from "../shared/share/comments";
 import { assertSnapshot, type ScreenRuntime, type ShareStatus } from "../shared/share/snapshot";
 import { viewerFiles } from "../shared/share/viewer";
 
@@ -16,11 +17,18 @@ const TYPES = new Map([
 type Served = { type: string; body: Uint8Array<ArrayBuffer>; gzip?: Uint8Array<ArrayBuffer> };
 
 type Share = {
+	projectPath: string;
 	token: string;
 	files: Map<string, Served>;
 	updatedAt: string;
-	screens: number;
+	screens: string[];
+	/** When recent comments arrived, for the rate limit */
+	commentTimes: number[];
 };
+
+const COMMENT_WINDOW_MS = 60_000;
+
+const COMMENTS_PER_WINDOW = 20;
 
 export type ShareServiceOptions = {
 	readRuntime: () => ScreenRuntime;
@@ -32,6 +40,8 @@ export type ShareServiceOptions = {
 	lanAddress?: () => string | null;
 	token?: () => string;
 	now?: () => Date;
+	/** Turns on the viewer's comment button and its one POST route */
+	onComment?: (projectPath: string, comment: ViewerComment) => void;
 };
 
 const VIRTUAL = /^(utun|bridge|vmnet|vboxnet|ipsec|ppp|tun|tap|awdl|llw|docker)/;
@@ -109,14 +119,59 @@ export function createShareService(options: ShareServiceOptions) {
 	const now = options.now ?? (() => new Date());
 	const findLan = options.lanAddress ?? lanAddress;
 
-	function handle(request: Request): Response {
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			return new Response("Read-only", { status: 405, headers: { Allow: "GET, HEAD" } });
+	const plain = (text: string, status: number, init: Record<string, string> = {}) =>
+		new Response(text, { status, headers: { "Content-Type": "text/plain; charset=utf-8", ...init } });
+
+	/** The token is the capability. A JSON body and a same-origin check keep other sites' pages out */
+	async function receiveComment(request: Request, share: Share): Promise<Response> {
+		const onComment = options.onComment;
+
+		if (!onComment) return plain("Read-only", 405, { Allow: "GET, HEAD" });
+		const origin = request.headers.get("Origin");
+
+		if (origin !== null && origin !== new URL(request.url).origin) return plain("Forbidden", 403);
+
+		if (!/^application\/json\b/i.test(request.headers.get("Content-Type") ?? "")) return plain("Send JSON", 415);
+
+		if (Number(request.headers.get("Content-Length") ?? 0) > COMMENT_BODY_LIMIT) return plain("Too long", 413);
+		const at = now().getTime();
+		share.commentTimes = share.commentTimes.filter((time) => at - time < COMMENT_WINDOW_MS);
+
+		if (share.commentTimes.length >= COMMENTS_PER_WINDOW) return plain("Too many comments. Wait a minute.", 429);
+		const body = await request.text();
+
+		if (body.length > COMMENT_BODY_LIMIT) return plain("Too long", 413);
+		let parsed: Json;
+
+		try {
+			parsed = JSON.parse(body);
+		} catch {
+			return plain("Not a comment", 400);
 		}
 
+		const comment = parseViewerComment(parsed, share.screens);
+		// Sharing may have stopped or updated while the body arrived
+		const live = byToken.get(share.token);
+
+		if (!live) return plain("Not found", 404);
+
+		if (!comment) return plain("Not a comment", 400);
+		live.commentTimes.push(at);
+		onComment(live.projectPath, comment);
+
+		return plain("Sent", 201);
+	}
+
+	function handle(request: Request): Response | Promise<Response> {
 		const url = new URL(request.url);
 		const [, token = "", ...rest] = url.pathname.split("/");
 		const share = byToken.get(token);
+
+		if (request.method === "POST" && share && rest.join("/") === "comments") return receiveComment(request, share);
+
+		if (request.method !== "GET" && request.method !== "HEAD") {
+			return new Response("Read-only", { status: 405, headers: { Allow: "GET, HEAD" } });
+		}
 
 		if (!share) return new Response("Not found", { status: 404 });
 
@@ -157,7 +212,7 @@ export function createShareService(options: ShareServiceOptions) {
 			url: lan ? `http://${lan}:${port}/${share.token}/` : localUrl,
 			localUrl,
 			updatedAt: share.updatedAt,
-			screens: share.screens,
+			screens: share.screens.length,
 		};
 	}
 
@@ -170,7 +225,7 @@ export function createShareService(options: ShareServiceOptions) {
 			const runtime = options.readRuntime();
 			const files = new Map<string, Served>();
 
-			for (const file of viewerFiles(snapshot, runtime)) {
+			for (const file of viewerFiles(snapshot, runtime, { comments: !!options.onComment })) {
 				const type = TYPES.get(file.path.split(".").pop() ?? "") ?? "application/octet-stream";
 				const body = encoder.encode(file.content);
 				files.set(file.path, { type, body, gzip: body.length > 1024 ? Bun.gzipSync(body) : undefined });
@@ -179,10 +234,12 @@ export function createShareService(options: ShareServiceOptions) {
 			const existing = byProject.get(projectPath);
 
 			const share: Share = {
+				projectPath,
 				token: existing?.token ?? newToken(),
 				files,
 				updatedAt: now().toISOString(),
-				screens: snapshot.screens.length,
+				screens: snapshot.screens.map((screen) => screen.file),
+				commentTimes: existing?.commentTimes ?? [],
 			};
 
 			byProject.set(projectPath, share);

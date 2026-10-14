@@ -23,6 +23,7 @@ import {
 	SNAPSHOT_GLOBAL,
 	viewerFiles,
 } from "../shared/share/viewer";
+import { COMMENT_BODY_LIMIT, type ViewerComment } from "../shared/share/comments";
 import { sealText } from "../shared/share/publish";
 import { createShareService, lanAddress, readScreenRuntime } from "./share";
 import { tempDir } from "./test-utils";
@@ -197,6 +198,23 @@ describe("viewerFiles", () => {
 	});
 });
 
+describe("viewer inspect and comments", () => {
+	test("inspect is in every viewer; comments only where a route takes them", () => {
+		const plain = Object.fromEntries(viewerFiles(snapshot(), runtime).map((file) => [file.path, file.content]));
+
+		const lan = Object.fromEntries(
+			viewerFiles(snapshot(), runtime, { comments: true }).map((file) => [file.path, file.content]),
+		);
+
+		expect(plain["index.html"]).toContain('id="inspect"');
+		expect(plain["index.html"]).not.toContain('id="comment"');
+		expect(plain["index.html"]).not.toContain('id="composer"');
+		expect(lan["index.html"]).toContain('id="comment"');
+		expect(lan["index.html"]).toContain('maxlength="2000"');
+		expect(() => new Function(plain["viewer.js"]!)).not.toThrow();
+	});
+});
+
 describe("share service", () => {
 	let service: ReturnType<typeof createShareService> | null = null;
 	afterEach(() => service?.stopAll());
@@ -240,15 +258,90 @@ describe("share service", () => {
 		expect((await fetch(base, { method: "HEAD" })).status).toBe(200);
 	});
 
-	test("compresses large files when asked", () => {
+	test("compresses large files when asked", async () => {
 		const shares = create();
 		shares.publish("/p/app.rabisco", snapshot());
 
-		const response = shares.handle(
+		const response = await shares.handle(
 			new Request("http://x/tok123/runtime/frame.html", { headers: { "Accept-Encoding": "gzip, br" } }),
 		);
 
 		expect(response.headers.get("content-encoding")).toBe("gzip");
+	});
+
+	describe("viewer comments", () => {
+		const received: { path: string; comment: ViewerComment }[] = [];
+
+		const withComments = () =>
+			(service = createShareService({
+				readRuntime: () => runtime,
+				hostname: "127.0.0.1",
+				lanAddress: () => "192.168.1.20",
+				token: () => "tok123",
+				onComment: (path, comment) => void received.push({ path, comment }),
+			}));
+
+		const send = (base: string, body: string, headers: Record<string, string> = {}) =>
+			fetch(`${base}comments`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...headers },
+				body,
+			});
+
+		const comment = JSON.stringify({
+			screen: "screens/welcome.tsx",
+			x: 120.4,
+			y: 900,
+			text: "  Bigger\r\nbutton\u0007 ",
+		});
+
+		test("a comment on a shared screen reaches the project", async () => {
+			received.length = 0;
+			const { localUrl } = withComments().publish("/p/app.rabisco", snapshot());
+			const response = await send(localUrl, comment, { Origin: new URL(localUrl).origin });
+
+			expect(response.status).toBe(201);
+			expect(received).toEqual([
+				{ path: "/p/app.rabisco", comment: { screen: "screens/welcome.tsx", x: 120, y: 900, text: "Bigger\nbutton" } },
+			]);
+		});
+
+		test("refuses other sites, other bodies and unknown screens", async () => {
+			received.length = 0;
+			const { localUrl } = withComments().publish("/p/app.rabisco", snapshot());
+
+			expect((await send(localUrl, comment, { Origin: "http://evil.example" })).status).toBe(403);
+			expect((await send(localUrl, comment, { "Content-Type": "text/plain" })).status).toBe(415);
+			expect((await send(localUrl, "{")).status).toBe(400);
+			expect((await send(localUrl, JSON.stringify({ screen: "screens/nope.tsx", x: 1, y: 1, text: "x" }))).status).toBe(
+				400,
+			);
+			expect(
+				(await send(localUrl, JSON.stringify({ screen: "screens/welcome.tsx", x: 1, y: 1, text: "  " }))).status,
+			).toBe(400);
+			expect(
+				(await send(localUrl, JSON.stringify({ screen: "screens/welcome.tsx", x: -1, y: 1, text: "x" }))).status,
+			).toBe(400);
+			expect((await send(localUrl, "x".repeat(COMMENT_BODY_LIMIT + 1))).status).toBe(413);
+			expect((await send(localUrl.replace("tok123", "wrong"), comment)).status).toBe(405);
+			expect(received).toEqual([]);
+		});
+
+		test("limits how fast comments arrive", async () => {
+			const { localUrl } = withComments().publish("/p/app.rabisco", snapshot());
+			const statuses = [];
+
+			for (let i = 0; i < 21; i++) statuses.push((await send(localUrl, comment)).status);
+
+			expect(statuses.slice(0, 20).every((status) => status === 201)).toBe(true);
+			expect(statuses[20]).toBe(429);
+		});
+
+		test("a share without a comment handler stays read-only", async () => {
+			const { localUrl } = create().publish("/p/app.rabisco", snapshot());
+
+			expect((await send(localUrl, comment)).status).toBe(405);
+		});
 	});
 
 	test("update keeps the link; stop ends it", async () => {
@@ -260,7 +353,7 @@ describe("share service", () => {
 		expect(shares.status("/p/app.rabisco")?.url).toBe(first.url);
 		shares.stop("/p/app.rabisco");
 		expect(shares.status("/p/app.rabisco")).toBeNull();
-		expect(shares.handle(new Request(first.localUrl)).status).toBe(404);
+		expect((await shares.handle(new Request(first.localUrl))).status).toBe(404);
 	});
 
 	test("rejects snapshots that aren't one", () => {

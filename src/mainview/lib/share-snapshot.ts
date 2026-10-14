@@ -3,6 +3,7 @@ import { compileCache } from "@/lib/render/compile";
 import { collectGraph } from "@/lib/render/graph";
 import { screenStyles, themeCss } from "@/lib/render/styles";
 import type { DesignTokens } from "../../shared/context/tokens";
+import { elementSpans } from "../../shared/share/spans";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
 import type { Frame, ProjectFiles } from "../../shared/types";
 
@@ -30,7 +31,7 @@ export async function buildShareSnapshot(input: {
 			screenStyles.add(module.candidates);
 			modules[path] = module.error
 				? { source: module.source, error: module.error }
-				: { source: module.source, code: module.code!, icons: module.icons };
+				: { source: module.source, code: module.code!, icons: module.icons, elements: elementSpans(module.source) };
 		}
 	}
 

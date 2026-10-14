@@ -8,7 +8,14 @@ import { isAlternate } from "../variations";
 
 /** Compiled the way frames receive it (`ModulePayload`) */
 export type ShareModule =
-	| { source: string; code: string; icons?: string[]; error?: undefined }
+	| {
+			source: string;
+			code: string;
+			icons?: string[];
+			/** `start, end` of each JSX element, for the viewer's inspect mode (decision 0038) */
+			elements?: number[];
+			error?: undefined;
+	  }
 	| { source: string; code?: undefined; icons?: undefined; error: { message: string; line: number; column?: number } };
 
 export type ShareScreen = { file: string; name: string; device: Device; width: number; height: number };
@@ -45,6 +52,9 @@ function assertModule(path: string, module: Json | undefined): asserts module is
 	if (isString(module.code)) {
 		if (module.icons !== undefined && !(isJsonArray(module.icons) && module.icons.every(isString)))
 			throw new Error(`Snapshot module ${path} has invalid icons`);
+
+		if (module.elements !== undefined && !(isJsonArray(module.elements) && module.elements.every(isFiniteNumber)))
+			throw new Error(`Snapshot module ${path} has invalid elements`);
 
 		return;
 	}
