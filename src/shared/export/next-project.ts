@@ -80,6 +80,18 @@ export default function Page() {
 }
 `;
 
+const handoffPage = (name: string) => `import type { Metadata } from "next";
+import { Handoff } from "@/handoff/handoff";
+
+export const metadata: Metadata = {
+	title: ${JSON.stringify(`Dev handoff · ${name}`)},
+};
+
+export default function Page() {
+	return <Handoff />;
+}
+`;
+
 const screenLinks = (screens: ProjectScreen[]) => `"use client";
 
 import { useRouter } from "next/navigation";
@@ -132,7 +144,8 @@ export const NEXT: Framework = {
 	scripts: { dev: "next dev", build: "next build", start: "next start", typecheck: "next typegen && tsc --noEmit" },
 	stylesheet: "src/app/globals.css",
 	gitignore: GITIGNORE,
-	files: ({ name, screens }) => [
+	screenUrl: (id) => `/${id}`,
+	files: ({ name, screens, handoff }) => [
 		{ path: "next.config.ts", content: NEXT_CONFIG },
 		{ path: "postcss.config.mjs", content: POSTCSS_CONFIG },
 		{ path: "tsconfig.json", content: TSCONFIG },
@@ -140,6 +153,7 @@ export const NEXT: Framework = {
 		{ path: "src/app/screen-links.tsx", content: screenLinks(screens) },
 		{ path: "src/app/page.tsx", content: page(screens[0]!) },
 		...screens.map((screen) => ({ path: `src/app/${screen.id}/page.tsx`, content: page(screen) })),
+		...(handoff ? [{ path: `src/app/${handoff}/page.tsx`, content: handoffPage(name) }] : []),
 	],
 	readme: {
 		intro: "The screens and components are the same code the canvas renders.",

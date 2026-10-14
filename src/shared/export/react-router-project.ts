@@ -91,13 +91,27 @@ export default function App() {
 
 const routeFile = (screen: ProjectScreen) => `src/app/routes/${screen.id}.tsx`;
 
-const routes = (screens: ProjectScreen[]) => `import { index, route, type RouteConfig } from "@react-router/dev/routes";
+const routes = (
+	screens: ProjectScreen[],
+	handoff: string | null,
+) => `import { index, route, type RouteConfig } from "@react-router/dev/routes";
 
 /** The screens, in canvas order. \`/\` opens the first one. */
 export default [
 	index("routes/_index.tsx"),
 ${screens.map((s) => `\troute(${JSON.stringify(s.id)}, ${JSON.stringify(routeFile(s).replace("src/app/", ""))}),`).join("\n")}
-] satisfies RouteConfig;
+${handoff ? `\troute(${JSON.stringify(handoff)}, "routes/_handoff.tsx"),\n` : ""}] satisfies RouteConfig;
+`;
+
+const handoffRoute = (name: string) => `import { Handoff } from "@/handoff/handoff";
+
+export function meta() {
+	return [{ title: ${JSON.stringify(`Dev handoff · ${name}`)} }];
+}
+
+export default function Route() {
+	return <Handoff />;
+}
 `;
 
 const route = (screen: ProjectScreen) => `import ${screen.identifier} from "@/${screen.module}";
@@ -165,15 +179,17 @@ export const REACT_ROUTER: Framework = {
 	},
 	stylesheet: "src/app/app.css",
 	gitignore: "node_modules\n/build\n/.react-router\n.env*\n",
-	files: ({ name, screens }) => [
+	screenUrl: (id) => `/${id}`,
+	files: ({ name, screens, handoff }) => [
 		{ path: "react-router.config.ts", content: CONFIG },
 		{ path: "vite.config.ts", content: VITE_CONFIG },
 		{ path: "tsconfig.json", content: TSCONFIG },
 		{ path: "src/app/root.tsx", content: root(name) },
-		{ path: "src/app/routes.ts", content: routes(screens) },
+		{ path: "src/app/routes.ts", content: routes(screens, handoff) },
 		{ path: "src/app/screen-links.tsx", content: screenLinks(screens) },
 		{ path: "src/app/routes/_index.tsx", content: route(screens[0]!) },
 		...screens.map((screen) => ({ path: routeFile(screen), content: route(screen) })),
+		...(handoff ? [{ path: "src/app/routes/_handoff.tsx", content: handoffRoute(name) }] : []),
 	],
 	readme: {
 		intro: "The screens and components are the same code the canvas renders.",

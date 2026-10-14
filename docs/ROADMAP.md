@@ -37,7 +37,7 @@ _Principle: Screens are React (what you see is what you ship)_
 - ✅ Export tokens as `tokens.json` (DTCG), `tokens.css` and a Tailwind theme
 - ⬜ Copy an element as code, as PNG and as SVG from its menu
 - ⬜ Batch export at 1x, 2x and 3x, with names from the screens
-- ⬜ Dev handoff page in the export: every screen, its components and tokens
+- ✅ Dev handoff page in the export: every screen, its components and tokens
 
 **Done when** a developer can take a project into their app, and a designer can take it into Figma, with no manual fixes.
 

@@ -70,19 +70,21 @@ createRoot(document.getElementById("root")!).render(
 );
 `;
 
-function appTsx(screens: ProjectScreen[]) {
+function appTsx(screens: ProjectScreen[], handoff: string | null) {
+	const handoffImport = handoff ? `import { Handoff } from "./handoff/handoff";\n` : "";
+
 	return `import { useEffect, useState } from "react";
-${screens.map((s) => `import ${s.identifier} from "./${s.module}";`).join("\n")}
+${handoffImport}${screens.map((s) => `import ${s.identifier} from "./${s.module}";`).join("\n")}
 
 /** The screens, in canvas order. The first one opens first. */
 const screens = [
 ${screens.map((s) => `\t{ id: ${JSON.stringify(s.id)}, Screen: ${s.identifier} },`).join("\n")}
 ];
 
-/** The screen in the URL hash (\`#/settings\`), or the first screen. */
+/** The screen in the URL hash (\`#/settings\`), or the first screen${handoff ? `; \`null\` for the handoff page (\`#/${handoff}\`)` : ""}. */
 function currentScreen() {
 	const id = decodeURIComponent(window.location.hash.replace(/^#\\/?/, ""));
-	return screens.find((screen) => screen.id === id) ?? screens[0];
+${handoff ? `\tif (id === ${JSON.stringify(handoff)}) return null;\n` : ""}	return screens.find((screen) => screen.id === id) ?? screens[0];
 }
 
 ${LINK_TARGET}
@@ -119,7 +121,7 @@ export default function App() {
 		};
 	}, []);
 
-	const { id, Screen } = screen;
+${handoff ? "\tif (!screen) return <Handoff />;\n" : ""}	const { id, Screen } = screen;
 	return <Screen key={id} />;
 }
 `;
@@ -138,12 +140,13 @@ export const VITE: Framework = {
 	scripts: { dev: "vite", build: "vite build", preview: "vite preview", typecheck: "tsc --noEmit" },
 	stylesheet: "src/index.css",
 	gitignore: "node_modules\ndist\n*.local\n",
-	files: ({ name, screens }) => [
+	screenUrl: (id) => `/#/${id}`,
+	files: ({ name, screens, handoff }) => [
 		{ path: "vite.config.ts", content: VITE_CONFIG },
 		{ path: "tsconfig.json", content: TSCONFIG },
 		{ path: "index.html", content: indexHtml(name) },
 		{ path: "src/main.tsx", content: MAIN },
-		{ path: "src/App.tsx", content: appTsx(screens) },
+		{ path: "src/App.tsx", content: appTsx(screens, handoff) },
 		{ path: "src/vite-env.d.ts", content: '/// <reference types="vite/client" />\n' },
 	],
 	readme: {

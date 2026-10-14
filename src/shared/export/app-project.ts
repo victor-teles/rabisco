@@ -8,6 +8,7 @@ import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
 import type { ExportFile, Frame, ProjectFiles } from "../types";
 import { importSpecifiers, localDependencies } from "./code";
+import { handoffFiles } from "./handoff";
 import { tokenFiles } from "./tokens";
 
 export type AppProjectInput = {
@@ -33,7 +34,8 @@ export type AppProject = {
 /** A page the app routes to: `screens/welcome.alt-1.tsx` is `welcome.alt-1`, imported as `WelcomeAlt1Screen` from `screens/welcome.alt-1` */
 export type ProjectScreen = { file: string; id: string; identifier: string; module: string };
 
-export type FrameworkContext = { name: string; screens: ProjectScreen[] };
+/** `handoff` is the dev handoff page's route id, when the project has one */
+export type FrameworkContext = { name: string; screens: ProjectScreen[]; handoff: string | null };
 
 export type FrameworkReadme = {
 	/** What the project is, after "Exported from Rabisco as a … project." */
@@ -54,6 +56,8 @@ export type Framework = {
 	/** Where Tailwind, the theme and the tokens go */
 	stylesheet: string;
 	files: (context: FrameworkContext) => ExportFile[];
+	/** Where the app shows a screen, for the handoff page */
+	screenUrl: (id: string) => string;
 	gitignore: string;
 	readme: FrameworkReadme;
 };
@@ -243,6 +247,7 @@ function readme(
 	components: string[],
 	ui: string[],
 	images: number,
+	handoffUrl: string | null,
 ) {
 	const list = (items: string[]) => items.map((item) => `- \`${item}\``).join("\n");
 	const { readme } = framework;
@@ -259,7 +264,7 @@ npm run dev
 \`\`\`
 
 \`npm run build\` builds the app, and \`npm run typecheck\` checks the types.
-
+${handoffUrl ? `\nThe dev handoff page at \`${handoffUrl}\` shows every screen with the components, UI kit modules and tokens it uses, and every token with its light and dark value.\n` : ""}
 ## What's inside
 
 - ${readme.pages}
@@ -288,11 +293,16 @@ export function appProject(input: AppProjectInput, framework: Framework): AppPro
 
 	if (!screens.length) throw new Error("There are no screens to export");
 
-	return buildProject(input, framework, screens);
+	return buildProject(input, framework, screens, true);
 }
 
 /** `pages` are files in `input.files` the framework routes to; every component comes too */
-export function buildProject(input: AppProjectInput, framework: Framework, pages: string[]): AppProject {
+export function buildProject(
+	input: AppProjectInput,
+	framework: Framework,
+	pages: string[],
+	handoff = false,
+): AppProject {
 	const { files, name } = input;
 	const warnings: string[] = [];
 	const roots = [...pages, ...Object.keys(files).filter(isComponentFile).sort()];
@@ -318,22 +328,33 @@ export function buildProject(input: AppProjectInput, framework: Framework, pages
 
 	assets.sort(([a], [b]) => a.localeCompare(b));
 
-	const context: FrameworkContext = {
-		name,
-		screens: pages.map((file) => ({
-			file,
-			id: pageId(file),
-			identifier: screenIdentifier(pageId(file)),
-			module: file.replace(/\.tsx$/, ""),
-		})),
-	};
+	const screens = pages.map((file) => ({
+		file,
+		id: pageId(file),
+		identifier: screenIdentifier(pageId(file)),
+		module: file.replace(/\.tsx$/, ""),
+	}));
+
+	const handoffId = screens.some((screen) => screen.id === "handoff") ? "dev-handoff" : "handoff";
+	const context: FrameworkContext = { name, screens, handoff: handoff ? handoffId : null };
 
 	const components = projectFiles.filter(isComponentFile);
 
 	const out: ExportFile[] = [
 		{ path: "package.json", content: packageJson(name, framework, [...projectSources, ...uiSources], warnings) },
 		{ path: ".gitignore", content: framework.gitignore },
-		{ path: "README.md", content: readme(name, framework, pages, components, ui, assets.length) },
+		{
+			path: "README.md",
+			content: readme(
+				name,
+				framework,
+				pages,
+				components,
+				ui,
+				assets.length,
+				context.handoff && framework.screenUrl(context.handoff),
+			),
+		},
 		...framework.files(context),
 		{ path: framework.stylesheet, content: stylesheet(input.theme) },
 		{ path: "src/lib/utils.ts", content: UTILS },
@@ -345,6 +366,23 @@ export function buildProject(input: AppProjectInput, framework: Framework, pages
 		out.push({ path: "src/lib/uai-utils.ts", content: UTILS });
 
 	out.push(...tokenFiles(input.theme));
+
+	if (handoff) {
+		const handoffScreens = screens.map((screen) => {
+			const dependencies = localDependencies(files, screen.file);
+			const sources = [screen.file, ...dependencies].map((file) => files[file]!);
+
+			return {
+				file: screen.file,
+				id: screen.id,
+				url: framework.screenUrl(screen.id),
+				dependencies,
+				ui: uiModules(sources, input.uiSources, new Set()),
+			};
+		});
+
+		out.push(...handoffFiles({ name, frames: input.frames, files, theme: input.theme, screens: handoffScreens }));
+	}
 
 	for (const context of ["PRODUCT.md", "DESIGN.md"])
 		if (files[context]?.trim()) out.push({ path: context, content: files[context]! });
