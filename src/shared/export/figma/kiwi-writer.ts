@@ -1,5 +1,5 @@
 import { isBoolean, isNumber, isString } from "../../guards";
-import type { KiwiValue } from "../../import/figma/kiwi";
+import type { KiwiSchema, KiwiValue } from "../../import/figma/kiwi";
 
 export type SchemaField = [name: string, type: string, isArray?: boolean];
 
@@ -129,7 +129,26 @@ const isBigInt = (value: WriteValue): value is bigint => typeof value === "bigin
 const isWriteRecord = (value: WriteValue): value is WriteRecord =>
 	typeof value === "object" && !Array.isArray(value) && !(value instanceof Uint8Array);
 
-function encodeValue(writer: Writer, definitions: Map<string, SchemaDefinition>, type: string, value: WriteValue) {
+export function kiwiSchemaOf(definitions: SchemaDefinition[]): KiwiSchema {
+	return {
+		definitions: new Map(
+			definitions.map((definition) => [
+				definition.name,
+				{
+					name: definition.name,
+					kind: definition.kind,
+					fields: definition.fields.map((field, i) => {
+						const [name, type, isArray] = isString(field) ? [field, "", false] : field;
+
+						return { name, type, isArray: !!isArray, value: definition.kind === "message" ? i + 1 : i };
+					}),
+				},
+			]),
+		),
+	};
+}
+
+function encodeValue(writer: Writer, schema: KiwiSchema, type: string, value: WriteValue) {
 	if (isBoolean(value) && type === "bool") return writer.byte(value ? 1 : 0);
 
 	if (isNumber(value)) {
@@ -143,56 +162,66 @@ function encodeValue(writer: Writer, definitions: Map<string, SchemaDefinition>,
 	}
 
 	if (isBigInt(value)) return writer.varInt64(value);
-	const definition = definitions.get(type);
+	const definition = schema.definitions.get(type);
 
 	if (isString(value) && type === "string") return writer.string(value);
 
 	if (!definition) throw new Error(`Bad Kiwi value for ${type}`);
 
 	if (definition.kind === "enum") {
-		const index = definition.fields.findIndex((field) => field === value);
+		const field = definition.fields.find((candidate) => candidate.name === value);
 
-		if (index < 0) throw new Error(`Bad Kiwi value for ${type}`);
+		if (!field) throw new Error(`Bad Kiwi value for ${type}`);
 
-		return writer.varUint(index);
+		return writer.varUint(field.value);
 	}
 
 	if (!isWriteRecord(value)) throw new Error(`Bad Kiwi value for ${type}`);
 
-	definition.fields.forEach((field, i) => {
-		if (isString(field)) return;
-		const [name, fieldType, isArray] = field;
+	for (const name of Object.keys(value)) {
+		if (value[name] !== undefined && !definition.fields.some((field) => field.name === name))
+			throw new Error(`${type} has no field ${name}`);
+	}
+
+	for (const { name, type: fieldType, isArray, value: id } of definition.fields) {
 		const fieldValue = value[name];
 
 		if (definition.kind === "message") {
-			if (fieldValue === undefined) return;
-			writer.varUint(i + 1);
+			if (fieldValue === undefined) continue;
+			writer.varUint(id);
 		}
 
-		if (!isArray) return encodeValue(writer, definitions, fieldType, fieldValue);
+		if (!isArray) {
+			encodeValue(writer, schema, fieldType, fieldValue);
+			continue;
+		}
 
 		if (fieldValue instanceof Uint8Array && fieldType === "byte") {
 			writer.varUint(fieldValue.length);
-
-			return writer.raw(fieldValue);
+			writer.raw(fieldValue);
+			continue;
 		}
 
 		const list = Array.isArray(fieldValue) ? fieldValue : [];
 
 		writer.varUint(list.length);
 
-		for (const item of list) encodeValue(writer, definitions, fieldType, item);
-	});
+		for (const item of list) encodeValue(writer, schema, fieldType, item);
+	}
 
 	if (definition.kind === "message") writer.varUint(0);
 }
 
-export function encodeMessage(definitions: SchemaDefinition[], root: string, value: WriteValue) {
+export function encodeKiwiMessage(schema: KiwiSchema, root: string, value: WriteValue) {
 	const writer = new Writer();
 
-	encodeValue(writer, new Map(definitions.map((definition) => [definition.name, definition])), root, value);
+	encodeValue(writer, schema, root, value);
 
 	return writer.done();
+}
+
+export function encodeMessage(definitions: SchemaDefinition[], root: string, value: WriteValue) {
+	return encodeKiwiMessage(kiwiSchemaOf(definitions), root, value);
 }
 
 export function figKiwi(schema: Uint8Array, data: Uint8Array, version: number) {

@@ -18,6 +18,8 @@ export default {
 		"fmt:check": "bunx oxfmt --check",
 		// Installs and builds each code export of a fixture project in a temp folder
 		"check:exports": ["bun", "tools/check-exports.ts"],
+		// Copies the schema of a new real Figma copy into Copy to Figma (decision 0039)
+		"figma:schema": ["bun", "tools/figma-schema.ts"],
 		// See bench/compile/README.md
 		"bench:compile":
 			"cd bench/compile && bun prepare.ts && bunx --bun vite build && hutch electrobun prepare && hutch electrobun dev",

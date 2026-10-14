@@ -1,7 +1,8 @@
-import { deflateSync } from "fflate";
+import { decompressSync, deflateSync } from "fflate";
 import { MAX_FIGMA_BYTES } from "../../import/figma/clipboard";
-import { base64, encodeMessage, encodeSchema, figKiwi } from "./kiwi-writer";
-import { EXPORT_SCHEMA, FIG_KIWI_VERSION } from "./schema";
+import { decodeSchema, type KiwiSchema } from "../../import/figma/kiwi";
+import { FIG_KIWI_VERSION, FIGMA_SCHEMA_CHUNK } from "./figma-schema";
+import { base64, encodeKiwiMessage, figKiwi } from "./kiwi-writer";
 import { screensToFigma, type FigmaScreen } from "./to-figma";
 
 export type FigmaClipboardCopy = {
@@ -10,21 +11,37 @@ export type FigmaClipboardCopy = {
 	fixed: number;
 };
 
-const SESSION = 1;
+const FILE_KEY = "rabisco";
 
-let schema: Uint8Array | null = null;
+const PAGE = { sessionID: 0, localID: 1 };
+
+const SCHEMA_CHUNK = Uint8Array.from(atob(FIGMA_SCHEMA_CHUNK), (char) => char.charCodeAt(0));
+
+let schema: KiwiSchema | null = null;
 
 function encode(screens: FigmaScreen[], pasteID: number) {
 	const copy = screensToFigma(screens);
 
-	const message = encodeMessage(EXPORT_SCHEMA, "Message", {
+	schema ??= decodeSchema(decompressSync(SCHEMA_CHUNK));
+
+	const message = encodeKiwiMessage(schema, "Message", {
 		type: "NODE_CHANGES",
-		sessionID: SESSION,
+		sessionID: 0,
+		ackID: 0,
 		nodeChanges: copy.nodeChanges,
 		blobs: copy.blobs.map((bytes) => ({ bytes })),
 		pasteID,
-		pasteFileKey: "rabisco",
+		pasteFileKey: FILE_KEY,
+		pasteIsPartiallyOutsideEnclosingFrame: false,
+		pastePageId: PAGE,
 		isCut: false,
+		pasteEditorType: "DESIGN",
+		publishedAssetGuids: [],
+		clipboardSelectionRegions: [
+			{ parent: PAGE, nodes: copy.roots, pasteIsPartiallyOutsideEnclosingFrame: false, focusType: "NONE" },
+		],
+		pasteAssetType: "UNKNOWN",
+		nodeChangeOrder: "GUID",
 	});
 
 	return { message, fixed: copy.fixed };
@@ -34,7 +51,6 @@ export function figmaClipboard(
 	screens: FigmaScreen[],
 	pasteID = Math.floor(Math.random() * 2 ** 31),
 ): FigmaClipboardCopy {
-	schema ??= deflateSync(encodeSchema(EXPORT_SCHEMA));
 	let count = screens.length;
 	let encoded = encode(screens, pasteID);
 
@@ -44,8 +60,11 @@ export function figmaClipboard(
 	}
 
 	if (encoded.message.length > MAX_FIGMA_BYTES) throw new Error("This screen is too large to copy to Figma");
-	const buffer = figKiwi(schema, deflateSync(encoded.message), FIG_KIWI_VERSION);
-	const meta = base64(new TextEncoder().encode(JSON.stringify({ fileKey: "rabisco", pasteID, dataType: "scene" })));
+	const buffer = figKiwi(SCHEMA_CHUNK, deflateSync(encoded.message), FIG_KIWI_VERSION);
+
+	const meta = base64(
+		new TextEncoder().encode(JSON.stringify({ fileKey: FILE_KEY, pasteID, dataType: "scene", editorType: "design" })),
+	);
 
 	const html = [
 		'<meta charset="utf-8"><span data-metadata="<!--(figmeta)',

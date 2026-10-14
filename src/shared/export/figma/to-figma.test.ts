@@ -281,6 +281,22 @@ describe("layers", () => {
 		expect(data).toMatchObject({ styleOverrideTable: [{ styleID: 1, fontName: { family: "Inter", style: "Bold" } }] });
 	});
 
+	test("a system font stack becomes Inter and every layer has an opacity", () => {
+		const paragraph = el(
+			"p",
+			box(0, 0, 400, 20),
+			{ display: "block", "font-family": 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
+			[text("Hello", box(0, 0, 40, 20))],
+		);
+
+		const { copy, byName } = changes(body([paragraph]));
+
+		expect(byName("Hello")).toMatchObject({ fontName: { family: "Inter" } });
+		expect(
+			copy.nodeChanges.flatMap((change) => (change.guid?.sessionID && change.opacity !== 1 ? [change] : [])),
+		).toEqual([]);
+	});
+
 	test("a button is a frame named after its label with a hugging text layer", () => {
 		const button = el(
 			"button",

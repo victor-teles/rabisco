@@ -22,7 +22,7 @@ export type FigmaScreen = {
 	images: ReadonlyMap<string, FigmaImage>;
 };
 
-export type FigmaCopy = { nodeChanges: NodeFields[]; blobs: Uint8Array[]; fixed: number };
+export type FigmaCopy = { nodeChanges: NodeFields[]; roots: Guid[]; blobs: Uint8Array[]; fixed: number };
 
 type Axis = "x" | "y";
 
@@ -91,7 +91,16 @@ const GENERIC_FONTS = new Set([
 	"segoe ui symbol",
 	"noto color emoji",
 	"helvetica neue",
+	"helvetica",
 	"arial",
+	"roboto",
+	"oxygen",
+	"ubuntu",
+	"cantarell",
+	"fira sans",
+	"droid sans",
+	"noto sans",
+	"liberation sans",
 ]);
 
 const WEIGHT_STYLES = new Map([
@@ -768,7 +777,7 @@ function frameProps(context: Context, node: CapturedNode, root: boolean): NodeFi
 		...radiiOf(node.styles, node.box),
 		effects: effectsOf(node.styles),
 		frameMaskDisabled: !(root || clips(node.styles)),
-		opacity: opacity < 1 ? opacity : undefined,
+		opacity,
 	};
 }
 
@@ -1285,6 +1294,8 @@ function writeLayer(
 	const autoLayout = !!layer.props.stackMode;
 
 	layer.children.forEach((child, i) => writeLayer(writer, child, { guid, box: layer.box, autoLayout }, i));
+
+	return guid;
 }
 
 const sameBox = (a: CapturedBox, b: CapturedBox) =>
@@ -1329,6 +1340,7 @@ export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
 	};
 
 	const context: Context = { images: new Map(), imageBlobs: new Map(), blobs: [], fixed: 0 };
+	const roots: Guid[] = [];
 
 	screens.forEach((screen, i) => {
 		context.images = screen.images;
@@ -1351,17 +1363,19 @@ export function screensToFigma(screens: FigmaScreen[]): FigmaCopy {
 		if (!Array.isArray(layer.props.fillPaints) || !layer.props.fillPaints.length)
 			layer.props.fillPaints = [solid({ r: 255, g: 255, b: 255, a: 1 })];
 		layer.positioned = null;
-		writeLayer(
-			writer,
-			layer,
-			{
-				guid: canvas,
-				box: { x: root.box.x - screen.x, y: root.box.y - screen.y, width: 0, height: 0 },
-				autoLayout: false,
-			},
-			i,
+		roots.push(
+			writeLayer(
+				writer,
+				layer,
+				{
+					guid: canvas,
+					box: { x: root.box.x - screen.x, y: root.box.y - screen.y, width: 0, height: 0 },
+					autoLayout: false,
+				},
+				i,
+			),
 		);
 	});
 
-	return { nodeChanges: writer.changes, blobs: context.blobs, fixed: context.fixed };
+	return { nodeChanges: writer.changes, roots, blobs: context.blobs, fixed: context.fixed };
 }
