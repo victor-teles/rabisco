@@ -8,7 +8,7 @@ import { UI_SOURCES } from "@/lib/ui-sources";
 import { codeToCopy, localDependencies } from "../../../../shared/export/code";
 import { htmlScreen } from "../../../../shared/export/html";
 import { tokenFiles } from "../../../../shared/export/tokens";
-import { packageName, viteProject } from "../../../../shared/export/vite-project";
+import { appProject, packageName, type Framework } from "../../../../shared/export/app-project";
 import { isScreenFile, toKebab } from "../../../../shared/project";
 import type { ExportContext } from "./export-menu";
 
@@ -46,16 +46,19 @@ export async function copyCode(context: ExportContext, withComponents: boolean) 
 	}
 }
 
-export async function exportViteProject(context: ExportContext) {
+export async function exportProject(context: ExportContext, framework: Framework) {
 	try {
-		const project = viteProject({
-			name: context.projectName,
-			frames: context.frames,
-			files: context.files,
-			theme: context.theme,
-			uiSources: UI_SOURCES,
-			assets: await projectAssets.base64(),
-		});
+		const project = appProject(
+			{
+				name: context.projectName,
+				frames: context.frames,
+				files: context.files,
+				theme: context.theme,
+				uiSources: UI_SOURCES,
+				assets: await projectAssets.base64(),
+			},
+			framework,
+		);
 
 		const parent = await api.pickExportFolder({});
 
@@ -68,7 +71,7 @@ export async function exportViteProject(context: ExportContext) {
 			reveal: true,
 		});
 
-		toast.success("Exported a Vite project", { description: dir });
+		toast.success(`Exported a ${framework.name} project`, { description: dir });
 
 		for (const warning of project.warnings) toast.warning(warning);
 	} catch (error) {

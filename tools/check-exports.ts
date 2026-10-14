@@ -6,12 +6,18 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { writeExportFiles } from "../src/bun/export";
 import { exportFixture } from "../src/shared/export/export-fixture";
+import { nextProject } from "../src/shared/export/next-project";
+import { reactRouterProject } from "../src/shared/export/react-router-project";
 import { viteProject } from "../src/shared/export/vite-project";
 import type { ExportFile } from "../src/shared/types";
 
 type Target = () => { files: ExportFile[]; warnings: string[] };
 
-const TARGETS = new Map<string, Target>([["vite", () => viteProject(exportFixture())]]);
+const TARGETS = new Map<string, Target>([
+	["vite", () => viteProject(exportFixture())],
+	["next", () => nextProject(exportFixture())],
+	["react-router", () => reactRouterProject(exportFixture())],
+]);
 
 const chosen = process.argv.slice(2);
 

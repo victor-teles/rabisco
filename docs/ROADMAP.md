@@ -32,7 +32,7 @@ _Principle: Screens are React (what you see is what you ship)_
 
 - ⬜ Copy to Figma: screens as Figma layers with auto layout, text and images, through the clipboard ([0039](./decisions/0039-copy-to-figma.md), [LIT-43](/LIT/issues/LIT-43))
 - ✅ Export plain HTML and CSS for one screen
-- ⬜ Export to Next.js and React Router projects, next to the Vite project
+- ✅ Export to Next.js and React Router projects, next to the Vite project
 - ⬜ Export a component library: every project component with a preview page
 - ✅ Export tokens as `tokens.json` (DTCG), `tokens.css` and a Tailwind theme
 - ⬜ Copy an element as code, as PNG and as SVG from its menu

@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { generateMockScreens } from "../mock-generator";
 import type { Frame, ProjectFiles } from "../types";
-import type { ViteProjectInput } from "./vite-project";
+import type { AppProjectInput } from "./app-project";
 
 const UI_DIR = join(import.meta.dir, "../../mainview/components/ui");
 
@@ -136,7 +136,7 @@ function fixtureProject() {
 /** One transparent pixel */
 const LOGO_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-export function exportFixture(): ViteProjectInput {
+export function exportFixture(): AppProjectInput {
 	return {
 		name: "Coffee Club",
 		...fixtureProject(),

@@ -11,7 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import type { Frame, ProjectFiles } from "../../../../shared/types";
-import { copyCode, exportHtml, exportTokens, exportViteProject, hasLocalImports } from "./code-export";
+import { NEXT } from "../../../../shared/export/next-project";
+import { REACT_ROUTER } from "../../../../shared/export/react-router-project";
+import { VITE } from "../../../../shared/export/vite-project";
+import { copyCode, exportHtml, exportProject, exportTokens, hasLocalImports } from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
 
 export type ExportContext = {
@@ -49,8 +52,14 @@ export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 				<DropdownMenuItem onSelect={() => void copyCode(props, true)} disabled={!hasLocalImports(props)}>
 					Copy with components
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => void exportViteProject(props)} disabled={frames.length === 0}>
+				<DropdownMenuItem onSelect={() => void exportProject(props, VITE)} disabled={frames.length === 0}>
 					Vite + React project…
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => void exportProject(props, NEXT)} disabled={frames.length === 0}>
+					Next.js project…
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => void exportProject(props, REACT_ROUTER)} disabled={frames.length === 0}>
+					React Router project…
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => void exportHtml(props)} disabled={props.selected.length === 0}>
 					HTML and CSS of the screen…

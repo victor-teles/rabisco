@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import type { Frame } from "../types";
-import { packageName, viteProject, type ViteProjectInput } from "./vite-project";
+import { packageName } from "./app-project";
+import { viteProject, type ViteProjectInput } from "./vite-project";
 
 const UI_DIR = join(import.meta.dir, "../../mainview/components/ui");
 
