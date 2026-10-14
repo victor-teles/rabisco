@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import type { Frame, ProjectFiles } from "../../../../shared/types";
-import { copyCode, exportViteProject, hasLocalImports } from "./code-export";
+import { copyCode, exportTokens, exportViteProject, hasLocalImports } from "./code-export";
 import { exportFlowPdf, exportImages } from "./image-export";
 
 export type ExportContext = {
@@ -52,6 +52,7 @@ export const ExportMenu = memo(function ExportMenu(props: ExportContext) {
 				<DropdownMenuItem onSelect={() => void exportViteProject(props)} disabled={frames.length === 0}>
 					Vite + React project…
 				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => void exportTokens(props)}>Design tokens…</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>Images</DropdownMenuLabel>
 				<DropdownMenuItem onSelect={() => void exportImages("png", props)} disabled={frames.length === 0}>

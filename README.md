@@ -53,7 +53,7 @@ hutch run dev         # build the UI and launch the app, rebuilding on changes
 hutch run dev:hmr     # same, but with the Vite dev server and hot reload
 ```
 
-Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`, `hutch run bench:gen` (the generation eval, see [bench/gen](bench/gen/README.md)).
+Other tasks: `hutch run typecheck`, `hutch run lint` (oxlint with the vendored [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md) rules), `hutch run fmt` (oxfmt), `hutch run build` (stable), `hutch run build:canary`, `hutch run bench:gen` (the generation eval, see [bench/gen](bench/gen/README.md)), `hutch run check:exports` (installs and builds each code export of a fixture project in a temp folder; needs the network).
 
 The UI also runs in a plain browser: `hutch run hmr`, then open http://localhost:5173. Outside Electrobun the RPC layer falls back to localStorage.
 

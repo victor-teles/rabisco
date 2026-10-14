@@ -34,7 +34,7 @@ _Principle: Screens are React (what you see is what you ship)_
 - ⬜ Export plain HTML and CSS for one screen
 - ⬜ Export to Next.js and React Router projects, next to the Vite project
 - ⬜ Export a component library: every project component with a preview page
-- ⬜ Export tokens as `tokens.json` (DTCG), `tokens.css` and a Tailwind theme
+- ✅ Export tokens as `tokens.json` (DTCG), `tokens.css` and a Tailwind theme
 - ⬜ Copy an element as code, as PNG and as SVG from its menu
 - ⬜ Batch export at 1x, 2x and 3x, with names from the screens
 - ⬜ Dev handoff page in the export: every screen, its components and tokens

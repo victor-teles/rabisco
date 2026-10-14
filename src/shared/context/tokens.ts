@@ -364,7 +364,7 @@ function block(selector: string, entries: [string, string][]) {
 }
 
 /** A text token's line height is its own variable, the way Tailwind's theme declares font sizes */
-function declarations(values: Record<string, string>): [string, string][] {
+export function declarations(values: Record<string, string>): [string, string][] {
 	return Object.entries(values).flatMap(([name, value]): [string, string][] => {
 		if (validateToken(name, value) !== null) return [];
 

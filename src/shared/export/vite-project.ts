@@ -7,6 +7,7 @@ import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
 import type { ExportFile, Frame, ProjectFiles } from "../types";
 import { importSpecifiers, localDependencies } from "./code";
+import { tokenFiles } from "./tokens";
 
 export type ViteProjectInput = {
 	name: string;
@@ -341,6 +342,7 @@ npm run dev
 - \`src/components/\`: the project's components${components.length ? "" : " (none yet)"}.
 - \`src/components/ui/\`: the [shadcn/ui](https://ui.shadcn.com) components the screens use, and the [uai](https://uaiblocks.vercel.app) blocks in \`uai/\`.
 - \`src/index.css\`: Tailwind, the theme tokens and the \`DESIGN.md\` tokens applied on the canvas.
+- \`tokens/\`: the same tokens for your own app, as \`tokens.css\`, a Tailwind theme and DTCG \`tokens.json\`.
 ${images ? `- \`public/\`: the images the screens show. Vite serves them at \`/\`, so \`/images/logo.png\` is \`public/images/logo.png\`.\n` : ""}- \`PRODUCT.md\` and \`DESIGN.md\`: the product and design context, when the project has them.
 
 Screens: ${screens.length ? `\n\n${list(screens.map((file) => `src/${file}`))}` : "none"}
@@ -403,6 +405,8 @@ export function viteProject(input: ViteProjectInput): ViteProject {
 
 	if (uiSources.some((source) => importSpecifiers(source).includes(UAI_UTILS)))
 		out.push({ path: "src/lib/uai-utils.ts", content: UTILS });
+
+	out.push(...tokenFiles(input.theme));
 
 	for (const context of ["PRODUCT.md", "DESIGN.md"])
 		if (files[context]?.trim()) out.push({ path: context, content: files[context]! });

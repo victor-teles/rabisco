@@ -3,6 +3,7 @@ import { projectAssets } from "@/lib/render/assets";
 import { api } from "@/lib/rpc";
 import { UI_SOURCES } from "@/lib/ui-sources";
 import { codeToCopy, localDependencies } from "../../../../shared/export/code";
+import { tokenFiles } from "../../../../shared/export/tokens";
 import { packageName, viteProject } from "../../../../shared/export/vite-project";
 import type { ExportContext } from "./export-menu";
 
@@ -67,5 +68,24 @@ export async function exportViteProject(context: ExportContext) {
 		for (const warning of project.warnings) toast.warning(warning);
 	} catch (error) {
 		toast.error("Couldn't export the project", { description: error instanceof Error ? error.message : String(error) });
+	}
+}
+
+export async function exportTokens(context: ExportContext) {
+	try {
+		const parent = await api.pickExportFolder({});
+
+		if (!parent) return;
+
+		const { dir } = await api.writeExport({
+			dir: parent,
+			name: `${packageName(context.projectName)}-tokens`,
+			files: tokenFiles(context.theme, ""),
+			reveal: true,
+		});
+
+		toast.success("Exported the design tokens", { description: dir });
+	} catch (error) {
+		toast.error("Couldn't export the tokens", { description: error instanceof Error ? error.message : String(error) });
 	}
 }

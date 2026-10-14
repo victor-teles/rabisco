@@ -199,6 +199,12 @@ export default function Gallery() {
 		expect(css).toContain(".dark {\n\t--color-brand: #fb7185;");
 	});
 
+	test("ships the applied tokens in tokens/", () => {
+		expect(out["tokens/tokens.css"]).toContain("--primary: #2563eb;");
+		expect(out["tokens/tailwind.css"]).toContain('@import "./tokens.css";');
+		expect(JSON.parse(out["tokens/tokens.json"]!).radius.base.$value).toEqual({ value: 0.75, unit: "rem" });
+	});
+
 	test("the app lists screens in canvas order and follows links", () => {
 		const app = out["src/App.tsx"]!;
 		expect(app).toContain('import HomeScreen from "./screens/home";\nimport WelcomeScreen from "./screens/welcome";');
