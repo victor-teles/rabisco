@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { CircleCheck, Pencil, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,20 @@ export { frameAtPoint, pinAt, pinPosition, type PinPlacement } from "../../../sh
 const DRAG_THRESHOLD = 3;
 
 type Point = { x: number; y: number };
+
+type Schedule = (run: () => void) => () => void;
+
+const nextFrame: Schedule = (run) => {
+	const frame = requestAnimationFrame(run);
+
+	return () => cancelAnimationFrame(frame);
+};
+
+export function holdFocus(element: { focus: () => void } | null, schedule: Schedule = nextFrame) {
+	element?.focus();
+
+	return schedule(() => element?.focus());
+}
 
 type CommentsLayerProps = {
 	controller: CommentsController;
@@ -441,6 +455,9 @@ function Composer({
 	keepAfterSubmit?: boolean;
 }) {
 	const [text, setText] = useState("");
+	const textarea = useRef<HTMLTextAreaElement>(null);
+
+	useEffect(() => holdFocus(textarea.current), []);
 
 	const submit = () => {
 		if (!text.trim()) return;
@@ -452,7 +469,7 @@ function Composer({
 	return (
 		<div className="flex flex-col gap-1.5">
 			<Textarea
-				autoFocus
+				ref={textarea}
 				value={text}
 				placeholder={placeholder}
 				onChange={(event) => setText(event.target.value)}
