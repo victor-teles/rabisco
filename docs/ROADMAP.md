@@ -43,7 +43,7 @@ _Principle: Screens are React (what you see is what you ship)_
 
 ---
 
-## Phase 25: Design system ⬜ 🧭
+## Phase 25: Design system ⬜
 
 _Principles: Component based by default · Context is a file_
 
@@ -56,7 +56,7 @@ Open items from phase 14, plus the gaps that make design system work hard.
 - ⬜ Import tokens from DTCG or Figma Variables JSON, pasted shadcn CSS or a tweakcn link
 - ⬜ Text styles: named type tokens applied as one class, shown in the inspector
 
-**Themed sections** ([0028](./decisions/0028-themed-sections.md) 🧭)
+**Themed sections** ([0028](./decisions/0028-themed-sections.md), built in five steps, dark on frames first)
 
 Figma sets a variable mode on a section, and every frame inside follows it. Rabisco sections can do the same with token modes, and can also try out token changes before they reach the project.
 
@@ -66,7 +66,7 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 - ⬜ Nested sections inherit: the innermost section that sets a group wins, and groups it leaves unset come from the section around it, then the project default
 - ⬜ A screen can set its own mode from its menu, which wins over its section
 - ⬜ Token overrides on a section: change a token for that section only, to try a new primary color or radius next to the current one. "Save as mode" writes it to DESIGN.md as a new option; "Apply to project" makes it the project value; "Discard" drops it
-- ⬜ "Duplicate with mode": copy a section and its screens with another mode, to compare them side by side 🧭
+- ⬜ "Duplicate with mode": copy a section and its screens with another mode, to compare them side by side. The copies are files, and links inside the copy point at the copy
 - ⬜ Play mode, the share viewer, image export, snapshots and the code export use each screen's resolved mode. The export sets it on each screen's route, so a screen exports the way it looks on the canvas
 - ⬜ Generations and point and prompt see the screen's mode and its tokens, and the dark mode pass in Phase 27 checks screens in a Dark section
 
