@@ -6,12 +6,16 @@ export type ChromeBox = { x: number; y: number; width?: number; height?: number 
 
 export const ChromeLayer = createContext<HTMLElement | null>(null);
 
+export const snapToPixel = (value: number, ratio = devicePixelRatio) => Math.round(value * ratio) / ratio;
+
+export const zoomed = (px: number) => `calc(${px}px * var(--zoom))`;
+
 export function chromeBox({ x, y, width = 0, height = 0 }: ChromeBox): CSSProperties {
 	return {
-		left: `calc(${x}px * var(--zoom))`,
-		top: `calc(${y}px * var(--zoom))`,
-		width: `calc(${width}px * var(--zoom))`,
-		height: `calc(${height}px * var(--zoom))`,
+		left: zoomed(x),
+		top: zoomed(y),
+		width: zoomed(width),
+		height: zoomed(height),
 	};
 }
 

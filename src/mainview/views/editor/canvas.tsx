@@ -51,7 +51,7 @@ import type { Viewport, ViewportStore } from "@/lib/viewport";
 import { labelLimits } from "@/lib/label-collisions";
 import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
-import { ChromeLayer, ChromePortal } from "./chrome-layer";
+import { ChromeLayer, ChromePortal, chromeBox, snapToPixel, zoomed } from "./chrome-layer";
 import { ElementHandles } from "./element-handles";
 import { LayoutGrids } from "./layout-grids";
 import { LinksLayer } from "./links-layer";
@@ -542,7 +542,7 @@ export function Canvas({
 		const { x, y, zoom } = view.get();
 		const size = GRID * zoom;
 		layer.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
-		chrome.style.transform = `translate(${x}px, ${y}px)`;
+		chrome.style.transform = `translate(${snapToPixel(x)}px, ${snapToPixel(y)}px)`;
 
 		// The grid layer is a cell larger than the view on every side and moves by less than a cell
 		const offset = (value: number) => ((value % size) + size) % size;
@@ -1582,7 +1582,7 @@ export function Canvas({
 			const { zoom } = view.get();
 
 			// The ghost follows the pointer without a render
-			if (ghostRef.current) ghostRef.current.style.transform = `translate(${dx / zoom}px, ${dy / zoom}px)`;
+			if (ghostRef.current) ghostRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
 
 			if (drag.entry) {
 				entryOffset.current = { x: dx / zoom, y: dy / zoom };
@@ -2010,15 +2010,11 @@ export function Canvas({
 						<GroupOutline key={group.base} group={group} bounds={bounds} name={name} onCompare={onCompare} />
 					))}
 					{selectionBounds ? (
-						<div
-							className="pointer-events-none absolute"
+						<ChromePortal
+							box={selectionBounds}
 							style={{
-								left: selectionBounds.x,
-								top: selectionBounds.y,
-								width: selectionBounds.width,
-								height: selectionBounds.height,
-								outline: "calc(1px * var(--unzoom)) solid color-mix(in oklab, var(--primary) 60%, transparent)",
-								outlineOffset: "calc(8px * var(--unzoom))",
+								outline: "1px solid color-mix(in oklab, var(--primary) 60%, transparent)",
+								outlineOffset: "8px",
 							}}
 						/>
 					) : null}
@@ -2028,16 +2024,7 @@ export function Canvas({
 					{overlay?.(shown)}
 					{drag?.kind === "insert" && drag.moved ? <InsertOutline drag={drag} /> : null}
 					{marquee ? (
-						<div
-							className="pointer-events-none absolute bg-primary/8"
-							style={{
-								left: marquee.x,
-								top: marquee.y,
-								width: marquee.width,
-								height: marquee.height,
-								outline: "calc(1px * var(--unzoom)) solid var(--primary)",
-							}}
-						/>
+						<ChromePortal box={marquee} className="bg-primary/8" style={{ outline: "1px solid var(--primary)" }} />
 					) : null}
 				</div>
 				<div ref={chromeRef} data-chrome-layer className="absolute top-0 left-0" />
@@ -2120,6 +2107,7 @@ const FrameView = memo(function FrameView({
 	const [hovered, setHovered] = useState(false);
 	const crowded = useSyncExternalStore(view.subscribe, () => view.get().zoom < hideLabelBelow);
 	const hideLabel = crowded && !selected && !renaming && !streaming && !agent && !failure;
+	const radius = frame.device === "desktop" ? "calc(var(--radius-md) * var(--zoom))" : zoomed(28);
 
 	return (
 		<div
@@ -2130,6 +2118,32 @@ const FrameView = memo(function FrameView({
 			onPointerLeave={() => setHovered(false)}
 		>
 			<ChromePortal box={frame} data-frame-file={draft ? undefined : frame.file}>
+				<div
+					className="absolute inset-0"
+					style={{
+						borderRadius: radius,
+						boxShadow: selected
+							? "0 0 0 2px var(--primary)"
+							: agent
+								? "0 0 0 1px color-mix(in oklab, var(--primary) 60%, transparent)"
+								: "0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent)",
+					}}
+				/>
+				{selected ? null : (
+					<div
+						className={cn("absolute inset-0 opacity-0 transition-opacity", hovered && "opacity-100")}
+						style={{
+							borderRadius: radius,
+							boxShadow: "0 0 0 1.5px color-mix(in oklab, var(--primary) 70%, transparent)",
+						}}
+					/>
+				)}
+				{dropTarget ? (
+					<div
+						className="absolute inset-0 bg-primary/5"
+						style={{ borderRadius: radius, boxShadow: "0 0 0 2px var(--primary)" }}
+					/>
+				) : null}
 				<div
 					className={cn(
 						"absolute bottom-full left-0 flex max-w-full items-center gap-1.5 pb-1 text-xs font-medium whitespace-nowrap",
@@ -2220,10 +2234,8 @@ const FrameView = memo(function FrameView({
 				)}
 				style={{
 					boxShadow: selected
-						? "0 0 0 calc(2px * var(--unzoom)) var(--primary), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.25))"
-						: agent
-							? "0 0 0 calc(1px * var(--unzoom)) color-mix(in oklab, var(--primary) 60%, transparent), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))"
-							: "0 0 0 calc(1px * var(--unzoom)) color-mix(in oklab, var(--foreground) 10%, transparent), var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))",
+						? "var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.25))"
+						: "var(--frame-shadow, 0 10px 40px -12px rgb(0 0 0 / 0.2))",
 				}}
 			>
 				{draft && !writing?.done ? (
@@ -2239,26 +2251,6 @@ const FrameView = memo(function FrameView({
 					/>
 				)}
 			</div>
-			{selected ? null : (
-				<div
-					className={cn(
-						"pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/frame:opacity-100",
-						frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
-					)}
-					style={{
-						boxShadow: "0 0 0 calc(1.5px * var(--unzoom)) color-mix(in oklab, var(--primary) 70%, transparent)",
-					}}
-				/>
-			)}
-			{dropTarget ? (
-				<div
-					className={cn(
-						"pointer-events-none absolute inset-0 bg-primary/5",
-						frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
-					)}
-					style={{ boxShadow: "0 0 0 calc(2px * var(--unzoom)) var(--primary)" }}
-				/>
-			) : null}
 		</div>
 	);
 });
@@ -2268,14 +2260,11 @@ const isHandle = (value: string | undefined): value is Handle => HANDLES.some((h
 /** Corner squares and side strips that resize the selected screen, as in Figma; the canvas runs the drag */
 function FrameHandles({ frame, resizing }: { frame: Frame; resizing: boolean }) {
 	return (
-		<div
-			className="pointer-events-none absolute"
-			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-		>
+		<ChromePortal box={frame}>
 			{HANDLES.map((handle) => {
 				const sides = handleSides(handle);
-				const x = handleSpan(sides.x);
-				const y = handleSpan(sides.y);
+				const x = handleSpan(sides.x, "1");
+				const y = handleSpan(sides.y, "1");
 
 				return (
 					<div
@@ -2286,43 +2275,33 @@ function FrameHandles({ frame, resizing }: { frame: Frame; resizing: boolean }) 
 						style={{ left: x.start, width: x.length, top: y.start, height: y.length }}
 					>
 						{sides.x && sides.y ? (
-							<span
-								className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[1px] border-primary bg-background"
-								style={{
-									width: "calc(8px * var(--unzoom))",
-									height: "calc(8px * var(--unzoom))",
-									borderWidth: "calc(1px * var(--unzoom))",
-								}}
-							/>
+							<span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-[1px] border border-primary bg-background" />
 						) : null}
 					</div>
 				);
 			})}
 			{resizing ? (
-				<ChromePortal box={frame}>
-					<div className="absolute top-full left-1/2 -translate-x-1/2 translate-y-1.5 rounded-[4px] bg-primary px-1 font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums">
-						{px(frame.width)} × {px(frame.height)}
-					</div>
-				</ChromePortal>
+				<div className="absolute top-full left-1/2 -translate-x-1/2 translate-y-1.5 rounded-[4px] bg-primary px-1 font-sans text-[11px]/4 whitespace-nowrap text-primary-foreground tabular-nums">
+					{px(frame.width)} × {px(frame.height)}
+				</div>
 			) : null}
-		</div>
+		</ChromePortal>
 	);
 }
 
 /** A smart guide; one screen pixel thick at any zoom */
 function GuideLine({ guide }: { guide: Guide }) {
-	const across = `calc(${guide.at}px - 0.5px * var(--unzoom))`;
-	const thickness = "calc(1px * var(--unzoom))";
 	const length = guide.to - guide.from;
 
 	return (
-		<div
-			className="pointer-events-none absolute"
-			style={
+		<ChromePortal
+			box={
 				guide.axis === "x"
-					? { left: across, top: guide.from, width: thickness, height: length, background: GUIDE_COLOR }
-					: { left: guide.from, top: across, width: length, height: thickness, background: GUIDE_COLOR }
+					? { x: guide.at, y: guide.from, height: length }
+					: { x: guide.from, y: guide.at, width: length }
 			}
+			className={guide.axis === "x" ? "-ml-[0.5px] border-l" : "-mt-[0.5px] border-t"}
+			style={{ borderColor: GUIDE_COLOR }}
 		/>
 	);
 }
@@ -2335,16 +2314,11 @@ function ElementGhost({ ghostRef, box, frame }: { ghostRef: Ref<HTMLDivElement>;
 	if (!frame) return null;
 
 	return (
-		<div
+		<ChromePortal
 			ref={ghostRef}
-			className="pointer-events-none absolute bg-primary/10"
-			style={{
-				left: frame.x + box.x,
-				top: frame.y + box.y,
-				width: box.width,
-				height: box.height,
-				outline: "calc(1px * var(--unzoom)) dashed var(--primary)",
-			}}
+			box={{ ...box, x: frame.x + box.x, y: frame.y + box.y }}
+			className="bg-primary/10"
+			style={{ outline: "1px dashed var(--primary)" }}
 		/>
 	);
 }
@@ -2387,7 +2361,7 @@ const PADDING_FILL = "color-mix(in oklab, var(--primary) 14%, transparent)";
 
 /** Hatched like Chrome's gap overlay; stripes keep their screen width at any zoom */
 const GAP_FILL =
-	"repeating-linear-gradient(45deg, color-mix(in oklab, var(--primary) 45%, transparent) 0 calc(1px * var(--unzoom)), transparent 0 calc(5px * var(--unzoom)))";
+	"repeating-linear-gradient(45deg, color-mix(in oklab, var(--primary) 45%, transparent) 0 1px, transparent 0 5px)";
 
 /** `size` adds the first box's size: in the label for a hover, below the box for a selection */
 function ElementOutline({
@@ -2425,31 +2399,21 @@ function ElementOutline({
 	const fills = spacing ? [...filled(spacing.padding, PADDING_FILL), ...filled(spacing.gaps, GAP_FILL)] : [];
 
 	return (
-		<div
-			className="pointer-events-none absolute"
-			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-		>
+		<ChromePortal box={frame}>
 			{fills.map(({ box, fill }, i) => (
-				<div
-					key={`fill-${i}`}
-					className="absolute"
-					style={{ left: box.x, top: box.y, width: box.width, height: box.height, background: fill }}
-				/>
+				<div key={`fill-${i}`} className="absolute" style={{ ...chromeBox(box), background: fill }} />
 			))}
 			{visible.map((box, i) => (
 				<div
 					key={i}
 					className="absolute"
 					style={{
-						left: box.x,
-						top: box.y,
-						width: box.width,
-						height: box.height,
-						outline: `calc(${selected ? 1.5 : 1}px * var(--unzoom)) solid ${selected ? color : `color-mix(in oklab, ${color} 70%, transparent)`}`,
+						...chromeBox(box),
+						outline: `${selected ? 1.5 : 1}px solid ${selected ? color : `color-mix(in oklab, ${color} 70%, transparent)`}`,
 					}}
 				/>
 			))}
-			<ChromePortal box={{ ...first, x: frame.x + first.x, y: frame.y + first.y }}>
+			<div className="absolute" style={chromeBox(first)}>
 				{label ? (
 					<div className={OUTLINE_LABEL} style={{ left: 0, top: 0, transform: LABEL_ABOVE, background: color }}>
 						{label}
@@ -2464,8 +2428,8 @@ function ElementOutline({
 						{dimensions}
 					</div>
 				) : null}
-			</ChromePortal>
-		</div>
+			</div>
+		</ChromePortal>
 	);
 }
 
@@ -2564,27 +2528,20 @@ function InsertOutline({ drag }: { drag: Extract<Drag, { kind: "insert" }> }) {
 	const rect = rectFromPoints(drag.start, drag.current);
 
 	return (
-		<div
-			className={cn("pointer-events-none absolute bg-primary/8", drag.tool === "ellipse" && "rounded-full")}
-			style={{
-				left: rect.x,
-				top: rect.y,
-				width: rect.width,
-				height: drag.tool === "text" ? 0 : rect.height,
-				outline: "calc(1px * var(--unzoom)) solid var(--primary)",
-			}}
+		<ChromePortal
+			box={{ ...rect, height: drag.tool === "text" ? 0 : rect.height }}
+			className={cn("bg-primary/8", drag.tool === "ellipse" && "rounded-full")}
+			style={{ outline: "1px solid var(--primary)" }}
 		>
-			<ChromePortal box={{ ...rect, height: drag.tool === "text" ? 0 : rect.height }}>
-				<div
-					className={cn(
-						OUTLINE_LABEL,
-						"top-full left-1/2 -translate-x-1/2 translate-y-1 bg-primary font-sans tabular-nums",
-					)}
-				>
-					{drag.tool === "text" ? px(rect.width) : sizeOf(rect)}
-				</div>
-			</ChromePortal>
-		</div>
+			<div
+				className={cn(
+					OUTLINE_LABEL,
+					"top-full left-1/2 -translate-x-1/2 translate-y-1 bg-primary font-sans tabular-nums",
+				)}
+			>
+				{drag.tool === "text" ? px(rect.width) : sizeOf(rect)}
+			</div>
+		</ChromePortal>
 	);
 }
 
@@ -2595,30 +2552,23 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 
 	if (!spot)
 		return (
-			<div
-				className={cn(
-					"pointer-events-none absolute bg-destructive/5",
-					frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
-				)}
+			<ChromePortal
+				box={frame}
+				className="bg-destructive/5"
 				style={{
-					left: frame.x,
-					top: frame.y,
-					width: frame.width,
-					height: frame.height,
-					boxShadow: "0 0 0 calc(2px * var(--unzoom)) var(--destructive)",
+					borderRadius: frame.device === "desktop" ? "calc(var(--radius-md) * var(--zoom))" : zoomed(28),
+					boxShadow: "0 0 0 2px var(--destructive)",
 				}}
 			>
-				<ChromePortal box={frame}>
-					<div
-						className={cn(
-							OUTLINE_LABEL,
-							"top-0 left-1/2 -translate-x-1/2 translate-y-3 bg-destructive font-sans font-medium",
-						)}
-					>
-						Can't drop here
-					</div>
-				</ChromePortal>
-			</div>
+				<div
+					className={cn(
+						OUTLINE_LABEL,
+						"top-0 left-1/2 -translate-x-1/2 translate-y-3 bg-destructive font-sans font-medium",
+					)}
+				>
+					Can't drop here
+				</div>
+			</ChromePortal>
 		);
 	const box = clip(spot.box, frame);
 	// The items show the new order themselves
@@ -2631,49 +2581,28 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 		line && clip(vertical ? { ...line, x: line.x - 1, width: 2 } : { ...line, y: line.y - 1, height: 2 }, frame);
 
 	return (
-		<div
-			className="pointer-events-none absolute"
-			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-		>
+		<ChromePortal box={frame}>
 			{box ? (
 				<div
 					className={cn("absolute", solid ? "bg-primary/5" : "bg-primary/15")}
-					style={{
-						left: box.x,
-						top: box.y,
-						width: box.width,
-						height: box.height,
-						outline: `calc(1.5px * var(--unzoom)) ${solid ? "solid" : "dashed"} var(--primary)`,
-					}}
+					style={{ ...chromeBox(box), outline: `1.5px ${solid ? "solid" : "dashed"} var(--primary)` }}
 				>
-					<ChromePortal box={{ x: frame.x + box.x, y: frame.y + box.y }}>
-						<div className={cn(OUTLINE_LABEL, "bg-primary")} style={{ left: 0, top: 0, transform: LABEL_ABOVE }}>
-							{spot.name}
-						</div>
-					</ChromePortal>
+					<div className={cn(OUTLINE_LABEL, "bg-primary")} style={{ left: 0, top: 0, transform: LABEL_ABOVE }}>
+						{spot.name}
+					</div>
 				</div>
 			) : null}
 			{line && shownLine ? (
 				<div
-					className="absolute rounded-full bg-primary"
+					className={cn("absolute rounded-full bg-primary", vertical ? "-ml-px w-0.5" : "-mt-px h-0.5")}
 					style={
 						vertical
-							? {
-									left: `calc(${line.x}px - 1px * var(--unzoom))`,
-									top: shownLine.y,
-									width: "calc(2px * var(--unzoom))",
-									height: shownLine.height,
-								}
-							: {
-									left: shownLine.x,
-									top: `calc(${line.y}px - 1px * var(--unzoom))`,
-									width: shownLine.width,
-									height: "calc(2px * var(--unzoom))",
-								}
+							? { left: zoomed(line.x), top: zoomed(shownLine.y), height: zoomed(shownLine.height) }
+							: { left: zoomed(shownLine.x), top: zoomed(line.y), width: zoomed(shownLine.width) }
 					}
 				/>
 			) : null}
-		</div>
+		</ChromePortal>
 	);
 }
 
@@ -2744,10 +2673,7 @@ function SelectedElement({
 				spacing={spacing}
 			/>
 			{handles && frame ? (
-				<div
-					className="pointer-events-none absolute"
-					style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-				>
+				<ChromePortal box={frame}>
 					<ElementHandles
 						box={handles.first}
 						frame={frame}
@@ -2759,7 +2685,7 @@ function SelectedElement({
 						onPreview={(style) => host(element.file)?.previewStyle([element.start, ...others], version, style)}
 						onCommit={(edit) => onEditClasses?.(element, edit)}
 					/>
-				</div>
+				</ChromePortal>
 			) : null}
 		</>
 	);
@@ -2819,15 +2745,11 @@ function SelectedElements({
 				);
 			})}
 			{union ? (
-				<div
-					className="pointer-events-none absolute"
+				<ChromePortal
+					box={{ ...union, x: frame.x + union.x, y: frame.y + union.y }}
 					style={{
-						left: frame.x + union.x,
-						top: frame.y + union.y,
-						width: union.width,
-						height: union.height,
-						outline: "calc(1px * var(--unzoom)) solid color-mix(in oklab, var(--primary) 60%, transparent)",
-						outlineOffset: "calc(4px * var(--unzoom))",
+						outline: "1px solid color-mix(in oklab, var(--primary) 60%, transparent)",
+						outlineOffset: "4px",
 					}}
 				/>
 			) : null}
@@ -2849,55 +2771,52 @@ function GroupOutline({
 	const count = group.files.length;
 
 	// Never wider than a third of the gap between frames, so neighbouring groups don't overlap when zoomed out
-	const style: React.CSSProperties & Record<`--${string}`, string> = {
-		"--pad": `min(calc(${GROUP_PADDING}px * var(--unzoom)), ${FRAME_GAP / 3}px)`,
-		"--room": `calc(${GROUP_LABEL_ROOM}px * var(--unzoom))`,
-		left: `calc(${bounds.x}px - var(--pad))`,
-		top: `calc(${bounds.y}px - var(--pad) - var(--room))`,
-		width: `calc(${bounds.width}px + var(--pad) * 2)`,
-		height: `calc(${bounds.height}px + var(--pad) * 2 + var(--room))`,
-		border: "calc(1px * var(--unzoom)) dashed color-mix(in oklab, var(--foreground) 22%, transparent)",
-		borderRadius: "calc(20px * var(--unzoom))",
+	const pad: React.CSSProperties & Record<`--${string}`, string> = {
+		"--pad": `min(${GROUP_PADDING}px, calc(${FRAME_GAP / 3}px * var(--zoom)))`,
 	};
 
 	return (
-		<div className="pointer-events-none absolute" style={style}>
-			<ChromePortal box={bounds}>
-				{/* As wide as the group on screen, so the label can drop "Compare" when it's narrow */}
+		<ChromePortal box={bounds} style={pad}>
+			<div
+				className="absolute rounded-[20px] border border-dashed"
+				style={{
+					inset: `calc(var(--pad) * -1 - ${GROUP_LABEL_ROOM}px) calc(var(--pad) * -1) calc(var(--pad) * -1)`,
+					borderColor: "color-mix(in oklab, var(--foreground) 22%, transparent)",
+				}}
+			/>
+			{/* As wide as the group on screen, so the label can drop "Compare" when it's narrow */}
+			<div
+				className="@container absolute"
+				style={{
+					left: "calc(var(--pad) * -1)",
+					bottom: `calc(100% + var(--pad) + ${GROUP_LABEL_ROOM}px + 6px * var(--zoom))`,
+					width: "calc(100% + var(--pad) * 2)",
+				}}
+			>
 				<div
-					className="@container absolute"
-					style={{
-						"--pad": `min(${GROUP_PADDING}px, calc(${FRAME_GAP / 3}px * var(--zoom)))`,
-						left: "calc(var(--pad) * -1)",
-						bottom: `calc(100% + var(--pad) + ${GROUP_LABEL_ROOM}px + 6px * var(--zoom))`,
-						width: "calc(100% + var(--pad) * 2)",
-					}}
+					className="pointer-events-auto flex w-fit max-w-full items-center gap-1 text-xs whitespace-nowrap text-muted-foreground"
+					onPointerDown={(event) => event.stopPropagation()}
 				>
-					<div
-						className="pointer-events-auto flex w-fit max-w-full items-center gap-1 text-xs whitespace-nowrap text-muted-foreground"
-						onPointerDown={(event) => event.stopPropagation()}
-					>
-						<span className="min-w-0 truncate pl-1">
-							<span className="font-medium text-foreground/80">{name}</span> · {count}{" "}
-							{count === 1 ? "variation" : "variations"}
-						</span>
-						{onCompare && count > 1 ? (
-							<Button
-								variant="ghost"
-								size="xs"
-								className="h-5 shrink-0 px-1.5"
-								aria-label="Compare"
-								title="Compare"
-								onClick={() => onCompare(group.base)}
-							>
-								<Columns2 />
-								<span className="hidden @min-[240px]:inline">Compare</span>
-							</Button>
-						) : null}
-					</div>
+					<span className="min-w-0 truncate pl-1">
+						<span className="font-medium text-foreground/80">{name}</span> · {count}{" "}
+						{count === 1 ? "variation" : "variations"}
+					</span>
+					{onCompare && count > 1 ? (
+						<Button
+							variant="ghost"
+							size="xs"
+							className="h-5 shrink-0 px-1.5"
+							aria-label="Compare"
+							title="Compare"
+							onClick={() => onCompare(group.base)}
+						>
+							<Columns2 />
+							<span className="hidden @min-[240px]:inline">Compare</span>
+						</Button>
+					) : null}
 				</div>
-			</ChromePortal>
-		</div>
+			</div>
+		</ChromePortal>
 	);
 }
 

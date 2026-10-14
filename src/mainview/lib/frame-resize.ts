@@ -28,12 +28,12 @@ export const HANDLE_CURSOR: Record<Handle, string> = {
 export type HandleSpan = { start: string; length: string };
 
 /** Along one axis: a side handle spans between the corners, a corner sits across the edge */
-export function handleSpan(side: number): HandleSpan {
-	if (side === 0) return { start: "calc(5px * var(--unzoom))", length: "calc(100% - 10px * var(--unzoom))" };
+export function handleSpan(side: number, unit = "var(--unzoom)"): HandleSpan {
+	if (side === 0) return { start: `calc(5px * ${unit})`, length: `calc(100% - 10px * ${unit})` };
 
 	return {
-		start: side === -1 ? "calc(-5px * var(--unzoom))" : "calc(100% - 5px * var(--unzoom))",
-		length: "calc(10px * var(--unzoom))",
+		start: side === -1 ? `calc(-5px * ${unit})` : `calc(100% - 5px * ${unit})`,
+		length: `calc(10px * ${unit})`,
 	};
 }
 

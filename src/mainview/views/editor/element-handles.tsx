@@ -39,7 +39,7 @@ import {
 	type Side,
 	type SizeMode,
 } from "@/lib/resize";
-import { ChromePortal } from "./chrome-layer";
+import { ChromePortal, zoomed } from "./chrome-layer";
 
 type Point = { x: number; y: number };
 
@@ -85,9 +85,6 @@ const CURSORS: Record<ResizeHandle, string> = {
 	nw: "nwse-resize",
 	se: "nwse-resize",
 };
-
-/** Screen pixels, kept at any zoom */
-const unzoomed = (px: number) => `calc(${px}px * var(--unzoom))`;
 
 const samePreview = (a: PreviewStyle | undefined, b: PreviewStyle) => !!a && JSON.stringify(a) === JSON.stringify(b);
 
@@ -386,8 +383,8 @@ function ResizeGrip({ handle, box, ...drag }: DragHandlers & { handle: ResizeHan
 	const corner = handle.length === 2;
 	const vertical = handle === "e" || handle === "w";
 	// Edges are thin strips between the corners; corners are squares
-	const width = corner ? unzoomed(8) : vertical ? unzoomed(6) : `calc(${box.width}px - ${unzoomed(12)})`;
-	const height = corner ? unzoomed(8) : vertical ? `calc(${box.height}px - ${unzoomed(12)})` : unzoomed(6);
+	const width = corner ? "8px" : vertical ? "6px" : `calc(${zoomed(box.width)} - 12px)`;
+	const height = corner ? "8px" : vertical ? `calc(${zoomed(box.height)} - 12px)` : "6px";
 
 	return (
 		<div
@@ -398,11 +395,11 @@ function ResizeGrip({ handle, box, ...drag }: DragHandlers & { handle: ResizeHan
 					: "pointer-events-auto absolute"
 			}
 			style={{
-				left: `calc(${box.x + box.width * at.x}px - (${width}) / 2)`,
-				top: `calc(${box.y + box.height * at.y}px - (${height}) / 2)`,
+				left: `calc(${zoomed(box.x + box.width * at.x)} - (${width}) / 2)`,
+				top: `calc(${zoomed(box.y + box.height * at.y)} - (${height}) / 2)`,
 				width,
 				height,
-				borderWidth: corner ? unzoomed(1) : undefined,
+				borderWidth: corner ? 1 : undefined,
 				borderStyle: corner ? "solid" : undefined,
 				cursor: CURSORS[handle],
 			}}
@@ -415,16 +412,16 @@ function ResizeGrip({ handle, box, ...drag }: DragHandlers & { handle: ResizeHan
 /** A short bar in the middle of each padding side, at least a few pixels in from the edge */
 function PaddingHandle({ side, box, padding, ...drag }: DragHandlers & { side: Side; box: Box; padding: Insets }) {
 	const horizontal = side === "top" || side === "bottom";
-	const inset = `max(${padding[side] / 2}px, ${unzoomed(8)})`;
+	const inset = `max(${zoomed(padding[side] / 2)}, 8px)`;
 
 	const position: React.CSSProperties =
 		side === "top"
-			? { left: box.x + box.width / 2, top: `calc(${box.y}px + ${inset})` }
+			? { left: zoomed(box.x + box.width / 2), top: `calc(${zoomed(box.y)} + ${inset})` }
 			: side === "bottom"
-				? { left: box.x + box.width / 2, top: `calc(${box.y + box.height}px - ${inset})` }
+				? { left: zoomed(box.x + box.width / 2), top: `calc(${zoomed(box.y + box.height)} - ${inset})` }
 				: side === "left"
-					? { left: `calc(${box.x}px + ${inset})`, top: box.y + box.height / 2 }
-					: { left: `calc(${box.x + box.width}px - ${inset})`, top: box.y + box.height / 2 };
+					? { left: `calc(${zoomed(box.x)} + ${inset})`, top: zoomed(box.y + box.height / 2) }
+					: { left: `calc(${zoomed(box.x + box.width)} - ${inset})`, top: zoomed(box.y + box.height / 2) };
 
 	return (
 		<SpacingBar
@@ -442,7 +439,7 @@ function GapHandle({ gap, part, ...drag }: DragHandlers & { gap: Box; part: GapP
 		<SpacingBar
 			horizontal={part === "y"}
 			cursor={part === "x" ? "ew-resize" : "ns-resize"}
-			position={{ left: gap.x + gap.width / 2, top: gap.y + gap.height / 2 }}
+			position={{ left: zoomed(gap.x + gap.width / 2), top: zoomed(gap.y + gap.height / 2) }}
 			title="Gap"
 			{...drag}
 		/>
@@ -462,8 +459,8 @@ function SpacingBar({
 			className="group/bar pointer-events-auto absolute grid place-items-center"
 			style={{
 				...position,
-				width: unzoomed(horizontal ? 20 : 10),
-				height: unzoomed(horizontal ? 10 : 20),
+				width: horizontal ? 20 : 10,
+				height: horizontal ? 10 : 20,
 				transform: "translate(-50%, -50%)",
 				cursor,
 			}}
@@ -473,7 +470,7 @@ function SpacingBar({
 		>
 			<div
 				className="rounded-full bg-primary/70 group-hover/bar:bg-primary"
-				style={{ width: unzoomed(horizontal ? 12 : 2), height: unzoomed(horizontal ? 2 : 12) }}
+				style={{ width: horizontal ? 12 : 2, height: horizontal ? 2 : 12 }}
 			/>
 		</div>
 	);

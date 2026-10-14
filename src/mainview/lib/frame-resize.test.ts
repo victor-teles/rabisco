@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resizeRect, snapResize } from "./frame-resize";
+import { handleSpan, resizeRect, snapResize } from "./frame-resize";
 
 const origin = { x: 100, y: 100, width: 400, height: 200 };
 
@@ -57,5 +57,12 @@ describe("snapResize", () => {
 		const { rect } = snapResize({ x: 3, y: 100, width: 300, height: 200 }, "e", others, 6);
 
 		expect(rect.x).toBe(3);
+	});
+});
+
+describe("handleSpan", () => {
+	test("counter-scales in the zoomed layer and stays in pixels in the chrome layer", () => {
+		expect(handleSpan(-1)).toEqual({ start: "calc(-5px * var(--unzoom))", length: "calc(10px * var(--unzoom))" });
+		expect(handleSpan(0, "1")).toEqual({ start: "calc(5px * 1)", length: "calc(100% - 10px * 1)" });
 	});
 });

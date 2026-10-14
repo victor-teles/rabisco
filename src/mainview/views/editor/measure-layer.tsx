@@ -4,13 +4,11 @@ import { measure, measureLabel, type MeasureLine, type MeasureSegment } from "@/
 import type { FrameHost } from "@/lib/render/frame-host";
 import { sourceVersion, type Box } from "@/lib/render/protocol";
 import { cn } from "@/lib/utils";
-import { ChromePortal } from "./chrome-layer";
+import { ChromePortal, chromeBox, zoomed } from "./chrome-layer";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import type { Frame } from "../../../shared/types";
 
 const MEASURE_COLOR = "var(--color-red-500)";
-
-const THICKNESS = "calc(1px * var(--unzoom))";
 
 export function useAltHeld() {
 	const [held, setHeld] = useState(false);
@@ -83,40 +81,33 @@ export function MeasureLayer({
 	const { lines, guides } = measure(from, to);
 
 	return (
-		<div
-			className="pointer-events-none absolute"
-			style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-		>
-			<div
-				className="absolute"
-				style={{
-					left: to.x,
-					top: to.y,
-					width: to.width,
-					height: to.height,
-					outline: `${THICKNESS} solid ${MEASURE_COLOR}`,
-				}}
-			/>
+		<ChromePortal box={frame}>
+			<div className="absolute" style={{ ...chromeBox(to), outline: `1px solid ${MEASURE_COLOR}` }} />
 			{guides.map((guide, i) => (
 				<Guide key={`guide-${i}`} guide={guide} />
 			))}
 			{lines.map((line, i) => (
 				<Line key={i} line={line} frame={frame} />
 			))}
-		</div>
+		</ChromePortal>
 	);
 }
 
 function Guide({ guide }: { guide: MeasureSegment }) {
-	const border = `${THICKNESS} dashed ${MEASURE_COLOR}`;
+	const border = `1px dashed ${MEASURE_COLOR}`;
 
 	return (
 		<div
 			className="absolute"
 			style={
 				guide.axis === "x"
-					? { left: guide.from, top: guide.at, width: guide.to - guide.from, borderTop: border }
-					: { left: guide.at, top: guide.from, height: guide.to - guide.from, borderLeft: border }
+					? { left: zoomed(guide.from), top: zoomed(guide.at), width: zoomed(guide.to - guide.from), borderTop: border }
+					: {
+							left: zoomed(guide.at),
+							top: zoomed(guide.from),
+							height: zoomed(guide.to - guide.from),
+							borderLeft: border,
+						}
 			}
 		/>
 	);
@@ -124,16 +115,25 @@ function Guide({ guide }: { guide: MeasureSegment }) {
 
 function Line({ line, frame }: { line: MeasureLine; frame: Frame }) {
 	const middle = (line.from + line.to) / 2;
-	const across = `calc(${line.at}px - 0.5px * var(--unzoom))`;
 
 	return (
 		<>
 			<div
-				className="absolute"
+				className={cn("absolute", line.axis === "x" ? "-mt-[0.5px] h-px" : "-ml-[0.5px] w-px")}
 				style={
 					line.axis === "x"
-						? { left: line.from, top: across, width: line.to - line.from, height: THICKNESS, background: MEASURE_COLOR }
-						: { left: across, top: line.from, width: THICKNESS, height: line.to - line.from, background: MEASURE_COLOR }
+						? {
+								left: zoomed(line.from),
+								top: zoomed(line.at),
+								width: zoomed(line.to - line.from),
+								background: MEASURE_COLOR,
+							}
+						: {
+								left: zoomed(line.at),
+								top: zoomed(line.from),
+								height: zoomed(line.to - line.from),
+								background: MEASURE_COLOR,
+							}
 				}
 			/>
 			<ChromePortal
