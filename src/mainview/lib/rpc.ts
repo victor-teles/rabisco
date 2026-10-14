@@ -55,6 +55,8 @@ const canvasChanges = listenerSet<CanvasChanged>();
 
 const openRequests = listenerSet<{}>();
 
+const expiredSites = listenerSet<{}>();
+
 export const onGenerationEvent = generationEvents.add;
 
 export const onFilesChanged = fileChanges.add;
@@ -64,6 +66,8 @@ export const onAssetsChanged = assetChanges.add;
 export const onCanvasChanged = canvasChanges.add;
 
 export const onOpenRequested = openRequests.add;
+
+export const onSitesExpired = expiredSites.add;
 
 let saveAll = async () => true;
 
@@ -111,6 +115,7 @@ function createElectrobunApi(): RabiscoApi {
 				canvasChanged: canvasChanges.emit,
 				agentCall: (call) => void answerAgent(call),
 				openRequested: openRequests.emit,
+				sitesExpired: expiredSites.emit,
 			},
 		},
 	});
@@ -411,6 +416,7 @@ function createBrowserApi(): RabiscoApi {
 		async unpublishSite() {
 			return ok;
 		},
+		takeExpiredSites: async () => ({ urls: [] }),
 		async gitStatus() {
 			return { state: "unavailable", error: DESKTOP_ONLY } as const;
 		},

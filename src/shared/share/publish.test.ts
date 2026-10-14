@@ -18,6 +18,12 @@ describe("sealing a snapshot", () => {
 		await expect(openSealed(sealed, "wrong horse")).rejects.toThrow();
 	});
 
+	test("a password with accents opens the site however the device composes them", async () => {
+		const sealed = await sealText('{"hello":"x"}', "caf\u00e9 au lait", 1000);
+
+		expect(await openSealed(sealed, "cafe\u0301 au lait")).toEqual({ hello: "x" });
+	});
+
 	test("each seal has its own salt and IV", async () => {
 		const [a, b] = await Promise.all([sealText("x", "password", 1000), sealText("x", "password", 1000)]);
 

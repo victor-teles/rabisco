@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "path";
 import { isBoolean, isNumber, isString } from "../shared/guards";
 import type { Json } from "../shared/json";
-import { toKebab } from "../shared/project";
 import {
 	assertPassword,
 	isPublishHost,
@@ -175,7 +174,8 @@ export function createPublishService(options: PublishServiceOptions) {
 				token: await token(params.host),
 				files,
 				site: existing,
-				newName: `${toKebab(snapshot.name).slice(0, 30) || "design"}-${randomBytes(5).toString("hex")}`,
+				// A sealed site must not show the project name, and a public one can get a password later
+				newName: `design-${randomBytes(5).toString("hex")}`,
 			});
 
 			const published: PublishTarget = {

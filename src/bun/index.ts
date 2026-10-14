@@ -152,9 +152,22 @@ const publishing = createPublishService({
 
 const SWEEP_MS = 60 * 60_000;
 
+let expiredSites: string[] = [];
+
 // Expiry needs Rabisco running: take sites down at launch and every hour after
 const sweepExpired = () =>
-	publishing.sweep().catch((error) => console.warn("Could not take down expired sites:", error));
+	publishing
+		.sweep()
+		.then((urls) => {
+			if (urls.length === 0) return;
+			expiredSites.push(...urls);
+
+			// The window may not exist yet at launch; it reads the list when it loads
+			try {
+				mainWindow.webview.rpc?.send.sitesExpired({});
+			} catch {}
+		})
+		.catch((error) => console.warn("Could not take down expired sites:", error));
 
 void sweepExpired();
 
@@ -339,6 +352,12 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			publishTarget: ({ path }) => publishing.target(path),
 			publishSite: ({ snapshot, ...params }) => publishing.publish(params, snapshot),
 			unpublishSite: async ({ path }) => (await publishing.unpublish(path), ok),
+			takeExpiredSites: () => {
+				const urls = expiredSites;
+				expiredSites = [];
+
+				return { urls };
+			},
 			exportViewer: ({ dir, name, snapshot, reveal }) => {
 				const target = freeExportDir(dir, name);
 				writeExportFiles(target, viewerFiles(assertSnapshot(snapshot), readScreenRuntime(runtimeDirs())));

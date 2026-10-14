@@ -20,7 +20,17 @@ import {
 } from "../../../../shared/share/publish";
 import { shareScreens } from "../../../../shared/share/snapshot";
 import type { ExportContext } from "./export-menu";
-import { copyLater, copyText, daysFrom, errorMessage, expiryFromDate, localDate, timeAgo } from "./share-utils";
+import {
+	copyLater,
+	copyText,
+	daysFrom,
+	errorMessage,
+	expiryDay,
+	expiryFromDate,
+	localDate,
+	shortDate,
+	timeAgo,
+} from "./share-utils";
 
 type Busy = "load" | "connect" | "disconnect" | "publish" | "remove" | null;
 
@@ -39,11 +49,15 @@ export function PublishSection({ context }: { context: ExportContext }) {
 	const [date, setDate] = useState(() => localDate(daysFrom(new Date(), DEFAULT_EXPIRY_DAYS)));
 	const [busy, setBusy] = useState<Busy>("load");
 	const [copied, setCopied] = useState(false);
+	const [copiedPassword, setCopiedPassword] = useState(false);
+	const [confirmRemove, setConfirmRemove] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
+	const passwordRef = useRef<HTMLInputElement>(null);
 	const screenCount = useMemo(() => shareScreens(frames, files).length, [frames, files]);
 	const info = PUBLISH_HOST_INFO[host];
 	const connected = hosts.some((status) => status.host === host && status.connected);
-	const [minDate] = useState(() => localDate(daysFrom(new Date(), 1)));
+	const [openedAt] = useState(() => Date.now());
+	const minDate = localDate(new Date(openedAt));
 
 	const showTarget = useCallback((next: PublishTarget | null) => {
 		setTarget(next);
@@ -53,7 +67,7 @@ export function PublishSection({ context }: { context: ExportContext }) {
 		setLocked(next.locked);
 		setExpires(!!next.expiresAt);
 
-		if (next.expiresAt) setDate(localDate(new Date(next.expiresAt)));
+		if (next.expiresAt) setDate(expiryDay(next.expiresAt));
 	}, []);
 
 	useEffect(() => {
@@ -94,7 +108,13 @@ export function PublishSection({ context }: { context: ExportContext }) {
 
 		try {
 			setHosts(await api.publishDisconnect({ host }));
-			toast(`${info.name} disconnected`, { description: "The token is gone from the keychain. Sites stay up." });
+
+			toast(`${info.name} disconnected`, {
+				description:
+					target?.host === host && target.expiresAt
+						? "The token is gone from the keychain. Sites stay up, and Rabisco can't remove this one when it expires."
+						: "The token is gone from the keychain. Sites stay up.",
+			});
 		} catch (error) {
 			toast.error(`Couldn't disconnect ${info.name}`, { description: errorMessage(error) });
 		} finally {
@@ -123,14 +143,20 @@ export function PublishSection({ context }: { context: ExportContext }) {
 
 		const copying = target ? null : copyLater(request.then((next) => next.url));
 
+		const sentPassword = locked ? password : "";
+
+		const action = sentPassword
+			? { label: "Copy password", onClick: () => void copyPassword(sentPassword) }
+			: undefined;
+
 		try {
 			const next = await request;
-			setPassword("");
 
-			if (target) toast.success("Site updated", { description: "People with the link see the latest screens." });
+			if (target)
+				toast.success("Site updated", { description: "People with the link see the latest screens.", action });
 			else {
 				const done = (await copying) ?? false;
-				toast.success(done ? "Site published and link copied" : "Site published", { description: next.url });
+				toast.success(done ? "Site published and link copied" : "Site published", { description: next.url, action });
 			}
 
 			showTarget(next);
@@ -142,6 +168,7 @@ export function PublishSection({ context }: { context: ExportContext }) {
 	};
 
 	const remove = async () => {
+		setConfirmRemove(false);
 		setBusy("remove");
 
 		try {
@@ -153,6 +180,21 @@ export function PublishSection({ context }: { context: ExportContext }) {
 		} finally {
 			setBusy(null);
 		}
+	};
+
+	const copyPassword = async (value: string) => {
+		const field = passwordRef.current?.value === value ? passwordRef.current : null;
+
+		if (await copyText(value, field)) {
+			setCopiedPassword(true);
+			setTimeout(() => setCopiedPassword(false), 1500);
+		} else toast.error("Couldn't copy the password");
+	};
+
+	const lock = (next: boolean) => {
+		setLocked(next);
+
+		if (next && !password) setPassword(generatePassphrase());
 	};
 
 	const copy = async () => {
@@ -177,6 +219,13 @@ export function PublishSection({ context }: { context: ExportContext }) {
 	const noScreens = screenCount === 0;
 	const weakPassword = locked && password.length < MIN_PASSWORD_LENGTH;
 	const canPublish = connected && busy === null && !noScreens && !weakPassword && (!expires || date >= minDate);
+	const expired = !!target?.expiresAt && Date.parse(target.expiresAt) <= openedAt;
+	const lastDay = target?.expiresAt ? shortDate(expiryDay(target.expiresAt)) : null;
+	const reach = target?.locked ? "Anyone with the link and the password" : "Anyone with the link";
+
+	const summary = expired
+		? `The link stopped working after ${lastDay}. ${connected ? "Rabisco removes the site at its next check." : `Connect ${info.name} to remove it.`}`
+		: `${reach} can open it on any device${lastDay ? ` until the end of ${lastDay}` : ""}.`;
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -210,9 +259,7 @@ export function PublishSection({ context }: { context: ExportContext }) {
 					</div>
 					<p className="text-xs text-muted-foreground">
 						{`${target.screens} ${target.screens === 1 ? "screen" : "screens"} on ${info.name}, updated ${timeAgo(target.publishedAt)}. `}
-						{target.locked
-							? "Anyone with the link and the password can open it, on any device."
-							: "Anyone with the link can open it, on any device."}
+						{summary}
 					</p>
 				</>
 			) : (
@@ -248,12 +295,13 @@ export function PublishSection({ context }: { context: ExportContext }) {
 							<Label htmlFor="publish-password" className="text-[13px] font-normal">
 								Password
 							</Label>
-							<Switch id="publish-password" size="sm" checked={locked} onCheckedChange={setLocked} />
+							<Switch id="publish-password" size="sm" checked={locked} onCheckedChange={lock} />
 						</div>
 						{locked ? (
 							<>
 								<div className="flex items-center gap-1">
 									<Input
+										ref={passwordRef}
 										value={password}
 										onChange={(event) => setPassword(event.target.value)}
 										placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
@@ -262,6 +310,16 @@ export function PublishSection({ context }: { context: ExportContext }) {
 										spellCheck={false}
 										className="h-8 font-mono text-xs"
 									/>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Copy password"
+										title="Copy password"
+										disabled={!password}
+										onClick={() => void copyPassword(password)}
+									>
+										{copiedPassword ? <Check /> : <Copy />}
+									</Button>
 									<Button size="sm" variant="ghost" onClick={() => setPassword(generatePassphrase())}>
 										Generate
 									</Button>
@@ -271,6 +329,10 @@ export function PublishSection({ context }: { context: ExportContext }) {
 									again for each update. Send it apart from the link.
 								</p>
 							</>
+						) : target?.locked ? (
+							<p className="text-xs text-muted-foreground">
+								Updating removes the password. Anyone with the link can open it.
+							</p>
 						) : null}
 					</div>
 
@@ -292,25 +354,41 @@ export function PublishSection({ context }: { context: ExportContext }) {
 									className="h-8 text-xs"
 								/>
 								<p className="text-xs text-muted-foreground">
-									The link stops working on this date. Rabisco removes the site the next time it runs after it.
+									The link works through this day. Rabisco removes the site the next time it runs after it.
 								</p>
 							</>
 						) : null}
 					</div>
 
-					<div className="flex items-center gap-2">
-						<Button size="sm" onClick={publish} disabled={!canPublish}>
-							{busy === "publish" ? <LoaderCircle className="motion-safe:animate-spin" /> : <Globe />}
-							{target ? "Update site" : `Publish to ${info.name}`}
-						</Button>
-						{target ? (
-							<Button size="sm" variant="ghost" onClick={remove} disabled={busy !== null}>
-								{busy === "remove" ? <LoaderCircle className="motion-safe:animate-spin" /> : null}
-								Unpublish
+					{confirmRemove ? (
+						<div className="flex flex-col gap-2">
+							<p className="text-xs text-muted-foreground">
+								{info.name} deletes the site and every link you sent stops working. Publishing again makes a new link.
+							</p>
+							<div className="flex items-center gap-2">
+								<Button size="sm" variant="destructive" onClick={remove} disabled={busy !== null}>
+									Unpublish
+								</Button>
+								<Button size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
+									Cancel
+								</Button>
+							</div>
+						</div>
+					) : (
+						<div className="flex items-center gap-2">
+							<Button size="sm" onClick={publish} disabled={!canPublish}>
+								{busy === "publish" ? <LoaderCircle className="motion-safe:animate-spin" /> : <Globe />}
+								{target ? "Update site" : `Publish to ${info.name}`}
 							</Button>
-						) : null}
-					</div>
-					{target && !connected ? (
+							{target ? (
+								<Button size="sm" variant="ghost" onClick={() => setConfirmRemove(true)} disabled={busy !== null}>
+									{busy === "remove" ? <LoaderCircle className="motion-safe:animate-spin" /> : null}
+									Unpublish…
+								</Button>
+							) : null}
+						</div>
+					)}
+					{target && !connected && !expired ? (
 						<p className="text-xs text-muted-foreground">Connect {info.name} again to update or remove this site.</p>
 					) : null}
 				</div>
@@ -319,8 +397,8 @@ export function PublishSection({ context }: { context: ExportContext }) {
 			{connected ? null : (
 				<div className="flex flex-col gap-2">
 					<p className="text-xs text-muted-foreground">
-						Rabisco publishes to your own {info.name} account, free on its starter plan. {info.tokenHint} The token
-						stays in this computer's keychain.
+						Rabisco publishes to your own {info.name} account. {info.planHint} {info.tokenHint} The token stays in this
+						computer's keychain.
 					</p>
 					<div className="flex items-center gap-1">
 						<Input

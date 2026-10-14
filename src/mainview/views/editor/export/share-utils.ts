@@ -52,5 +52,12 @@ export const localDate = (time: Date) => `${time.getFullYear()}-${pad(time.getMo
 export const daysFrom = (time: Date, days: number) =>
 	new Date(time.getFullYear(), time.getMonth(), time.getDate() + days);
 
-/** The link stops at the start of the picked day, local time */
-export const expiryFromDate = (date: string) => new Date(`${date}T00:00:00`).toISOString();
+/** The link works through the picked day and stops at the next local midnight */
+export const expiryFromDate = (date: string) => daysFrom(new Date(`${date}T00:00:00`), 1).toISOString();
+
+/** The last day the link works, as a date input value */
+export const expiryDay = (expiresAt: string) => localDate(new Date(Date.parse(expiresAt) - 1));
+
+/** `Oct 20` */
+export const shortDate = (date: string) =>
+	new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });

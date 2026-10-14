@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "crypto";
 import type { JsonObject } from "../shared/json";
-import { createNetlify, createVercel, type Fetch } from "./publish-hosts";
+import { createNetlify, createVercel, netlifyHeaders, vercelConfig, type Fetch } from "./publish-hosts";
 
 type Call = { method: string; url: string; auth: string | null; body: string };
 
@@ -41,6 +41,24 @@ const files = [
 ];
 
 const noWait = { wait: async () => {} };
+
+describe("headers", () => {
+	test("every runtime URL gets the sandbox CSP, with or without its extension", () => {
+		const lines = netlifyHeaders().split("\n");
+		const rule = lines.indexOf("/runtime/*");
+
+		expect(rule).toBeGreaterThan(0);
+		expect(lines[rule + 1]).toBe("  Content-Security-Policy: sandbox allow-scripts");
+
+		const sandboxed = vercelConfig().headers.find((entry) =>
+			entry.headers.some((header) => header.key === "Content-Security-Policy"),
+		);
+
+		expect(sandboxed?.source).toBe("/runtime/(.*)");
+		const pattern = new RegExp(`^${sandboxed?.source}$`);
+		expect(["/runtime/frame", "/runtime/frame.html"].every((path) => pattern.test(path))).toBe(true);
+	});
+});
 
 describe("Netlify", () => {
 	test("makes a site once, uploads only the files Netlify asks for, and waits until it is ready", async () => {
@@ -157,6 +175,60 @@ describe("Vercel", () => {
 		const again = await vercel.deploy({ token: "tok", files, site, newName: "ignored" });
 		expect(again).toEqual(site);
 		expect(calls.filter((call) => call.url.endsWith("/domains"))).toHaveLength(1);
+	});
+
+	test("takes the vercel.app alias of the ready deployment, not the deployment URL behind Vercel Authentication", async () => {
+		let domainCalls = 0;
+
+		const { fetch } = fakeFetch([
+			({ url }) => (url.endsWith("/v2/files") ? json({}) : undefined),
+			({ method, url }) =>
+				method === "POST" && url.includes("/v13/deployments")
+					? json({ id: "dpl_2", projectId: "prj_2", url: "design-1-x1y2-team.vercel.app" })
+					: undefined,
+			({ url }) =>
+				url.endsWith("/v13/deployments/dpl_2")
+					? json({ readyState: "READY", alias: ["design-1-team.vercel.app", "design-1.vercel.app"] })
+					: undefined,
+			({ url }) => (url.endsWith("/domains") ? (domainCalls++, json({ domains: [] })) : undefined),
+		]);
+
+		const site = await createVercel({ fetch, ...noWait }).deploy({
+			token: "t",
+			files,
+			site: null,
+			newName: "design-1",
+		});
+
+		expect(site.url).toBe("https://design-1.vercel.app");
+		expect(domainCalls).toBe(0);
+	});
+
+	test("asks for the project's domains a few times before it falls back to the deployment URL", async () => {
+		let domainCalls = 0;
+
+		const { fetch } = fakeFetch([
+			({ url }) => (url.endsWith("/v2/files") ? json({}) : undefined),
+			({ method, url }) =>
+				method === "POST" && url.includes("/v13/deployments")
+					? json({ id: "dpl_3", projectId: "prj_3", url: "design-2-x1y2.vercel.app" })
+					: undefined,
+			({ url }) => (url.endsWith("/v13/deployments/dpl_3") ? json({ readyState: "READY" }) : undefined),
+			({ url }) =>
+				url.endsWith("/v9/projects/prj_3/domains")
+					? json({ domains: ++domainCalls < 3 ? [] : [{ name: "design-2.vercel.app" }] })
+					: undefined,
+		]);
+
+		const site = await createVercel({ fetch, ...noWait }).deploy({
+			token: "t",
+			files,
+			site: null,
+			newName: "design-2",
+		});
+
+		expect(site.url).toBe("https://design-2.vercel.app");
+		expect(domainCalls).toBe(3);
 	});
 
 	test("reports a failed build", async () => {

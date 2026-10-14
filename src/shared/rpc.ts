@@ -154,6 +154,8 @@ export type RabiscoRPC = {
 			publishSite: { params: PublishParams & { snapshot: ShareSnapshot }; response: PublishTarget };
 			/** Deletes the site on the host */
 			unpublishSite: { params: { path: string }; response: { ok: true } };
+			/** Expired sites the sweep removed since the last call */
+			takeExpiredSites: { params: {}; response: { urls: string[] } };
 			/** Into `<dir>/<name>` (`-2`… when taken) */
 			exportViewer: {
 				params: { dir: string; name: string; snapshot: ShareSnapshot; reveal?: boolean };
@@ -199,6 +201,8 @@ export type RabiscoRPC = {
 			agentCall: AgentCall;
 			/** `rabisco open` asked for a folder; read it with `takeOpenRequest` */
 			openRequested: {};
+			/** The expiry sweep removed sites; read them with `takeExpiredSites` */
+			sitesExpired: {};
 		};
 	}>;
 };

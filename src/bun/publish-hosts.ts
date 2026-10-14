@@ -28,6 +28,8 @@ const POLL_MS = 1000;
 
 const DEPLOY_TIMEOUT_MS = 3 * 60_000;
 
+const DOMAIN_TRIES = 5;
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 class HostError extends Error {
@@ -114,7 +116,7 @@ export function netlifyHeaders() {
 		"  Referrer-Policy: no-referrer",
 		"  X-Content-Type-Options: nosniff",
 		"  Cache-Control: no-cache",
-		"/runtime/frame.html",
+		"/runtime/*",
 		"  Content-Security-Policy: sandbox allow-scripts",
 		"",
 	].join("\n");
@@ -133,7 +135,7 @@ export function vercelConfig() {
 				],
 			},
 			{
-				source: "/runtime/frame.html",
+				source: "/runtime/(.*)",
 				headers: [{ key: "Content-Security-Policy", value: "sandbox allow-scripts" }],
 			},
 		],
@@ -222,6 +224,15 @@ export function createNetlify(options: HostOptions): HostClient {
 	};
 }
 
+function vercelAppUrl(names: readonly Json[]) {
+	let best: string | undefined;
+
+	for (const name of names)
+		if (isString(name) && name.endsWith(".vercel.app") && (!best || name.length < best.length)) best = name;
+
+	return best && `https://${best}`;
+}
+
 export function createVercel(options: HostOptions): HostClient {
 	const call = createApi("vercel", "https://api.vercel.com", options.fetch);
 
@@ -257,16 +268,21 @@ export function createVercel(options: HostOptions): HostClient {
 		return { file: file.path, sha: digest, size: file.body.byteLength };
 	}
 
-	async function productionUrl(token: string, projectId: string, fallback: string) {
-		const listed = objectOr(await call(token, "GET", `/v9/projects/${encodeURIComponent(projectId)}/domains`));
+	async function productionUrl(token: string, projectId: string, aliases: readonly Json[], fallback: string) {
+		const wait = options.wait ?? sleep;
+		let names = aliases;
 
-		for (const domain of arrayOr(listed.domains)) {
-			const name = optionalString(objectOr(domain).name);
+		for (let tries = 0; tries < DOMAIN_TRIES; tries++) {
+			const url = vercelAppUrl(names);
 
-			if (name?.endsWith(".vercel.app")) return `https://${name}`;
+			if (url) return url;
+
+			if (tries > 0) await wait(POLL_MS);
+			const listed = objectOr(await call(token, "GET", `/v9/projects/${encodeURIComponent(projectId)}/domains`));
+			names = arrayOr(listed.domains).map((domain) => objectOr(domain).name ?? null);
 		}
 
-		return fallback;
+		return vercelAppUrl(names) ?? fallback;
 	}
 
 	return {
@@ -290,6 +306,7 @@ export function createVercel(options: HostOptions): HostClient {
 
 			const deploymentId = required(created.id, "deployment id");
 			const projectId = required(created.projectId, "project id");
+			let aliases: readonly Json[] = arrayOr(created.alias);
 
 			await poll(options, async () => {
 				const state = objectOr(await call(token, "GET", `/v13/deployments/${encodeURIComponent(deploymentId)}`));
@@ -298,13 +315,16 @@ export function createVercel(options: HostOptions): HostClient {
 				if (ready === "ERROR" || ready === "CANCELED")
 					throw new Error(`Vercel couldn't deploy the site: ${errorText(state) ?? ready}`);
 
+				if (ready === "READY") aliases = [...aliases, ...arrayOr(state.alias)];
+
 				return ready === "READY";
 			});
 
+			// The deployment URL sits behind Vercel Authentication, so viewers need the project's own domain
 			const url =
 				site?.siteId === projectId
 					? site.url
-					: await productionUrl(token, projectId, `https://${required(created.url, "deployment URL")}`);
+					: await productionUrl(token, projectId, aliases, `https://${required(created.url, "deployment URL")}`);
 
 			return { siteId: projectId, siteName: site?.siteName ?? newName, url };
 		},

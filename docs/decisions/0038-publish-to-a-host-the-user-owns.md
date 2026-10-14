@@ -103,5 +103,7 @@ Nothing in the editor needs a host account. Publish is only one more button next
 - Host tokens are account-wide. A token stolen from the keychain can change any site on that account. The build needs a security review before it ships.
 - Big projects make big uploads, because images are `data:` URLs in `snapshot.js` (0010). Hosts limit file size (Vercel inline files, for example). The build splits images out of the snapshot when a host needs it, or says which limit was hit.
 - Expiry depends on Rabisco running. The UI must not claim more than that.
+- Without a password, the expiry page is only a gate in the viewer. `snapshot.js` can still be downloaded until Rabisco deletes the site.
+- Netlify keeps earlier deploys at `<deployId>--<site>.netlify.app`. A password added later protects new deploys only. An earlier public deploy stays open to anyone who knows its deploy ID, which is hard to guess. Vercel's deployment protection covers its old deployment URLs.
 - The publish target is in app data. A moved project folder follows the same rule as saved history ([0034](./0034-history-follows-moves-and-keeps-images.md)).
 - Signing in with OAuth ("Connect with Vercel") would need an OAuth app owned by the company. That needs the board and a new decision. Tokens need neither.

@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadProviders } from "@/hooks/use-providers";
 import { useTheme } from "@/hooks/use-theme";
 import { agentOpener } from "@/lib/agent-open";
-import { api, onOpenRequested } from "@/lib/rpc";
+import { api, onOpenRequested, onSitesExpired } from "@/lib/rpc";
 import { projectSessions } from "@/lib/sessions";
 import { forgetProject, readLastProject } from "@/lib/workspace";
 import { EditorView } from "@/views/editor/editor";
@@ -74,6 +74,23 @@ export default function App() {
 		void take();
 
 		return onOpenRequested(() => void take());
+	}, []);
+
+	useEffect(() => {
+		const take = () =>
+			api
+				.takeExpiredSites({})
+				.then(({ urls }) => {
+					if (urls.length > 0)
+						toast(urls.length === 1 ? "Removed 1 expired site" : `Removed ${urls.length} expired sites`, {
+							description: "Their links don't work anymore.",
+						});
+				})
+				.catch((error) => console.warn("Could not read the expired sites:", error));
+
+		void take();
+
+		return onSitesExpired(() => void take());
 	}, []);
 
 	const startDesign: StartDesign = async ({ prompt, device, files, variations, style }) => {

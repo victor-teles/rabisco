@@ -98,7 +98,7 @@ describe("publish service", () => {
 		});
 		expect(target.expiresAt).toBeUndefined();
 		expect(netlify.deploys[0]!.token).toBe("nt");
-		expect(netlify.deploys[0]!.newName).toMatch(/^shop-app-[0-9a-f]{10}$/);
+		expect(netlify.deploys[0]!.newName).toMatch(/^design-[0-9a-f]{10}$/);
 		expect(netlify.deploys[0]!.files.map((file) => file.path).sort()).toEqual([
 			"index.html",
 			"runtime/frame.html",
