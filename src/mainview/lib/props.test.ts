@@ -10,6 +10,7 @@ import {
 	readProp,
 	setChildrenText,
 	writeProp,
+	writeSlotText,
 } from "./props";
 
 const SOURCE = `export default function A() {
@@ -189,5 +190,15 @@ describe("componentSpec", () => {
 		});
 		expect(componentSpec({ source: "other", module: "lucide-react", exportName: "Star" }, files, ui)).toBeNull();
 		expect(componentSpec({ source: "project", path: "components/missing.tsx", exportName: "X" }, files, ui)).toBeNull();
+	});
+});
+
+describe("writeSlotText", () => {
+	test("writes children as text and a node prop as a string", () => {
+		const { start } = at(SOURCE, "<Card");
+
+		expect(writeSlotText(SOURCE, start, "children", "Body")).toContain('className="p-4">Body</Card>');
+		expect(writeSlotText(SOURCE, start, "title", "Hi")).toContain('<Card title="Hi"');
+		expect(writeSlotText(SOURCE, start, "title", "")).toContain("<Card count={3}");
 	});
 });

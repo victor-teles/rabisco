@@ -48,6 +48,8 @@ export type PropControlsProps = {
 	adornment?: (name: string) => React.ReactNode;
 	/** Shows "Add attribute"; one undo step */
 	onAddAttribute?: (name: string, value: Literal) => void;
+	/** Replaces the field of a slot (`children` or a node prop) that holds elements or code; `undefined` keeps it */
+	slot?: (name: string) => React.ReactNode | undefined;
 };
 
 const SEGMENTED_MAX_OPTIONS = 3;
@@ -84,6 +86,7 @@ export function PropControls({
 	disabled,
 	adornment,
 	onAddAttribute,
+	slot,
 }: PropControlsProps) {
 	const props = spec ? visibleProps(spec) : [];
 	const fieldEvents = { onFocus: onFieldFocus, onBlur: onFieldBlur };
@@ -100,34 +103,43 @@ export function PropControls({
 
 	return (
 		<div className="flex flex-col gap-1.5">
-			{props.map((prop) => (
-				<PropRow key={prop.name} label={prop.name} title={propSignature(prop)}>
-					<Control
-						name={prop.name}
-						type={prop.type}
-						spec={prop}
-						value={values[prop.name] ?? UNSET}
-						onChange={onChange}
-						disabled={disabled}
-						{...fieldEvents}
-					/>
-					{adornment?.(prop.name)}
-				</PropRow>
-			))}
+			{props.map((prop) => {
+				const filled = slot?.(prop.name);
+
+				return (
+					<PropRow key={prop.name} label={prop.name} title={propSignature(prop)}>
+						{filled === undefined ? (
+							<Control
+								name={prop.name}
+								type={prop.type}
+								spec={prop}
+								value={values[prop.name] ?? UNSET}
+								onChange={onChange}
+								disabled={disabled}
+								{...fieldEvents}
+							/>
+						) : (
+							filled
+						)}
+						{adornment?.(prop.name)}
+					</PropRow>
+				);
+			})}
 			{childrenText !== undefined ? (
-				<PropRow label="children" title="Text inside the component">
-					{childrenText === null ? (
-						<ReadOnly text="Elements or code" />
-					) : (
-						<TextField
-							label="children"
-							value={childrenText}
-							placeholder="Text"
-							disabled={disabled}
-							onChange={(text) => onChildrenChange?.(text, { continuous: true })}
-							{...fieldEvents}
-						/>
-					)}
+				<PropRow label="children" title="Content inside the component">
+					{slot?.("children") ??
+						(childrenText === null ? (
+							<ReadOnly text="Elements or code" />
+						) : (
+							<TextField
+								label="children"
+								value={childrenText}
+								placeholder="Text"
+								disabled={disabled}
+								onChange={(text) => onChildrenChange?.(text, { continuous: true })}
+								{...fieldEvents}
+							/>
+						))}
 				</PropRow>
 			) : null}
 			{extra.map((name) => {

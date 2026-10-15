@@ -7,6 +7,7 @@ import { styleState } from "@/lib/style-state";
 import { componentSpec, extraAttributes, isVoidElement, readChildrenText, readProp, type PropValue } from "@/lib/props";
 import { UI_SOURCES } from "@/lib/ui-sources";
 import { cn } from "@/lib/utils";
+import { clearSlot, componentSlots, slotFill } from "../../../shared/components/slots";
 import { cachedComponentApi } from "../../../shared/components/usages";
 import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import { iconAt, swapIcon } from "../../../shared/jsx/icons";
@@ -18,6 +19,7 @@ import { ElementStyle } from "./element-style";
 import { IconPicker } from "./icon-picker";
 import { PropControls, propSignature } from "./prop-controls";
 import { ComponentSwapMenu, ImagePickButton, ScreenLinkMenu } from "./prop-pickers";
+import { SlotContent } from "./slot-fill";
 
 type NodePropsProps = {
 	files: ProjectFiles;
@@ -170,6 +172,25 @@ function ElementProps({
 		return null;
 	};
 
+	const slots = new Set(spec ? componentSlots(spec).map((s) => s.name) : []);
+
+	const slot = (name: string) => {
+		if (!slots.has(name)) return undefined;
+		const fill = slotFill(element, name);
+
+		if (fill.kind !== "elements" && fill.kind !== "code") return undefined;
+
+		return (
+			<SlotContent
+				slot={name}
+				fill={fill}
+				disabled={structure.busy}
+				onSelect={(found) => structure.select({ file, start: found.start })}
+				onClear={() => edit(clearSlot(source, start, name))}
+			/>
+		);
+	};
+
 	const origin =
 		ref?.source === "project"
 			? ref.path
@@ -248,6 +269,7 @@ function ElementProps({
 						disabled={structure.busy}
 						adornment={adornment}
 						onAddAttribute={(name, value) => structure.setProp(target, name, value)}
+						slot={slot}
 						spec={spec}
 						values={values}
 						extra={extra}

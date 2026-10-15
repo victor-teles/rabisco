@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Component, Monitor, Plus, Smartphone, Tablet, Trash2 } from "lucide-react";
+import { ChevronRight, Component, Monitor, Plus, Smartphone, Tablet, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,19 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { writeSlotText } from "@/lib/props";
 import { cn } from "@/lib/utils";
 import type { ComponentExport } from "../../../shared/components/api";
 import { componentPageModule, componentStates, previewPath, variantAxes } from "../../../shared/components/preview";
+import {
+	clearSlot,
+	componentSlots,
+	slotCounts,
+	slotUsages,
+	type ComponentSlot,
+	type SlotFill,
+	type SlotUsage,
+} from "../../../shared/components/slots";
 import type { ProjectComponent } from "../../../shared/components/usages";
 import {
 	addVariantOption,
@@ -26,6 +36,7 @@ import {
 import { isComponentFile, isScreenFile, screenNameFromPath } from "../../../shared/project";
 import type { Device, Frame, ProjectFiles } from "../../../shared/types";
 import { isTyping } from "./shortcuts";
+import { SlotContent } from "./slot-fill";
 
 const PAGE_WIDTH = 800;
 
@@ -42,6 +53,8 @@ export type ComponentPageProps = {
 	onChangeFile: (path: string, source: string) => void;
 	onShowScreens: (files: string[]) => void;
 	onSelectComponent: (path: string) => void;
+	/** Shows the screen and selects the element in it */
+	onSelectElement: (file: string, start: number) => void;
 };
 
 /** Every variant and state of a component side by side, its variants as editable classes, and every usage */
@@ -69,6 +82,7 @@ function PageBody({
 	onChangeFile,
 	onShowScreens,
 	onSelectComponent,
+	onSelectElement,
 }: ComponentPageProps & { component: ProjectComponent }) {
 	const [exportName, setExportName] = useState(component.exports[0]?.name ?? "");
 	const exp = component.exports.find((e) => e.name === exportName) ?? component.exports[0];
@@ -113,6 +127,17 @@ function PageBody({
 							component={exp}
 							files={files}
 							onChangeFile={onChangeFile}
+						/>
+						<SlotsEditor
+							files={files}
+							frames={frames}
+							path={component.path}
+							component={exp}
+							onChangeFile={onChangeFile}
+							onSelectElement={(file, start) => {
+								onClose();
+								onSelectElement(file, start);
+							}}
 						/>
 						<Usages
 							files={files}
@@ -506,6 +531,209 @@ function AddOptionForm({
 				</Button>
 			</div>
 		</form>
+	);
+}
+
+const FILL_WORDS: Record<SlotFill["kind"], string> = {
+	text: "text",
+	elements: "elements",
+	code: "code",
+	empty: "empty",
+};
+
+function usageLabel(file: string, frames: Frame[]) {
+	return (
+		frames.find((f) => f.file === file)?.name ??
+		(isComponentFile(file) ? file.replace(/^components\//, "") : screenNameFromPath(file))
+	);
+}
+
+function SlotsEditor({
+	files,
+	frames,
+	path,
+	component,
+	onChangeFile,
+	onSelectElement,
+}: {
+	files: ProjectFiles;
+	frames: Frame[];
+	path: string;
+	component: ComponentExport;
+	onChangeFile: (path: string, source: string) => void;
+	onSelectElement: (file: string, start: number) => void;
+}) {
+	const slots = componentSlots(component);
+	const usages = useMemo(() => slotUsages(files, path, component), [files, path, component]);
+
+	const write = (usage: SlotUsage, next: string | null, message: string) => {
+		const source = files[usage.path];
+
+		if (next === null || source === undefined || next === source) return;
+		onChangeFile(usage.path, next);
+		toast(message, { id: "component-page", description: "Press ⌘Z to undo." });
+	};
+
+	return (
+		<section aria-label="Slots" className="flex flex-col gap-4 border-b p-4">
+			<PanelHeading count={slots.length || undefined}>Slots</PanelHeading>
+			{!slots.length ? (
+				<p className="text-xs text-muted-foreground">
+					{component.name} takes no content. A <span className="font-mono">children</span> or{" "}
+					<span className="font-mono">ReactNode</span> prop is a slot each usage fills in.
+				</p>
+			) : (
+				slots.map((slot) => (
+					<SlotRow
+						key={slot.name}
+						slot={slot}
+						usages={usages}
+						frames={frames}
+						onWriteText={(usage, text) =>
+							write(
+								usage,
+								writeSlotText(files[usage.path] ?? "", usage.start, slot.name, text),
+								`Updated ${slot.name} in ${usageLabel(usage.path, frames)}`,
+							)
+						}
+						onClear={(usage) =>
+							write(
+								usage,
+								clearSlot(files[usage.path] ?? "", usage.start, slot.name),
+								`Emptied ${slot.name} in ${usageLabel(usage.path, frames)}`,
+							)
+						}
+						onSelectElement={onSelectElement}
+					/>
+				))
+			)}
+		</section>
+	);
+}
+
+function SlotRow({
+	slot,
+	usages,
+	frames,
+	onWriteText,
+	onClear,
+	onSelectElement,
+}: {
+	slot: ComponentSlot;
+	usages: SlotUsage[];
+	frames: Frame[];
+	onWriteText: (usage: SlotUsage, text: string) => void;
+	onClear: (usage: SlotUsage) => void;
+	onSelectElement: (file: string, start: number) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const counts = slotCounts(usages, slot.name);
+
+	const summary = (["text", "elements", "code", "empty"] as const).flatMap((kind) =>
+		counts[kind] ? [`${counts[kind]} ${FILL_WORDS[kind]}`] : [],
+	);
+
+	return (
+		<div className="flex flex-col gap-1.5">
+			<button
+				type="button"
+				aria-expanded={open}
+				disabled={!usages.length}
+				onClick={() => setOpen((on) => !on)}
+				className="-mx-1 flex items-center gap-1.5 rounded-md px-1 text-left enabled:hover:bg-accent/60"
+			>
+				<ChevronRight
+					className={cn(
+						"size-3 shrink-0 text-muted-foreground transition-transform",
+						open && "rotate-90",
+						!usages.length && "opacity-0",
+					)}
+				/>
+				<span className="truncate font-mono text-xs">{slot.name}</span>
+				{!slot.optional ? (
+					<span className="rounded-sm bg-muted px-1 text-[10px] text-muted-foreground">required</span>
+				) : null}
+				<div className="flex-1" />
+				<span className="shrink-0 text-[11px] text-subtle-foreground tabular-nums">
+					{usages.length ? summary.join(" · ") : "Unused"}
+				</span>
+			</button>
+			{open ? (
+				<ul className="flex flex-col gap-1.5 pl-4" aria-label={`${slot.name} in each usage`}>
+					{usages.map((usage) => (
+						<SlotUsageRow
+							key={`${usage.path}:${usage.start}`}
+							slot={slot.name}
+							usage={usage}
+							label={usageLabel(usage.path, frames)}
+							onWriteText={(text) => onWriteText(usage, text)}
+							onClear={() => onClear(usage)}
+							onSelectElement={(start) => onSelectElement(usage.path, start)}
+						/>
+					))}
+				</ul>
+			) : null}
+		</div>
+	);
+}
+
+function SlotUsageRow({
+	slot,
+	usage,
+	label,
+	onWriteText,
+	onClear,
+	onSelectElement,
+}: {
+	slot: string;
+	usage: SlotUsage;
+	label: string;
+	onWriteText: (text: string) => void;
+	onClear: () => void;
+	onSelectElement: (start: number) => void;
+}) {
+	const fill = usage.fills[slot] ?? { kind: "empty" };
+	const text = fill.kind === "text" ? fill.text : "";
+	const [draft, setDraft] = useState(text);
+	const [prior, setPrior] = useState(text);
+
+	if (prior !== text) {
+		setPrior(text);
+		setDraft(text);
+	}
+
+	const commit = () => {
+		if (draft.trim() !== text) onWriteText(draft.trim());
+	};
+
+	return (
+		<li className="flex flex-col gap-1">
+			<button
+				type="button"
+				title={`${usage.path}, line ${usage.line}`}
+				onClick={() => onSelectElement(usage.start)}
+				className="flex min-w-0 items-center gap-1.5 self-start text-[11px] text-muted-foreground hover:text-foreground"
+			>
+				<span className="truncate">{label}</span>
+				<span className="shrink-0 text-subtle-foreground tabular-nums">line {usage.line}</span>
+			</button>
+			{fill.kind === "elements" || fill.kind === "code" ? (
+				<SlotContent slot={slot} fill={fill} onSelect={(element) => onSelectElement(element.start)} onClear={onClear} />
+			) : (
+				<Input
+					value={draft}
+					onChange={(event) => setDraft(event.target.value)}
+					onBlur={commit}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") commit();
+						else if (event.key === "Escape") setDraft(text);
+					}}
+					aria-label={`${slot} in ${label}, line ${usage.line}`}
+					placeholder="Empty"
+					className="h-7 text-xs md:text-xs"
+				/>
+			)}
+		</li>
 	);
 }
 

@@ -236,15 +236,10 @@ function attributeValue(element: JsxElement, name: string): string | null {
 	return literal ? (literal[2] ?? literal[3]!) : "*";
 }
 
-/** Every `<Name>` the project writes, with the options it picks */
-export function variantUsages(
-	files: Record<string, string>,
-	componentPath: string,
-	exportName: string,
-	axes: string[],
-): VariantUsage[] {
+/** Every `<Name>` the project writes, in file order */
+export function componentElements(files: Record<string, string>, componentPath: string, exportName: string) {
 	const target = componentPath.replace(/\.tsx?$/, "");
-	const usages: VariantUsage[] = [];
+	const found: { path: string; source: string; element: JsxElement }[] = [];
 
 	for (const path of Object.keys(files).sort()) {
 		if (path === componentPath || !/\.(tsx|jsx)$/.test(path)) continue;
@@ -262,16 +257,27 @@ export function variantUsages(
 
 		if (!locals.size) continue;
 
-		for (const element of flatten(parsed.roots)) {
-			if (!element.name || !locals.has(element.name)) continue;
-			const values: Record<string, string | null> = {};
-
-			for (const axis of axes) values[axis] = attributeValue(element, axis);
-			usages.push({ path, start: element.start, values });
-		}
+		for (const element of flatten(parsed.roots))
+			if (element.name && locals.has(element.name)) found.push({ path, source, element });
 	}
 
-	return usages;
+	return found;
+}
+
+/** Every `<Name>` the project writes, with the options it picks */
+export function variantUsages(
+	files: Record<string, string>,
+	componentPath: string,
+	exportName: string,
+	axes: string[],
+): VariantUsage[] {
+	return componentElements(files, componentPath, exportName).map(({ path, element }) => {
+		const values: Record<string, string | null> = {};
+
+		for (const axis of axes) values[axis] = attributeValue(element, axis);
+
+		return { path, start: element.start, values };
+	});
 }
 
 /** Option to count; a usage that leaves the axis unset counts for the default */

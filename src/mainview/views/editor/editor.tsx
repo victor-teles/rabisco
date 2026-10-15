@@ -2678,6 +2678,10 @@ export function EditorView({
 				onChangeFile={changeComponentFile}
 				onShowScreens={showScreens}
 				onSelectComponent={selectComponent}
+				onSelectElement={(file, start) => {
+					showScreens([file]);
+					selectElement(file, { file, start });
+				}}
 			/>
 			{designChecks && (
 				<DesignCheckDialog results={designChecks} onSelect={selectElement} onClose={() => setDesignChecks(null)} />

@@ -197,6 +197,10 @@ export function setChildrenText(source: string, start: number, text: string): st
 	);
 }
 
+/** Text in a slot: `children`, or a node prop written as a string; empty text empties it */
+export const writeSlotText = (source: string, start: number, slot: string, text: string): string | null =>
+	slot === "children" ? setChildrenText(source, start, text) : setAttribute(source, start, slot, text || null);
+
 export function componentSpec(
 	ref: ComponentRef | null,
 	files: Record<string, string>,
