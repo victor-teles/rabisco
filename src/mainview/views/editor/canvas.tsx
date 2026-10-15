@@ -63,6 +63,7 @@ import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
 import { screenNameFromPath } from "../../../shared/project";
+import { resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../shared/types";
 import { FRAME_GAP } from "../../../shared/project";
 import { isAlternate, variationGroups, type VariationGroup } from "../../../shared/variations";
@@ -435,6 +436,12 @@ export function Canvas({
 	}, [frames, moving, resized]);
 
 	const crowded = useMemo(() => labelLimits(shown, sections, labelWidth), [shown, sections]);
+
+	const modes = useMemo(
+		() => new Map(frames.map((frame) => [frame.file, resolveModes(frame, sections)])),
+		[frames, sections],
+	);
+
 	const framesRef = useRef(shown);
 	const [spaceHeld, setSpaceHeld] = useState(false);
 	const altHeld = useAltHeld();
@@ -1902,6 +1909,7 @@ export function Canvas({
 								key={frame.file}
 								frame={frame}
 								files={rendered}
+								mode={modes.get(frame.file)}
 								selected={selected.has(frame.file)}
 								dropTarget={dropFile === frame.file && dropPreview?.file !== frame.file}
 								view={view}
@@ -1931,6 +1939,7 @@ export function Canvas({
 							key={frame.file}
 							frame={frame}
 							files={drafts.files}
+							mode={resolveModes(frame, sections)}
 							selected={false}
 							view={view}
 							writing={drafts.writing[frame.file]}
@@ -2072,6 +2081,7 @@ export function Canvas({
 const FrameView = memo(function FrameView({
 	frame,
 	files,
+	mode,
 	selected,
 	view,
 	hideLabelBelow = 0,
@@ -2090,6 +2100,7 @@ const FrameView = memo(function FrameView({
 }: {
 	frame: Frame;
 	files: ProjectFiles;
+	mode?: ResolvedMode;
 	selected: boolean;
 	view: ViewportStore;
 	/** The zoom below which the name would run into a neighbor */
@@ -2255,6 +2266,7 @@ const FrameView = memo(function FrameView({
 						files={files}
 						width={frame.width}
 						height={frame.height}
+						mode={mode}
 						interactive={editing}
 						live={live}
 					/>

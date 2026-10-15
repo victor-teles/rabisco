@@ -22,6 +22,7 @@ import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import { parseLayoutGrid } from "../shared/layout-grid";
 import { normalizeImages } from "../shared/moodboard";
+import { normalizeModes } from "../shared/modes";
 import { normalizeSections } from "../shared/sections";
 import {
 	emptyCanvas,
@@ -151,6 +152,9 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	if (layoutGrid) parsed.layoutGrid = layoutGrid;
 
 	if (reference) parsed.reference = reference;
+	const modes = normalizeModes(frame.modes);
+
+	if (modes) parsed.modes = modes;
 
 	return [parsed];
 }

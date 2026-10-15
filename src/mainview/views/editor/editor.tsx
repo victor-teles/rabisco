@@ -96,6 +96,7 @@ import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
+import { chooseMode, SCHEME } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
@@ -111,6 +112,7 @@ import { ComponentsPanel } from "./components-panel";
 import { ContextPanel } from "./context-panel";
 import { ElementArrange, Inspector, type ArrangeRefusals, type FramePatch, type InspectorTab } from "./inspector";
 import { linkActions } from "./link-actions";
+import { screenThemeActions, THEME_MENU } from "./theme-actions";
 import { LinkControl } from "./link-control";
 import { NodeProps } from "./node-props";
 import { ElementBreadcrumb } from "./element-breadcrumb";
@@ -1077,6 +1079,17 @@ export function EditorView({
 
 	const renameScreen = useCallback((file: string, name: string) => patchFrame(file, { name }), [patchFrame]);
 
+	const setScreenTheme = useCallback(
+		(targets: string[], option: string | undefined) =>
+			change((snapshot) => ({
+				...snapshot,
+				frames: snapshot.frames.map((frame) =>
+					targets.includes(frame.file) ? { ...frame, modes: chooseMode(frame.modes, SCHEME, option) } : frame,
+				),
+			})),
+		[change],
+	);
+
 	const reorderScreens = useCallback(
 		(moving: string[], before: string | null) =>
 			change((snapshot) => {
@@ -1436,6 +1449,7 @@ export function EditorView({
 			copyImage: (format, starts) => single && void copyImage(format, single, files, appliedTokens, starts),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
+		...screenThemeActions({ selected, sections: sections.sections, setTheme: setScreenTheme }),
 		{
 			id: "send-comments",
 			label: "Send comments to chat",
@@ -2451,6 +2465,7 @@ export function EditorView({
 										onStartRename={sections.startRename}
 										onRename={sections.rename}
 										onRecolor={sections.recolor}
+										onTheme={sections.setTheme}
 										onDelete={sections.remove}
 										onSelectScreens={setSelection}
 									/>
@@ -2562,6 +2577,7 @@ export function EditorView({
 							<PlayView
 								start={playStart}
 								frames={frames}
+								sections={sections.sections}
 								files={files}
 								projectName={projectName}
 								onClose={() => setPlayStart(null)}
@@ -2580,6 +2596,7 @@ export function EditorView({
 							<CompareView
 								group={compareGroup}
 								frames={frames}
+								sections={sections.sections}
 								files={files}
 								onPick={pick}
 								onClose={() => setCompareBase(null)}
@@ -2589,6 +2606,9 @@ export function EditorView({
 
 					<Inspector
 						frames={frames}
+						sections={sections.sections}
+						section={sections.sections.find((section) => section.id === sections.selectedId) ?? null}
+						onSectionTheme={sections.setTheme}
 						files={files}
 						selection={selection}
 						tab={tab}
@@ -2657,6 +2677,7 @@ const SCREEN_MENU: MenuEntry[] = [
 	},
 	{ label: "Distribute", items: ["distribute-horizontal", "distribute-vertical"] },
 	"add-section",
+	THEME_MENU,
 	SEPARATOR,
 	"copy-screens",
 	"duplicate-screens",

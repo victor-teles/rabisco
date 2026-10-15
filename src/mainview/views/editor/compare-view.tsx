@@ -7,7 +7,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { screenNameFromPath } from "../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { altNumber, type VariationGroup } from "../../../shared/variations";
 import { isTyping } from "./shortcuts";
 
@@ -30,9 +31,17 @@ const FALLBACK_SIZE = { width: 390, height: 844 };
 
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
-type Column = { file: string; label: string; picked: boolean; width: number; height: number; radius: number };
+type Column = {
+	file: string;
+	label: string;
+	picked: boolean;
+	width: number;
+	height: number;
+	radius: number;
+	mode: ResolvedMode;
+};
 
-function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
+function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSection[]): Column[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const sibling = group.files.map((file) => byFile.get(file)).find(Boolean);
 
@@ -48,6 +57,7 @@ function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 			width: size.width,
 			height: size.height,
 			radius: frame?.device === "desktop" ? 6 : 28,
+			mode: frame ? resolveModes(frame, sections) : DEFAULT_MODE,
 		};
 	});
 }
@@ -56,12 +66,14 @@ function columnsOf(group: VariationGroup, frames: Frame[]): Column[] {
 export function CompareView({
 	group,
 	frames,
+	sections,
 	files,
 	onPick,
 	onClose,
 }: {
 	group: VariationGroup;
 	frames: Frame[];
+	sections: CanvasSection[];
 	files: ProjectFiles;
 	onPick: (file: string) => void;
 	onClose: () => void;
@@ -69,7 +81,7 @@ export function CompareView({
 	const rootRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const columnRefs = useRef(new Map<string, HTMLDivElement>());
-	const columns = columnsOf(group, frames);
+	const columns = columnsOf(group, frames, sections);
 	const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
 	const [zoomSetting, setZoomSetting] = useState<number | "fit">("fit");
 	const [fitZoom, setFitZoom] = useState(1);
@@ -328,6 +340,7 @@ export function CompareView({
 											files={files}
 											width={column.width}
 											height={height}
+											mode={column.mode}
 											onContentHeight={(contentHeight) => setContentHeight(column.file, contentHeight)}
 										/>
 									</div>

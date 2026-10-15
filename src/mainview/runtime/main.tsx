@@ -11,6 +11,7 @@ import {
 } from "../lib/render/protocol";
 import { frameAssets, resolveImageSources } from "./assets";
 import { lintScreen } from "./design-lint";
+import { applyMode } from "./mode";
 import { describeError, hideOverlay, showOverlay } from "./errors";
 import { externals } from "./externals";
 import { captureForFigma } from "./figma-capture";
@@ -530,12 +531,16 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		patchCss(message.css);
 	} else if (message?.type === "theme") {
 		themeStyle.textContent = message.css;
+	} else if (message?.type === "mode") {
+		applyMode(document.documentElement, message.mode);
 	} else if (message?.type === "modules") {
 		if (message.css !== undefined) setCss(message.css);
 
 		if (message.cssPatch !== undefined) patchCss(message.cssPatch);
 
 		if (message.theme !== undefined) themeStyle.textContent = message.theme;
+
+		if (message.mode) applyMode(document.documentElement, message.mode);
 		const invalid = registry.apply(message.modules, message.reset);
 		const entryChanged = message.entry !== entry;
 

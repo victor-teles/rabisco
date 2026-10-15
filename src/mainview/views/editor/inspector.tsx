@@ -38,9 +38,11 @@ import type { Alignment, Axis } from "@/lib/align";
 import { cn } from "@/lib/utils";
 import { variationName } from "@/lib/variations";
 import { DEFAULT_LAYOUT_GRID, normalizeLayoutGrid } from "../../../shared/layout-grid";
+import { chooseMode, inheritedModes, resolveModes, SCHEME } from "../../../shared/modes";
 import { isScreenFile } from "../../../shared/project";
-import type { Device, Frame, LayoutGrid, ProjectFiles } from "../../../shared/types";
+import type { CanvasSection, Device, Frame, LayoutGrid, ProjectFiles } from "../../../shared/types";
 import { groupOf, isAlternate } from "../../../shared/variations";
+import { ThemeToggle } from "./theme-controls";
 import {
 	ALIGN_SHORTCUTS,
 	CODE_VIEW_KEYS,
@@ -58,10 +60,15 @@ function isInspectorTab(value: string): value is InspectorTab {
 	return INSPECTOR_TABS.some((tab) => tab === value);
 }
 
-export type FramePatch = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device" | "layoutGrid">>;
+export type FramePatch = Partial<
+	Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device" | "layoutGrid" | "modes">
+>;
 
 type InspectorProps = {
 	frames: Frame[];
+	sections: CanvasSection[];
+	section: CanvasSection | null;
+	onSectionTheme: (id: string, option: string | undefined) => void;
 	files: ProjectFiles;
 	selection: string[];
 	tab: InspectorTab;
@@ -177,7 +184,8 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
 					{props.propsPanel}
 					{single ? <FrameDetails frame={single} {...props} /> : null}
 					{selected.length > 1 ? <MultiDetails count={selected.length} {...props} /> : null}
-					{empty ? (
+					{selected.length === 0 && props.section ? <SectionDetails {...props} section={props.section} /> : null}
+					{empty && !props.section ? (
 						<p className="px-4 py-5 text-[13px] text-subtle-foreground">
 							Select a screen to see its frame, variations and layers.
 						</p>
@@ -256,11 +264,31 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 						onDeviceChange={(device: Device) => device !== frame.device && onChange(frame.file, { device })}
 					/>
 				</div>
+				<ThemeToggle
+					value={frame.modes?.[SCHEME]}
+					inherited={resolveModes({ ...frame, modes: undefined }, props.sections)[SCHEME]!}
+					onChange={(option) => onChange(frame.file, { modes: chooseMode(frame.modes, SCHEME, option) })}
+				/>
 			</Section>
 			<LayoutGridSection {...props} />
 			{isScreenFile(frame.file) ? <Variations key={frame.file} {...props} /> : null}
 			<Separator />
 			<SelectionActions label="screen" onDuplicate={onDuplicate} onDelete={onDelete} />
+		</div>
+	);
+}
+
+function SectionDetails({ section, sections, onSectionTheme }: InspectorProps & { section: CanvasSection }) {
+	return (
+		<div className="flex flex-col gap-4 p-4">
+			<Section title="Section">
+				<span className="truncate text-[13px]">{section.name}</span>
+				<ThemeToggle
+					value={section.modes?.[SCHEME]}
+					inherited={inheritedModes(section, sections)[SCHEME]!}
+					onChange={(option) => onSectionTheme(section.id, option)}
+				/>
+			</Section>
 		</div>
 	);
 }

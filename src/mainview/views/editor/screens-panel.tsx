@@ -5,6 +5,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/component
 import { matchesScreen, stepTarget } from "@/lib/screen-list";
 import { cn } from "@/lib/utils";
 import { isString } from "../../../shared/guards";
+import { modeLabel, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import { groupBySection } from "../../../shared/sections";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { SECTION_COLOR } from "./sections-layer";
@@ -143,6 +144,7 @@ export const ScreensPanel = memo(function ScreensPanel({
 										key={frame.file}
 										frame={frame}
 										files={files}
+										mode={resolveModes(frame, sections)}
 										selected={selected.has(frame.file)}
 										renaming={renaming === frame.file}
 										drop={drop?.file === frame.file ? (drop.after ? "after" : "before") : null}
@@ -201,6 +203,7 @@ function parseMoving(data: string): string[] | null {
 function ScreenRow({
 	frame,
 	files,
+	mode,
 	selected,
 	renaming,
 	drop,
@@ -217,6 +220,7 @@ function ScreenRow({
 }: {
 	frame: Frame;
 	files: ProjectFiles;
+	mode: ResolvedMode;
 	selected: boolean;
 	renaming: boolean;
 	drop: "before" | "after" | null;
@@ -280,6 +284,7 @@ function ScreenRow({
 										files={files}
 										width={frame.width}
 										height={frame.height}
+										mode={mode}
 										live={false}
 									/>
 								</span>
@@ -325,6 +330,9 @@ function SectionHeader({ section, onSelect }: { section: CanvasSection; onSelect
 		>
 			<span className="size-2 shrink-0 rounded-full" style={{ background: SECTION_COLOR[section.color] }} />
 			<span className="min-w-0 flex-1 truncate">{section.name}</span>
+			{section.modes ? (
+				<span className="shrink-0 font-normal text-subtle-foreground">{modeLabel(section.modes)}</span>
+			) : null}
 		</button>
 	);
 }

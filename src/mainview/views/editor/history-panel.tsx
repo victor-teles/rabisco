@@ -23,6 +23,7 @@ import {
 } from "@/lib/versions";
 import type { AppliedTheme } from "../../../shared/context/theme";
 import { cleanCheckpointName, type GitCheckpoint, type GitStatus } from "../../../shared/git";
+import { resolveModes } from "../../../shared/modes";
 import { errorMessage } from "./export/share-utils";
 import { CHECKPOINT_KEYS } from "./shortcuts";
 
@@ -312,6 +313,7 @@ function VersionPreview({ snapshot }: { snapshot: Snapshot }) {
 										files={snapshot.files}
 										width={frame.width}
 										height={frame.height}
+										mode={resolveModes(frame, snapshot.sections ?? [])}
 										live={false}
 									/>
 								</span>

@@ -3,6 +3,7 @@ import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
+import type { ResolvedMode } from "../../../shared/modes";
 import type { ElementLayout, Insets, Spacing } from "./spacing";
 
 /** Where an error points to in project source. Lines and columns are 1-based. */
@@ -26,6 +27,7 @@ export type HostMessage =
 			cssPatch?: string;
 			/** DESIGN.md token overrides; loads after `css`. */
 			theme?: string;
+			mode?: ResolvedMode;
 			/** Drop everything the frame knew before this message. */
 			reset?: boolean;
 	  }
@@ -35,6 +37,7 @@ export type HostMessage =
 	/** Project images by `src` (decision 0010); only what changed unless `reset`. `null` deletes. */
 	| { type: "assets"; assets: Record<string, AssetPayload | null>; reset?: boolean }
 	| { type: "theme"; css: string }
+	| { type: "mode"; mode: ResolvedMode }
 	/** Answered by a `hit` with the same `id`; `x`, `y` are frame-local CSS pixels. */
 	| { type: "hit-test"; id: number; x: number; y: number }
 	/** Answered by a `drop-layout` with the same `id`; `x`, `y` pick the instance under the pointer (else the first). */

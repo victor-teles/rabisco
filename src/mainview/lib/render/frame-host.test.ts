@@ -793,3 +793,48 @@ describe("FrameHost: project images", () => {
 		projectAssets.reset({});
 	});
 });
+
+describe("FrameHost: mode", () => {
+	const dark = { scheme: "dark" };
+
+	test("the mode goes with the modules, and alone when only it changes", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "", dark);
+		expect(lastPosted(posted, "modules").mode).toEqual(dark);
+
+		posted.length = 0;
+		host.update("screens/a.tsx", PROJECT, "", dark);
+		expect(posted).toEqual([]);
+
+		host.update("screens/a.tsx", PROJECT, "", { scheme: "light" });
+		expect(posted).toEqual([{ type: "mode", mode: { scheme: "light" } }]);
+		host.dispose();
+	});
+
+	test("it is sent again after the frame reloads and with each new screen", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "", dark);
+
+		posted.length = 0;
+		host.receive({ type: "ready" });
+		expect(lastPosted(posted, "modules").mode).toEqual(dark);
+
+		posted.length = 0;
+		host.update("screens/b.tsx", PROJECT, "", dark);
+		expect(lastPosted(posted, "modules").mode).toEqual(dark);
+		host.dispose();
+	});
+
+	test("without a mode the frame gets the defaults", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		host.update("screens/a.tsx", PROJECT, "");
+		expect(lastPosted(posted, "modules").mode).toEqual({ scheme: "light" });
+		host.dispose();
+	});
+});

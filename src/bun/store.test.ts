@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { join } from "path";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
+import { coverFor } from "../shared/project";
 import type { AssetChange } from "../shared/assets";
 import { assetDigest } from "./assets";
 import type { ChangeSummary } from "../shared/change-summary";
@@ -151,6 +152,29 @@ describe("project files", () => {
 
 		expect(unknown.device).toBe("mobile");
 		expect(unknown.frames[0]).toMatchObject({ device: "mobile", width: 390, height: 844 });
+	});
+
+	test("frame and section modes load, and stay missing in older files (decision 0028)", () => {
+		const frame = { file: "screens/home.tsx", x: 0, y: 0 };
+		const section = { id: "s", name: "Dark", x: 0, y: 0, width: 500, height: 900 };
+
+		const canvas = normalizeCanvas(
+			{
+				version: 1,
+				name: "Modes",
+				frames: [
+					{ ...frame, modes: { scheme: "dark", "Not a slug": "x" } },
+					{ ...frame, file: "screens/b.tsx" },
+				],
+				sections: [{ ...section, modes: { scheme: "dark" } }],
+			},
+			"x",
+		);
+
+		expect(canvas.frames[0]?.modes).toEqual({ scheme: "dark" });
+		expect("modes" in canvas.frames[1]!).toBe(false);
+		expect(canvas.sections?.[0]?.modes).toEqual({ scheme: "dark" });
+		expect(coverFor(canvas, { "screens/home.tsx": "" })?.mode).toEqual({ scheme: "dark" });
 	});
 
 	test("the applied theme loads when present and stays missing in older files", () => {

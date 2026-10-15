@@ -1,5 +1,6 @@
 // Images of frames that aren't mounted (Phase 9). One capture runs at a time; frames that were never live
 // render in a single hidden frame.
+import { DEFAULT_MODE, modeKey, type ResolvedMode } from "../../../shared/modes";
 import type { ProjectFiles } from "../../../shared/types";
 import { compileCache, hashString } from "./compile";
 import { FrameHost, onFrameStatus, runtimeUrl } from "./frame-host";
@@ -28,9 +29,16 @@ function graphHash(entry: string, files: ProjectFiles) {
 	return hashString([...graph.modules.values()].map((module) => module.hash).join(","));
 }
 
-/** Changes whenever what the frame shows does: its modules, theme or size. */
-export function snapshotKey(entry: string, files: ProjectFiles, theme: string, width: number, height: number) {
-	return `${entry}\0${width}x${height}\0${graphHash(entry, files)}\0${hashString(theme)}`;
+/** Changes whenever what the frame shows does: its modules, theme, mode or size. */
+export function snapshotKey(
+	entry: string,
+	files: ProjectFiles,
+	theme: string,
+	width: number,
+	height: number,
+	mode: ResolvedMode = DEFAULT_MODE,
+) {
+	return `${entry}\0${width}x${height}\0${graphHash(entry, files)}\0${hashString(theme)}\0${modeKey(mode)}`;
 }
 
 /** Data URLs, oldest first. */
@@ -190,6 +198,7 @@ export type SnapshotJob = {
 	entry: string;
 	files: ProjectFiles;
 	theme: string;
+	mode?: ResolvedMode;
 	width: number;
 	height: number;
 };
@@ -210,7 +219,7 @@ export function renderSnapshot(job: SnapshotJob, wanted: () => boolean): Promise
 
 		if (screen !== current.rendered || host.status !== "rendered") {
 			const rendered = nextRender(frame);
-			host.update(job.entry, job.files, job.theme);
+			host.update(job.entry, job.files, job.theme, job.mode);
 
 			if (!(await rendered)) {
 				current.rendered = "";
@@ -221,8 +230,8 @@ export function renderSnapshot(job: SnapshotJob, wanted: () => boolean): Promise
 
 			current.rendered = screen;
 		} else {
-			// Same screen and modules: only the theme or the size changed, which needs no render
-			host.update(job.entry, job.files, job.theme);
+			// Same screen and modules: only the theme, mode or size changed, which needs no render
+			host.update(job.entry, job.files, job.theme, job.mode);
 			await new Promise(requestAnimationFrame);
 		}
 

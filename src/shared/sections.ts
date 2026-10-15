@@ -1,8 +1,9 @@
 import { isFiniteNumber, isString } from "./guards";
+import { normalizeModes } from "./modes";
 import { isJsonArray, isJsonObject, type Json } from "./json";
 import type { CanvasSection, Frame, SectionColor } from "./types";
 
-type Rect = { x: number; y: number; width: number; height: number };
+export type Rect = { x: number; y: number; width: number; height: number };
 
 export type SectionGroup = { section: CanvasSection | null; frames: Frame[] };
 
@@ -49,6 +50,9 @@ export function normalizeSections(raw: Json | undefined): CanvasSection[] {
 			width,
 			height,
 		});
+		const modes = normalizeModes(entry.modes);
+
+		if (modes) sections[sections.length - 1]!.modes = modes;
 	}
 
 	return sections;
@@ -104,6 +108,9 @@ export function sectionAt(x: number, y: number, sections: CanvasSection[]): Canv
 
 	return found;
 }
+
+export const sectionsAround = (frame: Rect, sections: readonly CanvasSection[]) =>
+	sections.filter((section) => holdsFrame(section, frame)).sort((a, b) => a.width * a.height - b.width * b.height);
 
 export const sectionOf = (frame: Frame, sections: CanvasSection[]) =>
 	sectionAt(frame.x + frame.width / 2, frame.y + frame.height / 2, sections);

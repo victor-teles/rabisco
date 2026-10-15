@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import type { Snapshot } from "@/lib/history";
+import { chooseMode, SCHEME } from "../../shared/modes";
 import { moveSection, nextSectionName, sectionAround } from "../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../shared/types";
 
@@ -91,6 +92,17 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		[change],
 	);
 
+	const setTheme = useCallback(
+		(id: string, option: string | undefined) =>
+			change((snapshot) => ({
+				...snapshot,
+				sections: (snapshot.sections ?? NO_SECTIONS).map((section) =>
+					section.id === id ? { ...section, modes: chooseMode(section.modes, SCHEME, option) } : section,
+				),
+			})),
+		[change],
+	);
+
 	const remove = useCallback(
 		(id: string) =>
 			change((snapshot) => ({
@@ -164,6 +176,7 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		startRename: setRenaming,
 		rename,
 		recolor,
+		setTheme,
 		remove,
 		move,
 		resize,

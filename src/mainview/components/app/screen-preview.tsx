@@ -19,6 +19,7 @@ import {
 	subscribeSnapshots,
 } from "@/lib/render/snapshots";
 import { themeCss } from "@/lib/render/styles";
+import { DEFAULT_MODE, type ResolvedMode } from "../../../shared/modes";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
 /** CSS of the project's applied tokens; every frame below renders with it */
@@ -54,6 +55,7 @@ export function ScreenFrame({
 	files,
 	width,
 	height,
+	mode = DEFAULT_MODE,
 	className,
 	interactive = false,
 	play = false,
@@ -68,6 +70,7 @@ export function ScreenFrame({
 	files: ProjectFiles;
 	width: number;
 	height: number;
+	mode?: ResolvedMode;
 	className?: string;
 	interactive?: boolean;
 	play?: boolean;
@@ -94,8 +97,8 @@ export function ScreenFrame({
 	const [painted, setPainted] = useState(false);
 
 	const key = useMemo(
-		() => (virtual ? snapshotKey(entry, files, theme, width, height) : ""),
-		[virtual, entry, files, theme, width, height],
+		() => (virtual ? snapshotKey(entry, files, theme, width, height, mode) : ""),
+		[virtual, entry, files, theme, width, height, mode],
 	);
 
 	const cached = useSyncExternalStore(subscribeSnapshots, () => (key ? cachedSnapshot(key) : undefined));
@@ -136,8 +139,8 @@ export function ScreenFrame({
 	}, [mounted]);
 
 	useEffect(() => {
-		hostRef.current?.update(entry, files, theme);
-	}, [entry, files, theme, mounted]);
+		hostRef.current?.update(entry, files, theme, mode);
+	}, [entry, files, theme, mode, mounted]);
 
 	useEffect(() => {
 		hostRef.current?.setPlay(play);
@@ -182,8 +185,8 @@ export function ScreenFrame({
 
 	useEffect(() => {
 		if (!virtual || isLive || mounted || cached || snapshotFailed(key)) return;
-		void renderSnapshot({ key, entry, files, theme, width, height }, () => isWanted(key));
-	}, [virtual, isLive, mounted, cached, key, entry, files, theme, width, height]);
+		void renderSnapshot({ key, entry, files, theme, mode, width, height }, () => isWanted(key));
+	}, [virtual, isLive, mounted, cached, key, entry, files, theme, mode, width, height]);
 
 	// A frame that has painted is current: only an image of the same version may cover it
 	const cover = mounted && painted ? (isLive ? undefined : cached) : snapshot;
@@ -240,6 +243,7 @@ export function ScreenPreview({
 						files={source.files}
 						width={source.width}
 						height={source.height}
+						mode={source.mode}
 						live={live}
 					/>
 				</ScreenTheme>

@@ -14,6 +14,8 @@ import {
 import { HANDLE_CURSOR, HANDLES, handleSides, handleSpan, resizeRect, type Handle } from "@/lib/frame-resize";
 import { cn } from "@/lib/utils";
 import type { ViewportStore } from "@/lib/viewport";
+import { ThemeMenu } from "./theme-controls";
+import { inheritedModes, SCHEME } from "../../../shared/modes";
 import { MIN_SECTION_SIZE, membersOf, SECTION_COLORS } from "../../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../../shared/types";
 
@@ -91,6 +93,7 @@ type SectionsLayerProps = {
 	onStartRename: (id: string) => void;
 	onRename: (id: string, name: string | null) => void;
 	onRecolor: (id: string, color: SectionColor) => void;
+	onTheme: (id: string, option: string | undefined) => void;
 	onDelete: (id: string) => void;
 	onSelectScreens: (files: string[]) => void;
 };
@@ -250,6 +253,7 @@ function SectionView({
 	onStartRename,
 	onRename,
 	onRecolor,
+	onTheme,
 	onDelete,
 	onSelectScreens,
 	onPressLabel,
@@ -393,6 +397,11 @@ function SectionView({
 									))}
 								</ContextMenuSubContent>
 							</ContextMenuSub>
+							<ThemeMenu
+								value={section.modes?.[SCHEME]}
+								inherited={inheritedModes(section, sections)[SCHEME]!}
+								onChange={(option) => onTheme(section.id, option)}
+							/>
 							<ContextMenuItem onSelect={() => onSelectScreens(membersOf(section, sections, frames).frames)}>
 								Select screens
 							</ContextMenuItem>

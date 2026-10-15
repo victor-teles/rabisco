@@ -3,6 +3,7 @@ import { detachComments } from "./comments";
 import type { AppliedTheme } from "./context/theme";
 import { designTokensOf } from "./context/tokens";
 import type { Json } from "./json";
+import { resolveModes } from "./modes";
 import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenCover, ScreenSource } from "./types";
 
 export const FRAME_SIZE = {
@@ -181,6 +182,7 @@ export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource |
 		height: frame.height,
 		files: coverFiles,
 		theme: appliedTheme(canvas, files),
+		mode: resolveModes(frame, canvas.sections ?? []),
 	};
 }
 

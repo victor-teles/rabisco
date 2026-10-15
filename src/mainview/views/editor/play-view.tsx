@@ -32,7 +32,8 @@ import {
 	type Size,
 } from "../../../shared/prototype/transitions";
 import type { StepMotion } from "../../../shared/prototype/walkthrough";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { saveWalkthrough, type CapturedImage, type CapturedStep } from "./export/walkthrough-export";
 import { isTyping, PLAY_BACK_KEYS, PLAY_FORWARD_KEYS } from "./shortcuts";
 
@@ -83,12 +84,14 @@ const elapsedLabel = (ms: number) => {
 export function PlayView({
 	start,
 	frames,
+	sections,
 	files,
 	projectName,
 	onClose,
 }: {
 	start: string;
 	frames: Frame[];
+	sections: CanvasSection[];
 	files: ProjectFiles;
 	projectName: string;
 	onClose: () => void;
@@ -116,6 +119,12 @@ export function PlayView({
 	const overlayOpen = overlays.some((overlay) => !overlay.closing);
 	const canBack = history.index > 0;
 	const canForward = history.index < history.stack.length - 1;
+
+	const modeOf = (file: string) => {
+		const target = frames.find((f) => f.file === file);
+
+		return target ? resolveModes(target, sections) : DEFAULT_MODE;
+	};
 
 	// Scale down to fit the window, never up
 	useLayoutEffect(() => {
@@ -550,6 +559,7 @@ export function PlayView({
 										files={files}
 										width={size.width}
 										height={size.height}
+										mode={modeOf(layer.file)}
 										interactive
 										play
 										onNavigate={navigate}
@@ -565,6 +575,7 @@ export function PlayView({
 									overlay={overlay}
 									screen={size}
 									size={sizeOf(overlay.file)}
+									screenMode={modeOf(overlay.file)}
 									files={files}
 									onNavigate={navigate}
 									onEscape={escape}
@@ -593,6 +604,7 @@ function OverlayLayer({
 	overlay,
 	screen,
 	size,
+	screenMode,
 	files,
 	onNavigate,
 	onEscape,
@@ -603,6 +615,7 @@ function OverlayLayer({
 	overlay: Overlay;
 	screen: Size;
 	size: Size;
+	screenMode: ResolvedMode;
 	files: ProjectFiles;
 	onNavigate: (to: string, options: LinkOptions) => void;
 	onEscape: () => void;
@@ -667,6 +680,7 @@ function OverlayLayer({
 					files={files}
 					width={rect.width}
 					height={rect.height}
+					mode={screenMode}
 					interactive
 					play
 					onNavigate={onNavigate}

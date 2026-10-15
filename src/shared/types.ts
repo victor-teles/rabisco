@@ -13,6 +13,7 @@ import type { ChangeSummary } from "./change-summary";
 import type { ChatSummary } from "./chats";
 import type { AppliedTheme } from "./context/theme";
 import type { DesignTokens } from "./context/tokens";
+import type { ResolvedMode } from "./modes";
 
 export type Device = "mobile" | "tablet" | "desktop";
 
@@ -31,7 +32,10 @@ export type Frame = {
 	height: number;
 	layoutGrid?: LayoutGrid;
 	reference?: string;
+	modes?: ModeChoices;
 };
+
+export type ModeChoices = Record<string, string>;
 
 export type LayoutGrid = { columns: number; gutter: number; margin: number };
 
@@ -45,6 +49,7 @@ export type CanvasSection = {
 	y: number;
 	width: number;
 	height: number;
+	modes?: ModeChoices;
 };
 
 export type CanvasImage = {
@@ -148,6 +153,7 @@ export type ScreenSource = {
 	height: number;
 	files: ProjectFiles;
 	theme: DesignTokens;
+	mode?: ResolvedMode;
 };
 
 /** Which screen a project's cover shows; its files load with `loadCover` */

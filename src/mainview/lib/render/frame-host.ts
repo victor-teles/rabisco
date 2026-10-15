@@ -1,6 +1,7 @@
 import type { DesignFinding } from "../../../shared/design/findings";
 import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
+import { DEFAULT_MODE, modeKey, type ResolvedMode } from "../../../shared/modes";
 import { linkStarts } from "../../../shared/prototype/links";
 import type { ProjectFiles } from "../../../shared/types";
 import { projectAssets } from "./assets";
@@ -115,6 +116,7 @@ export class FrameHost {
 	#entry = "";
 	#files: ProjectFiles = {};
 	#theme = "";
+	#mode: ResolvedMode = DEFAULT_MODE;
 	#ready = false;
 	#waitingForStyles = false;
 	#sent = new Map<string, string>();
@@ -124,6 +126,7 @@ export class FrameHost {
 	#patched = false;
 	#cssTimer: ReturnType<typeof setTimeout> | undefined;
 	#sentTheme = "";
+	#sentMode = "";
 	#sentAssets = new Map<string, Blob>();
 	#sentAssetsVersion = -1;
 	#unsubscribe: () => void;
@@ -402,10 +405,11 @@ export class FrameHost {
 	}
 
 	/** `theme` is the CSS of the applied tokens (`themeCss`) */
-	update(entry: string, files: ProjectFiles, theme: string) {
+	update(entry: string, files: ProjectFiles, theme: string, mode: ResolvedMode = DEFAULT_MODE) {
 		this.#entry = entry;
 		this.#files = files;
 		this.#theme = theme;
+		this.#mode = mode;
 		this.#sync();
 		this.#pushLinks();
 	}
@@ -431,6 +435,7 @@ export class FrameHost {
 			this.#sentCss = "";
 			this.#patched = false;
 			this.#sentTheme = "";
+			this.#sentMode = "";
 			this.#sentAssets.clear();
 			this.#sentAssetsVersion = -1;
 			this.#textEdit?.resolve(null);
@@ -615,11 +620,17 @@ export class FrameHost {
 		const reset = this.#sentEntry === "";
 		const css = screenStyles.css !== this.#sentCss ? screenStyles.css : undefined;
 		const theme = this.#theme !== this.#sentTheme ? this.#theme : undefined;
+		const mode = modeKey(this.#mode);
 
 		if (!changed && !reset && this.#entry === this.#sentEntry) {
 			if (theme !== undefined) {
 				this.#sentTheme = theme;
 				this.#post({ type: "theme", css: theme });
+			}
+
+			if (mode !== this.#sentMode) {
+				this.#sentMode = mode;
+				this.#post({ type: "mode", mode: this.#mode });
 			}
 
 			if (css !== undefined) this.#pushCss();
@@ -629,8 +640,10 @@ export class FrameHost {
 
 		const patch = css !== undefined && !reset ? this.#patchTo(css) : null;
 
-		if (patch === null) this.#post({ type: "modules", entry: this.#entry, modules, css, theme, reset });
-		else this.#post({ type: "modules", entry: this.#entry, modules, cssPatch: patch, theme, reset });
+		const message = { type: "modules", entry: this.#entry, modules, theme, mode: this.#mode, reset } as const;
+
+		if (patch === null) this.#post({ ...message, css });
+		else this.#post({ ...message, cssPatch: patch });
 
 		for (const [path, payload] of Object.entries(modules)) {
 			if (payload) this.#sent.set(path, graph.modules.get(path)!.hash);
@@ -638,6 +651,7 @@ export class FrameHost {
 		}
 
 		this.#sentEntry = this.#entry;
+		this.#sentMode = mode;
 
 		if (css !== undefined) this.#sentCss = css;
 

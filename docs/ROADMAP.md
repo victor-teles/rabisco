@@ -25,11 +25,11 @@ Open items from phase 14, plus the gaps that make design system work hard.
 
 Figma sets a variable mode on a section, and every frame inside follows it. Rabisco sections can do the same with token modes, and can also try out token changes before they reach the project.
 
-- ⬜ Dark mode on frames: a section or a screen set to Dark adds `.dark` to the frame root, so the `### Dark` tokens in DESIGN.md show. Today no frame ever renders dark
+- ✅ Dark mode on frames: a section or a screen set to Dark adds `.dark` to the frame's `<html>`, so the `### Dark` tokens in DESIGN.md show on the canvas, in the screens panel, covers, history and play (`src/shared/modes.ts`)
 - ⬜ More modes than light and dark in DESIGN.md (brand, density, contrast), each a group of named options with its own token values
-- ⬜ A Theme row in the section inspector and menu: pick an option for each mode group. Screens inside follow it at once, and a screen dragged in or out re-themes on drop
-- ⬜ Nested sections inherit: the innermost section that sets a group wins, and groups it leaves unset come from the section around it, then the project default
-- ⬜ A screen can set its own mode from its menu, which wins over its section
+- ✅ A Theme row in the section inspector and menu: pick an option for each mode group (Auto, Light or Dark until more groups exist). Screens inside follow it at once, and a screen dragged in or out re-themes on drop
+- ✅ Nested sections inherit: the innermost section that sets a group wins, and groups it leaves unset come from the section around it, then the project default
+- ✅ A screen can set its own mode from its menu or the inspector, which wins over its section
 - ⬜ Token overrides on a section: change a token for that section only, to try a new primary color or radius next to the current one. "Save as mode" writes it to DESIGN.md as a new option; "Apply to project" makes it the project value; "Discard" drops it
 - ⬜ "Duplicate with mode": copy a section and its screens with another mode, to compare them side by side. The copies are files, and links inside the copy point at the copy
 - ⬜ Play mode, the share viewer, image export, snapshots and the code export use each screen's resolved mode. The export sets it on each screen's route, so a screen exports the way it looks on the canvas
