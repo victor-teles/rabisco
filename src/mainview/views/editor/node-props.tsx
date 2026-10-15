@@ -17,7 +17,7 @@ import type { Frame, ProjectFiles } from "../../../shared/types";
 import { ElementStyle } from "./element-style";
 import { IconPicker } from "./icon-picker";
 import { PropControls, propSignature } from "./prop-controls";
-import { ImagePickButton, ScreenLinkMenu } from "./prop-pickers";
+import { ComponentSwapMenu, ImagePickButton, ScreenLinkMenu } from "./prop-pickers";
 
 type NodePropsProps = {
 	files: ProjectFiles;
@@ -194,6 +194,20 @@ function ElementProps({
 					</h3>
 					<span className="shrink-0 text-xs text-subtle-foreground tabular-nums">line {line}</span>
 					<div className="flex-1" />
+					{ref && element.name && !icon ? (
+						<ComponentSwapMenu
+							files={files}
+							file={file}
+							start={start}
+							current={element.name}
+							attributes={element.attributes.flatMap((a) => (a.kind === "attribute" ? [a.name] : []))}
+							disabled={structure.busy}
+							onSwap={(next, at) => {
+								structure.editCode(file, next);
+								structure.select({ file, start: at });
+							}}
+						/>
+					) : null}
 					{ref?.source === "project" && onOpenComponent ? (
 						<Button
 							variant="ghost"

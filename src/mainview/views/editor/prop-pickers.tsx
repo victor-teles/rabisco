@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ImagePlus, Link2 } from "lucide-react";
+import { ImagePlus, Link2, Replace } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
@@ -12,6 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { api, isDesktop } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { projectComponents } from "../../../shared/components/usages";
+import { swapComponent, type SwapTarget } from "../../../shared/jsx/swap";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
 import { hrefScreen } from "../../../shared/prototype/links";
 import type { Frame, ProjectFiles } from "../../../shared/types";
@@ -110,6 +113,108 @@ export function ScreenLinkMenu({
 						</DropdownMenuRadioItem>
 					))}
 				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+function SwapItems({
+	files,
+	file,
+	start,
+	current,
+	attributes,
+	onSwap,
+}: {
+	files: ProjectFiles;
+	file: string;
+	start: number;
+	current: string;
+	attributes: string[];
+	onSwap: (source: string, start: number) => void;
+}) {
+	const targets = projectComponents(files).flatMap(({ path, exports }) =>
+		exports.flatMap((exp): (SwapTarget & { kept: number })[] => {
+			if (path === file || exp.name === current) return [];
+			const props = exp.props.map((prop) => prop.name);
+			const extendsElement = !!exp.extendsElement;
+
+			const kept = attributes.filter((name) => extendsElement || props.includes(name)).length;
+
+			return [{ name: exp.name, path, props, acceptsChildren: exp.acceptsChildren, extendsElement, kept }];
+		}),
+	);
+
+	const swap = (target: SwapTarget) => {
+		const source = files[file];
+
+		if (source === undefined) return;
+		const result = swapComponent(source, file, start, target);
+
+		if ("error" in result) {
+			toast.error(`Couldn't swap ${current} for ${target.name}`, { description: result.error });
+
+			return;
+		}
+
+		onSwap(result.source, result.start);
+		toast(`Swapped ${current} for ${target.name}`, {
+			description: result.dropped.length
+				? `${target.name} doesn't take ${result.dropped.join(", ")}, so ${result.dropped.length === 1 ? "it was" : "they were"} left out. Press ⌘Z to undo.`
+				: "Every prop carried over. Press ⌘Z to undo.",
+		});
+	};
+
+	if (!targets.length) return <p className="px-2 py-1.5 text-xs text-subtle-foreground">No other components yet</p>;
+
+	return targets.map((target) => (
+		<DropdownMenuItem
+			key={`${target.path}#${target.name}`}
+			className="flex items-center gap-3 text-[13px]"
+			onSelect={() => swap(target)}
+		>
+			<span className="min-w-0 flex-1 truncate">{target.name}</span>
+			{attributes.length ? (
+				<span className="shrink-0 text-[11px] text-subtle-foreground tabular-nums">
+					keeps {target.kept} of {plural(attributes.length, "prop")}
+				</span>
+			) : null}
+		</DropdownMenuItem>
+	));
+}
+
+/** Figma's instance swap: another project component in its place, with the props both take */
+export function ComponentSwapMenu(props: {
+	files: ProjectFiles;
+	file: string;
+	start: number;
+	current: string;
+	/** Set on the usage */
+	attributes: string[];
+	disabled?: boolean;
+	onSwap: (source: string, start: number) => void;
+}) {
+	return (
+		<DropdownMenu modal={false}>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					size="xs"
+					disabled={props.disabled}
+					className="text-muted-foreground"
+					title={`Swap ${props.current} for another component`}
+				>
+					<Replace />
+					Swap
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="max-h-80 min-w-56">
+				<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+					Swap {props.current} for
+				</DropdownMenuLabel>
+				<SwapItems {...props} />
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
