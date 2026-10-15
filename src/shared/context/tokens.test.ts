@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { DESIGN_TEMPLATE } from "./templates";
 import {
+	addModeOption,
 	changedTokenCount,
 	contestedTokenNames,
 	customTokenNames,
 	declarations,
 	designTokensOf,
+	draftCss,
 	formatTextStyle,
+	modeOptionError,
 	modeSlug,
 	parseDesignTokens,
 	parseTextStyle,
@@ -579,5 +582,111 @@ describe("mode groups", () => {
 
 		expect(designTokensOf(dark).dark).toEqual({ ring: "#000" });
 		expect(designTokensOf(dark).modes?.[0]?.options[0]?.dark).toEqual({ primary: "pink" });
+	});
+});
+
+const MODE_DESIGN = `# Design
+
+## Tokens
+
+- primary: #111111
+- color-brand: #ff0000
+
+### Dark
+
+- primary: #eeeeee
+
+## Notes
+
+Keep it calm.
+`;
+
+describe("addModeOption", () => {
+	test("a new group gets an empty default option first", () => {
+		const next = addModeOption(MODE_DESIGN, {
+			group: "Brand",
+			option: "Acme",
+			values: { light: { primary: "#0000ff" }, dark: { primary: "#000088" } },
+		});
+
+		expect(parseDesignTokens(next).modes).toEqual([
+			{
+				name: "brand",
+				options: [
+					{ name: "default", light: {}, dark: {} },
+					{ name: "acme", light: { primary: "#0000ff" }, dark: { primary: "#000088" } },
+				],
+			},
+		]);
+		expect(parseDesignTokens(next).light).toEqual({ primary: "#111111", "color-brand": "#ff0000" });
+		expect(next).toContain("## Notes\n\nKeep it calm.");
+	});
+
+	test("an existing group gets the option after its last one", () => {
+		const once = addModeOption(MODE_DESIGN, {
+			group: "Brand",
+			option: "Acme",
+			values: { light: { primary: "#00f" }, dark: {} },
+		});
+
+		const twice = addModeOption(once, {
+			group: "brand",
+			option: "Zeta",
+			values: { light: { primary: "#0f0" }, dark: {} },
+		});
+
+		expect(parseDesignTokens(twice).modes?.[0]?.options.map((option) => option.name)).toEqual([
+			"default",
+			"acme",
+			"zeta",
+		]);
+		expect(twice).toContain("### Brand mode: Zeta");
+	});
+
+	test("without a Tokens section, one is added", () => {
+		const next = addModeOption("# Design\n", {
+			group: "Density",
+			option: "Compact",
+			values: { light: { radius: "2px" }, dark: {} },
+		});
+
+		expect(parseDesignTokens(next).modes?.[0]?.options[1]).toEqual({
+			name: "compact",
+			light: { radius: "2px" },
+			dark: {},
+		});
+	});
+
+	test("names a taken option or a bad group", () => {
+		const once = addModeOption(MODE_DESIGN, {
+			group: "Brand",
+			option: "Acme",
+			values: { light: { primary: "#00f" }, dark: {} },
+		});
+
+		expect(modeOptionError(once, "Brand", "acme")).toBe("This group already has this mode");
+		expect(modeOptionError(once, "Scheme", "Dim")).toBe("The scheme group is the Dark heading");
+		expect(modeOptionError(once, "Brand", "")).toBe("Name the mode");
+		expect(modeOptionError(once, "Brand", "Zeta")).toBeNull();
+	});
+});
+
+describe("draftCss", () => {
+	test("beats every mode option and comes after the theme", () => {
+		const css = draftCss({ light: { primary: "#0000ff", "color-brand": "#00ff00" }, dark: { primary: "#000088" } });
+
+		expect(css).toBe(
+			":root:root:root {\n\t--color-brand: #00ff00;\n}\n" +
+				":root:not(.dark):root:root {\n\t--primary: #0000ff;\n}\n" +
+				":root.dark:root:root {\n\t--primary: #000088;\n}\n",
+		);
+	});
+
+	test("drops values that could inject CSS", () => {
+		expect(draftCss({ light: { primary: "red; } body { display: none" }, dark: {} })).toBe("");
+	});
+
+	test("leaves the theme stylesheet as it was", () => {
+		expect(tokensToCss({ light: { primary: "#111" }, dark: {} })).toBe(":root:not(.dark) {\n\t--primary: #111;\n}\n");
 	});
 });

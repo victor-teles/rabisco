@@ -91,14 +91,20 @@ import {
 import { applyDesignSystemChange, type DesignSystemChange } from "../../../shared/context/design-system";
 import { seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { withDesignTokens } from "../../../shared/context/brand-kit";
-import { designTokensOf, type DesignTokens } from "../../../shared/context/tokens";
+import {
+	addModeOption,
+	designTokensOf,
+	modeSlug,
+	type DesignTokens,
+	type TokenValues,
+} from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
-import { chooseMode, resolveModes } from "../../../shared/modes";
+import { chooseMode, optionLabel, resolveModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
-import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
+import type { CanvasSection, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import { Canvas, withMoves, type CanvasHandle, type ElementRef, type FrameMove, type Tool } from "./canvas";
 import { ChatPanel, type ComposerInsert, type HeldPrompt } from "./chat-panel";
@@ -943,6 +949,52 @@ export function EditorView({
 		[change],
 	);
 
+	const settleDraft = useCallback(
+		(
+			id: string,
+			write: (design: string, draft: TokenValues) => string,
+			patch: (section: CanvasSection) => CanvasSection,
+		) =>
+			change((snapshot) => {
+				const section = snapshot.sections?.find((candidate) => candidate.id === id);
+
+				if (!section?.tokens) return snapshot;
+				const design = write(seedDesignTokens(snapshot.files["DESIGN.md"] ?? "", snapshot.theme), section.tokens);
+
+				return {
+					...snapshot,
+					files: { ...snapshot.files, "DESIGN.md": design },
+					theme: withSource(designTokensOf(design), designSourceOf(design)),
+					sections: (snapshot.sections ?? []).map((candidate) => (candidate.id === id ? patch(candidate) : candidate)),
+				};
+			}),
+		[change],
+	);
+
+	const saveDraftAsMode = useCallback(
+		(id: string, group: string, option: string) => {
+			settleDraft(
+				id,
+				(design, values) => addModeOption(design, { group, option, values }),
+				(section) => ({
+					...section,
+					modes: chooseMode(section.modes, modeSlug(group), modeSlug(option)),
+					tokens: undefined,
+				}),
+			);
+			toast(`Saved as ${optionLabel(modeSlug(option))} in DESIGN.md`, { description: "Press ⌘Z to undo." });
+		},
+		[settleDraft],
+	);
+
+	const applyDraft = useCallback(
+		(id: string) => {
+			settleDraft(id, withDesignTokens, (section) => ({ ...section, tokens: undefined }));
+			toast("Applied the draft to the project tokens", { description: "Press ⌘Z to undo." });
+		},
+		[settleDraft],
+	);
+
 	/** One undo step; library tokens written to DESIGN.md re-theme the screens at once (decision 0045) */
 	const changeLibrary = useCallback(
 		(recipe: (files: ProjectFiles) => ProjectFiles) =>
@@ -1481,15 +1533,7 @@ export function EditorView({
 			},
 			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
 			copyImage: (format, starts) =>
-				single &&
-				void copyImage(
-					format,
-					single,
-					files,
-					appliedTokens,
-					resolveModes(single, sections.sections, appliedTokens),
-					starts,
-				),
+				single && void copyImage(format, single, files, appliedTokens, sections.sections, starts),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
@@ -1593,18 +1637,14 @@ export function EditorView({
 			group: "Export",
 			chords: [{ code: "KeyC", mod: true, shift: true }],
 			enabled: single !== null,
-			run: () =>
-				single &&
-				void copyImage("png", single, files, appliedTokens, resolveModes(single, sections.sections, appliedTokens)),
+			run: () => single && void copyImage("png", single, files, appliedTokens, sections.sections),
 		},
 		{
 			id: "copy-svg",
 			label: "Copy as SVG",
 			group: "Export",
 			enabled: single !== null,
-			run: () =>
-				single &&
-				void copyImage("svg", single, files, appliedTokens, resolveModes(single, sections.sections, appliedTokens)),
+			run: () => single && void copyImage("svg", single, files, appliedTokens, sections.sections),
 		},
 		{
 			id: "copy-figma",
@@ -2672,6 +2712,10 @@ export function EditorView({
 						theme={appliedTokens}
 						section={sections.sections.find((section) => section.id === sections.selectedId) ?? null}
 						onSectionTheme={sections.setTheme}
+						onSectionDraft={sections.setDraft}
+						onSaveDraftAsMode={saveDraftAsMode}
+						onApplyDraft={applyDraft}
+						onDiscardDraft={sections.discardDraft}
 						files={files}
 						selection={selection}
 						tab={tab}

@@ -543,6 +543,7 @@ const viewerJs = () => `(function () {
 	var byFile = {};
 	data.screens.forEach(function (screen) { byFile[screen.file] = screen; });
 	function modeOf(file) { return (byFile[file] && byFile[file].mode) || DEFAULT_MODE; }
+	function themeOf(file) { return data.theme + ((byFile[file] && byFile[file].draft) || ""); }
 	var device = document.getElementById("device");
 	var scaler = document.getElementById("scaler");
 	var stage = document.getElementById("stage");
@@ -685,7 +686,7 @@ const viewerJs = () => `(function () {
 		if (!plan || !top.record.ready) {
 			top.record.file = file;
 			if (top.record.ready) {
-				post(top.record, { type: "modules", entry: file, modules: {}, mode: modeOf(file) });
+				post(top.record, { type: "modules", entry: file, modules: {}, theme: themeOf(file), mode: modeOf(file) });
 				syncPick(top.record);
 			}
 			return;
@@ -829,7 +830,7 @@ const viewerJs = () => `(function () {
 			// A (re)loaded frame starts empty: send everything, then turn play mode on
 			record.ready = true;
 			if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });
-			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: data.theme, mode: modeOf(record.file), reset: true });
+			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: themeOf(record.file), mode: modeOf(record.file), reset: true });
 			syncPick(record);
 		} else if (message.type === "rendered" || message.type === "error") {
 			if (record.onRendered) record.onRendered();

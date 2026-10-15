@@ -1,7 +1,7 @@
 import { renderOffstage } from "@/lib/render/offstage-render";
 import { sourceVersion, type Box } from "@/lib/render/protocol";
 import type { DesignTokens } from "../../shared/context/tokens";
-import { resolveModes } from "../../shared/modes";
+import { resolveDraft, resolveModes } from "../../shared/modes";
 import type { CanvasSection, Frame, ProjectFiles } from "../../shared/types";
 
 export const MAX_SCREENSHOT_WIDTH = 1280;
@@ -40,35 +40,49 @@ async function crop(dataUrl: string, box: Box, scale: number): Promise<string> {
 /** Rendered offstage like the design check, so it works for screens off the viewport */
 export function agentScreenshot(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number | null) =>
-		renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), async (host) => {
-			if (start === null) {
-				const height = (await host.measure()) ?? frame.height;
-				const scale = screenshotScale(frame.width, height, frame.width, 1);
-				const shot = await host.snapshot({ type: "image/png", scale });
+		renderOffstage(
+			frame,
+			files,
+			theme,
+			resolveModes(frame, sections, theme),
+			async (host) => {
+				if (start === null) {
+					const height = (await host.measure()) ?? frame.height;
+					const scale = screenshotScale(frame.width, height, frame.width, 1);
+					const shot = await host.snapshot({ type: "image/png", scale });
+
+					if (!shot.raster) throw new Error("The screen didn't render an image");
+
+					return base64Of(shot.raster.dataUrl);
+				}
+
+				const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
+
+				if (!box || box.width <= 0 || box.height <= 0) throw new Error("The element isn't visible on the screen");
+				const bottom = box.y + box.height;
+				const scale = screenshotScale(frame.width, bottom, box.width, MAX_ELEMENT_SCALE);
+				const shot = await host.snapshot({ type: "image/png", scale, maxHeight: Math.ceil(bottom) });
 
 				if (!shot.raster) throw new Error("The screen didn't render an image");
 
-				return base64Of(shot.raster.dataUrl);
-			}
-
-			const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
-
-			if (!box || box.width <= 0 || box.height <= 0) throw new Error("The element isn't visible on the screen");
-			const bottom = box.y + box.height;
-			const scale = screenshotScale(frame.width, bottom, box.width, MAX_ELEMENT_SCALE);
-			const shot = await host.snapshot({ type: "image/png", scale, maxHeight: Math.ceil(bottom) });
-
-			if (!shot.raster) throw new Error("The screen didn't render an image");
-
-			return base64Of(await crop(shot.raster.dataUrl, box, shot.raster.scale));
-		});
+				return base64Of(await crop(shot.raster.dataUrl, box, shot.raster.scale));
+			},
+			resolveDraft(frame, sections),
+		);
 }
 
 export function agentElementBox(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number) =>
-		renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), async (host) => {
-			const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
+		renderOffstage(
+			frame,
+			files,
+			theme,
+			resolveModes(frame, sections, theme),
+			async (host) => {
+				const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
 
-			return box ?? null;
-		});
+				return box ?? null;
+			},
+			resolveDraft(frame, sections),
+		);
 }

@@ -1,5 +1,5 @@
 import { isFiniteNumber, isString } from "./guards";
-import { normalizeModes } from "./modes";
+import { normalizeDraft, normalizeModes } from "./modes";
 import { isJsonArray, isJsonObject, type Json } from "./json";
 import type { CanvasSection, Frame, SectionColor } from "./types";
 
@@ -50,9 +50,13 @@ export function normalizeSections(raw: Json | undefined): CanvasSection[] {
 			width,
 			height,
 		});
+		const section = sections[sections.length - 1]!;
 		const modes = normalizeModes(entry.modes);
+		const tokens = normalizeDraft(entry.tokens);
 
-		if (modes) sections[sections.length - 1]!.modes = modes;
+		if (modes) section.modes = modes;
+
+		if (tokens) section.tokens = tokens;
 	}
 
 	return sections;

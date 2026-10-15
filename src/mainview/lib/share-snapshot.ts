@@ -16,9 +16,10 @@ export async function buildShareSnapshot(input: {
 	/** The applied tokens, so the link looks like the canvas */
 	theme: DesignTokens;
 	start?: string;
+	drafts?: boolean;
 }): Promise<ShareSnapshot> {
 	const { files } = input;
-	const screens = shareScreens(input.frames, files, input.sections, input.theme);
+	const screens = shareScreens(input.frames, files, input.sections, input.theme, input.drafts);
 
 	if (screens.length === 0) throw new Error("There are no screens to share yet");
 	// First: a new custom token name restarts the compiler

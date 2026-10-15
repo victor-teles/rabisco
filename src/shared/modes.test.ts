@@ -3,12 +3,16 @@ import {
 	chooseMode,
 	DEFAULT_MODE,
 	defaultMode,
+	draftedSections,
 	inheritedModes,
 	modeKey,
 	modeLabel,
+	normalizeDraft,
 	normalizeModes,
 	normalizeTokenModes,
+	resolveDraft,
 	resolveModes,
+	setDraftToken,
 	targetModes,
 } from "./modes";
 import type { DesignTokens } from "./context/tokens";
@@ -149,4 +153,48 @@ test("normalizeTokenModes keeps slug groups and options with valid values", () =
 		]),
 	).toEqual([{ name: "brand", options: [{ name: "acme", light: { primary: "#f00" }, dark: {} }] }]);
 	expect(normalizeTokenModes(undefined)).toBeUndefined();
+});
+
+describe("section drafts", () => {
+	const drafted = (made: CanvasSection, tokens: CanvasSection["tokens"]): CanvasSection => ({ ...made, tokens });
+
+	test("a screen gets the draft of the sections around it, the smallest winning", () => {
+		const sections = [
+			drafted(outer, { light: { primary: "#111", accent: "#222" }, dark: {} }),
+			drafted(inner, { light: { primary: "#333" }, dark: { primary: "#444" } }),
+		];
+
+		expect(resolveDraft(frame(10, 10), sections)).toEqual({
+			light: { primary: "#333", accent: "#222" },
+			dark: { primary: "#444" },
+		});
+		expect(resolveDraft(frame(600, 600), sections)).toEqual({ light: { primary: "#111", accent: "#222" }, dark: {} });
+		expect(resolveDraft(frame(5000, 5000), sections)).toBeUndefined();
+	});
+
+	test("one draft is passed through as it is", () => {
+		const tokens = { light: { primary: "#111" }, dark: {} };
+
+		expect(resolveDraft(frame(10, 10), [outer, drafted(inner, tokens)])).toBe(tokens);
+	});
+
+	test("setting the last value away clears the draft", () => {
+		const one = setDraftToken(undefined, "dark", "primary", "#000");
+
+		expect(one).toEqual({ light: {}, dark: { primary: "#000" } });
+		expect(setDraftToken(one, "dark", "primary", null)).toBeUndefined();
+	});
+
+	test("loads from rabisco.json without invalid values and counts drafted sections", () => {
+		expect(normalizeDraft({ light: { primary: "#111", radius: "red; }" }, dark: "nope" })).toEqual({
+			light: { primary: "#111" },
+			dark: {},
+		});
+		expect(normalizeDraft({ light: {}, dark: {} })).toBeUndefined();
+
+		const [loaded] = normalizeSections([{ ...outer, tokens: { light: { primary: "#111" } } }]);
+
+		expect(loaded?.tokens).toEqual({ light: { primary: "#111" }, dark: {} });
+		expect(draftedSections([loaded!, inner])).toBe(1);
+	});
 });

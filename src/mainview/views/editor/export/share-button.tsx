@@ -22,7 +22,7 @@ import { copyLater, copyText, errorMessage, timeAgo } from "./share-utils";
 const publishedFingerprints = new Map<string, string>();
 
 const fingerprintOf = (frames: Frame[], sections: readonly CanvasSection[], files: ProjectFiles, theme: DesignTokens) =>
-	hashString(JSON.stringify([shareScreens(frames, files, sections, theme), files, theme]));
+	hashString(JSON.stringify([shareScreens(frames, files, sections, theme, true), files, theme]));
 
 type ShareTab = "link" | "web" | "git";
 
@@ -131,14 +131,15 @@ function LinkSection({
 	const stale = status !== null && publishedFingerprints.get(projectPath) !== fingerprint;
 
 	const snapshot = useCallback(
-		() => buildShareSnapshot({ name: projectName, frames, sections, files, theme, start: selected[0]?.file }),
+		(drafts: boolean) =>
+			buildShareSnapshot({ name: projectName, frames, sections, files, theme, start: selected[0]?.file, drafts }),
 		[projectName, frames, sections, files, theme, selected],
 	);
 
 	const publish = async () => {
 		setBusy("publish");
 
-		const request = snapshot().then((built) => api.sharePublish({ path: projectPath, snapshot: built }));
+		const request = snapshot(true).then((built) => api.sharePublish({ path: projectPath, snapshot: built }));
 		const copying = status ? null : copyLater(request.then((next) => next.url));
 
 		try {
@@ -186,7 +187,7 @@ function LinkSection({
 			const written = await api.exportViewer({
 				dir,
 				name: `${toKebab(projectName)}-site`,
-				snapshot: await snapshot(),
+				snapshot: await snapshot(false),
 				reveal: true,
 			});
 

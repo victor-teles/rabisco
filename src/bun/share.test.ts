@@ -173,7 +173,8 @@ describe("viewerFiles", () => {
 		expect(assertSnapshot(old)).toEqual(old);
 		expect(viewer).toContain('var DEFAULT_MODE = {"scheme":"light"};');
 		expect(viewer).toContain("mode: modeOf(record.file), reset: true");
-		expect(viewer).toContain("modules: {}, mode: modeOf(file) }");
+		expect(viewer).toContain("modules: {}, theme: themeOf(file), mode: modeOf(file) }");
+		expect(viewer).toContain("theme: themeOf(record.file)");
 		expect(() => assertSnapshot({ ...old, screens: [{ ...old.screens[0]!, mode: { scheme: "Dark Mode" } }] })).toThrow(
 			"invalid screen",
 		);
@@ -499,4 +500,27 @@ test("shareScreens gives each screen the mode of its section", () => {
 	});
 
 	expect(screens.map((screen) => screen.mode)).toEqual([{ scheme: "light" }, { scheme: "dark" }]);
+});
+
+test("shareScreens carries a section's draft only when asked, for a link on the local network", () => {
+	const frame = { file: "screens/a.tsx", name: "", device: "mobile" as const, x: 0, y: 0, width: 390, height: 844 };
+
+	const drafted = {
+		id: "s",
+		name: "Draft",
+		color: "gray" as const,
+		x: -100,
+		y: -100,
+		width: 1000,
+		height: 1200,
+		tokens: { light: { primary: "#0000ff" }, dark: {} },
+	};
+
+	const theme = { light: {}, dark: {} };
+	const files = { "screens/a.tsx": "" };
+
+	expect(shareScreens([frame], files, [drafted], theme)[0]?.draft).toBeUndefined();
+	expect(shareScreens([frame], files, [drafted], theme, true)[0]?.draft).toBe(
+		":root:not(.dark):root:root {\n\t--primary: #0000ff;\n}\n",
+	);
 });

@@ -6,9 +6,9 @@ import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { DesignTokens } from "../../../shared/context/tokens";
+import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import { screenNameFromPath } from "../../../shared/project";
-import { defaultMode, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { defaultMode, resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { altNumber, type VariationGroup } from "../../../shared/variations";
 import { isTyping } from "./shortcuts";
@@ -40,6 +40,7 @@ type Column = {
 	height: number;
 	radius: number;
 	mode: ResolvedMode;
+	draft?: TokenValues;
 };
 
 function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSection[], theme: DesignTokens): Column[] {
@@ -59,6 +60,7 @@ function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSecti
 			height: size.height,
 			radius: frame?.device === "desktop" ? 6 : 28,
 			mode: frame ? resolveModes(frame, sections, theme) : defaultMode(theme),
+			draft: frame && resolveDraft(frame, sections),
 		};
 	});
 }
@@ -344,6 +346,7 @@ export function CompareView({
 											width={column.width}
 											height={height}
 											mode={column.mode}
+											draft={column.draft}
 											onContentHeight={(contentHeight) => setContentHeight(column.file, contentHeight)}
 										/>
 									</div>

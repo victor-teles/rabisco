@@ -3,7 +3,7 @@ import { detachComments } from "./comments";
 import type { AppliedTheme } from "./context/theme";
 import { designTokensOf } from "./context/tokens";
 import type { Json } from "./json";
-import { resolveModes } from "./modes";
+import { resolveDraft, resolveModes } from "./modes";
 import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenCover, ScreenSource } from "./types";
 
 export const FRAME_SIZE = {
@@ -179,7 +179,7 @@ export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource |
 
 	for (const [path, content] of Object.entries(files)) if (isComponentFile(path)) coverFiles[path] = content;
 
-	return {
+	const cover: ScreenSource = {
 		entry: frame.file,
 		device: frame.device,
 		width: frame.width,
@@ -188,6 +188,12 @@ export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource |
 		theme: appliedTheme(canvas, files),
 		mode: resolveModes(frame, canvas.sections ?? [], appliedTheme(canvas, files)),
 	};
+
+	const draft = resolveDraft(frame, canvas.sections ?? []);
+
+	if (draft) cover.draft = draft;
+
+	return cover;
 }
 
 /** Projects saved before tokens were applied on request take DESIGN.md's tokens as applied */

@@ -534,6 +534,69 @@ export function setDesignToken(markdown: string, name: string, mode: "light" | "
 	return insert(end, ["", `${"#".repeat(section.level + 1)} Dark`, "", line()]);
 }
 
+export type NewModeOption = { group: string; option: string; values: TokenValues };
+
+export function modeOptionError(markdown: string, group: string, option: string): string | null {
+	const groupSlug = modeSlug(group);
+	const optionSlug = modeSlug(option);
+
+	if (!groupSlug) return "Name the group";
+
+	if (groupSlug === SCHEME_GROUP_NAME) return "The scheme group is the Dark heading";
+
+	if (!optionSlug) return "Name the mode";
+	const known = parseDesignTokens(markdown).modes?.find((candidate) => candidate.name === groupSlug);
+
+	return known?.options.some((candidate) => candidate.name === optionSlug) ? "This group already has this mode" : null;
+}
+
+export function addModeOption(markdown: string, { group, option, values }: NewModeOption): string {
+	const lines = markdown.split("\n");
+	const { sections, modes } = scanTokens(markdown);
+	const section = sections[0];
+	const level = (section?.level ?? 2) + 1;
+	const groupSlug = modeSlug(group);
+	const existing = modes.filter((heading) => heading.group === groupSlug && !heading.reason);
+	const groupTitle = existing[0] ? MODE_HEADING.exec(existing[0].title)![1]!.trim() : group.trim();
+	const entries = (set: TokenSet) => orderedTokenNames(set).map((name) => `- ${name}: ${set[name]}`);
+	const dark = entries(values.dark);
+	const fallback = modeSlug(option) === "default" ? "Base" : "Default";
+
+	const block = [
+		...(existing.length ? [] : [`${"#".repeat(level)} ${groupTitle} mode: ${fallback}`, ""]),
+		`${"#".repeat(level)} ${groupTitle} mode: ${option.trim()}`,
+		"",
+		...entries(values.light),
+		...(dark.length ? ["", `${"#".repeat(level + 1)} Dark`, "", ...dark] : []),
+	];
+
+	if (!section) {
+		const body = markdown.replace(/\s+$/, "");
+
+		return `${body}${body ? "\n\n" : ""}${["## Tokens", "", ...block].join("\n")}\n`;
+	}
+
+	const last = existing.at(-1);
+	let end = section.end;
+
+	if (last) {
+		const lastLevel = HEADING.exec(lines[last.index]!)![1]!.length;
+
+		const next = lines.findIndex(
+			(text, index) => index > last.index && index < section.end && (HEADING.exec(text)?.[1]!.length ?? 7) <= lastLevel,
+		);
+
+		if (next !== -1) end = next;
+	}
+
+	while (end > section.heading + 1 && isBlank(lines[end - 1])) end--;
+	const after = lines[end] !== undefined && !isBlank(lines[end]) ? [""] : [];
+
+	lines.splice(end, 0, "", ...block, ...after);
+
+	return lines.join("\n");
+}
+
 function block(selector: string, entries: [string, string][]) {
 	if (!entries.length) return "";
 
@@ -589,31 +652,43 @@ export function declarations(values: Record<string, string>): [string, string][]
 // Values are re-validated so hand-built `tokens` can't inject CSS.
 // A mode option's selectors carry its attribute, so they beat the project values in both schemes (decision 0028).
 export function tokensToCss(tokens: DesignTokens): string {
-	const blocks = (values: TokenValues, attribute = "") => {
-		const builtInColors = Object.fromEntries(
-			Object.entries(values.light).filter(([name]) => isOneOf(COLOR_TOKENS, name)),
-		);
-
-		const rest = Object.fromEntries(Object.entries(values.light).filter(([name]) => !(name in builtInColors)));
-
-		return (
-			block(`:root${attribute}`, declarations(rest)) +
-			block(`:root:not(.dark)${attribute}`, declarations(builtInColors)) +
-			block(attribute ? `:root.dark${attribute}` : ".dark", declarations(values.dark))
-		);
-	};
-
 	const options = (tokens.modes ?? []).flatMap((group) =>
 		isModeName(group.name) && group.name !== SCHEME_GROUP_NAME
 			? group.options.flatMap((option) => {
 					if (!isModeName(option.name)) return [];
 
-					return [blocks(option, `[data-mode-${group.name}="${option.name}"]`)];
+					return [valueBlocks(option, `[data-mode-${group.name}="${option.name}"]`)];
 				})
 			: [],
 	);
 
-	return blocks(tokens) + options.join("");
+	return valueBlocks(tokens) + options.join("");
+}
+
+function valueBlocks(values: TokenValues, attribute = "") {
+	const builtInColors = Object.fromEntries(
+		Object.entries(values.light).filter(([name]) => isOneOf(COLOR_TOKENS, name)),
+	);
+
+	const rest = Object.fromEntries(Object.entries(values.light).filter(([name]) => !(name in builtInColors)));
+
+	return (
+		block(`:root${attribute}`, declarations(rest)) +
+		block(`:root:not(.dark)${attribute}`, declarations(builtInColors)) +
+		block(attribute ? `:root.dark${attribute}` : ".dark", declarations(values.dark))
+	);
+}
+
+const DRAFT_SELECTOR = ":root:root";
+
+const draftCache = new WeakMap<TokenValues, string>();
+
+export function draftCss(draft: TokenValues): string {
+	let css = draftCache.get(draft);
+
+	if (css === undefined) draftCache.set(draft, (css = valueBlocks(draft, DRAFT_SELECTOR)));
+
+	return css;
 }
 
 /** What `bg-brand` falls back to before a value arrives, or in a mode without one */

@@ -20,6 +20,7 @@ import {
 } from "@/lib/render/snapshots";
 import { themeCss } from "@/lib/render/styles";
 import { cn } from "@/lib/utils";
+import { draftCss, type TokenValues } from "../../../shared/context/tokens";
 import { DEFAULT_MODE, SCHEME, type ResolvedMode } from "../../../shared/modes";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
@@ -57,6 +58,7 @@ export function ScreenFrame({
 	width,
 	height,
 	mode = DEFAULT_MODE,
+	draft,
 	className,
 	interactive = false,
 	play = false,
@@ -72,6 +74,7 @@ export function ScreenFrame({
 	width: number;
 	height: number;
 	mode?: ResolvedMode;
+	draft?: TokenValues;
 	className?: string;
 	interactive?: boolean;
 	play?: boolean;
@@ -89,7 +92,8 @@ export function ScreenFrame({
 	const navigated = useEffectEvent((to: string, options: LinkOptions) => onNavigate?.(to, options));
 	const escaped = useEffectEvent(() => onEscape?.());
 	const hosted = useEffectEvent((host: FrameHost | null) => onHost?.(host));
-	const theme = useContext(ScreenTheme);
+	const projectTheme = useContext(ScreenTheme);
+	const theme = draft ? projectTheme + draftCss(draft) : projectTheme;
 	const virtual = live !== undefined;
 	const isLive = live ?? true;
 	const [mounted, setMounted] = useState(isLive);
@@ -251,6 +255,7 @@ export function ScreenPreview({
 						width={source.width}
 						height={source.height}
 						mode={source.mode}
+						draft={source.draft}
 						live={live}
 					/>
 				</ScreenTheme>

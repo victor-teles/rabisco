@@ -4,6 +4,7 @@ import {
 	type TokenModeOption,
 	type TokenModeGroup,
 	type TokenSet,
+	type TokenValues,
 } from "./context/tokens";
 import { isString } from "./guards";
 import { isJsonArray, isJsonObject, type Json } from "./json";
@@ -166,6 +167,49 @@ export function chooseMode(modes: ModeChoices | undefined, group: string, option
 
 	return Object.keys(next).length ? next : undefined;
 }
+
+export const hasDraft = (draft: TokenValues | undefined): draft is TokenValues =>
+	!!draft && (Object.keys(draft.light).length > 0 || Object.keys(draft.dark).length > 0);
+
+export function normalizeDraft(raw: Json | undefined): TokenValues | undefined {
+	if (!isJsonObject(raw)) return undefined;
+	const draft = { light: tokenValues(raw.light), dark: tokenValues(raw.dark) };
+
+	return hasDraft(draft) ? draft : undefined;
+}
+
+export function resolveDraft(frame: Rect, sections: readonly CanvasSection[]): TokenValues | undefined {
+	const drafts = sectionsAround(frame, sections).flatMap((section) =>
+		hasDraft(section.tokens) ? [section.tokens] : [],
+	);
+
+	if (drafts.length < 2) return drafts[0];
+	const merged: TokenValues = { light: {}, dark: {} };
+
+	for (const draft of drafts.reverse()) {
+		Object.assign(merged.light, draft.light);
+		Object.assign(merged.dark, draft.dark);
+	}
+
+	return merged;
+}
+
+export function setDraftToken(
+	draft: TokenValues | undefined,
+	scheme: keyof TokenValues,
+	name: string,
+	value: string | null,
+): TokenValues | undefined {
+	const next: TokenValues = { light: { ...draft?.light }, dark: { ...draft?.dark } };
+
+	if (value === null) delete next[scheme][name];
+	else next[scheme][name] = value;
+
+	return hasDraft(next) ? next : undefined;
+}
+
+export const draftedSections = (sections: readonly CanvasSection[]) =>
+	sections.filter((section) => hasDraft(section.tokens)).length;
 
 export const optionLabel = (option: string) => option.charAt(0).toUpperCase() + option.slice(1).replaceAll("-", " ");
 

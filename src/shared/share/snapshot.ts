@@ -1,9 +1,9 @@
 // Built in the webview, where TSX compiles and Tailwind builds; the main process only checks and serves it.
 import { assetKey } from "../assets";
-import type { DesignTokens } from "../context/tokens";
+import { draftCss, type DesignTokens } from "../context/tokens";
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
-import { normalizeModes, resolveModes, type ResolvedMode } from "../modes";
+import { normalizeModes, resolveDraft, resolveModes, type ResolvedMode } from "../modes";
 import { isDevice, isScreenFile, screenNameFromPath } from "../project";
 import type { CanvasSection, Device, Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
@@ -28,6 +28,7 @@ export type ShareScreen = {
 	height: number;
 	/** Missing in snapshots written before decision 0028; those render the defaults */
 	mode?: ResolvedMode;
+	draft?: string;
 };
 
 export type ShareSnapshot = {
@@ -84,7 +85,8 @@ function assertScreens(screens: readonly Json[], modules: JsonObject): asserts s
 			!isDevice(screen.device) ||
 			!isFiniteNumber(screen.width) ||
 			!isFiniteNumber(screen.height) ||
-			(screen.mode !== undefined && normalizeModes(screen.mode) === undefined)
+			(screen.mode !== undefined && normalizeModes(screen.mode) === undefined) ||
+			(screen.draft !== undefined && !isString(screen.draft))
 		)
 			throw new Error("Snapshot has an invalid screen");
 
@@ -133,21 +135,26 @@ export function shareScreens(
 	files: ProjectFiles,
 	sections: readonly CanvasSection[],
 	theme: DesignTokens,
+	drafts = false,
 ): ShareScreen[] {
 	return frames.flatMap((frame) => {
 		const { file, name, device, width, height } = frame;
 
-		return isScreenFile(file) && !isAlternate(file) && files[file] !== undefined
-			? [
-					{
-						file,
-						name: name || screenNameFromPath(file),
-						device,
-						width,
-						height,
-						mode: resolveModes(frame, sections, theme),
-					},
-				]
-			: [];
+		if (!isScreenFile(file) || isAlternate(file) || files[file] === undefined) return [];
+
+		const screen: ShareScreen = {
+			file,
+			name: name || screenNameFromPath(file),
+			device,
+			width,
+			height,
+			mode: resolveModes(frame, sections, theme),
+		};
+
+		const draft = drafts ? resolveDraft(frame, sections) : undefined;
+
+		if (draft) screen.draft = draftCss(draft);
+
+		return [screen];
 	});
 }

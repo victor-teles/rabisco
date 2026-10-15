@@ -8,7 +8,7 @@ import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/exp
 import { createPdf, jpegSize } from "../../../../shared/export/pdf";
 import { sceneToSvg } from "../../../../shared/export/scene";
 import { exportSlug, imageFileNames, imageTargets, scaledFileName } from "../../../../shared/export/targets";
-import { resolveModes, type ResolvedMode } from "../../../../shared/modes";
+import { resolveDraft, resolveModes } from "../../../../shared/modes";
 import { screenNameFromPath } from "../../../../shared/project";
 import type { CanvasSection, ExportFile, Frame, ProjectFiles } from "../../../../shared/types";
 
@@ -32,17 +32,24 @@ const renderScreen = (
 	frame: Frame,
 	files: ProjectFiles,
 	theme: DesignTokens,
-	mode: ResolvedMode,
+	sections: readonly CanvasSection[],
 	rasters: (SnapshotRaster | undefined)[],
 	starts?: number[],
 ) =>
-	renderOffstage(frame, files, theme, mode, async (host) => {
-		const snapshots: Snapshot[] = [];
+	renderOffstage(
+		frame,
+		files,
+		theme,
+		resolveModes(frame, sections, theme),
+		async (host) => {
+			const snapshots: Snapshot[] = [];
 
-		for (const raster of rasters) snapshots.push(await host.snapshot(raster, undefined, starts));
+			for (const raster of rasters) snapshots.push(await host.snapshot(raster, undefined, starts));
 
-		return snapshots;
-	});
+			return snapshots;
+		},
+		resolveDraft(frame, sections),
+	);
 
 async function renderAll(
 	frames: Frame[],
@@ -64,7 +71,7 @@ async function renderAll(
 			try {
 				results[index] = {
 					frame,
-					snapshots: await renderScreen(frame, files, theme, resolveModes(frame, sections, theme), rasters),
+					snapshots: await renderScreen(frame, files, theme, sections, rasters),
 				};
 			} catch (error) {
 				results[index] = { frame, message: error instanceof Error ? error.message : String(error) };
@@ -253,13 +260,13 @@ export async function copyImage(
 	frame: Frame,
 	files: ProjectFiles,
 	theme: DesignTokens,
-	mode: ResolvedMode,
+	sections: readonly CanvasSection[],
 	starts?: number[],
 ) {
 	const what = !starts ? nameOf(frame) : starts.length > 1 ? "the elements" : "the element";
 	const id = toast.loading(`Rendering ${what}…`);
 	const raster: SnapshotRaster | undefined = format === "png" ? { type: "image/png", scale: SCALE } : undefined;
-	const snapshot = renderScreen(frame, files, theme, mode, [raster], starts).then(([shot]) => shot!);
+	const snapshot = renderScreen(frame, files, theme, sections, [raster], starts).then(([shot]) => shot!);
 
 	const item =
 		format === "png"

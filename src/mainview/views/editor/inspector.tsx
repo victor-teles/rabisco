@@ -37,12 +37,13 @@ import { useVariations } from "@/hooks/use-variations";
 import type { Alignment, Axis } from "@/lib/align";
 import { cn } from "@/lib/utils";
 import { variationName } from "@/lib/variations";
-import type { DesignTokens } from "../../../shared/context/tokens";
+import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import { DEFAULT_LAYOUT_GRID, normalizeLayoutGrid } from "../../../shared/layout-grid";
 import { chooseMode, inheritedModes, modeGroups, resolveModes } from "../../../shared/modes";
 import { isScreenFile } from "../../../shared/project";
 import type { CanvasSection, Device, Frame, LayoutGrid, ProjectFiles } from "../../../shared/types";
 import { groupOf, isAlternate } from "../../../shared/variations";
+import { SectionDraft } from "./section-draft";
 import { ThemeToggles } from "./theme-controls";
 import {
 	ALIGN_SHORTCUTS,
@@ -71,6 +72,10 @@ type InspectorProps = {
 	theme: DesignTokens;
 	section: CanvasSection | null;
 	onSectionTheme: (id: string, group: string, option: string | undefined) => void;
+	onSectionDraft: (id: string, scheme: keyof TokenValues, name: string, value: string | null) => void;
+	onSaveDraftAsMode: (id: string, group: string, option: string) => void;
+	onApplyDraft: (id: string) => void;
+	onDiscardDraft: (id: string) => void;
 	files: ProjectFiles;
 	selection: string[];
 	tab: InspectorTab;
@@ -281,7 +286,9 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 	);
 }
 
-function SectionDetails({ section, sections, theme, onSectionTheme }: InspectorProps & { section: CanvasSection }) {
+function SectionDetails(props: InspectorProps & { section: CanvasSection }) {
+	const { section, sections, theme, onSectionTheme } = props;
+
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<Section title="Section">
@@ -293,6 +300,15 @@ function SectionDetails({ section, sections, theme, onSectionTheme }: InspectorP
 					onChange={(group, option) => onSectionTheme(section.id, group, option)}
 				/>
 			</Section>
+			<SectionDraft
+				section={section}
+				theme={theme}
+				design={props.files["DESIGN.md"] ?? ""}
+				onDraft={props.onSectionDraft}
+				onSaveAsMode={props.onSaveDraftAsMode}
+				onApply={props.onApplyDraft}
+				onDiscard={props.onDiscardDraft}
+			/>
 		</div>
 	);
 }

@@ -18,7 +18,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { DesignTokens } from "../../../shared/context/tokens";
+import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import { FRAME_SIZE, isScreenFile, screenNameFromPath } from "../../../shared/project";
 import { resolveLink } from "../../../shared/prototype/links";
 import {
@@ -33,7 +33,7 @@ import {
 	type Size,
 } from "../../../shared/prototype/transitions";
 import type { StepMotion } from "../../../shared/prototype/walkthrough";
-import { defaultMode, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { defaultMode, resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { saveWalkthrough, type CapturedImage, type CapturedStep } from "./export/walkthrough-export";
 import { isTyping, PLAY_BACK_KEYS, PLAY_FORWARD_KEYS } from "./shortcuts";
@@ -127,6 +127,12 @@ export function PlayView({
 		const target = frames.find((f) => f.file === file);
 
 		return target ? resolveModes(target, sections, theme) : defaultMode(theme);
+	};
+
+	const draftOf = (file: string) => {
+		const target = frames.find((f) => f.file === file);
+
+		return target && resolveDraft(target, sections);
 	};
 
 	// Scale down to fit the window, never up
@@ -563,6 +569,7 @@ export function PlayView({
 										width={size.width}
 										height={size.height}
 										mode={modeOf(layer.file)}
+										draft={draftOf(layer.file)}
 										interactive
 										play
 										onNavigate={navigate}
@@ -579,6 +586,7 @@ export function PlayView({
 									screen={size}
 									size={sizeOf(overlay.file)}
 									screenMode={modeOf(overlay.file)}
+									screenDraft={draftOf(overlay.file)}
 									files={files}
 									onNavigate={navigate}
 									onEscape={escape}
@@ -608,6 +616,7 @@ function OverlayLayer({
 	screen,
 	size,
 	screenMode,
+	screenDraft,
 	files,
 	onNavigate,
 	onEscape,
@@ -619,6 +628,7 @@ function OverlayLayer({
 	screen: Size;
 	size: Size;
 	screenMode: ResolvedMode;
+	screenDraft: TokenValues | undefined;
 	files: ProjectFiles;
 	onNavigate: (to: string, options: LinkOptions) => void;
 	onEscape: () => void;
@@ -684,6 +694,7 @@ function OverlayLayer({
 					width={rect.width}
 					height={rect.height}
 					mode={screenMode}
+					draft={screenDraft}
 					interactive
 					play
 					onNavigate={onNavigate}

@@ -4,9 +4,9 @@ import { ScreenFrame, screenBackdrop } from "@/components/app/screen-preview";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { matchesScreen, stepTarget } from "@/lib/screen-list";
 import { cn } from "@/lib/utils";
-import type { DesignTokens } from "../../../shared/context/tokens";
+import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import { isString } from "../../../shared/guards";
-import { modeLabel, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { modeLabel, resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import { groupBySection } from "../../../shared/sections";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { SECTION_COLOR } from "./sections-layer";
@@ -148,6 +148,7 @@ export const ScreensPanel = memo(function ScreensPanel({
 										frame={frame}
 										files={files}
 										mode={resolveModes(frame, sections, theme)}
+										draft={resolveDraft(frame, sections)}
 										selected={selected.has(frame.file)}
 										renaming={renaming === frame.file}
 										drop={drop?.file === frame.file ? (drop.after ? "after" : "before") : null}
@@ -207,6 +208,7 @@ function ScreenRow({
 	frame,
 	files,
 	mode,
+	draft,
 	selected,
 	renaming,
 	drop,
@@ -224,6 +226,7 @@ function ScreenRow({
 	frame: Frame;
 	files: ProjectFiles;
 	mode: ResolvedMode;
+	draft: TokenValues | undefined;
 	selected: boolean;
 	renaming: boolean;
 	drop: "before" | "after" | null;
@@ -288,6 +291,7 @@ function ScreenRow({
 										width={frame.width}
 										height={frame.height}
 										mode={mode}
+										draft={draft}
 										live={false}
 									/>
 								</span>

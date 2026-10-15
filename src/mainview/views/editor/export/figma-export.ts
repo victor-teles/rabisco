@@ -4,7 +4,7 @@ import type { FigmaExportReply, FigmaExportRequest, FigmaExportScreen } from "@/
 import type { FontFile } from "../../../../shared/export/figma/font";
 import { renderOffstage } from "@/lib/render/offstage-render";
 import type { DesignTokens } from "../../../../shared/context/tokens";
-import { resolveModes } from "../../../../shared/modes";
+import { resolveDraft, resolveModes } from "../../../../shared/modes";
 import { screenNameFromPath } from "../../../../shared/project";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../../shared/types";
 
@@ -35,8 +35,13 @@ async function capture(
 	const screens: FigmaExportScreen[] = [];
 
 	for (const frame of frames) {
-		const { tree, images } = await renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), (host) =>
-			host.figmaCapture(fonts),
+		const { tree, images } = await renderOffstage(
+			frame,
+			files,
+			theme,
+			resolveModes(frame, sections, theme),
+			(host) => host.figmaCapture(fonts),
+			resolveDraft(frame, sections),
 		);
 
 		screens.push({ name: nameOf(frame), x: frame.x - left, y: frame.y - top, tree, images });

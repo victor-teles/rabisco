@@ -12,7 +12,7 @@ import type { AssetDigests, ProjectAssets } from "./assets";
 import type { ChangeSummary } from "./change-summary";
 import type { ChatSummary } from "./chats";
 import type { AppliedTheme } from "./context/theme";
-import type { DesignTokens } from "./context/tokens";
+import type { DesignTokens, TokenValues } from "./context/tokens";
 import type { ResolvedMode } from "./modes";
 
 export type Device = "mobile" | "tablet" | "desktop";
@@ -50,6 +50,7 @@ export type CanvasSection = {
 	width: number;
 	height: number;
 	modes?: ModeChoices;
+	tokens?: TokenValues;
 };
 
 export type CanvasImage = {
@@ -154,6 +155,7 @@ export type ScreenSource = {
 	files: ProjectFiles;
 	theme: DesignTokens;
 	mode?: ResolvedMode;
+	draft?: TokenValues;
 };
 
 /** Which screen a project's cover shows; its files load with `loadCover` */

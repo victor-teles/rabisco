@@ -59,12 +59,12 @@ import { MeasureLayer, useAltHeld } from "./measure-layer";
 import { Minimap } from "./minimap";
 import { PinchCanvas } from "./pinch-canvas";
 import { focusOwnsKey, isTyping } from "./shortcuts";
-import type { DesignTokens } from "../../../shared/context/tokens";
+import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
 import { screenNameFromPath } from "../../../shared/project";
-import { resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../shared/types";
 import { FRAME_GAP } from "../../../shared/project";
 import { isAlternate, variationGroups, type VariationGroup } from "../../../shared/variations";
@@ -444,6 +444,11 @@ export function Canvas({
 	const modes = useMemo(
 		() => new Map(frames.map((frame) => [frame.file, resolveModes(frame, sections, theme)])),
 		[frames, sections, theme],
+	);
+
+	const tokenDrafts = useMemo(
+		() => new Map(frames.map((frame) => [frame.file, resolveDraft(frame, sections)])),
+		[frames, sections],
 	);
 
 	const framesRef = useRef(shown);
@@ -1914,6 +1919,7 @@ export function Canvas({
 								frame={frame}
 								files={rendered}
 								mode={modes.get(frame.file)}
+								tokens={tokenDrafts.get(frame.file)}
 								selected={selected.has(frame.file)}
 								dropTarget={dropFile === frame.file && dropPreview?.file !== frame.file}
 								view={view}
@@ -1944,6 +1950,7 @@ export function Canvas({
 							frame={frame}
 							files={drafts.files}
 							mode={resolveModes(frame, sections, theme)}
+							tokens={resolveDraft(frame, sections)}
 							selected={false}
 							view={view}
 							writing={drafts.writing[frame.file]}
@@ -2086,6 +2093,7 @@ const FrameView = memo(function FrameView({
 	frame,
 	files,
 	mode,
+	tokens,
 	selected,
 	view,
 	hideLabelBelow = 0,
@@ -2105,6 +2113,7 @@ const FrameView = memo(function FrameView({
 	frame: Frame;
 	files: ProjectFiles;
 	mode?: ResolvedMode;
+	tokens?: TokenValues;
 	selected: boolean;
 	view: ViewportStore;
 	/** The zoom below which the name would run into a neighbor */
@@ -2272,6 +2281,7 @@ const FrameView = memo(function FrameView({
 						width={frame.width}
 						height={frame.height}
 						mode={mode}
+						draft={tokens}
 						interactive={editing}
 						live={live}
 					/>

@@ -22,6 +22,7 @@ import {
 	type PublishHostStatus,
 	type PublishTarget,
 } from "../../../../shared/share/publish";
+import { draftedSections } from "../../../../shared/modes";
 import { shareScreens } from "../../../../shared/share/snapshot";
 import type { ExportContext } from "./export-menu";
 import {
@@ -74,6 +75,7 @@ export function PublishSection({ context, onOpenGit }: { context: ExportContext;
 		[frames, files, sections, theme],
 	);
 
+	const drafts = draftedSections(sections);
 	const info = PUBLISH_HOST_INFO[host];
 	const viaGit = host === "github";
 	const ready = pages?.state === "ready" ? pages : null;
@@ -537,6 +539,11 @@ export function PublishSection({ context, onOpenGit }: { context: ExportContext;
 			) : null}
 
 			{noScreens ? <p className="text-xs text-muted-foreground">Add a screen to publish it.</p> : null}
+			{drafts ? (
+				<p className="text-xs text-muted-foreground">
+					{drafts === 1 ? "1 section has" : `${drafts} sections have`} draft tokens that won’t be published.
+				</p>
+			) : null}
 		</div>
 	);
 }

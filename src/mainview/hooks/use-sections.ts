@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import type { Snapshot } from "@/lib/history";
-import { chooseMode } from "../../shared/modes";
+import type { TokenValues } from "../../shared/context/tokens";
+import { chooseMode, setDraftToken } from "../../shared/modes";
 import { moveSection, nextSectionName, sectionAround } from "../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../shared/types";
 
@@ -103,6 +104,22 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		[change],
 	);
 
+	const setDraft = useCallback(
+		(id: string, scheme: keyof TokenValues, name: string, value: string | null) =>
+			change((snapshot) => ({
+				...snapshot,
+				sections: (snapshot.sections ?? NO_SECTIONS).map((section) =>
+					section.id === id ? { ...section, tokens: setDraftToken(section.tokens, scheme, name, value) } : section,
+				),
+			})),
+		[change],
+	);
+
+	const discardDraft = useCallback(
+		(id: string) => change((snapshot) => patchSection(snapshot, id, { tokens: undefined })),
+		[change],
+	);
+
 	const remove = useCallback(
 		(id: string) =>
 			change((snapshot) => ({
@@ -177,6 +194,8 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		rename,
 		recolor,
 		setTheme,
+		setDraft,
+		discardDraft,
 		remove,
 		move,
 		resize,
