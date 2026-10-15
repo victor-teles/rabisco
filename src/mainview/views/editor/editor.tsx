@@ -2567,6 +2567,7 @@ export function EditorView({
 										onTheme={sections.setTheme}
 										onDelete={sections.remove}
 										onSelectScreens={setSelection}
+										onDuplicate={sections.duplicate}
 									/>
 									<MoodboardLayer
 										images={moodboard.images}

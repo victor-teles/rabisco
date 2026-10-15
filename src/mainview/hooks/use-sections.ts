@@ -3,6 +3,7 @@ import type { ChangeOptions, ProjectState } from "@/hooks/use-project";
 import type { Action } from "@/lib/actions";
 import type { Snapshot } from "@/lib/history";
 import type { TokenValues } from "../../shared/context/tokens";
+import { duplicateWithMode, type ModePick } from "../../shared/duplicate-section";
 import { chooseMode, setDraftToken } from "../../shared/modes";
 import { moveSection, nextSectionName, sectionAround } from "../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../shared/types";
@@ -129,6 +130,34 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		[change],
 	);
 
+	const duplicate = useCallback(
+		(id: string, pick: ModePick) => {
+			const copyId = crypto.randomUUID();
+			let made = false;
+
+			change(
+				(snapshot) => {
+					const copy = duplicateWithMode(
+						{ sections: snapshot.sections ?? NO_SECTIONS, frames: snapshot.frames, files: snapshot.files },
+						id,
+						pick,
+						copyId,
+					);
+
+					if (!copy) return snapshot;
+					made = true;
+
+					return { ...snapshot, ...copy };
+				},
+				{ select: [] },
+			);
+
+			if (made) setSelectedId(copyId);
+			setDrawing(false);
+		},
+		[change],
+	);
+
 	const resize = useCallback(
 		(id: string, rect: Rect) => change((snapshot) => patchSection(snapshot, id, rect)),
 		[change],
@@ -197,6 +226,7 @@ export function useSections({ stateRef, sections = NO_SECTIONS, change, selected
 		setDraft,
 		discardDraft,
 		remove,
+		duplicate,
 		move,
 		resize,
 		create,

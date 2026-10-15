@@ -14,8 +14,9 @@ import {
 import { HANDLE_CURSOR, HANDLES, handleSides, handleSpan, resizeRect, type Handle } from "@/lib/frame-resize";
 import { cn } from "@/lib/utils";
 import type { ViewportStore } from "@/lib/viewport";
-import { ThemeMenu } from "./theme-controls";
+import { DuplicateWithModeMenu, ThemeMenu } from "./theme-controls";
 import type { DesignTokens } from "../../../shared/context/tokens";
+import type { ModePick } from "../../../shared/duplicate-section";
 import { inheritedModes, modeGroups } from "../../../shared/modes";
 import { MIN_SECTION_SIZE, membersOf, SECTION_COLORS } from "../../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../../shared/types";
@@ -98,6 +99,7 @@ type SectionsLayerProps = {
 	onTheme: (id: string, group: string, option: string | undefined) => void;
 	onDelete: (id: string) => void;
 	onSelectScreens: (files: string[]) => void;
+	onDuplicate: (id: string, pick: ModePick) => void;
 };
 
 export function SectionsLayer(props: SectionsLayerProps) {
@@ -259,6 +261,7 @@ function SectionView({
 	onTheme,
 	onDelete,
 	onSelectScreens,
+	onDuplicate,
 	onPressLabel,
 	onPointerMove,
 	onPointerUp,
@@ -405,6 +408,11 @@ function SectionView({
 								value={section.modes}
 								inherited={inheritedModes(section, sections, theme)}
 								onChange={(group, option) => onTheme(section.id, group, option)}
+							/>
+							<DuplicateWithModeMenu
+								groups={modeGroups(theme)}
+								current={{ ...inheritedModes(section, sections, theme), ...section.modes }}
+								onPick={(group, option) => onDuplicate(section.id, { group, option })}
 							/>
 							<ContextMenuItem onSelect={() => onSelectScreens(membersOf(section, sections, frames).frames)}>
 								Select screens

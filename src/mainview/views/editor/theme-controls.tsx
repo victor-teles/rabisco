@@ -75,3 +75,36 @@ export function ThemeMenu({ groups, value, inherited, onChange }: ThemeChoices) 
 		</ContextMenuSub>
 	);
 }
+
+export function DuplicateWithModeMenu({
+	groups,
+	current,
+	onPick,
+}: {
+	groups: readonly ModeGroup[];
+	current: ResolvedMode;
+	onPick: (group: string, option: string) => void;
+}) {
+	return (
+		<ContextMenuSub>
+			<ContextMenuSubTrigger>Duplicate with mode</ContextMenuSubTrigger>
+			<ContextMenuSubContent>
+				{groups.map((group, index) => (
+					<Fragment key={group.name}>
+						{index > 0 ? <ContextMenuSeparator /> : null}
+						<ContextMenuLabel>{groupLabel(group.name)}</ContextMenuLabel>
+						{group.options.map((option) => (
+							<ContextMenuItem
+								key={option}
+								disabled={option === current[group.name]}
+								onSelect={() => onPick(group.name, option)}
+							>
+								{optionLabel(option)}
+							</ContextMenuItem>
+						))}
+					</Fragment>
+				))}
+			</ContextMenuSubContent>
+		</ContextMenuSub>
+	);
+}
