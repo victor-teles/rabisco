@@ -596,6 +596,23 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 
 ---
 
+## Phase 24: Handoff and export ✅
+
+_Principle: Screens are React (what you see is what you ship)_
+
+- ✅ Copy to Figma: screens as Figma layers with auto layout, text and images, through the clipboard ([0039](./decisions/0039-copy-to-figma.md), [LIT-43](/LIT/issues/LIT-43))
+- ✅ Export plain HTML and CSS for one screen
+- ✅ Export to Next.js and React Router projects, next to the Vite project
+- ✅ Export a component library: every project component with a preview page
+- ✅ Export tokens as `tokens.json` (DTCG), `tokens.css` and a Tailwind theme
+- ✅ Copy an element as code, as PNG and as SVG from its menu ([LIT-44](/LIT/issues/LIT-44))
+- ✅ Batch export at 1x, 2x and 3x, with names from the screens ([LIT-44](/LIT/issues/LIT-44))
+- ✅ Dev handoff page in the export: every screen, its components and tokens
+
+**Done when** a developer can take a project into their app, and a designer can take it into Figma, with no manual fixes.
+
+---
+
 ## Early decisions
 
 The open questions from the first draft, as they were settled. The full list is in [docs/decisions](./decisions/README.md):
