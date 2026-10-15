@@ -27,6 +27,11 @@ export const COMPONENTS_VIEW_KEYS = "⌥2";
 
 export const COMPONENTS_VIEW_CODE = "Digit2";
 
+/** After the Screens list (⌥1) and Components (⌥2). Matched on `event.code` (`Digit3`) */
+export const DESIGN_SYSTEM_KEYS = "⌥3";
+
+export const DESIGN_SYSTEM_CODE = "Digit3";
+
 /** Figma's Layers panel: ⌥1. Matched on `event.code` (`Digit1`) since ⌥ changes `event.key` on macOS */
 export const SCREENS_VIEW_KEYS = "⌥1";
 

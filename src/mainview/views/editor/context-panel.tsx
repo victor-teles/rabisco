@@ -1,18 +1,19 @@
 import { useMemo, useRef, useState } from "react";
 import {
-	Check,
 	FileText,
 	FolderInput,
-	Globe,
+	Import,
 	Image,
 	MessageSquareText,
 	MoreHorizontal,
 	Plus,
+	SwatchBook,
 	Wand2,
 	X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import {
 	Dialog,
 	DialogContent,
@@ -28,7 +29,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -47,15 +47,7 @@ import { cn } from "@/lib/utils";
 import { logoPalette } from "../../../shared/context/brand-kit";
 import { contextBody } from "../../../shared/context/body";
 import { CONTEXT_TEMPLATES } from "../../../shared/context/templates";
-import {
-	normalizeTokenName,
-	parseTokenForm,
-	renameError,
-	type TokenEdit,
-	type TokenForm,
-	type TokenFormErrors,
-	type TokenMode,
-} from "../../../shared/context/token-edit";
+import { normalizeTokenName, renameError, type TokenEdit, type TokenMode } from "../../../shared/context/token-edit";
 import {
 	designTokensOf,
 	isCustomToken,
@@ -69,6 +61,8 @@ import {
 import { MAX_CONTEXT_FILE_BYTES } from "../../../shared/project";
 import type { ContextFileName, ProjectFiles } from "../../../shared/types";
 import { BrandImportDialog, logoPixels, type BrandImport } from "./brand-import-dialog";
+import { DESIGN_SYSTEM_KEYS } from "./shortcuts";
+import { AddTokenForm, ROW, TokenField } from "./token-fields";
 
 export const CONTEXT_FILES: ContextFileName[] = ["PRODUCT.md", "DESIGN.md"];
 
@@ -87,6 +81,7 @@ export type ContextPanelProps = {
 	onEndStep: () => void;
 	/** One undo step that writes DESIGN.md and applies its tokens to the screens */
 	onEditToken: (edit: TokenEdit) => void;
+	onOpenDesignSystem: () => void;
 	/** One undo step that writes the tokens into DESIGN.md and applies them to the screens */
 	onImportTokens: (tokens: DesignTokens) => void;
 	/** One undo step that replaces DESIGN.md and applies its tokens, if it has any */
@@ -140,7 +135,7 @@ export function ContextPanel(props: ContextPanelProps) {
 	};
 
 	const brandActions = {
-		onImportUrl: () => setBrandImport({ kind: "url" }),
+		onImportUrl: () => setBrandImport({ kind: "import" }),
 		onImportLogo: () => logoInput.current?.click(),
 	};
 
@@ -234,6 +229,7 @@ export function ContextPanel(props: ContextPanelProps) {
 						<TokenEditor
 							markdown={source}
 							onEditToken={onEditToken}
+							onOpenDesignSystem={props.onOpenDesignSystem}
 							onJumpToLine={(line) => {
 								const element = textarea.current;
 
@@ -393,8 +389,8 @@ function ContextActions(props: ContextPanelProps & BrandActions & { missing: boo
 				{file === "DESIGN.md" ? (
 					<>
 						<DropdownMenuItem className="text-[13px]" onSelect={onImportUrl}>
-							<Globe />
-							Import from a URL…
+							<Import />
+							Import tokens…
 						</DropdownMenuItem>
 						<DropdownMenuItem className="text-[13px]" onSelect={onImportLogo}>
 							<Image />
@@ -437,8 +433,8 @@ function MissingFile(props: ContextPanelProps & BrandActions & { onImport: () =>
 						</EmptyStateAction>
 						{file === "DESIGN.md" ? (
 							<EmptyStateAction emphasis="secondary" onClick={onImportUrl}>
-								<Globe />
-								Import from a URL…
+								<Import />
+								Import tokens…
 							</EmptyStateAction>
 						) : null}
 					</EmptyStateActions>
@@ -481,11 +477,6 @@ function UsageLine({
 	);
 }
 
-const ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_1.5rem] items-start gap-1";
-
-const FIELD =
-	"h-6 rounded-[5px] border-transparent bg-transparent px-1.5 font-mono text-[11px] shadow-none hover:border-input focus-visible:border-ring focus-visible:ring-0 md:text-[11px] dark:bg-transparent";
-
 const TOKEN_MODES: TokenMode[] = ["light", "dark"];
 
 const isBuiltInColor = (name: string) => tokenKind(name) === "color" && !isCustomToken(name);
@@ -500,10 +491,12 @@ function fallbackLabel(name: string, mode: TokenMode) {
 function TokenEditor({
 	markdown,
 	onEditToken,
+	onOpenDesignSystem,
 	onJumpToLine,
 }: {
 	markdown: string;
 	onEditToken: (edit: TokenEdit) => void;
+	onOpenDesignSystem: () => void;
 	onJumpToLine: (line: number) => void;
 }) {
 	const parsed = useMemo(() => parseDesignTokens(markdown), [markdown]);
@@ -518,6 +511,16 @@ function TokenEditor({
 				<span className="text-xs font-medium text-muted-foreground">Tokens</span>
 				{names.length ? <span className="text-[11px] text-subtle-foreground tabular-nums">{names.length}</span> : null}
 				<div className="flex-1" />
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button variant="ghost" size="icon-xs" aria-label="Open design system" onClick={onOpenDesignSystem}>
+							<SwatchBook />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">
+						Design system <Kbd>{DESIGN_SYSTEM_KEYS}</Kbd>
+					</TooltipContent>
+				</Tooltip>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
@@ -669,181 +672,5 @@ function TokenRow({
 			</div>
 			{error ? <p className="px-1.5 pb-1 text-[11px]/4 text-pretty text-destructive">{error}</p> : null}
 		</div>
-	);
-}
-
-/** Enter or blur commits, Esc puts the value back. `onCommit` writes the value, or returns why it can't. */
-function TokenField({
-	label,
-	value,
-	placeholder,
-	swatch = false,
-	invalid,
-	onCommit,
-	onError,
-}: {
-	label: string;
-	value: string;
-	placeholder?: string;
-	swatch?: boolean;
-	invalid: boolean;
-	onCommit: (next: string) => string | null;
-	onError: (reason: string | null) => void;
-}) {
-	const [draft, setDraft] = useState(value);
-	const [shown, setShown] = useState(value);
-	const cancelled = useRef(false);
-
-	// DESIGN.md changed under the field (undo, the text editor): show the new value
-	if (shown !== value) {
-		setShown(value);
-		setDraft(value);
-	}
-
-	const commit = () => {
-		const next = draft.trim();
-
-		if (next === value) {
-			setDraft(value);
-			onError(null);
-
-			return;
-		}
-
-		const reason = onCommit(next);
-
-		if (!reason) setDraft(value);
-		onError(reason);
-	};
-
-	return (
-		<div className="relative min-w-0">
-			{swatch && value ? (
-				<span
-					aria-hidden
-					className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 rounded-[3px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]"
-					style={{ background: value }}
-				/>
-			) : null}
-			<Input
-				value={draft}
-				placeholder={placeholder}
-				aria-label={label}
-				aria-invalid={invalid && draft !== value ? true : undefined}
-				title={draft || placeholder}
-				spellCheck={false}
-				autoComplete="off"
-				className={cn(FIELD, swatch && value && "pl-6", "placeholder:text-subtle-foreground")}
-				onChange={(event) => setDraft(event.target.value)}
-				onBlur={() => {
-					if (cancelled.current) cancelled.current = false;
-					else commit();
-				}}
-				onKeyDown={(event) => {
-					if (event.key === "Enter") {
-						event.preventDefault();
-						commit();
-					} else if (event.key === "Escape") {
-						event.preventDefault();
-						cancelled.current = true;
-						setDraft(value);
-						onError(null);
-						event.currentTarget.blur();
-					}
-				}}
-			/>
-		</div>
-	);
-}
-
-const EMPTY_FORM: TokenForm = { name: "", light: "", dark: "" };
-
-/** Enter adds, Esc closes */
-function AddTokenForm({
-	tokens,
-	onAdd,
-	onClose,
-}: {
-	tokens: DesignTokens;
-	onAdd: (edit: TokenEdit) => void;
-	onClose: () => void;
-}) {
-	const [form, setForm] = useState<TokenForm>(EMPTY_FORM);
-	const [errors, setErrors] = useState<TokenFormErrors>({});
-	const name = normalizeTokenName(form.name);
-	const color = tokenKind(name) === "color";
-	const messages = [errors.name, errors.light, errors.dark].filter((message) => message !== undefined);
-
-	const submit = () => {
-		const parsed = parseTokenForm(form, tokens);
-
-		if (parsed.edit) onAdd(parsed.edit);
-		else setErrors(parsed.errors);
-	};
-
-	const field = (key: keyof TokenForm, placeholder: string) => {
-		const value = form[key].trim();
-		const showSwatch = key !== "name" && color && value !== "" && validateToken(name, value) === null;
-
-		return (
-			<div className="relative min-w-0">
-				{showSwatch ? (
-					<span
-						aria-hidden
-						className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 rounded-[3px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]"
-						style={{ background: value }}
-					/>
-				) : null}
-				<Input
-					value={form[key]}
-					placeholder={placeholder}
-					aria-label={`New token ${key === "name" ? "name" : `${key} value`}`}
-					aria-invalid={errors[key] ? true : undefined}
-					autoFocus={key === "name"}
-					spellCheck={false}
-					autoComplete="off"
-					className={cn(FIELD, "border-input placeholder:text-subtle-foreground", showSwatch && "pl-6")}
-					onChange={(event) => {
-						setForm({ ...form, [key]: event.target.value });
-						setErrors({ ...errors, [key]: undefined });
-					}}
-				/>
-			</div>
-		);
-	};
-
-	return (
-		<form
-			role="listitem"
-			aria-label="Add token"
-			className="flex flex-col py-1"
-			onSubmit={(event) => {
-				event.preventDefault();
-				submit();
-			}}
-			onKeyDown={(event) => {
-				if (event.key === "Escape") {
-					event.preventDefault();
-					onClose();
-				}
-			}}
-		>
-			<div className={ROW}>
-				{field("name", "color-brand")}
-				{field("light", "Light")}
-				{field("dark", "Dark")}
-				<Button type="submit" variant="ghost" size="icon-xs" aria-label="Add token" title="Add token (Enter)">
-					<Check />
-				</Button>
-			</div>
-			{name && !errors.name && tokenClass(name) ? (
-				<span className="px-1.5 pt-0.5 font-mono text-[10px] text-subtle-foreground">{tokenClass(name)}</span>
-			) : null}
-			{messages.map((message) => (
-				<p key={message} className="px-1.5 pt-0.5 text-[11px]/4 text-pretty text-destructive">
-					{message}
-				</p>
-			))}
-		</form>
 	);
 }

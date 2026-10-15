@@ -14,6 +14,7 @@ import {
 	Pipette,
 	Plus,
 	Scan,
+	Unlink,
 	WrapText,
 	X,
 	type LucideIcon,
@@ -31,12 +32,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SCREEN_THEME_CSS } from "@/lib/render/theme";
 import { commonValue, editEach, restyle, retoken, sharedClasses } from "@/lib/element-selection";
 import { snapColor, type ColorCandidate } from "@/lib/eyedropper";
 import { cn } from "@/lib/utils";
 import {
 	customTokenNames,
+	parseTextStyle,
 	tokenKind,
 	tokenUtility,
 	type DesignTokens,
@@ -89,6 +92,7 @@ import {
 	type ScaleOption,
 	type SimpleProp,
 } from "../../../shared/tailwind/classes";
+import { applyTextStyle, detachTextStyle } from "../../../shared/tailwind/text-style";
 import { EYEDROPPER_KEYS, Eyedropper, EyedropperShortcut } from "./eyedropper";
 import { isTyping } from "./shortcuts";
 
@@ -966,12 +970,80 @@ function fontSizeOf(classes: string, variant: string) {
 	return fontSize === null ? [null, null] : splitModifier(fontSize);
 }
 
+/** The project's text styles, with their size and weight as the hint */
+function textStyleOptions(tokens: DesignTokens): ScaleOption[] {
+	return customTokenNames(tokens).flatMap((name) => {
+		const style = tokenKind(name) === "text" ? parseTextStyle(tokens.light[name] ?? tokens.dark[name] ?? "") : null;
+
+		if (!style) return [];
+		const utility = tokenUtility(name);
+
+		return [{ value: utility, label: utility, hint: [style.size, style.weight].filter(Boolean).join(" · ") }];
+	});
+}
+
+function TextStyleRow({ classes, edit, styles }: SectionProps & { styles: ScaleOption[] }) {
+	const styleOf = (own: string) => {
+		const [size, modifier] = fontSizeOf(own, edit.variant);
+
+		return modifier === null && styles.some((option) => option.value === size) ? size : null;
+	};
+
+	const value = styleOf(classes);
+
+	const detach = (own: string) => {
+		const utility = styleOf(own);
+		const style = utility ? (edit.tokens.light[`text-${utility}`] ?? edit.tokens.dark[`text-${utility}`]) : undefined;
+
+		return style ? detachTextStyle(own, style, edit.variant) : own;
+	};
+
+	return (
+		<Row label="Style">
+			<div className="min-w-0 flex-1">
+				<SelectField
+					label="Text style"
+					value={value}
+					mixed={isMixed(edit, styleOf)}
+					options={styles}
+					placeholder="None"
+					edit={edit}
+					onChange={(next) =>
+						edit.apply((own) =>
+							next === null ? setStyle(own, "fontSize", null, edit.variant) : applyTextStyle(own, next, edit.variant),
+						)
+					}
+				/>
+			</div>
+			{value ? (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label="Detach text style"
+							className="ml-1 shrink-0 text-muted-foreground"
+							disabled={edit.disabled}
+							onClick={() => edit.apply(detach)}
+						>
+							<Unlink />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">Detach: write its size, weight and tracking as classes</TooltipContent>
+				</Tooltip>
+			) : null}
+		</Row>
+	);
+}
+
 function TypographySection({ classes, edit }: SectionProps) {
 	const [sizeValue, lineModifier] = fontSizeOf(classes, edit.variant);
 	const align = getStyle(classes, "textAlign", edit.variant);
+	const styles = textStyleOptions(edit.tokens);
 
 	return (
 		<Section title="Typography">
+			{styles.length ? <TextStyleRow classes={classes} edit={edit} styles={styles} /> : null}
 			<Row label="Font">
 				<SelectField
 					label="Font family"

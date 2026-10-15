@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -9,13 +9,20 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { paletteTokens, parseBrandKit, type BrandKit, type LogoPalette } from "../../../shared/context/brand-kit";
+import {
+	brandKitUrl,
+	MAX_BRAND_KIT_BYTES,
+	paletteTokens,
+	parseBrandKit,
+	type BrandKit,
+	type LogoPalette,
+} from "../../../shared/context/brand-kit";
 import { orderedTokenNames, tokenKind, type DesignTokens } from "../../../shared/context/tokens";
 
-export type BrandImport = { kind: "url" } | { kind: "logo"; palette: LogoPalette; image: string; name: string };
+export type BrandImport = { kind: "import" } | { kind: "logo"; palette: LogoPalette; image: string; name: string };
 
 type Loaded = Exclude<BrandKit, { kind: "error" }> & { host: string };
 
@@ -63,8 +70,8 @@ export function BrandImportDialog({
 	return (
 		<Dialog open={request !== null} onOpenChange={(open) => !open && onClose()}>
 			<DialogContent className="sm:max-w-md" showCloseButton={false}>
-				{request?.kind === "url" ? (
-					<UrlImport
+				{request?.kind === "import" ? (
+					<TokenImport
 						current={current}
 						onClose={onClose}
 						onApplyTokens={onApplyTokens}
@@ -78,7 +85,14 @@ export function BrandImportDialog({
 	);
 }
 
-function UrlImport({
+/** A link to fetch, or text to read as it is: one line that parses as an address and isn't CSS or JSON */
+const linkOf = (input: string) => {
+	const text = input.trim();
+
+	return /\s/.test(text) || /^[{[:@.-]/.test(text) ? null : brandKitUrl(text);
+};
+
+function TokenImport({
 	current,
 	onClose,
 	onApplyTokens,
@@ -89,27 +103,42 @@ function UrlImport({
 	onApplyTokens: (tokens: DesignTokens) => void;
 	onReplaceDesign: (markdown: string) => void;
 }) {
-	const [url, setUrl] = useState("");
+	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [loaded, setLoaded] = useState<Loaded | null>(null);
+	const fileInput = useRef<HTMLInputElement>(null);
+
+	const read = (text: string, source: string, path = "", contentType = "") => {
+		const kit = parseBrandKit(text, path, contentType);
+
+		if (kit.kind === "error") setError(kit.message);
+		else setLoaded({ ...kit, host: source });
+	};
 
 	const load = async () => {
-		setLoading(true);
 		setError(null);
 		setLoaded(null);
 
-		try {
-			const fetched = await api.fetchBrandKit({ url });
-			const kit = parseBrandKit(fetched.text, fetched.url, fetched.contentType);
+		if (!linkOf(input)) return read(input, "the pasted text");
+		setLoading(true);
 
-			if (kit.kind === "error") setError(kit.message);
-			else setLoaded({ ...kit, host: new URL(fetched.url).host });
+		try {
+			const fetched = await api.fetchBrandKit({ url: input.trim() });
+			read(fetched.text, new URL(fetched.url).host, fetched.url, fetched.contentType);
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : String(reason));
 		} finally {
 			setLoading(false);
 		}
+	};
+
+	const readFile = async (file: File) => {
+		setError(null);
+		setLoaded(null);
+
+		if (file.size > MAX_BRAND_KIT_BYTES) return setError(`${file.name} is over ${MAX_BRAND_KIT_BYTES / 1024} KB.`);
+		read(await file.text(), file.name, file.name, file.type);
 	};
 
 	const apply = () => {
@@ -121,37 +150,69 @@ function UrlImport({
 	};
 
 	const count = loaded ? countOf(loaded.tokens) : 0;
+	const isLink = linkOf(input) !== null;
 
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle className="text-base">Import from a URL</DialogTitle>
+				<DialogTitle className="text-base">Import tokens</DialogTitle>
 				<DialogDescription className="text-[13px]">
-					A Design.md, a CSS theme or a JSON token file. GitHub file links work.
+					Paste a tweakcn or file link, shadcn CSS, DTCG or Figma Variables JSON, or a Design.md.
 				</DialogDescription>
 			</DialogHeader>
 			<form
-				className="flex gap-2"
+				className="flex flex-col gap-2"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void load();
 				}}
 			>
-				<Input
-					value={url}
-					onChange={(event) => setUrl(event.target.value)}
-					placeholder="https://github.com/acme/brand/blob/main/DESIGN.md"
-					aria-label="File address"
+				<Textarea
+					value={input}
+					onChange={(event) => {
+						setInput(event.target.value);
+						setLoaded(null);
+						setError(null);
+					}}
+					onKeyDown={(event) => {
+						if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+							event.preventDefault();
+							void load();
+						}
+					}}
+					placeholder={"https://tweakcn.com/themes/…\n\n:root {\n  --primary: oklch(0.55 0.2 264);\n}"}
+					aria-label="Link or token text"
 					aria-invalid={error !== null}
 					aria-describedby={error ? "brand-import-error" : undefined}
 					autoFocus
 					spellCheck={false}
-					className="h-8 text-[13px]"
+					className="max-h-48 min-h-24 font-mono text-xs md:text-xs"
 				/>
-				<Button type="submit" size="sm" variant="outline" disabled={loading || !url.trim()}>
-					{loading ? <Loader2 className="animate-spin" /> : null}
-					{loading ? "Loading" : "Load"}
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button type="button" size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
+						<FileUp />
+						Choose file…
+					</Button>
+					<div className="flex-1" />
+					<Button type="submit" size="sm" variant="outline" disabled={loading || !input.trim()}>
+						{loading ? <Loader2 className="animate-spin" /> : null}
+						{loading ? "Loading" : isLink ? "Load" : "Read"}
+					</Button>
+				</div>
+				<input
+					ref={fileInput}
+					type="file"
+					accept=".json,.css,.md,application/json,text/css,text/markdown"
+					className="hidden"
+					tabIndex={-1}
+					aria-hidden
+					onChange={(event) => {
+						const file = event.target.files?.[0];
+						event.target.value = "";
+
+						if (file) void readFile(file);
+					}}
+				/>
 			</form>
 			{error ? (
 				<p id="brand-import-error" role="alert" className="text-xs text-destructive">

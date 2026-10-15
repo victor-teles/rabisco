@@ -16,10 +16,10 @@ Open items from phase 14, plus the gaps that make design system work hard.
 
 **Tokens**
 
-- ⬜ A design system view: tokens by category, rename with usages rewritten, delete with a usage count, shadows and font weights
-- ⬜ Find raw values that match a token ("12 raw colors in 4 screens") and replace them in one step; detach a token back to a value
-- ⬜ Import tokens from DTCG or Figma Variables JSON, pasted shadcn CSS or a tweakcn link
-- ⬜ Text styles: named type tokens applied as one class, shown in the inspector
+- ✅ A design system view (`⌥3`, or the Context panel's Tokens header): tokens by kind with where screens use them, rename with uses rewritten, delete with a use count (detach and delete, or delete only), `shadow-*` and `font-weight-*` tokens ([0044](./decisions/0044-token-tools-rewrite-uses-in-source.md), `views/editor/design-system-dialog.tsx`, `src/shared/context/token-usage.ts`)
+- ✅ Find raw values that match a token ("12 raw values in 4 screens match tokens"): arbitrary values and palette colors, replaced all at once or per token; detach a token's uses back to its value, with a `dark:` class for a dark value
+- ✅ Import tokens from DTCG or Figma Variables JSON, pasted shadcn CSS or a tweakcn link: "Import tokens…" takes a link, pasted text or a file (`src/shared/context/token-import.ts`)
+- ✅ Text styles: `text-heading: 2rem/1.2 600 -0.01em` sets size, line height, weight and tracking as one class. The inspector's Style row applies one or detaches it (`src/shared/tailwind/text-style.ts`)
 
 **Themed sections** ([0028](./decisions/0028-themed-sections.md), built in five steps, dark on frames first)
 

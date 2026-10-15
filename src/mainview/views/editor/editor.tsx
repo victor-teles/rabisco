@@ -88,7 +88,8 @@ import {
 	withStyle,
 	type StyleId,
 } from "../../../shared/context/styles";
-import { applyTokenEdit, seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
+import { applyDesignSystemChange, type DesignSystemChange } from "../../../shared/context/design-system";
+import { seedDesignTokens, type TokenEdit } from "../../../shared/context/token-edit";
 import { withDesignTokens } from "../../../shared/context/brand-kit";
 import { designTokensOf, type DesignTokens } from "../../../shared/context/tokens";
 import { editLink, type LinkEdit } from "../../../shared/prototype/links";
@@ -127,6 +128,7 @@ import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
 import { checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog } from "./design-check-dialog";
+import { DesignSystemDialog } from "./design-system-dialog";
 import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
 import { layoutGrids } from "./layout-grids";
@@ -150,6 +152,7 @@ import {
 	ALIGN_SHORTCUTS,
 	CHECKPOINT_CODE,
 	COMPONENTS_VIEW_CODE,
+	DESIGN_SYSTEM_CODE,
 	DISTRIBUTE_SHORTCUTS,
 	focusOwnsKey,
 	NEW_CHAT_CODE,
@@ -242,6 +245,7 @@ export function EditorView({
 	const [screenshotPair, setScreenshotPair] = useState<{ file: string; image: string } | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
 	const [designChecks, setDesignChecks] = useState<ScreenCheck[] | null>(null);
+	const [designSystemOpen, setDesignSystemOpen] = useState(false);
 	/** The screen whose name field in the inspector takes focus */
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const [paletteOpen, setPaletteOpen] = useState(false);
@@ -865,19 +869,26 @@ export function EditorView({
 		[change],
 	);
 
-	/** One undo step that writes DESIGN.md and applies it, so no "Apply to screens" prompt follows */
-	const editDesignToken = useCallback(
-		(edit: TokenEdit) =>
+	/**
+	 * One undo step over DESIGN.md and the screens that use the token. A DESIGN.md change is applied at once, so no
+	 * "Apply to screens" prompt follows.
+	 */
+	const changeDesignSystem = useCallback(
+		(designChange: DesignSystemChange) =>
 			change((snapshot) => {
-				const design = applyTokenEdit(seedDesignTokens(snapshot.files["DESIGN.md"] ?? "", snapshot.theme), edit);
+				const files = applyDesignSystemChange(snapshot.files, snapshot.theme, designChange);
+				const design = files["DESIGN.md"];
 
-				return {
-					...snapshot,
-					files: { ...snapshot.files, "DESIGN.md": design },
-					theme: withSource(designTokensOf(design), designSourceOf(design)),
-				};
+				return design === snapshot.files["DESIGN.md"]
+					? { ...snapshot, files }
+					: { ...snapshot, files, theme: withSource(designTokensOf(design), designSourceOf(design)) };
 			}),
 		[change],
+	);
+
+	const editDesignToken = useCallback(
+		(edit: TokenEdit) => changeDesignSystem({ kind: "token", edit }),
+		[changeDesignSystem],
 	);
 
 	/** One undo step; a Design.md without tokens keeps the theme until Update theme reads it */
@@ -1645,6 +1656,14 @@ export function EditorView({
 			run: () => toggleTab("context"),
 		},
 		{
+			id: "toggle-design-system",
+			label: "Design system",
+			group: "View",
+			chords: [{ code: DESIGN_SYSTEM_CODE, alt: true }],
+			enabled: loaded,
+			run: () => setDesignSystemOpen((open) => !open),
+		},
+		{
 			id: "toggle-comments-list",
 			label: "Comments list",
 			group: "View",
@@ -1822,6 +1841,18 @@ export function EditorView({
 
 		// The palette and the sheet are modal: ⌘Z there must not undo behind them
 		if (paletteOpen || sheetOpen) return;
+
+		// The design system view edits the project, so only undo, redo and its own toggle reach past it
+		if (designSystemOpen) {
+			const action = actionForKey(actions, event);
+
+			if (action?.enabled && ["undo", "redo", "toggle-design-system"].includes(action.id)) {
+				event.preventDefault();
+				action.run();
+			}
+
+			return;
+		}
 
 		// Text being edited in a frame owns the keys; Escape still cancels it if focus stayed here
 		if (canvasRef.current?.isEditingText()) {
@@ -2150,6 +2181,7 @@ export function EditorView({
 				onFileChange={setContextFile}
 				onEdit={editContext}
 				onEditToken={editDesignToken}
+				onOpenDesignSystem={() => setDesignSystemOpen(true)}
 				onImportTokens={importDesignTokens}
 				onReplaceDesign={replaceDesign}
 				onReplace={replaceContext}
@@ -2585,6 +2617,15 @@ export function EditorView({
 					/>
 				</div>
 			</div>
+			<DesignSystemDialog
+				open={designSystemOpen}
+				onOpenChange={setDesignSystemOpen}
+				files={files}
+				applied={appliedTokens}
+				onChange={changeDesignSystem}
+				onImportTokens={importDesignTokens}
+				onReplaceDesign={replaceDesign}
+			/>
 			{designChecks && (
 				<DesignCheckDialog results={designChecks} onSelect={selectElement} onClose={() => setDesignChecks(null)} />
 			)}
