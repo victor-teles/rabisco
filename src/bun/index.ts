@@ -10,6 +10,7 @@ import Electrobun, {
 import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
+import { isKitId } from "../shared/components/starter-kits";
 import { isString } from "../shared/guards";
 import type { Json } from "../shared/json";
 import type { RabiscoRPC } from "../shared/rpc";
@@ -265,7 +266,8 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			openProject: ({ path }) => store.openProject(path),
 			// A share link lives while its project is open
 			closeProject: ({ path }) => (store.closeProject(path), shares.stop(path), ok),
-			createProject: ({ name, device, style }) => store.createProject(name, device, style),
+			createProject: ({ name, device, style, kit }) =>
+				store.createProject(name, device, style, isKitId(kit) ? kit : null),
 			saveCanvas: ({ path, canvas }) => (store.saveCanvas(path, canvas), ok),
 			writeFiles: ({ path, changes }) => (store.writeFiles(path, changes), ok),
 			appendMessages: ({ path, chatId, messages }) => (store.appendMessages(path, chatId, messages), ok),

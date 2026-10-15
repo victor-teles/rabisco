@@ -2,6 +2,7 @@ import type { RPCSchema } from "electrobun";
 import type { AssetChange, AssetWrite } from "./assets";
 import type { UrlCapture } from "./import/url-capture";
 import type { StyleId } from "./context/styles";
+import type { KitId } from "./components/starter-kits";
 import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
@@ -45,8 +46,11 @@ export type RabiscoRPC = {
 			openProject: { params: { path: string }; response: Project };
 			closeProject: { params: { path: string }; response: { ok: true } };
 			/** In the default projects directory */
-			/** `style` writes that starter DESIGN.md instead of the template */
-			createProject: { params: { name: string; device: Device; style?: StyleId | null }; response: Project };
+			/** `style` writes that starter DESIGN.md instead of the template; `kit` writes its components */
+			createProject: {
+				params: { name: string; device: Device; style?: StyleId | null; kit?: KitId | null };
+				response: Project;
+			};
 			saveCanvas: { params: { path: string; canvas: CanvasDoc }; response: { ok: true } };
 			writeFiles: { params: { path: string; changes: FileChange[] }; response: { ok: true } };
 			/** Creates the chat's file with its first message */

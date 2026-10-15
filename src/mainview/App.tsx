@@ -93,7 +93,7 @@ export default function App() {
 		return onSitesExpired(() => void take());
 	}, []);
 
-	const startDesign: StartDesign = async ({ prompt, device, files, variations, style }) => {
+	const startDesign: StartDesign = async ({ prompt, device, files, variations, style, kit }) => {
 		try {
 			const auto = style === AUTO_STYLE && Boolean(prompt.trim());
 
@@ -101,6 +101,7 @@ export default function App() {
 				name: projectNameFromPrompt(prompt),
 				device,
 				style: auto ? null : style === AUTO_STYLE ? AUTO_FALLBACK_STYLE : style,
+				kit,
 			});
 
 			openEditor({

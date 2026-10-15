@@ -51,6 +51,7 @@ import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import type { Theme } from "@/hooks/use-theme";
 import { openSettings } from "@/hooks/use-providers";
 import { useDesignStyle } from "@/hooks/use-design-style";
+import { useStarterKit } from "@/hooks/use-starter-kit";
 import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { useVariations } from "@/hooks/use-variations";
 import { arrangeRecents, isRecentsSort, RECENTS_SORTS, type RecentsSort } from "@/lib/recents";
@@ -58,6 +59,7 @@ import { api, isDesktop } from "@/lib/rpc";
 import { projectSessions } from "@/lib/sessions";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import type { KitId } from "../../shared/components/starter-kits";
 import type { StyleChoice } from "../../shared/context/styles";
 import type { Device, ProjectSummary, ScreenCover, ScreenSource } from "../../shared/types";
 
@@ -104,6 +106,7 @@ export type StartDesign = (input: {
 	files?: File[];
 	variations?: number;
 	style?: StyleChoice;
+	kit?: KitId;
 }) => void;
 
 type HomeProps = {
@@ -119,6 +122,7 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 	const [variations, setVariations] = useVariations();
 	const [planMode, setPlanMode] = usePlanMode();
 	const [designStyle, setDesignStyle] = useDesignStyle();
+	const [kit, setKit] = useStarterKit();
 	const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
 	const [trashTarget, setTrashTarget] = useState<ProjectSummary | null>(null);
 	const [section, setSection] = useState<Section>("home");
@@ -252,10 +256,14 @@ export function HomeView({ theme, onToggleTheme, onStart, onOpenProject }: HomeP
 								planModeHint={planModeHint({ editing: 0, variations })}
 								designStyle={designStyle}
 								onDesignStyleChange={setDesignStyle}
+								kit={kit}
+								onKitChange={setKit}
 								stacked
 								improve={{}}
 								placeholder="A meditation app with a soft, editorial feel…"
-								onSubmit={(text, files) => onStart({ prompt: text, device, files, variations, style: designStyle })}
+								onSubmit={(text, files) =>
+									onStart({ prompt: text, device, files, variations, style: designStyle, kit })
+								}
 							/>
 
 							<div className="mt-4 flex flex-wrap justify-center gap-1.5">

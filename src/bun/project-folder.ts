@@ -13,6 +13,7 @@ import { dirname, join } from "path";
 import { parseDocuments } from "../shared/ai/documents";
 import { parseChangeSummary } from "../shared/change-summary";
 import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
+import { kitFiles, type KitId } from "../shared/components/starter-kits";
 import { starterFiles, type StyleId } from "../shared/context/styles";
 import type { AppliedTheme } from "../shared/context/theme";
 import { validateToken } from "../shared/context/tokens";
@@ -429,12 +430,23 @@ export function freeProjectDir(parent: string, name: string) {
 	return dir;
 }
 
-export function createProjectFolder(parent: string, name: string, device: Device, style?: StyleId | null) {
+export function createProjectFolder(
+	parent: string,
+	name: string,
+	device: Device,
+	style?: StyleId | null,
+	kit?: KitId | null,
+) {
 	const dir = freeProjectDir(parent, name);
 	mkdirSync(dir, { recursive: true });
 	writeCanvas(dir, emptyCanvas(name.trim() || "Untitled", device));
 
 	for (const [file, content] of Object.entries(starterFiles(style))) writeFileSync(join(dir, file), content);
+
+	writeProjectFiles(
+		dir,
+		Object.entries(kitFiles(kit)).map(([path, content]) => ({ path, content })),
+	);
 
 	return dir;
 }

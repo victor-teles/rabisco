@@ -37,6 +37,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashKeyHandler } from "@/components/app/slash-menu";
+import { KitPicker } from "@/components/app/kit-picker";
 import { StylePicker } from "@/components/app/style-picker";
 import type { ChatCommand } from "@/lib/chat-commands";
 import { IMPROVE_PROMPT_KEYS, isImprovePrompt, useImprovePrompt } from "@/hooks/use-improve-prompt";
@@ -44,6 +45,7 @@ import { isPlanModeToggle, PLAN_MODE_KEYS } from "@/hooks/use-plan-mode";
 import { modelLabel, openSettings, selectModel, useProviders, type ModelOption } from "@/hooks/use-providers";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT, isDocumentFile } from "../../../shared/ai/documents";
+import { DEFAULT_KIT, type KitId } from "../../../shared/components/starter-kits";
 import type { StyleChoice } from "../../../shared/context/styles";
 import { isDevice } from "../../../shared/project";
 import type { Device } from "../../../shared/types";
@@ -80,6 +82,9 @@ export type DesignComposerProps = {
 	/** The starting style of a new project; the picker shows only when `onDesignStyleChange` is set */
 	designStyle?: StyleChoice;
 	onDesignStyleChange?: (style: StyleChoice) => void;
+	/** The starter kit of a new project; the picker shows only when `onKitChange` is set */
+	kit?: KitId;
+	onKitChange?: (kit: KitId) => void;
 	inlineOptions?: boolean;
 	/** The prompt on its own row, with the options in a toolbar under it (Home) */
 	stacked?: boolean;
@@ -114,6 +119,8 @@ export function DesignComposer({
 	planModeHint,
 	designStyle = null,
 	onDesignStyleChange,
+	kit = DEFAULT_KIT,
+	onKitChange,
 	inlineOptions = true,
 	stacked = false,
 	className,
@@ -214,6 +221,7 @@ export function DesignComposer({
 					<>
 						<DeviceToggle device={device} onDeviceChange={onDeviceChange} />
 						{onDesignStyleChange ? <StylePicker value={designStyle} onChange={onDesignStyleChange} /> : null}
+						{onKitChange ? <KitPicker value={kit} onChange={onKitChange} /> : null}
 						{onVariationsChange ? (
 							<VariationsPicker value={variations} onChange={onVariationsChange} hint={variationsHint} />
 						) : null}

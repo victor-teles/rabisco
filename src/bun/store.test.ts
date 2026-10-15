@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { join } from "path";
+import { kitById } from "../shared/components/starter-kits";
 import { DESIGN_TEMPLATE, PRODUCT_TEMPLATE } from "../shared/context/templates";
 import { coverFor } from "../shared/project";
 import type { AssetChange } from "../shared/assets";
@@ -101,6 +102,21 @@ describe("project files", () => {
 		writeFileSync(join(existing, "DESIGN.md"), "# Mine");
 		expect(loadProject(existing).files).toEqual({ "DESIGN.md": "# Mine" });
 		expect(existsSync(join(existing, "PRODUCT.md"))).toBe(false);
+	});
+
+	test("a starter kit writes its components into the new project", () => {
+		const created = loadProject(createProjectFolder(tempDir(), "Kit", "mobile", null, "ios"));
+		expect(Object.keys(created.files).sort()).toEqual(
+			["DESIGN.md", "PRODUCT.md", ...Object.keys(kitById("ios").files)].sort(),
+		);
+		expect(created.files["components/segmented-control.tsx"]).toBe(
+			kitById("ios").files["components/segmented-control.tsx"],
+		);
+
+		expect(Object.keys(loadProject(createProjectFolder(tempDir(), "Base", "mobile", null, "shadcn")).files)).toEqual([
+			"PRODUCT.md",
+			"DESIGN.md",
+		]);
 	});
 
 	test("rejects paths that aren't folders", () => {

@@ -3,6 +3,7 @@ import { normalizeComments } from "../../shared/comments";
 import { newChatId, sortChats, summarizeChat } from "../../shared/chats";
 import { agentOpener } from "@/lib/agent-open";
 import { brandKitUrl } from "../../shared/context/brand-kit";
+import { kitFiles } from "../../shared/components/starter-kits";
 import { starterFiles } from "../../shared/context/styles";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
@@ -258,11 +259,11 @@ function createBrowserApi(): RabiscoApi {
 		async closeProject() {
 			return ok;
 		},
-		async createProject({ name, device, style }) {
+		async createProject({ name, device, style, kit }) {
 			const path = `browser://${crypto.randomUUID()}`;
 			write(path, {
 				canvas: emptyCanvas(name.trim() || "Untitled", device),
-				files: starterFiles(style),
+				files: { ...starterFiles(style), ...kitFiles(kit) },
 				chats: {},
 			});
 

@@ -4,6 +4,7 @@ import type { Attachment } from "../shared/ai/contract";
 import type { AssetChange, AssetWrite } from "../shared/assets";
 import type { BackupReason, SavedHistory } from "../shared/saved-history";
 import type { StyleId } from "../shared/context/styles";
+import type { KitId } from "../shared/components/starter-kits";
 import type {
 	CanvasDoc,
 	ChatMessage,
@@ -167,8 +168,8 @@ export function createProjectStore(options: StoreOptions) {
 			stopWatching(normalize(path));
 		},
 
-		createProject(name: string, device: Device, style?: StyleId | null): Project {
-			return openProject(createProjectFolder(projectsDir, name, device, style));
+		createProject(name: string, device: Device, style?: StyleId | null, kit?: KitId | null): Project {
+			return openProject(createProjectFolder(projectsDir, name, device, style, kit));
 		},
 
 		saveCanvas(path: string, canvas: CanvasDoc) {
