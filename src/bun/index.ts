@@ -30,6 +30,7 @@ import { OPEN_REQUEST_FILE, watchOpenRequests } from "./mcp/open-request";
 import { bridgeLaunch, listClients, removeClient, setUpClient, systemClientEnv } from "./mcp/clients";
 import { createPublishService } from "./publish";
 import { createHostClients } from "./publish-hosts";
+import { createPages } from "./publish-pages";
 import { createShareService, readScreenRuntime } from "./share";
 import { createProjectStore } from "./store";
 
@@ -144,11 +145,14 @@ const shares = createShareService({
 	onComment: (path, comment) => mainWindow.webview.rpc?.send.viewerComment({ path, comment }),
 });
 
+const git = createGit();
+
 // Published sites go to a host the user owns (decision 0038)
 const publishing = createPublishService({
 	userDataDir: Utils.paths.userData,
 	secrets,
 	hosts: createHostClients({ fetch: (url, init) => fetch(url, init) }),
+	pages: createPages(git),
 	readRuntime: () => readScreenRuntime(runtimeDirs()),
 });
 
@@ -174,8 +178,6 @@ const sweepExpired = () =>
 void sweepExpired();
 
 setInterval(sweepExpired, SWEEP_MS);
-
-const git = createGit();
 
 const CAPTURE_HEIGHT = 900;
 
@@ -352,6 +354,7 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			publishConnect: ({ host, token }) => publishing.connect(host, token),
 			publishDisconnect: ({ host }) => publishing.disconnect(host),
 			publishTarget: ({ path }) => publishing.target(path),
+			publishPages: ({ path }) => publishing.pages(path),
 			publishSite: ({ snapshot, ...params }) => publishing.publish(params, snapshot),
 			unpublishSite: async ({ path }) => (await publishing.unpublish(path), ok),
 			takeExpiredSites: () => {

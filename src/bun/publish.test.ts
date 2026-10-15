@@ -5,6 +5,7 @@ import type { ShareSnapshot } from "../shared/share/snapshot";
 import { createMemorySecretStore } from "./ai/keychain";
 import { createPublishService, PUBLISH_DIR } from "./publish";
 import type { DeployRequest, HostClient } from "./publish-hosts";
+import type { PagesClient, PagesDeployRequest } from "./publish-pages";
 import { tempDir } from "./test-utils";
 
 const snapshot: ShareSnapshot = {
@@ -43,6 +44,29 @@ function fakeHost(name: string) {
 	return { client, deploys, removed, verified: () => verified };
 }
 
+function fakePages() {
+	const deploys: PagesDeployRequest[] = [];
+
+	const client: PagesClient = {
+		async status() {
+			return {
+				state: "ready",
+				remote: "origin",
+				repo: "acme/shop",
+				url: "https://acme.github.io/shop/",
+				settingsUrl: "https://github.com/acme/shop/settings/pages",
+			};
+		},
+		async deploy(request) {
+			deploys.push(request);
+
+			return { siteId: request.branch, siteName: "acme/shop", url: "https://acme.github.io/shop/" };
+		},
+	};
+
+	return { client, deploys };
+}
+
 function setup(
 	now = new Date("2026-10-13T12:00:00.000Z"),
 	tokens: Record<string, string> = { "publish:netlify": "nt" },
@@ -51,21 +75,23 @@ function setup(
 	const secrets = createMemorySecretStore(tokens);
 	const netlify = fakeHost("netlify");
 	const vercel = fakeHost("vercel");
+	const pages = fakePages();
 	let clock = now;
 
 	const service = createPublishService({
 		userDataDir,
 		secrets,
 		hosts: { netlify: netlify.client, vercel: vercel.client },
+		pages: pages.client,
 		readRuntime: () => runtime,
 		now: () => clock,
 		sealRounds: 1000,
 	});
 
-	return { service, secrets, netlify, vercel, userDataDir, setNow: (next: Date) => (clock = next) };
+	return { service, secrets, netlify, vercel, pages, userDataDir, setNow: (next: Date) => (clock = next) };
 }
 
-const fileText = (request: DeployRequest | undefined, path: string) =>
+const fileText = (request: DeployRequest | PagesDeployRequest | undefined, path: string) =>
 	new TextDecoder().decode(request?.files.find((file) => file.path === path)?.body);
 
 describe("publish service", () => {
@@ -183,6 +209,52 @@ describe("publish service", () => {
 		await service.unpublish("/p");
 		expect(netlify.removed).toEqual(["netlify-1"]);
 		expect(service.target("/p")).toBeNull();
+	});
+
+	test("publishes to GitHub Pages through git sync, on the same branch each time, with no token", async () => {
+		const { service, pages } = setup(undefined, {});
+		// SAFETY: a host that the type rules out, as a bad RPC call could send it
+		const github = "github" as "netlify";
+		await expect(service.connect(github, "x")).rejects.toThrow("doesn't use a token");
+
+		const target = await service.publish(
+			{ path: "/work/shop", host: "github", branch: " site ", password: "long password" },
+			snapshot,
+		);
+
+		expect(target).toMatchObject({
+			host: "github",
+			siteId: "site",
+			siteName: "acme/shop",
+			url: "https://acme.github.io/shop/",
+			locked: true,
+		});
+		expect(pages.deploys[0]).toMatchObject({ dir: "/work/shop", branch: "site", message: "Rabisco: publish 1 screen" });
+		expect(fileText(pages.deploys[0], "snapshot.js")).not.toContain("Secret plan");
+		expect(await service.pages("/work/shop")).toMatchObject({ state: "ready", repo: "acme/shop" });
+
+		await service.publish({ path: "/work/shop", host: "github", branch: "other" }, snapshot);
+		expect(pages.deploys[1]!.branch).toBe("site");
+
+		await service.publish({ path: "/work/blog", host: "github" }, snapshot);
+		expect(pages.deploys[2]!.branch).toBe("gh-pages");
+
+		await service.unpublish("/work/shop");
+		expect(pages.deploys[3]).toMatchObject({ dir: "/work/shop", branch: "site", message: "Rabisco: remove the site" });
+		expect(pages.deploys[3]!.files.map((file) => file.path)).toEqual(["index.html"]);
+		expect(fileText(pages.deploys[3], "index.html")).toContain("This site was removed");
+		expect(service.target("/work/shop")).toBeNull();
+	});
+
+	test("the sweep replaces an expired GitHub Pages site with an expired page", async () => {
+		const { service, pages, setNow } = setup();
+		await service.publish({ path: "/work/shop", host: "github", expiresAt: "2026-10-14T00:00:00.000Z" }, snapshot);
+		setNow(new Date("2026-10-15T00:00:00.000Z"));
+
+		expect(await service.sweep()).toEqual(["https://acme.github.io/shop/"]);
+		expect(pages.deploys[1]).toMatchObject({ dir: "/work/shop", branch: "gh-pages" });
+		expect(fileText(pages.deploys[1], "index.html")).toContain("This link has expired");
+		expect(service.target("/work/shop")).toBeNull();
 	});
 
 	test("the sweep is a no-op before anything was published", async () => {

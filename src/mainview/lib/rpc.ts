@@ -417,6 +417,9 @@ function createBrowserApi(): RabiscoApi {
 		async publishTarget() {
 			return null;
 		},
+		async publishPages() {
+			return { state: "unavailable", error: DESKTOP_ONLY } as const;
+		},
 		async publishSite() {
 			throw new Error(DESKTOP_ONLY);
 		},

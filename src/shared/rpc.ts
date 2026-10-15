@@ -9,7 +9,7 @@ import type { RepoInfo } from "./export/repo-sync";
 import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
-import type { PublishHost, PublishHostStatus, PublishParams, PublishTarget } from "./share/publish";
+import type { PagesStatus, PublishHostStatus, PublishParams, PublishTarget, TokenHost } from "./share/publish";
 import type { ViewerComment } from "./share/comments";
 import type { ShareSnapshot, ShareStatus } from "./share/snapshot";
 import type {
@@ -147,13 +147,15 @@ export type RabiscoRPC = {
 			/** Hosts with a token in the keychain (decision 0038) */
 			publishHosts: { params: {}; response: PublishHostStatus[] };
 			/** Checks the token with the host, then saves it in the keychain */
-			publishConnect: { params: { host: PublishHost; token: string }; response: PublishHostStatus[] };
+			publishConnect: { params: { host: TokenHost; token: string }; response: PublishHostStatus[] };
 			/** Deletes the token; published sites stay up */
-			publishDisconnect: { params: { host: PublishHost }; response: PublishHostStatus[] };
+			publishDisconnect: { params: { host: TokenHost }; response: PublishHostStatus[] };
 			publishTarget: { params: { path: string }; response: PublishTarget | null };
+			/** Whether git sync can publish this project to GitHub Pages (decision 0043) */
+			publishPages: { params: { path: string }; response: PagesStatus };
 			/** Uploads the website to the project's site, or a new one. The password is never saved. */
 			publishSite: { params: PublishParams & { snapshot: ShareSnapshot }; response: PublishTarget };
-			/** Deletes the site on the host */
+			/** Deletes the site on the host, or replaces a GitHub Pages site with a notice */
 			unpublishSite: { params: { path: string }; response: { ok: true } };
 			/** Expired sites the sweep removed since the last call */
 			takeExpiredSites: { params: {}; response: { urls: string[] } };

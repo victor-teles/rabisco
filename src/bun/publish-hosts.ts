@@ -2,7 +2,7 @@
 import { createHash } from "crypto";
 import { isString } from "../shared/guards";
 import type { Json } from "../shared/json";
-import { PUBLISH_HOST_INFO, type PublishHost } from "../shared/share/publish";
+import { PUBLISH_HOST_INFO, TOKEN_HOST_INFO, type TokenHost } from "../shared/share/publish";
 import { arrayOr, objectOr, optionalString, parseJson } from "./json";
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -48,8 +48,9 @@ function errorText(body: Json): string | undefined {
 	return optionalString(nested.message) ?? optionalString(root.message) ?? optionalString(root.error);
 }
 
-function refusal(host: PublishHost, status: number, body: Json) {
-	const { name, tokenHint } = PUBLISH_HOST_INFO[host];
+function refusal(host: TokenHost, status: number, body: Json) {
+	const { name } = PUBLISH_HOST_INFO[host];
+	const { tokenHint } = TOKEN_HOST_INFO[host];
 
 	if (status === 401 || objectOr(objectOr(body).error).invalidToken === true)
 		return new HostError(`${name} didn't accept the token. Connect again with a new token.`, status);
@@ -65,7 +66,7 @@ function parseBody(text: string): Json {
 	}
 }
 
-function createApi(host: PublishHost, base: string, fetch: Fetch) {
+function createApi(host: TokenHost, base: string, fetch: Fetch) {
 	const name = PUBLISH_HOST_INFO[host].name;
 
 	return async function call(token: string, method: string, path: string, body?: Json | Uint8Array<ArrayBuffer>) {
@@ -348,6 +349,6 @@ export function createVercel(options: HostOptions): HostClient {
 	};
 }
 
-export function createHostClients(options: HostOptions): Record<PublishHost, HostClient> {
+export function createHostClients(options: HostOptions): Record<TokenHost, HostClient> {
 	return { netlify: createNetlify(options), vercel: createVercel(options) };
 }

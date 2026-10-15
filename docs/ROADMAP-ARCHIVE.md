@@ -1,6 +1,6 @@
 # Rabisco roadmap archive
 
-Finished work from phases 0–22, kept for reference. Each item says what was built and where it lives. Open items from these phases moved to the [roadmap](./ROADMAP.md).
+Finished work from phases 0–24, kept for reference. Each item says what was built and where it lives. Open items from these phases moved to the [roadmap](./ROADMAP.md).
 
 Status: ✅ done · ❌ dropped
 
@@ -593,6 +593,24 @@ MagicPath, Banani and Paper all let Claude Code, Codex and Cursor work on the ca
 - ✅ Sync a screen into an existing app repository: write it as a component at a path the user picks, with its imports. "Sync to repository…" (`⌥⇧⌘S`) writes the screen and the components it imports, points relative imports at their new places and uses the repository's shadcn aliases from `components.json`. It shows which files it replaces and which shadcn primitives and packages the repository still needs, and it remembers the repository and paths per screen
 
 **Done when** Claude Code can read the selected screen, change it, and the user can undo that change in Rabisco.
+
+---
+
+## Phase 23: Share beyond the local network ✅
+
+_Principle: UX first (no dead ends)_
+
+The share link works only on the local network ([0008](./decisions/0008-share-link-and-git-sync.md)). Competitors share a public link that needs no account. A new decision must pick how, and keep the app working with no account.
+
+- ✅ Publish "Export as website" to a static host the user owns: Netlify and Vercel, through their APIs with a token in the keychain. The Web tab of the Share popover publishes, updates and removes the site ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-39](/LIT/issues/LIT-39))
+- ✅ Publish to GitHub Pages through git sync, as the second step of [0038](./decisions/0038-publish-to-a-host-the-user-owns.md). A third host in the Web tab pushes the site to a `gh-pages` branch of the git sync remote, never forced, with no token. Without git sync the tab points to the Git tab. Cloudflare Pages waits for a stable upload API ([0043](./decisions/0043-publish-to-github-pages-through-git-sync.md), [LIT-152](/LIT/issues/LIT-152))
+- ✅ A QR code for the LAN link, to open a prototype on a phone ([LIT-40](/LIT/issues/LIT-40))
+- ✅ Comments from viewers on a shared link, collected back into the project. On the LAN link only: the share server takes a comment with a screen and a pin, and it lands as a new thread in one undo step ([0038](./decisions/0038-publish-to-a-host-the-user-owns.md), [LIT-40](/LIT/issues/LIT-40))
+- ✅ A password or an expiry on a published link. The password encrypts the snapshot, and the viewer decrypts it in the browser. After the expiry date the viewer stops, and Rabisco removes the site the next time it runs ([LIT-39](/LIT/issues/LIT-39))
+- ✅ An inspect mode in the viewer: element size, spacing, colors as tokens, and the TSX of a selected element. It works on the LAN link and on a published site ([LIT-40](/LIT/issues/LIT-40))
+- ✅ Record a prototype walkthrough as a GIF. Play mode has a record button; each step is a snapshot from the frame, transitions are rebuilt from the motion tables, and the GIF is made in the webview. Video waits for `VideoEncoder` ([0040](./decisions/0040-record-walkthrough-as-gif.md), [LIT-141](/LIT/issues/LIT-141))
+
+**Done when** a user can send a link that a stakeholder opens on their phone, anywhere.
 
 ---
 

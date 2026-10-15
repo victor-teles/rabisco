@@ -54,7 +54,7 @@ const CHECKPOINT_LIMIT = 100;
 
 const isCommitHash = (hash: string) => /^[0-9a-f]{7,64}$/i.test(hash);
 
-function commitFailure(text: string, again: string) {
+export function commitFailure(text: string, again: string) {
 	if (/tell me who you are|empty ident|user\.email|user\.name/i.test(text)) {
 		return new GitError(
 			`Git doesn't know who you are yet. In Terminal, run \`git config --global user.name "Your Name"\` and \`git config --global user.email you@example.com\`, then ${again}.`,
@@ -102,9 +102,9 @@ export function parsePorcelain(output: string): ChangedPath[] {
 	return changes;
 }
 
-const output = (result: GitResult) => [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
+export const output = (result: GitResult) => [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
 
-function remoteFailure(action: string, remote: string, result: GitResult): GitError {
+export function remoteFailure(action: string, remote: string, result: GitResult): GitError {
 	const text = output(result);
 
 	if (result.timedOut)
@@ -144,7 +144,13 @@ export function createGit(options: GitOptions = {}) {
 	const networkTimeoutMs = options.networkTimeoutMs ?? 90_000;
 	let checked: { bin: string } | { error: string } | null = null;
 
-	async function spawn(bin: string, cwd: string, args: string[], timeout: number): Promise<GitResult> {
+	async function spawn(
+		bin: string,
+		cwd: string,
+		args: string[],
+		timeout: number,
+		env: Record<string, string> = {},
+	): Promise<GitResult> {
 		const proc = Bun.spawn([bin, "-c", "color.ui=false", "-c", "core.quotepath=false", ...args], {
 			cwd,
 			stdin: "ignore",
@@ -161,6 +167,7 @@ export function createGit(options: GitOptions = {}) {
 				// Untranslated messages, so the regexes match
 				LC_ALL: "C",
 				LANG: "C",
+				...env,
 			}),
 		});
 
@@ -215,8 +222,8 @@ export function createGit(options: GitOptions = {}) {
 		return checked.bin;
 	}
 
-	async function run(cwd: string, args: string[], timeout = timeoutMs) {
-		return spawn(await binary(), cwd, args, timeout);
+	async function run(cwd: string, args: string[], timeout = timeoutMs, env?: Record<string, string>) {
+		return spawn(await binary(), cwd, args, timeout, env);
 	}
 
 	async function must(cwd: string, args: string[], message: string, timeout = timeoutMs) {
@@ -602,7 +609,7 @@ export function createGit(options: GitOptions = {}) {
 		}
 	}
 
-	return { status, init, setRemote, sync, checkpoint, checkpoints, readCheckpoint, run };
+	return { status, init, setRemote, sync, checkpoint, checkpoints, readCheckpoint, run, networkTimeoutMs };
 }
 
 export type Git = ReturnType<typeof createGit>;

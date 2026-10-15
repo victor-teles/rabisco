@@ -91,7 +91,7 @@ export const ShareButton = memo(function ShareButton(props: ExportContext) {
 						<LinkSection context={props} status={status} onStatus={setStatus} />
 					</TabsContent>
 					<TabsContent value="web" className="p-4">
-						<PublishSection context={props} />
+						<PublishSection context={props} onOpenGit={() => setTab("git")} />
 					</TabsContent>
 					<TabsContent value="git" className="p-4">
 						<GitSection

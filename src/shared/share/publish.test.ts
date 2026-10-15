@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { assertPassword, generatePassphrase, OPEN_SEALED_JS, sealText, type SealedSnapshot } from "./publish";
+import {
+	assertPassword,
+	generatePassphrase,
+	githubRepo,
+	OPEN_SEALED_JS,
+	pagesSettingsUrl,
+	pagesUrl,
+	sealText,
+	type SealedSnapshot,
+} from "./publish";
 
 type OpenSealed = (sealed: SealedSnapshot, password: string) => Promise<{ hello: string }>;
 
@@ -36,5 +45,25 @@ describe("sealing a snapshot", () => {
 		expect(() => assertPassword("long enough")).not.toThrow();
 		expect(generatePassphrase()).toMatch(/^[a-z2-9]{4}(-[a-z2-9]{4}){3}$/);
 		expect(generatePassphrase()).not.toBe(generatePassphrase());
+	});
+});
+
+describe("GitHub Pages", () => {
+	test("reads the repository from https, ssh and scp-style remotes", () => {
+		const repo = { owner: "Acme", name: "shop.app" };
+
+		expect(githubRepo("https://github.com/Acme/shop.app.git")).toEqual(repo);
+		expect(githubRepo("https://token@github.com/Acme/shop.app/")).toEqual(repo);
+		expect(githubRepo("git@github.com:Acme/shop.app.git")).toEqual(repo);
+		expect(githubRepo("ssh://git@github.com/Acme/shop.app")).toEqual(repo);
+		expect(githubRepo("https://gitlab.com/Acme/shop.git")).toBeNull();
+		expect(githubRepo("https://github.com/Acme/shop/tree/main")).toBeNull();
+		expect(githubRepo("/tmp/shop.git")).toBeNull();
+	});
+
+	test("serves a project repository under a subpath and a user site at the root", () => {
+		expect(pagesUrl({ owner: "Acme", name: "shop" })).toBe("https://acme.github.io/shop/");
+		expect(pagesUrl({ owner: "Acme", name: "acme.github.io" })).toBe("https://acme.github.io/");
+		expect(pagesSettingsUrl({ owner: "Acme", name: "shop" })).toBe("https://github.com/Acme/shop/settings/pages");
 	});
 });

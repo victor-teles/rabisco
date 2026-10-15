@@ -1,30 +1,71 @@
 // Decision 0038
-export const PUBLISH_HOSTS = ["netlify", "vercel"] as const;
+export const TOKEN_HOSTS = ["netlify", "vercel"] as const;
+
+export type TokenHost = (typeof TOKEN_HOSTS)[number];
+
+export const PUBLISH_HOSTS = [...TOKEN_HOSTS, "github"] as const;
 
 export type PublishHost = (typeof PUBLISH_HOSTS)[number];
 
 export const isPublishHost = (value: string): value is PublishHost => PUBLISH_HOSTS.some((host) => host === value);
 
-export type PublishHostInfo = { name: string; tokenUrl: string; tokenHint: string; planHint: string };
+export const isTokenHost = (value: string): value is TokenHost => TOKEN_HOSTS.some((host) => host === value);
+
+export type PublishHostInfo = { name: string; planHint: string };
 
 export const PUBLISH_HOST_INFO: Record<PublishHost, PublishHostInfo> = {
+	netlify: { name: "Netlify", planHint: "Netlify's free plan is enough." },
+	vercel: { name: "Vercel", planHint: "Vercel's free Hobby plan is for personal, non-commercial use." },
+	github: { name: "GitHub Pages", planHint: "GitHub Pages is free for public repositories." },
+};
+
+export type TokenHostInfo = { tokenUrl: string; tokenHint: string };
+
+export const TOKEN_HOST_INFO: Record<TokenHost, TokenHostInfo> = {
 	netlify: {
-		name: "Netlify",
 		tokenUrl: "https://app.netlify.com/user/applications#personal-access-tokens",
 		tokenHint: "Make a personal access token with an expiry date.",
-		planHint: "Netlify's free plan is enough.",
 	},
 	vercel: {
-		name: "Vercel",
 		tokenUrl: "https://vercel.com/account/settings/tokens",
 		tokenHint: "Make a token with an expiry date and the Full Account scope, or a team with All Projects.",
-		planHint: "Vercel's free Hobby plan is for personal, non-commercial use.",
 	},
 };
 
-export const publishTokenAccount = (host: PublishHost) => `publish:${host}`;
+export const publishTokenAccount = (host: TokenHost) => `publish:${host}`;
 
-export type PublishHostStatus = { host: PublishHost; connected: boolean };
+export type PublishHostStatus = { host: TokenHost; connected: boolean };
+
+export const DEFAULT_PAGES_BRANCH = "gh-pages";
+
+/** GitHub Pages publishes through the project's git sync remote (decision 0043) */
+export type PagesStatus =
+	| { state: "ready"; remote: string; repo: string; url: string; settingsUrl: string }
+	| { state: "setup"; step: "repo" | "remote" | "github"; remoteUrl?: string }
+	| { state: "unavailable"; error: string };
+
+export type GithubRepo = { owner: string; name: string };
+
+/** `https://github.com/o/r.git`, `git@github.com:o/r.git` or `ssh://git@github.com/o/r` */
+export function githubRepo(remoteUrl: string): GithubRepo | null {
+	const match =
+		/^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(
+			remoteUrl.trim(),
+		);
+
+	if (!match?.[1] || !match[2]) return null;
+
+	return { owner: match[1], name: match[2] };
+}
+
+/** A repository named `<owner>.github.io` serves at the root */
+export function pagesUrl({ owner, name }: GithubRepo) {
+	const site = `${owner.toLowerCase()}.github.io`;
+
+	return name.toLowerCase() === site ? `https://${site}/` : `https://${site}/${name}/`;
+}
+
+export const pagesSettingsUrl = ({ owner, name }: GithubRepo) => `https://github.com/${owner}/${name}/settings/pages`;
 
 /** Kept in app data, not in the project: it belongs to one person's host account */
 export type PublishTarget = {
@@ -45,6 +86,8 @@ export type PublishParams = {
 	host: PublishHost;
 	password?: string;
 	expiresAt?: string;
+	/** GitHub Pages only; `gh-pages` by default */
+	branch?: string;
 };
 
 export const MIN_PASSWORD_LENGTH = 8;
