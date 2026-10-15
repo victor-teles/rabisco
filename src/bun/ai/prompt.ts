@@ -6,7 +6,7 @@ import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
 import { imageLabel, stagedAttachments } from "./attachments";
-import { themeTokensText } from "./theme-tokens";
+import { modesText, themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
 export const PROMPT_VERSION = 21;
@@ -526,6 +526,9 @@ export function userPrompt(request: GenerationRequest, mode: PromptMode): string
 			: themeTokensText(request.theme);
 
 	if (tokens) parts.push(tokens);
+	const modes = request.modes ? modesText(request.modes, request.theme) : null;
+
+	if (modes) parts.push(modes);
 
 	const documents = documentsText(request);
 

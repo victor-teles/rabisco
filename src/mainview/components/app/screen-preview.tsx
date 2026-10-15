@@ -19,7 +19,8 @@ import {
 	subscribeSnapshots,
 } from "@/lib/render/snapshots";
 import { themeCss } from "@/lib/render/styles";
-import { DEFAULT_MODE, type ResolvedMode } from "../../../shared/modes";
+import { cn } from "@/lib/utils";
+import { DEFAULT_MODE, SCHEME, type ResolvedMode } from "../../../shared/modes";
 import type { ProjectFiles, ScreenSource } from "../../../shared/types";
 
 /** CSS of the project's applied tokens; every frame below renders with it */
@@ -212,11 +213,14 @@ export function ScreenFrame({
 					style={{ width, height, objectFit: "cover", objectPosition: "top" }}
 				/>
 			) : !mounted ? (
-				<div className="pointer-events-none absolute inset-0 bg-white" />
+				<div className={cn("pointer-events-none absolute inset-0", screenBackdrop(mode))} />
 			) : null}
 		</div>
 	);
 }
+
+export const screenBackdrop = (mode: ResolvedMode | undefined) =>
+	mode?.[SCHEME] === "dark" ? "bg-neutral-950" : "bg-white";
 
 export function ScreenPreview({
 	source,
@@ -233,7 +237,10 @@ export function ScreenPreview({
 
 	return (
 		<div
-			className="overflow-hidden rounded-md bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_4px_12px_-4px_rgb(0_0_0/0.16)]"
+			className={cn(
+				"overflow-hidden rounded-md shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_4px_12px_-4px_rgb(0_0_0/0.16)]",
+				screenBackdrop(source.mode),
+			)}
 			style={{ width: source.width * scale, height: source.height * scale }}
 		>
 			<div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>

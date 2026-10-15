@@ -410,6 +410,25 @@ describe("buildGenerationRequest", () => {
 		expect(req.attachments).toBeUndefined();
 	});
 
+	test("modes go with the targets that render in a mode other than the default", () => {
+		const req = buildGenerationRequest({
+			id: "r",
+			task: "edit",
+			prompt: "p",
+			device: "mobile",
+			model: "m",
+			projectFiles: files,
+			targets: ["screens/home.tsx", "screens/settings.tsx"],
+			modes: {
+				"screens/home.tsx": { scheme: "dark" },
+				"screens/settings.tsx": { scheme: "light" },
+				"screens/profile.tsx": { scheme: "dark" },
+			},
+		});
+
+		expect(req.modes).toEqual({ "screens/home.tsx": { scheme: "dark" } });
+	});
+
 	test("references are always included and listed; never as targets or style screens", () => {
 		const req = buildGenerationRequest({
 			id: "r",

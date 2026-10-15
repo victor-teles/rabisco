@@ -51,7 +51,7 @@ const PAGES_SETUP = {
 
 /** Decision 0038: the exported website on a host the user owns. GitHub Pages goes through git sync (0043). */
 export function PublishSection({ context, onOpenGit }: { context: ExportContext; onOpenGit: () => void }) {
-	const { projectPath, projectName, frames, files, theme, selected } = context;
+	const { projectPath, projectName, frames, sections, files, theme, selected } = context;
 	const [hosts, setHosts] = useState<PublishHostStatus[]>([]);
 	const [target, setTarget] = useState<PublishTarget | null>(null);
 	const [pages, setPages] = useState<PagesStatus | null>(null);
@@ -68,7 +68,7 @@ export function PublishSection({ context, onOpenGit }: { context: ExportContext;
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
 	const passwordRef = useRef<HTMLInputElement>(null);
-	const screenCount = useMemo(() => shareScreens(frames, files).length, [frames, files]);
+	const screenCount = useMemo(() => shareScreens(frames, files, sections).length, [frames, files, sections]);
 	const info = PUBLISH_HOST_INFO[host];
 	const viaGit = host === "github";
 	const ready = pages?.state === "ready" ? pages : null;
@@ -153,6 +153,7 @@ export function PublishSection({ context, onOpenGit }: { context: ExportContext;
 		const request = buildShareSnapshot({
 			name: projectName,
 			frames,
+			sections,
 			files,
 			theme,
 			start: selected[0]?.file,

@@ -16,6 +16,7 @@ import {
 	type Framework,
 } from "../../../../shared/export/app-project";
 import { componentLibrary } from "../../../../shared/export/component-library";
+import { resolveModes } from "../../../../shared/modes";
 import { isScreenFile, toKebab } from "../../../../shared/project";
 import type { ExportContext } from "./export-menu";
 
@@ -63,6 +64,7 @@ async function writeProject(
 		const project = build({
 			name: context.projectName,
 			frames: context.frames,
+			sections: context.sections,
 			files: context.files,
 			theme: context.theme,
 			uiSources: UI_SOURCES,
@@ -133,9 +135,10 @@ export async function exportHtml(context: ExportContext) {
 		const parent = await api.pickExportFolder({});
 
 		if (!parent) return;
-		const markup = await renderOffstage(frame, context.files, context.theme, (host) => host.markup());
+		const mode = resolveModes(frame, context.sections);
+		const markup = await renderOffstage(frame, context.files, context.theme, mode, (host) => host.markup());
 		const css = await standaloneCss(extractCandidates(markup), context.theme);
-		const files = htmlScreen({ title: frame.name, markup, css, assets: await projectAssets.base64() });
+		const files = htmlScreen({ title: frame.name, markup, css, mode, assets: await projectAssets.base64() });
 
 		const { dir } = await api.writeExport({
 			dir: parent,

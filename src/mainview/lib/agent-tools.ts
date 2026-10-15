@@ -30,6 +30,7 @@ import {
 	isScreenFile,
 	uniqueScreenPath,
 } from "../../shared/project";
+import { MODE_GROUPS, resolveModes } from "../../shared/modes";
 import { sectionOf } from "../../shared/sections";
 import type { CanvasComment, CanvasDoc, Device, ElementLock, Frame, ProjectFiles } from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
@@ -231,6 +232,7 @@ async function getProject(context: AgentContext): Promise<Json> {
 			width: frame.width,
 			height: frame.height,
 			section: sectionOf(frame, sections)?.name ?? null,
+			mode: { ...resolveModes(frame, sections) },
 			alternate: isAlternate(frame.file),
 		})),
 		components: Object.keys(files).filter(isComponentFile).sort(),
@@ -301,6 +303,7 @@ function getDesignTokens(context: AgentContext): Json {
 
 	return {
 		applied: { light: theme.light, dark: theme.dark },
+		modes: MODE_GROUPS.map((group) => ({ name: group.name, options: [...group.options] })),
 		appliedFromCurrentDesign: theme.source === undefined || theme.source === designSourceOf(design),
 		designMd: design ?? null,
 	};

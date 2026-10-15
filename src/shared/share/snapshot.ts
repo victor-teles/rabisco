@@ -2,8 +2,9 @@
 import { assetKey } from "../assets";
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
+import { normalizeModes, resolveModes, type ResolvedMode } from "../modes";
 import { isDevice, isScreenFile, screenNameFromPath } from "../project";
-import type { Device, Frame, ProjectFiles } from "../types";
+import type { CanvasSection, Device, Frame, ProjectFiles } from "../types";
 import { isAlternate } from "../variations";
 
 /** Compiled the way frames receive it (`ModulePayload`) */
@@ -18,7 +19,15 @@ export type ShareModule =
 	  }
 	| { source: string; code?: undefined; icons?: undefined; error: { message: string; line: number; column?: number } };
 
-export type ShareScreen = { file: string; name: string; device: Device; width: number; height: number };
+export type ShareScreen = {
+	file: string;
+	name: string;
+	device: Device;
+	width: number;
+	height: number;
+	/** Missing in snapshots written before decision 0028; those render the defaults */
+	mode?: ResolvedMode;
+};
 
 export type ShareSnapshot = {
 	version: 1;
@@ -73,7 +82,8 @@ function assertScreens(screens: readonly Json[], modules: JsonObject): asserts s
 			!isString(screen.name) ||
 			!isDevice(screen.device) ||
 			!isFiniteNumber(screen.width) ||
-			!isFiniteNumber(screen.height)
+			!isFiniteNumber(screen.height) ||
+			(screen.mode !== undefined && normalizeModes(screen.mode) === undefined)
 		)
 			throw new Error("Snapshot has an invalid screen");
 
@@ -117,10 +127,12 @@ export function assertSnapshot(value: Json | undefined): ShareSnapshot {
 }
 
 /** Canvas order, without alternates */
-export function shareScreens(frames: Frame[], files: ProjectFiles): ShareScreen[] {
-	return frames.flatMap(({ file, name, device, width, height }) =>
-		isScreenFile(file) && !isAlternate(file) && files[file] !== undefined
-			? [{ file, name: name || screenNameFromPath(file), device, width, height }]
-			: [],
-	);
+export function shareScreens(frames: Frame[], files: ProjectFiles, sections: readonly CanvasSection[]): ShareScreen[] {
+	return frames.flatMap((frame) => {
+		const { file, name, device, width, height } = frame;
+
+		return isScreenFile(file) && !isAlternate(file) && files[file] !== undefined
+			? [{ file, name: name || screenNameFromPath(file), device, width, height, mode: resolveModes(frame, sections) }]
+			: [];
+	});
 }

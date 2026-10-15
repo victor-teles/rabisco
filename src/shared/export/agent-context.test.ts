@@ -27,6 +27,22 @@ const home = {
 };
 
 describe("agentContextMarkdown", () => {
+	test("names each screen's mode", () => {
+		const text = (mode?: Record<string, string>) =>
+			agentContextMarkdown({
+				project: "Banking",
+				screens: [{ ...home, mode }],
+				files,
+				tokens: { light: {}, dark: {} },
+			});
+
+		expect(text({ scheme: "dark" })).toContain(
+			'## Home (`screens/home.tsx`, 390 × 844)\n\nMode: dark (`class="dark"` on `<html>`)',
+		);
+		expect(text({ scheme: "light" })).toContain("Mode: light\n");
+		expect(text()).not.toContain("Mode:");
+	});
+
 	test("has the screenshot, the code, the components and the tokens", () => {
 		const text = agentContextMarkdown({
 			project: "Banking",

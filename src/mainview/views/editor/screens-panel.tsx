@@ -1,6 +1,6 @@
 import { memo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { Search, X } from "lucide-react";
-import { ScreenFrame } from "@/components/app/screen-preview";
+import { ScreenFrame, screenBackdrop } from "@/components/app/screen-preview";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { matchesScreen, stepTarget } from "@/lib/screen-list";
 import { cn } from "@/lib/utils";
@@ -275,7 +275,7 @@ function ScreenRow({
 							aria-hidden
 						>
 							<span
-								className="overflow-hidden rounded-[3px] bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.08)]"
+								className={cn("overflow-hidden rounded-[3px] shadow-[0_0_0_1px_rgb(0_0_0/0.08)]", screenBackdrop(mode))}
 								style={{ width: frame.width * scale, height: frame.height * scale }}
 							>
 								<span className="block origin-top-left" style={{ transform: `scale(${scale})` }}>

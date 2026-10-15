@@ -3,6 +3,7 @@ import {
 	escapeHtml,
 	LINK_CLICK,
 	LINK_TARGET,
+	SCREEN_MODE_IMPORT,
 	TYPESCRIPT_VERSIONS,
 	type AppProjectInput,
 	type Framework,
@@ -74,11 +75,12 @@ function appTsx(screens: ProjectScreen[], handoff: string | null) {
 	const handoffImport = handoff ? `import { Handoff } from "./handoff/handoff";\n` : "";
 
 	return `import { useEffect, useState } from "react";
+import { ScreenMode } from "${SCREEN_MODE_IMPORT}";
 ${handoffImport}${screens.map((s) => `import ${s.identifier} from "./${s.module}";`).join("\n")}
 
 /** The screens, in canvas order. The first one opens first. */
 const screens = [
-${screens.map((s) => `\t{ id: ${JSON.stringify(s.id)}, Screen: ${s.identifier} },`).join("\n")}
+${screens.map((s) => `\t{ id: ${JSON.stringify(s.id)}, Screen: ${s.identifier}, mode: ${JSON.stringify(s.mode)} },`).join("\n")}
 ];
 
 /** The screen in the URL hash (\`#/settings\`), or the first screen${handoff ? `; \`null\` for the handoff page (\`#/${handoff}\`)` : ""}. */
@@ -121,8 +123,12 @@ export default function App() {
 		};
 	}, []);
 
-${handoff ? "\tif (!screen) return <Handoff />;\n" : ""}	const { id, Screen } = screen;
-	return <Screen key={id} />;
+${handoff ? "\tif (!screen) return <Handoff />;\n" : ""}	const { id, Screen, mode } = screen;
+	return (
+		<ScreenMode key={id} mode={mode}>
+			<Screen />
+		</ScreenMode>
+	);
 }
 `;
 }

@@ -2,6 +2,7 @@ import {
 	appProject,
 	LINK_CLICK,
 	LINK_TARGET,
+	SCREEN_MODE_IMPORT,
 	TYPESCRIPT_VERSIONS,
 	type AppProjectInput,
 	type Framework,
@@ -73,10 +74,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 /** Client pages, since screens use state and effects and don't say \`"use client"\` themselves */
 const page = (screen: ProjectScreen) => `"use client";
 
+import { ScreenMode } from "${SCREEN_MODE_IMPORT}";
 import ${screen.identifier} from "@/${screen.module}";
 
+const mode = ${JSON.stringify(screen.mode)};
+
 export default function Page() {
-	return <${screen.identifier} />;
+	return (
+		<ScreenMode mode={mode}>
+			<${screen.identifier} />
+		</ScreenMode>
+	);
 }
 `;
 

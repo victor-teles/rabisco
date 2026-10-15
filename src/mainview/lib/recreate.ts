@@ -2,6 +2,7 @@ import { referenceAttachments } from "@/hooks/use-moodboard";
 import { projectAssets } from "@/lib/render/assets";
 import { renderOffstage } from "@/lib/render/offstage-render";
 import type { DesignTokens } from "../../shared/context/tokens";
+import type { ResolvedMode } from "../../shared/modes";
 import { pixelDifference, recreateDevice, sampleSize } from "../../shared/recreate";
 import type { CanvasImage, Frame, ProjectFiles } from "../../shared/types";
 import type { RunOptions } from "./generation-session";
@@ -39,6 +40,7 @@ export async function compareWithScreenshot(
 	image: CanvasImage,
 	files: ProjectFiles,
 	theme: DesignTokens,
+	mode: ResolvedMode,
 ): Promise<Comparison> {
 	const blob = projectAssets.get(image.src);
 
@@ -47,7 +49,7 @@ export async function compareWithScreenshot(
 	const height = Math.max(1, Math.round((frame.width * bitmap.height) / Math.max(1, bitmap.width)));
 	bitmap.close();
 
-	const snapshot = await renderOffstage(frame, files, theme, (host) =>
+	const snapshot = await renderOffstage(frame, files, theme, mode, (host) =>
 		host.snapshot({ type: "image/png", scale: Math.min(2, window.devicePixelRatio || 1), maxHeight: height }),
 	);
 

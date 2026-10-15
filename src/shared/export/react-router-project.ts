@@ -2,6 +2,7 @@ import {
 	appProject,
 	LINK_CLICK,
 	LINK_TARGET,
+	SCREEN_MODE_IMPORT,
 	TYPESCRIPT_VERSIONS,
 	type AppProjectInput,
 	type Framework,
@@ -114,10 +115,17 @@ export default function Route() {
 }
 `;
 
-const route = (screen: ProjectScreen) => `import ${screen.identifier} from "@/${screen.module}";
+const route = (screen: ProjectScreen) => `import { ScreenMode } from "${SCREEN_MODE_IMPORT}";
+import ${screen.identifier} from "@/${screen.module}";
+
+const mode = ${JSON.stringify(screen.mode)};
 
 export default function Route() {
-	return <${screen.identifier} />;
+	return (
+		<ScreenMode mode={mode}>
+			<${screen.identifier} />
+		</ScreenMode>
+	);
 }
 `;
 

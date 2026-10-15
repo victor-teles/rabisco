@@ -5,19 +5,20 @@ import { screenStyles, themeCss } from "@/lib/render/styles";
 import type { DesignTokens } from "../../shared/context/tokens";
 import { elementSpans } from "../../shared/share/spans";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
-import type { Frame, ProjectFiles } from "../../shared/types";
+import type { CanvasSection, Frame, ProjectFiles } from "../../shared/types";
 
 /** Read-only viewer payload (decision 0008), built from the same render path as the canvas. */
 export async function buildShareSnapshot(input: {
 	name: string;
 	frames: Frame[];
+	sections: readonly CanvasSection[];
 	files: ProjectFiles;
 	/** The applied tokens, so the link looks like the canvas */
 	theme: DesignTokens;
 	start?: string;
 }): Promise<ShareSnapshot> {
 	const { files } = input;
-	const screens = shareScreens(input.frames, files);
+	const screens = shareScreens(input.frames, files, input.sections);
 
 	if (screens.length === 0) throw new Error("There are no screens to share yet");
 	// First: a new custom token name restarts the compiler

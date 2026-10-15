@@ -67,7 +67,18 @@ function canvasOf(selection: string[]): CanvasDoc {
 		...canvas,
 		frames: [frame("screens/home.tsx", "Home", 0), frame("screens/settings.tsx", "Settings", 500)],
 		selection,
-		sections: [{ id: "s1", name: "Onboarding", color: "blue", x: -40, y: -40, width: 480, height: 940 }],
+		sections: [
+			{
+				id: "s1",
+				name: "Onboarding",
+				color: "blue",
+				x: -40,
+				y: -40,
+				width: 480,
+				height: 940,
+				modes: { scheme: "dark" },
+			},
+		],
 		comments: [
 			{ id: "c1", file: "screens/home.tsx", x: 20, y: 30, text: "Bigger title", createdAt: "2026-10-01T00:00:00Z" },
 			{ id: "c2", x: 900, y: 900, text: "Add a profile screen", createdAt: "2026-10-02T00:00:00Z" },
@@ -167,6 +178,7 @@ describe("runAgentTool", () => {
 					width: 390,
 					height: 844,
 					section: "Onboarding",
+					mode: { scheme: "dark" },
 					alternate: false,
 				},
 				{
@@ -176,6 +188,7 @@ describe("runAgentTool", () => {
 					width: 390,
 					height: 844,
 					section: null,
+					mode: { scheme: "light" },
 					alternate: false,
 				},
 			],
@@ -278,6 +291,7 @@ describe("runAgentTool", () => {
 
 		expect(tokens).toEqual({
 			applied: { light: { primary: "#2563eb" }, dark: {} },
+			modes: [{ name: "scheme", options: ["light", "dark"] }],
 			appliedFromCurrentDesign: true,
 			designMd: DESIGN,
 		});

@@ -9,6 +9,7 @@ import {
 	type ScreenTransition,
 } from "../prototype/transitions";
 import { iconFile } from "../icons";
+import { DEFAULT_MODE } from "../modes";
 import type { ExportFile } from "../types";
 import { COMMENT_MAX_LENGTH } from "./comments";
 import { GAP_FILL, PADDING_FILL } from "./marks";
@@ -538,8 +539,10 @@ const viewerJs = () => `(function () {
 	var MOTIONS = ${JSON.stringify(motionTables())};
 	var PADDING = 32;
 	var PAINT_TIMEOUT_MS = 1000;
+	var DEFAULT_MODE = ${JSON.stringify(DEFAULT_MODE)};
 	var byFile = {};
 	data.screens.forEach(function (screen) { byFile[screen.file] = screen; });
+	function modeOf(file) { return (byFile[file] && byFile[file].mode) || DEFAULT_MODE; }
 	var device = document.getElementById("device");
 	var scaler = document.getElementById("scaler");
 	var stage = document.getElementById("stage");
@@ -682,7 +685,7 @@ const viewerJs = () => `(function () {
 		if (!plan || !top.record.ready) {
 			top.record.file = file;
 			if (top.record.ready) {
-				post(top.record, { type: "modules", entry: file, modules: {} });
+				post(top.record, { type: "modules", entry: file, modules: {}, mode: modeOf(file) });
 				syncPick(top.record);
 			}
 			return;
@@ -826,7 +829,7 @@ const viewerJs = () => `(function () {
 			// A (re)loaded frame starts empty: send everything, then turn play mode on
 			record.ready = true;
 			if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });
-			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: data.theme, reset: true });
+			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: data.theme, mode: modeOf(record.file), reset: true });
 			syncPick(record);
 		} else if (message.type === "rendered" || message.type === "error") {
 			if (record.onRendered) record.onRendered();

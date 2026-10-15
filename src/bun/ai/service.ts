@@ -397,6 +397,7 @@ export function createAiService(options: AiServiceOptions) {
 					model: resolved.model,
 					projectFiles,
 					targets: params.task === "context" ? params.targets : params.targets?.filter((path) => path in projectFiles),
+					modes: params.modes,
 					references: params.references,
 					focus: vary ? undefined : params.focus,
 					attachments: params.attachments,

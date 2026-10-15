@@ -1,7 +1,7 @@
 import { isString } from "./guards";
 import { isJsonObject, type Json } from "./json";
 import { sectionsAround, type Rect } from "./sections";
-import type { CanvasSection, ModeChoices } from "./types";
+import type { CanvasSection, Frame, ModeChoices } from "./types";
 
 export type ModeGroup = { name: string; options: readonly string[] };
 
@@ -75,6 +75,18 @@ export function resolveModes(
 export const DEFAULT_MODE: ResolvedMode = intern(
 	Object.fromEntries(MODE_GROUPS.map((group) => [group.name, group.options[0] ?? ""])),
 );
+
+export function targetModes(paths: readonly string[], frames: readonly Frame[], sections: readonly CanvasSection[]) {
+	const modes: Record<string, ResolvedMode> = {};
+
+	for (const path of paths) {
+		const frame = frames.find((candidate) => candidate.file === path);
+
+		if (frame) modes[path] = resolveModes(frame, sections);
+	}
+
+	return Object.keys(modes).length ? modes : undefined;
+}
 
 export function chooseMode(modes: ModeChoices | undefined, group: string, option: string | undefined) {
 	const next: ModeChoices = { ...modes };

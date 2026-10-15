@@ -1,6 +1,8 @@
 import { tokensToCss, type DesignTokens } from "../context/tokens";
+import type { ResolvedMode } from "../modes";
 import type { ProjectFiles } from "../types";
 import { localDependencies } from "./code";
+import { modeAttributes } from "./html";
 
 export type AgentContextElement = { path: string; line: number; label: string };
 
@@ -12,6 +14,7 @@ export type AgentContextScreen = {
 	/** Absolute path of the PNG, `null` when it didn't render */
 	screenshot: string | null;
 	elements: AgentContextElement[];
+	mode?: ResolvedMode;
 };
 
 export type AgentContextInput = {
@@ -37,6 +40,13 @@ function fenced(text: string, language: string) {
 
 const languageOf = (file: string) => LANGUAGES.get(file.split(".").pop() ?? "") ?? "";
 
+function modeLine(mode: ResolvedMode) {
+	const options = Object.values(mode).join(", ");
+	const attributes = modeAttributes(mode).trim();
+
+	return attributes ? `Mode: ${options} (\`${attributes}\` on \`<html>\`)` : `Mode: ${options}`;
+}
+
 function screenSection(screen: AgentContextScreen, files: ProjectFiles) {
 	const elements = screen.elements.map(
 		(element) => `- \`${element.label}\` at line ${element.line} (element path \`${element.path}\`)`,
@@ -44,6 +54,7 @@ function screenSection(screen: AgentContextScreen, files: ProjectFiles) {
 
 	return [
 		`## ${screen.name} (\`${screen.file}\`, ${screen.width} × ${screen.height})`,
+		screen.mode ? modeLine(screen.mode) : "",
 		screen.screenshot ? `Screenshot: ${screen.screenshot}` : "",
 		elements.length ? `Selected elements:\n\n${elements.join("\n")}` : "",
 		fenced(files[screen.file] ?? "", "tsx"),

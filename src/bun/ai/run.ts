@@ -18,6 +18,7 @@ import { designTokensOf, type DesignTokens } from "../../shared/context/tokens";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocused } from "../../shared/ai/focus";
 import { focusNotes } from "../../shared/ai/focus-guard";
+import { DEFAULT_MODE, modeKey, type ResolvedMode } from "../../shared/modes";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
 import { DENIED_STATUS, EDIT_MISMATCH_STATUS } from "./protocol";
@@ -419,6 +420,8 @@ export type BuildRequestParams = {
 	projectFiles: ProjectFiles;
 	/** For `context`: the single context file to write */
 	targets?: string[];
+	/** By target path, from the canvas */
+	modes?: Record<string, ResolvedMode>;
 	/** Read-only files; always included, like targets */
 	references?: string[];
 	/** `edit` only; dropped unless its file is a target and the element still resolves */
@@ -435,6 +438,18 @@ export type BuildRequestParams = {
 };
 
 export const DEFAULT_REQUEST_CHARS = 150_000;
+
+function changedModes(targets: string[], modes: Record<string, ResolvedMode> | undefined) {
+	const changed: Record<string, ResolvedMode> = {};
+
+	for (const path of targets) {
+		const mode = modes?.[path];
+
+		if (mode && modeKey(mode) !== modeKey(DEFAULT_MODE)) changed[path] = mode;
+	}
+
+	return Object.keys(changed).length ? changed : undefined;
+}
 
 /** Over `maxChars`, style screens are dropped first, then components; targets and references always stay. */
 export function buildGenerationRequest(params: BuildRequestParams): GenerationRequest {
@@ -515,6 +530,9 @@ export function buildGenerationRequest(params: BuildRequestParams): GenerationRe
 	if (!contextTarget && hasTokens(theme)) request.theme = { light: theme.light, dark: theme.dark };
 
 	if (targets.length) request.targets = targets;
+	const modes = contextTarget ? undefined : changedModes(targets, params.modes);
+
+	if (modes) request.modes = modes;
 
 	if (references.length) request.references = references;
 

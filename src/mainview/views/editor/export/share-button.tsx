@@ -11,7 +11,7 @@ import type { DesignTokens } from "../../../../shared/context/tokens";
 import { hashString } from "../../../../shared/jsx/hash";
 import { toKebab } from "../../../../shared/project";
 import { shareScreens, type ShareStatus } from "../../../../shared/share/snapshot";
-import type { Frame, ProjectFiles } from "../../../../shared/types";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../../shared/types";
 import type { ExportContext } from "./export-menu";
 import { GitSection } from "./git-section";
 import { PublishSection } from "./publish-section";
@@ -21,8 +21,8 @@ import { copyLater, copyText, errorMessage, timeAgo } from "./share-utils";
 /** Lets the popover tell when a shared link is out of date */
 const publishedFingerprints = new Map<string, string>();
 
-const fingerprintOf = (frames: Frame[], files: ProjectFiles, theme: DesignTokens) =>
-	hashString(JSON.stringify([shareScreens(frames, files), files, theme]));
+const fingerprintOf = (frames: Frame[], sections: readonly CanvasSection[], files: ProjectFiles, theme: DesignTokens) =>
+	hashString(JSON.stringify([shareScreens(frames, files, sections), files, theme]));
 
 type ShareTab = "link" | "web" | "git";
 
@@ -117,17 +117,17 @@ function LinkSection({
 	status: ShareStatus | null;
 	onStatus: (status: ShareStatus | null) => void;
 }) {
-	const { projectPath, projectName, frames, files, theme, selected } = context;
+	const { projectPath, projectName, frames, sections, files, theme, selected } = context;
 	const [busy, setBusy] = useState<"publish" | "stop" | "export" | null>(null);
 	const [copied, setCopied] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
-	const fingerprint = useMemo(() => fingerprintOf(frames, files, theme), [frames, files, theme]);
-	const screenCount = useMemo(() => shareScreens(frames, files).length, [frames, files]);
+	const fingerprint = useMemo(() => fingerprintOf(frames, sections, files, theme), [frames, sections, files, theme]);
+	const screenCount = useMemo(() => shareScreens(frames, files, sections).length, [frames, files, sections]);
 	const stale = status !== null && publishedFingerprints.get(projectPath) !== fingerprint;
 
 	const snapshot = useCallback(
-		() => buildShareSnapshot({ name: projectName, frames, files, theme, start: selected[0]?.file }),
-		[projectName, frames, files, theme, selected],
+		() => buildShareSnapshot({ name: projectName, frames, sections, files, theme, start: selected[0]?.file }),
+		[projectName, frames, sections, files, theme, selected],
 	);
 
 	const publish = async () => {

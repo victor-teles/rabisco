@@ -11,7 +11,7 @@ import {
 	type Ref,
 } from "react";
 import { Bot, Check, Columns2, TriangleAlert } from "lucide-react";
-import { ScreenFrame } from "@/components/app/screen-preview";
+import { ScreenFrame, screenBackdrop } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { boundsOf, rectFromPoints, type Rect } from "@/lib/align";
@@ -2249,7 +2249,8 @@ const FrameView = memo(function FrameView({
 			<div
 				data-frame-body
 				className={cn(
-					"h-full w-full overflow-hidden bg-white",
+					"h-full w-full overflow-hidden",
+					screenBackdrop(mode),
 					frame.device === "desktop" ? "rounded-md" : "rounded-[28px]",
 				)}
 				style={{

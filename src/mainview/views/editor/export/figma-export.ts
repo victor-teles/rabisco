@@ -4,13 +4,15 @@ import type { FigmaExportReply, FigmaExportRequest, FigmaExportScreen } from "@/
 import type { FontFile } from "../../../../shared/export/figma/font";
 import { renderOffstage } from "@/lib/render/offstage-render";
 import type { DesignTokens } from "../../../../shared/context/tokens";
+import { resolveModes } from "../../../../shared/modes";
 import { screenNameFromPath } from "../../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../../shared/types";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../../shared/types";
 
 const ENCODE_TIMEOUT_MS = 60_000;
 
 export type FigmaCopyInput = {
 	selected: Frame[];
+	sections: readonly CanvasSection[];
 	files: ProjectFiles;
 	theme: DesignTokens;
 };
@@ -21,13 +23,21 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 type Encoded = { html: string; copied: number; fixed: number; skipped: number };
 
-async function capture(frames: Frame[], files: ProjectFiles, theme: DesignTokens, fonts: FontFile[]) {
+async function capture(
+	frames: Frame[],
+	sections: readonly CanvasSection[],
+	files: ProjectFiles,
+	theme: DesignTokens,
+	fonts: FontFile[],
+) {
 	const left = Math.min(...frames.map((frame) => frame.x));
 	const top = Math.min(...frames.map((frame) => frame.y));
 	const screens: FigmaExportScreen[] = [];
 
 	for (const frame of frames) {
-		const { tree, images } = await renderOffstage(frame, files, theme, (host) => host.figmaCapture(fonts));
+		const { tree, images } = await renderOffstage(frame, files, theme, resolveModes(frame, sections), (host) =>
+			host.figmaCapture(fonts),
+		);
 
 		screens.push({ name: nameOf(frame), x: frame.x - left, y: frame.y - top, tree, images });
 	}
@@ -55,7 +65,7 @@ function encode(request: FigmaExportRequest): Promise<Encoded> {
 	}).finally(() => worker.terminate());
 }
 
-export async function copyToFigma({ selected, files, theme }: FigmaCopyInput) {
+export async function copyToFigma({ selected, sections, files, theme }: FigmaCopyInput) {
 	if (!selected.length) {
 		toast("Select a screen to copy it to Figma");
 
@@ -66,7 +76,7 @@ export async function copyToFigma({ selected, files, theme }: FigmaCopyInput) {
 	const id = toast.loading(`Copying ${label} to Figma…`);
 
 	const encoded = figmaFonts().then(async (fonts) =>
-		encode({ screens: await capture(selected, files, theme, fonts), fonts }),
+		encode({ screens: await capture(selected, sections, files, theme, fonts), fonts }),
 	);
 
 	try {

@@ -4,13 +4,15 @@ import { agentScreenshot } from "@/lib/agent-screenshot";
 import { api } from "@/lib/rpc";
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import { agentContextMarkdown, type AgentContextScreen } from "../../../../shared/export/agent-context";
+import { resolveModes } from "../../../../shared/modes";
 import { isScreenFile, screenNameFromPath } from "../../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../../shared/types";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../../shared/types";
 
 export type AgentCopyInput = {
 	projectName: string;
 	/** In canvas order */
 	selected: Frame[];
+	sections: readonly CanvasSection[];
 	files: ProjectFiles;
 	theme: DesignTokens;
 	elements: readonly AgentElement[];
@@ -20,8 +22,8 @@ const shotName = (file: string) => `${file.replace(/^screens\//, "").replace(/\.
 
 /** Screenshots go to a temp folder the text points at; without them, the code and tokens still go */
 async function contextText(input: AgentCopyInput, screens: Frame[]) {
-	const { files, theme } = input;
-	const shoot = agentScreenshot(files, theme);
+	const { files, theme, sections } = input;
+	const shoot = agentScreenshot(files, theme, sections);
 	const shots = await Promise.all(screens.map((frame) => shoot(frame, null).catch(() => null)));
 
 	const written = shots.flatMap((data, i) =>
@@ -35,6 +37,7 @@ async function contextText(input: AgentCopyInput, screens: Frame[]) {
 		name: frame.name || screenNameFromPath(frame.file),
 		width: frame.width,
 		height: frame.height,
+		mode: resolveModes(frame, sections),
 		screenshot: dir && shots[i] ? `${dir}/${shotName(frame.file)}` : null,
 		elements: input.elements.flatMap((element) => {
 			const described = element.file === frame.file ? describeElement(files, element) : null;

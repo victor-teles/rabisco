@@ -4,9 +4,10 @@
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import { assetKey, PUBLIC_DIR, type ProjectAssets } from "../assets";
 import { customTokenNames, tokenThemeCss, tokensToCss, type DesignTokens } from "../context/tokens";
+import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../modes";
 import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
-import type { ExportFile, Frame, ProjectFiles } from "../types";
+import type { CanvasSection, ExportFile, Frame, ProjectFiles } from "../types";
 import { importSpecifiers, localDependencies } from "./code";
 import { handoffFiles } from "./handoff";
 import { tokenFiles } from "./tokens";
@@ -15,6 +16,8 @@ export type AppProjectInput = {
 	name: string;
 	/** The first screen opens first */
 	frames: Frame[];
+	/** Each screen exports in the mode its section gives it */
+	sections?: readonly CanvasSection[];
 	files: ProjectFiles;
 	/** The tokens applied to the screens, which may lag behind DESIGN.md */
 	theme: DesignTokens;
@@ -32,7 +35,7 @@ export type AppProject = {
 };
 
 /** A page the app routes to: `screens/welcome.alt-1.tsx` is `welcome.alt-1`, imported as `WelcomeAlt1Screen` from `screens/welcome.alt-1` */
-export type ProjectScreen = { file: string; id: string; identifier: string; module: string };
+export type ProjectScreen = { file: string; id: string; identifier: string; module: string; mode: ResolvedMode };
 
 /** `handoff` is the dev handoff page's route id, when the project has one */
 export type FrameworkContext = { name: string; screens: ProjectScreen[]; handoff: string | null };
@@ -225,6 +228,40 @@ function clickedLink(event: MouseEvent) {
 	return event.target.closest("[data-link-to]")?.getAttribute("data-link-to")?.trim() || null;
 }`;
 
+export const SCREEN_MODE_FILE = "src/lib/screen-mode.tsx";
+
+export const SCREEN_MODE_IMPORT = "@/lib/screen-mode";
+
+const SCREEN_MODE = `import { useLayoutEffect, type ReactNode } from "react";
+
+const PREFIX = "data-mode-";
+
+/** The mode the screen has on the canvas: \`.dark\` and \`data-mode-*\` on <html>, put back as they were after */
+export function ScreenMode({ mode, children }: { mode: Readonly<Record<string, string>>; children: ReactNode }) {
+	useLayoutEffect(() => {
+		const root = document.documentElement;
+		const dark = root.classList.contains("dark");
+		const before = Array.from(root.attributes).flatMap((attribute) =>
+			attribute.name.startsWith(PREFIX) ? [[attribute.name, attribute.value] as const] : [],
+		);
+
+		for (const [name] of before) root.removeAttribute(name);
+		root.classList.toggle("dark", mode.scheme === "dark");
+
+		for (const [group, option] of Object.entries(mode)) if (group !== "scheme") root.setAttribute(PREFIX + group, option);
+
+		return () => {
+			for (const { name } of Array.from(root.attributes)) if (name.startsWith(PREFIX)) root.removeAttribute(name);
+
+			for (const [name, value] of before) root.setAttribute(name, value);
+			root.classList.toggle("dark", dark);
+		};
+	}, [mode]);
+
+	return children;
+}
+`;
+
 function stylesheet(theme: DesignTokens) {
 	const tokens = tokensToCss(theme);
 	const custom = tokenThemeCss(customTokenNames(theme));
@@ -292,8 +329,11 @@ export function appProject(input: AppProjectInput, framework: Framework): AppPro
 	const screens = exportedScreens(input);
 
 	if (!screens.length) throw new Error("There are no screens to export");
+	const project = buildProject(input, framework, screens, true);
 
-	return buildProject(input, framework, screens, true);
+	project.files.push({ path: SCREEN_MODE_FILE, content: SCREEN_MODE });
+
+	return project;
 }
 
 /** `pages` are files in `input.files` the framework routes to; every component comes too */
@@ -328,12 +368,19 @@ export function buildProject(
 
 	assets.sort(([a], [b]) => a.localeCompare(b));
 
-	const screens = pages.map((file) => ({
-		file,
-		id: pageId(file),
-		identifier: screenIdentifier(pageId(file)),
-		module: file.replace(/\.tsx$/, ""),
-	}));
+	const byFile = new Map(input.frames.map((frame) => [frame.file, frame]));
+
+	const screens = pages.map((file): ProjectScreen => {
+		const frame = byFile.get(file);
+
+		return {
+			file,
+			id: pageId(file),
+			identifier: screenIdentifier(pageId(file)),
+			module: file.replace(/\.tsx$/, ""),
+			mode: frame ? resolveModes(frame, input.sections ?? []) : DEFAULT_MODE,
+		};
+	});
 
 	const handoffId = screens.some((screen) => screen.id === "handoff") ? "dev-handoff" : "handoff";
 	const context: FrameworkContext = { name, screens, handoff: handoff ? handoffId : null };

@@ -8,8 +8,9 @@ import { flowDocument, flowOrder, type FlowScreen } from "../../../../shared/exp
 import { createPdf, jpegSize } from "../../../../shared/export/pdf";
 import { sceneToSvg } from "../../../../shared/export/scene";
 import { exportSlug, imageFileNames, imageTargets, scaledFileName } from "../../../../shared/export/targets";
+import { resolveModes, type ResolvedMode } from "../../../../shared/modes";
 import { screenNameFromPath } from "../../../../shared/project";
-import type { ExportFile, Frame, ProjectFiles } from "../../../../shared/types";
+import type { CanvasSection, ExportFile, Frame, ProjectFiles } from "../../../../shared/types";
 
 /** Device pixels per CSS pixel in PNGs and in the PDF */
 const SCALE = 2;
@@ -31,10 +32,11 @@ const renderScreen = (
 	frame: Frame,
 	files: ProjectFiles,
 	theme: DesignTokens,
+	mode: ResolvedMode,
 	rasters: (SnapshotRaster | undefined)[],
 	starts?: number[],
 ) =>
-	renderOffstage(frame, files, theme, async (host) => {
+	renderOffstage(frame, files, theme, mode, async (host) => {
 		const snapshots: Snapshot[] = [];
 
 		for (const raster of rasters) snapshots.push(await host.snapshot(raster, undefined, starts));
@@ -44,6 +46,7 @@ const renderScreen = (
 
 async function renderAll(
 	frames: Frame[],
+	sections: readonly CanvasSection[],
 	files: ProjectFiles,
 	theme: DesignTokens,
 	rasters: (SnapshotRaster | undefined)[],
@@ -59,7 +62,10 @@ async function renderAll(
 			const frame = frames[index]!;
 
 			try {
-				results[index] = { frame, snapshots: await renderScreen(frame, files, theme, rasters) };
+				results[index] = {
+					frame,
+					snapshots: await renderScreen(frame, files, theme, resolveModes(frame, sections), rasters),
+				};
 			} catch (error) {
 				results[index] = { frame, message: error instanceof Error ? error.message : String(error) };
 			}
@@ -124,6 +130,7 @@ function failureDescription(failed: Failure[]) {
 export type ImageExportInput = {
 	projectName: string;
 	frames: Frame[];
+	sections: readonly CanvasSection[];
 	selected: Frame[];
 	files: ProjectFiles;
 	/** The applied tokens, so images match the canvas */
@@ -133,7 +140,7 @@ export type ImageExportInput = {
 /** Without a selection, every screen except alternates. PNGs get one file per scale, `welcome@2x.png` beside `welcome.png` */
 export async function exportImages(
 	format: ImageFormat,
-	{ projectName, frames, selected, files, theme }: ImageExportInput,
+	{ projectName, frames, sections, selected, files, theme }: ImageExportInput,
 	scales: readonly number[] = [SCALE],
 ) {
 	const targets = imageTargets(frames, selected, files);
@@ -149,7 +156,7 @@ export async function exportImages(
 		const rasters =
 			format === "png" ? scales.map((scale): SnapshotRaster => ({ type: "image/png", scale })) : [undefined];
 
-		const { rendered, failed } = await renderAll(targets, files, theme, rasters, (done) => {
+		const { rendered, failed } = await renderAll(targets, sections, files, theme, rasters, (done) => {
 			if (targets.length > 1) toast.loading(`Rendering screens… ${done} of ${targets.length}`, { id });
 		});
 
@@ -182,7 +189,7 @@ export async function exportImages(
 
 /** Flow order: prototype links breadth-first from the first screen on the canvas. `only` limits it to those screens */
 export async function exportFlowPdf(
-	{ projectName, frames, files, theme }: Omit<ImageExportInput, "selected">,
+	{ projectName, frames, sections, files, theme }: Omit<ImageExportInput, "selected">,
 	only: Frame[] = [],
 ) {
 	const screens = imageTargets(frames, only, files);
@@ -203,6 +210,7 @@ export async function exportFlowPdf(
 	try {
 		const { rendered, failed } = await renderAll(
 			ordered,
+			sections,
 			files,
 			theme,
 			[{ type: "image/jpeg", scale: SCALE, quality: JPEG_QUALITY }],
@@ -245,12 +253,13 @@ export async function copyImage(
 	frame: Frame,
 	files: ProjectFiles,
 	theme: DesignTokens,
+	mode: ResolvedMode,
 	starts?: number[],
 ) {
 	const what = !starts ? nameOf(frame) : starts.length > 1 ? "the elements" : "the element";
 	const id = toast.loading(`Rendering ${what}…`);
 	const raster: SnapshotRaster | undefined = format === "png" ? { type: "image/png", scale: SCALE } : undefined;
-	const snapshot = renderScreen(frame, files, theme, [raster], starts).then(([shot]) => shot!);
+	const snapshot = renderScreen(frame, files, theme, mode, [raster], starts).then(([shot]) => shot!);
 
 	const item =
 		format === "png"

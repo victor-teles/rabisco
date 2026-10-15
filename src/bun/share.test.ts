@@ -164,6 +164,21 @@ describe("viewerFiles", () => {
 		expect(() => assertSnapshot({ ...snapshot(), assets: { "../a.png": "data:image/png;base64,AA==" } })).toThrow();
 	});
 
+	test("each screen's mode reaches its frame; a snapshot without modes renders the defaults", () => {
+		const old = snapshot();
+		const dark: ShareSnapshot = { ...old, screens: [{ ...old.screens[0]!, mode: { scheme: "dark" } }] };
+		const viewer = viewerFiles(dark, runtime).find((file) => file.path === "viewer.js")!.content;
+
+		expect(assertSnapshot(dark)).toEqual(dark);
+		expect(assertSnapshot(old)).toEqual(old);
+		expect(viewer).toContain('var DEFAULT_MODE = {"scheme":"light"};');
+		expect(viewer).toContain("mode: modeOf(record.file), reset: true");
+		expect(viewer).toContain("modules: {}, mode: modeOf(file) }");
+		expect(() => assertSnapshot({ ...old, screens: [{ ...old.screens[0]!, mode: { scheme: "Dark Mode" } }] })).toThrow(
+			"invalid screen",
+		);
+	});
+
 	test("a sealed site holds only ciphertext and hides the project name", async () => {
 		const sealed = await sealText(JSON.stringify(snapshot()), "password", 1000);
 
@@ -444,10 +459,40 @@ test("shareScreens keeps picked screens in canvas order", () => {
 	const screens = shareScreens(
 		[frame("screens/b.tsx"), frame("screens/a.alt-1.tsx"), frame("screens/a.tsx"), frame("screens/gone.tsx")],
 		files,
+		[],
 	);
 
 	expect(screens.map((screen) => [screen.file, screen.name])).toEqual([
 		["screens/b.tsx", "B"],
 		["screens/a.tsx", "A"],
 	]);
+});
+
+test("shareScreens gives each screen the mode of its section", () => {
+	const frame = (file: string, x: number) => ({
+		file,
+		name: "",
+		device: "mobile" as const,
+		x,
+		y: 0,
+		width: 390,
+		height: 844,
+	});
+
+	const files = { "screens/a.tsx": "", "screens/b.tsx": "" };
+
+	const dark = {
+		id: "s",
+		name: "Dark",
+		color: "gray" as const,
+		x: 1000,
+		y: -100,
+		width: 1000,
+		height: 1200,
+		modes: { scheme: "dark" },
+	};
+
+	const screens = shareScreens([frame("screens/a.tsx", 0), frame("screens/b.tsx", 1200)], files, [dark]);
+
+	expect(screens.map((screen) => screen.mode)).toEqual([{ scheme: "light" }, { scheme: "dark" }]);
 });

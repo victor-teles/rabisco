@@ -415,6 +415,33 @@ describe("userPrompt", () => {
 		});
 	});
 
+	describe("modes", () => {
+		const theme = { light: { background: "#ffffff" }, dark: { background: "#0a0a0a" } };
+
+		test("names the targets' modes and the dark values that apply", () => {
+			const prompt = userPrompt(
+				request({
+					task: "edit",
+					targets: ["screens/home.tsx"],
+					theme,
+					modes: { "screens/home.tsx": { scheme: "dark" } },
+				}),
+				"text",
+			);
+
+			expect(prompt).toContain("# Modes\nThese screens render in a mode on the canvas.");
+			expect(prompt).toContain('- screens/home.tsx: dark (class="dark")');
+			expect(prompt).toContain("- Dark values: background: #0a0a0a");
+			expect(prompt.indexOf("# Theme tokens")).toBeLessThan(prompt.indexOf("# Modes"));
+		});
+
+		test("left out without modes", () => {
+			expect(userPrompt(request({ task: "edit", targets: ["screens/home.tsx"], theme }), "text")).not.toContain(
+				"# Modes",
+			);
+		});
+	});
+
 	describe("project components", () => {
 		const statCard = `export function StatCard({ label, tone = "default" }: { label: string; tone?: "default" | "success" }) { return <div>{label}</div>; }\n`;
 

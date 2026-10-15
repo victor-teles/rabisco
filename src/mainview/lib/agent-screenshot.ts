@@ -1,7 +1,8 @@
 import { renderOffstage } from "@/lib/render/offstage-render";
 import { sourceVersion, type Box } from "@/lib/render/protocol";
 import type { DesignTokens } from "../../shared/context/tokens";
-import type { Frame, ProjectFiles } from "../../shared/types";
+import { resolveModes } from "../../shared/modes";
+import type { CanvasSection, Frame, ProjectFiles } from "../../shared/types";
 
 export const MAX_SCREENSHOT_WIDTH = 1280;
 
@@ -37,9 +38,9 @@ async function crop(dataUrl: string, box: Box, scale: number): Promise<string> {
 }
 
 /** Rendered offstage like the design check, so it works for screens off the viewport */
-export function agentScreenshot(files: ProjectFiles, theme: DesignTokens) {
+export function agentScreenshot(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number | null) =>
-		renderOffstage(frame, files, theme, async (host) => {
+		renderOffstage(frame, files, theme, resolveModes(frame, sections), async (host) => {
 			if (start === null) {
 				const height = (await host.measure()) ?? frame.height;
 				const scale = screenshotScale(frame.width, height, frame.width, 1);
@@ -63,9 +64,9 @@ export function agentScreenshot(files: ProjectFiles, theme: DesignTokens) {
 		});
 }
 
-export function agentElementBox(files: ProjectFiles, theme: DesignTokens) {
+export function agentElementBox(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number) =>
-		renderOffstage(frame, files, theme, async (host) => {
+		renderOffstage(frame, files, theme, resolveModes(frame, sections), async (host) => {
 			const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
 
 			return box ?? null;

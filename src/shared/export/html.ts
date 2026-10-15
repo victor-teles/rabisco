@@ -1,6 +1,7 @@
 // One screen as a static page: the markup the frame rendered and a stylesheet with just its classes.
 
 import { assetKey, type ProjectAssets } from "../assets";
+import { isModeSlug, SCHEME, type ResolvedMode } from "../modes";
 import type { ExportFile } from "../types";
 
 export type HtmlScreenInput = {
@@ -9,6 +10,8 @@ export type HtmlScreenInput = {
 	markup: string;
 	css: string;
 	assets?: ProjectAssets;
+	/** The frame set it on its own `<html>`, which `markup` leaves out */
+	mode?: ResolvedMode;
 };
 
 const escapeHtml = (text: string) =>
@@ -24,8 +27,18 @@ function relativeImages(text: string, keys: string[]) {
 	return keys.reduce((out, key) => out.replace(atValueStart(key), `$1${key.slice(1)}`), text);
 }
 
-const page = (title: string, markup: string) => `<!doctype html>
-<html lang="en">
+export function modeAttributes(mode: ResolvedMode | undefined) {
+	const attributes = mode?.[SCHEME] === "dark" ? [' class="dark"'] : [];
+
+	for (const [group, option] of Object.entries(mode ?? {})) {
+		if (group !== SCHEME && isModeSlug(group) && isModeSlug(option)) attributes.push(` data-mode-${group}="${option}"`);
+	}
+
+	return attributes.join("");
+}
+
+const page = (title: string, markup: string, mode: ResolvedMode | undefined) => `<!doctype html>
+<html lang="en"${modeAttributes(mode)}>
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -51,7 +64,7 @@ export function htmlScreen(input: HtmlScreenInput): ExportFile[] {
 	const keys = [...images.keys()].sort();
 
 	return [
-		{ path: "index.html", content: page(input.title, relativeImages(input.markup, keys)) },
+		{ path: "index.html", content: page(input.title, relativeImages(input.markup, keys), input.mode) },
 		{ path: "styles.css", content: relativeImages(input.css, keys) },
 		...keys.map((key): ExportFile => ({ path: key.slice(1), content: images.get(key)!, encoding: "base64" })),
 	];

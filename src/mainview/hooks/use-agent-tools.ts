@@ -98,9 +98,9 @@ export function useAgentTools({ path, project, stateRef, elements, elementAt }: 
 				files,
 				elements: latest.current.elements,
 				gitStatus: () => api.gitStatus({ path }),
-				screenshot: agentScreenshot(files, theme),
+				screenshot: agentScreenshot(files, theme, canvas.sections ?? []),
 				elementAt: (file, point) => latest.current.elementAt(file, point),
-				elementBox: agentElementBox(files, theme),
+				elementBox: agentElementBox(files, theme, canvas.sections ?? []),
 				change: entry.session.change,
 				step: `agent:${callId}`,
 				log: ({ label, changed, screens }) => {

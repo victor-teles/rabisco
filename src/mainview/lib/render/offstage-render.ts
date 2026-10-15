@@ -1,4 +1,5 @@
 import type { DesignTokens } from "../../../shared/context/tokens";
+import type { ResolvedMode } from "../../../shared/modes";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 import { FrameHost, runtimeUrl } from "./frame-host";
 import { OFFSTAGE_FRAME_STYLE, offstage } from "./offstage";
@@ -14,6 +15,7 @@ export async function renderOffstage<T>(
 	frame: Frame,
 	files: ProjectFiles,
 	theme: DesignTokens,
+	mode: ResolvedMode,
 	use: (host: FrameHost) => Promise<T>,
 ): Promise<T> {
 	const iframe = document.createElement("iframe");
@@ -29,7 +31,7 @@ export async function renderOffstage<T>(
 	try {
 		iframe.src = runtimeUrl();
 		offstage().appendChild(iframe);
-		host.update(frame.file, files, themeCss(theme));
+		host.update(frame.file, files, themeCss(theme), mode);
 		await host.whenRendered();
 		let height = frame.height;
 

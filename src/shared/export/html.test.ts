@@ -72,3 +72,13 @@ test("the stylesheet the app builds has the page's classes and the applied token
 	expect(page).toContain("--primary: oklch(0.205 0 0);");
 	expect(page).toContain(":root:not(.dark) {\n\t--primary: #2563eb;");
 });
+
+test("the page's <html> carries the mode the frame rendered in", () => {
+	const page = (mode?: Record<string, string>) =>
+		byPath(htmlScreen({ title: "Home", markup: "<p>Hi</p>", css: "", mode }))["index.html"]!.content;
+
+	expect(page()).toContain('<html lang="en">');
+	expect(page({ scheme: "light" })).toContain('<html lang="en">');
+	expect(page({ scheme: "dark", brand: "acme" })).toContain('<html lang="en" class="dark" data-mode-brand="acme">');
+	expect(page({ scheme: "dark", '"><script>': "x" })).toContain('<html lang="en" class="dark">');
+});

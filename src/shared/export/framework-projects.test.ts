@@ -102,3 +102,41 @@ describe("react router project", () => {
 		expect(pkg.dependencies["@react-router/serve"]).toBeString();
 	});
 });
+
+describe("screen modes", () => {
+	const dark = {
+		id: "dark",
+		name: "Dark",
+		color: "gray" as const,
+		x: -600,
+		y: -100,
+		width: 600,
+		height: 1100,
+		modes: { scheme: "dark" },
+	};
+
+	const withSection = { ...input, sections: [dark] };
+	const settingsMode = 'const mode = {"scheme":"dark"};';
+
+	test("vite: each screen opens in the mode its section gives it", () => {
+		const out = byPath(viteProject(withSection));
+		const app = out["src/App.tsx"]!;
+
+		expect(out["src/lib/screen-mode.tsx"]).toContain('root.classList.toggle("dark", mode.scheme === "dark");');
+		expect(app).toContain('import { ScreenMode } from "@/lib/screen-mode";');
+		expect(app).toContain('{ id: "settings", Screen: SettingsScreen, mode: {"scheme":"dark"} }');
+		expect(app).toContain('{ id: "welcome", Screen: WelcomeScreen, mode: {"scheme":"light"} }');
+		expect(app).toContain("<ScreenMode key={id} mode={mode}>");
+	});
+
+	test("next and react router: each route wraps its screen in ScreenMode", () => {
+		const next = byPath(nextProject(withSection));
+		const router = byPath(reactRouterProject(withSection));
+
+		expect(next["src/app/settings/page.tsx"]).toContain(settingsMode);
+		expect(next["src/app/settings/page.tsx"]).toContain("<ScreenMode mode={mode}>");
+		expect(next["src/app/welcome/page.tsx"]).toContain('const mode = {"scheme":"light"};');
+		expect(router["src/app/routes/settings.tsx"]).toContain(settingsMode);
+		expect(router["src/lib/screen-mode.tsx"]).toBeString();
+	});
+});

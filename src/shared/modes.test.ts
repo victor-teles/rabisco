@@ -7,6 +7,7 @@ import {
 	modeLabel,
 	normalizeModes,
 	resolveModes,
+	targetModes,
 	type ModeGroup,
 } from "./modes";
 import { normalizeSections } from "./sections";
@@ -73,6 +74,16 @@ describe("resolveModes", () => {
 	test("the same mode is the same object, so memoized views keep their props", () => {
 		expect(resolveModes(frame(600, 600), [outer])).toBe(resolveModes(frame(700, 700), [outer]));
 	});
+});
+
+test("targetModes resolves the targets that have a frame", () => {
+	const frames = [{ ...frame(500, 500), file: "screens/b.tsx" }, frame(2000, 2000)];
+
+	expect(targetModes(["screens/b.tsx", "screens/a.tsx", "screens/new.tsx"], frames, [outer, inner])).toEqual({
+		"screens/b.tsx": { scheme: "dark" },
+		"screens/a.tsx": { scheme: "light" },
+	});
+	expect(targetModes(["screens/new.tsx"], frames, [outer])).toBeUndefined();
 });
 
 describe("inheritedModes", () => {

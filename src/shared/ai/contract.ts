@@ -1,6 +1,7 @@
 // Decision record: docs/decisions/0003-ai-provider-contract.md
 
 import type { DesignTokens } from "../context/tokens";
+import type { ResolvedMode } from "../modes";
 import type { Device } from "../types";
 
 export type ProviderKind = "cli" | "sdk" | "api";
@@ -166,6 +167,9 @@ export type GenerationRequest = {
 	theme?: DesignTokens;
 
 	targets?: string[];
+
+	/** By target path, only for targets that don't render in the default mode */
+	modes?: Record<string, ResolvedMode>;
 
 	problems?: Problem[];
 

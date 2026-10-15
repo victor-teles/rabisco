@@ -96,7 +96,7 @@ import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
-import { chooseMode, SCHEME } from "../../../shared/modes";
+import { chooseMode, resolveModes, SCHEME } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
@@ -511,6 +511,7 @@ export function EditorView({
 			projectPath,
 			projectName,
 			frames,
+			sections: sections.sections,
 			files,
 			theme: appliedTokens,
 			selected,
@@ -523,6 +524,7 @@ export function EditorView({
 			projectPath,
 			projectName,
 			frames,
+			sections.sections,
 			files,
 			appliedTokens,
 			selected,
@@ -1346,9 +1348,12 @@ export function EditorView({
 		const id = toast.loading("Checking screens…");
 
 		try {
-			const results = await checkDesign({ frames, selected, files, theme: appliedTokens }, (done, total) => {
-				if (total > 1) toast.loading(`Checking screens… ${done} of ${total}`, { id });
-			});
+			const results = await checkDesign(
+				{ frames, sections: sections.sections, selected, files, theme: appliedTokens },
+				(done, total) => {
+					if (total > 1) toast.loading(`Checking screens… ${done} of ${total}`, { id });
+				},
+			);
 
 			toast.dismiss(id);
 			setDesignChecks(results);
@@ -1454,7 +1459,8 @@ export function EditorView({
 				setSourceReveal((key) => key + 1);
 			},
 			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
-			copyImage: (format, starts) => single && void copyImage(format, single, files, appliedTokens, starts),
+			copyImage: (format, starts) =>
+				single && void copyImage(format, single, files, appliedTokens, resolveModes(single, sections.sections), starts),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		...screenThemeActions({ selected, sections: sections.sections, setTheme: setScreenTheme }),
@@ -1558,14 +1564,14 @@ export function EditorView({
 			group: "Export",
 			chords: [{ code: "KeyC", mod: true, shift: true }],
 			enabled: single !== null,
-			run: () => single && void copyImage("png", single, files, appliedTokens),
+			run: () => single && void copyImage("png", single, files, appliedTokens, resolveModes(single, sections.sections)),
 		},
 		{
 			id: "copy-svg",
 			label: "Copy as SVG",
 			group: "Export",
 			enabled: single !== null,
-			run: () => single && void copyImage("svg", single, files, appliedTokens),
+			run: () => single && void copyImage("svg", single, files, appliedTokens, resolveModes(single, sections.sections)),
 		},
 		{
 			id: "copy-figma",
@@ -1573,7 +1579,7 @@ export function EditorView({
 			group: "Export",
 			chords: [{ code: "KeyC", mod: true, ctrl: true }],
 			enabled: selected.length > 0,
-			run: () => void copyToFigma({ selected, files, theme: appliedTokens }),
+			run: () => void copyToFigma({ selected, sections: sections.sections, files, theme: appliedTokens }),
 		},
 		{
 			id: "copy-for-agent",
@@ -1581,7 +1587,15 @@ export function EditorView({
 			group: "Export",
 			chords: [{ code: "KeyC", mod: true, alt: true, shift: true }],
 			enabled: selected.some((frame) => isScreenFile(frame.file)),
-			run: () => void copyForAgent({ projectName, selected, files, theme: appliedTokens, elements: nodes }),
+			run: () =>
+				void copyForAgent({
+					projectName,
+					selected,
+					sections: sections.sections,
+					files,
+					theme: appliedTokens,
+					elements: nodes,
+				}),
 		},
 		{
 			id: "sync-to-repo",
@@ -2598,6 +2612,7 @@ export function EditorView({
 								image={screenshotCompare.image}
 								files={files}
 								theme={appliedTokens}
+								screenMode={resolveModes(screenshotCompare.frame, sections.sections)}
 								onClose={() => setScreenshotPair(null)}
 							/>
 						) : null}

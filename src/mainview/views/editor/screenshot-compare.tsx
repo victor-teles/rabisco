@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useAssetImage } from "@/hooks/use-asset-image";
 import { compareWithScreenshot, type Comparison } from "@/lib/recreate";
 import type { DesignTokens } from "../../../shared/context/tokens";
+import type { ResolvedMode } from "../../../shared/modes";
 import type { CanvasImage, Frame, ProjectFiles } from "../../../shared/types";
 import { isTyping } from "./shortcuts";
 
@@ -33,12 +34,14 @@ export function ScreenshotCompare({
 	image,
 	files,
 	theme,
+	screenMode,
 	onClose,
 }: {
 	frame: Frame;
 	image: CanvasImage;
 	files: ProjectFiles;
 	theme: DesignTokens;
+	screenMode: ResolvedMode;
 	onClose: () => void;
 }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -55,7 +58,7 @@ export function ScreenshotCompare({
 	useEffect(() => {
 		let current = true;
 
-		compareWithScreenshot(frame, image, files, theme).then(
+		compareWithScreenshot(frame, image, files, theme, screenMode).then(
 			(next) => current && setReading({ comparison: next }),
 			(reason) => current && setReading({ error: reason instanceof Error ? reason.message : String(reason) }),
 		);
@@ -63,7 +66,7 @@ export function ScreenshotCompare({
 		return () => {
 			current = false;
 		};
-	}, [frame, image, files, theme]);
+	}, [frame, image, files, theme, screenMode]);
 
 	useLayoutEffect(() => {
 		const el = scrollRef.current;

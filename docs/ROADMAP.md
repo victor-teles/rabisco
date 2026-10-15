@@ -32,8 +32,9 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 - ✅ A screen can set its own mode from its menu or the inspector, which wins over its section
 - ⬜ Token overrides on a section: change a token for that section only, to try a new primary color or radius next to the current one. "Save as mode" writes it to DESIGN.md as a new option; "Apply to project" makes it the project value; "Discard" drops it
 - ⬜ "Duplicate with mode": copy a section and its screens with another mode, to compare them side by side. The copies are files, and links inside the copy point at the copy
-- ⬜ Play mode, the share viewer, image export, snapshots and the code export use each screen's resolved mode. The export sets it on each screen's route, so a screen exports the way it looks on the canvas
-- ⬜ Generations and point and prompt see the screen's mode and its tokens, and the dark mode pass in Phase 27 checks screens in a Dark section
+- ✅ Play mode, the share viewer, image export, Copy to Figma, visual review, snapshots, HTML and the code export use each screen's resolved mode. The code export wraps each route in a `ScreenMode` component, so a screen exports the way it looks on the canvas ([LIT-154](/LIT/issues/LIT-154))
+- ✅ Generations and point and prompt see the screen's mode and its dark token values. Copy for agent and the MCP `get_project` name each screen's mode ([LIT-154](/LIT/issues/LIT-154))
+- ⬜ The dark mode pass in Phase 27 checks screens in a Dark section
 
 **Components**
 

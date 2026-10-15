@@ -6,6 +6,8 @@ import {
 	type DesignTokens,
 	type TokenKind,
 } from "../../shared/context/tokens";
+import { modeAttributes } from "../../shared/export/html";
+import { SCHEME, type ResolvedMode } from "../../shared/modes";
 
 const SEMANTIC = `- Built in: bg-, text- and border- with background, foreground, card, popover, primary, secondary, muted, accent (each with a -foreground pair), destructive, success, warning, border, input, ring, chart-1 to chart-5; rounded-sm to rounded-xl (they follow radius); font-sans, font-serif, font-mono.`;
 
@@ -56,6 +58,29 @@ export function themeTokensText(tokens: DesignTokens): string | null {
 			"- A text-* token is a text style: its one class sets the size and any line height, weight and tracking it lists. Don't add font-*, leading-* or tracking-* classes next to it unless the design needs a change.",
 		);
 	}
+
+	return lines.join("\n");
+}
+
+/** The targets that render in a mode other than the default, and the token values that apply there */
+export function modesText(modes: Record<string, ResolvedMode>, tokens: DesignTokens | undefined): string | null {
+	const screens = Object.entries(modes);
+
+	if (!screens.length) return null;
+
+	const lines = [
+		"# Modes",
+		"These screens render in a mode on the canvas. Rabisco sets it on <html>, so don't set it in the screen:",
+		...screens.map(
+			([path, mode]) => `- ${path}: ${Object.values(mode).join(", ")} (${modeAttributes(mode).trim() || "no class"})`,
+		),
+		"Use the token classes, not raw colors: they take the mode's values, so the screen follows its mode.",
+	];
+
+	const dark = Object.entries(tokens?.dark ?? {});
+
+	if (screens.some(([, mode]) => mode[SCHEME] === "dark") && dark.length)
+		lines.push(`- Dark values: ${dark.map(([name, value]) => `${name}: ${value}`).join("; ")}`);
 
 	return lines.join("\n");
 }

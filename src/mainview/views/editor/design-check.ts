@@ -6,7 +6,8 @@ import type { DesignFinding } from "../../../shared/design/findings";
 import { withLines } from "../../../shared/design/locate";
 import { sourceFindings } from "../../../shared/design/source-checks";
 import { imageTargets } from "../../../shared/export/targets";
-import type { Frame, ProjectFiles } from "../../../shared/types";
+import { resolveModes } from "../../../shared/modes";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 
 const PARALLEL = 3;
 
@@ -15,6 +16,7 @@ export type ScreenCheck = { frame: Frame; findings: DesignFinding[]; error?: str
 
 export type DesignCheckInput = {
 	frames: Frame[];
+	sections: readonly CanvasSection[];
 	selected: Frame[];
 	files: ProjectFiles;
 	theme: DesignTokens;
@@ -41,10 +43,16 @@ async function checkScreen(frame: Frame, input: DesignCheckInput): Promise<Scree
 	const fromSource = sourceFindings(frame.file, source, input.theme);
 
 	try {
-		const { fromLayout, image } = await renderOffstage(frame, input.files, input.theme, async (host) => ({
-			fromLayout: await host.lint(),
-			image: input.raster ? await screenshot(host, input.raster(frame)) : undefined,
-		}));
+		const { fromLayout, image } = await renderOffstage(
+			frame,
+			input.files,
+			input.theme,
+			resolveModes(frame, input.sections),
+			async (host) => ({
+				fromLayout: await host.lint(),
+				image: input.raster ? await screenshot(host, input.raster(frame)) : undefined,
+			}),
+		);
 
 		const findings = withLines([...fromLayout, ...fromSource], input.files).sort(byPlace);
 

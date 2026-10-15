@@ -41,6 +41,7 @@ import {
 	type PolishRequest,
 	type ScreenFindings,
 } from "../../shared/design/polish";
+import { targetModes } from "../../shared/modes";
 import { isContextFile, isScreenFile } from "../../shared/project";
 import { besideImage } from "../../shared/recreate";
 import type {
@@ -265,8 +266,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 		try {
 			await env.flushFiles();
+			const canvas = session.state()?.canvas;
+			const modes = canvas && targetModes(params.targets ?? [], canvas.frames, canvas.sections ?? []);
 
-			return await env.api.generate(params);
+			return await env.api.generate(modes ? { ...params, modes } : params);
 		} finally {
 			unroute();
 		}
@@ -375,6 +378,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 		const results = await env.check({
 			frames: current.canvas.frames,
+			sections: current.canvas.sections ?? [],
 			selected,
 			files: current.files,
 			theme: current.canvas.theme ?? NO_THEME,

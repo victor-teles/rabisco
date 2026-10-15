@@ -12,7 +12,7 @@ import {
 import type { DesignTokens } from "../../../../shared/context/tokens";
 import { imageTargets } from "../../../../shared/export/targets";
 import { isComponentFile } from "../../../../shared/project";
-import type { Frame, ProjectFiles } from "../../../../shared/types";
+import type { CanvasSection, Frame, ProjectFiles } from "../../../../shared/types";
 import { NEXT } from "../../../../shared/export/next-project";
 import { REACT_ROUTER } from "../../../../shared/export/react-router-project";
 import { VITE } from "../../../../shared/export/vite-project";
@@ -32,6 +32,7 @@ export type ExportContext = {
 	projectPath: string;
 	projectName: string;
 	frames: Frame[];
+	sections: readonly CanvasSection[];
 	files: ProjectFiles;
 	/** The applied DESIGN.md tokens; exports look like the canvas */
 	theme: DesignTokens;

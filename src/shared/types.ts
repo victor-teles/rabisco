@@ -207,6 +207,8 @@ export type GenerateParams = {
 	/** `create`: the plan the user accepted; its shared components are written first, then its screens in parallel */
 	plan?: GenerationPlan;
 	review?: VisualReview;
+	/** By target path: the mode each target renders in on the canvas (decision 0028) */
+	modes?: Record<string, ResolvedMode>;
 };
 
 export type VisualReview = { prompt: string; attachments: Attachment[] };
