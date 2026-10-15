@@ -3,6 +3,8 @@ import { transform } from "sucrase";
 import { componentApi, type ComponentExport } from "./api";
 import { LIBRARY } from "./library";
 import {
+	componentPageModule,
+	componentStates,
 	humanize,
 	libraryPreviewModule,
 	previewImport,
@@ -158,6 +160,40 @@ export function Pill({ shape = "round" }: VariantProps<typeof v> & { shape?: "ro
 	test("null without variants", () => {
 		const plain: ComponentExport = { name: "Plain", props: [], variants: {}, acceptsChildren: false };
 		expect(variantGridModule({ componentPath: "components/plain.tsx", component: plain })).toBeNull();
+	});
+});
+
+describe("componentPageModule", () => {
+	const BUTTON = exp(`import { cva, type VariantProps } from "class-variance-authority";
+const v = cva("", { variants: { variant: { solid: "", ghost: "" }, size: { sm: "", md: "", lg: "" }, shape: { round: "", square: "" } } });
+export function Button({ loading, ...props }: React.ComponentProps<"button"> & VariantProps<typeof v> & { loading?: boolean }) { return null; }`);
+
+	test("states are boolean props and disabled for form elements", () => {
+		expect(componentStates(BUTTON)).toEqual(["loading", "disabled"]);
+		expect(componentStates(METRIC)).toEqual(["live"]);
+	});
+
+	test("the first two axes as a table, the rest as rows, then each state per option", () => {
+		const source = componentPageModule({ componentPath: "components/button.tsx", component: BUTTON, props: {} });
+
+		expect(source).toContain(">variant × size</p>");
+		expect(source).toContain('gridTemplateColumns: "auto repeat(3, auto)"');
+		expect(source).toContain('<Button variant={"ghost"} size={"lg"} />');
+		expect(source).toContain(">shape</p>");
+		expect(source).toContain(">States</p>");
+		expect(source).toContain('<Button variant={"solid"} loading />');
+		expect(source).toContain('<Button variant={"ghost"} disabled />');
+		expect(source).toContain("export default function ButtonPreviewPage()");
+		expect(compiles(source)).toBe(true);
+	});
+
+	test("a component without variants or states shows once", () => {
+		const plain: ComponentExport = { name: "Plain", props: [], variants: {}, acceptsChildren: false };
+		const source = componentPageModule({ componentPath: "components/plain.tsx", component: plain });
+
+		expect(source).toContain("<Plain />");
+		expect(source).not.toContain("<section");
+		expect(compiles(source)).toBe(true);
 	});
 });
 

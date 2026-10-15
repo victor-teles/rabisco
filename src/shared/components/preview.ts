@@ -9,8 +9,9 @@ export type PreviewValue = string | number | boolean | { icon: string } | (strin
 
 export type PreviewProps = Record<string, PreviewValue>;
 
-/** `center`: own size. `stretch`: full width of a centered column. `fill`: whole frame, no padding. */
-export type PreviewLayout = "center" | "stretch" | "fill";
+/** `center`: own size. `stretch`: full width of a centered column. `fill`: whole frame, no padding. `page`: as tall as
+ * its content, so the frame can shrink to it. */
+export type PreviewLayout = "center" | "stretch" | "fill" | "page";
 
 export const previewPath = (name: string) => `preview/${toKebab(name.replace(/([a-z0-9])([A-Z])/g, "$1 $2"))}.tsx`;
 
@@ -128,6 +129,7 @@ const SURFACE: Record<PreviewLayout, { outer: string; inner?: string }> = {
 		inner: "w-full max-w-md",
 	},
 	fill: { outer: "flex min-h-full flex-col bg-background text-foreground" },
+	page: { outer: "flex justify-center bg-background p-10 text-foreground" },
 };
 
 type IconValue = Extract<PreviewValue, { icon: string }>;
@@ -253,4 +255,84 @@ export function libraryPreviewModule(item: LibraryItem, layout: PreviewLayout = 
 	const name = `${item.title.replace(/[^A-Za-z0-9]/g, "")}Preview`;
 
 	return moduleSource(imports, /^[A-Z]/.test(name) ? name : `Item${name}`, item.snippet.trim(), layout);
+}
+
+const DISABLES = new Set(["button", "input", "select", "textarea", "fieldset"]);
+
+/** Boolean props that aren't variants, and `disabled` for form elements */
+export function componentStates(exp: ComponentExport): string[] {
+	const axes = new Set(variantAxes(exp).map((axis) => axis.name));
+
+	const states = exp.props.flatMap((prop) =>
+		prop.type.kind === "boolean" && !axes.has(prop.name) && prop.name !== "asChild" ? [prop.name] : [],
+	);
+
+	if (exp.extendsElement && DISABLES.has(exp.extendsElement) && !states.includes("disabled")) states.push("disabled");
+
+	return states.slice(0, 5);
+}
+
+const label = (text: string) => `<span className="text-xs text-muted-foreground">{${JSON.stringify(text)}}</span>`;
+
+/** Rows by columns; the first cell of each row is its label */
+function table(columns: string[], rows: { label: string; cells: string[] }[]): string {
+	const head = ["<span />", ...columns.map(label)];
+	const body = rows.flatMap((row) => [label(row.label), ...row.cells]);
+
+	return `<div className="grid items-center justify-items-start gap-x-8 gap-y-4" style={{ gridTemplateColumns: "auto repeat(${columns.length}, auto)" }}>\n${indent([...head, ...body].join("\n"), 1)}\n</div>`;
+}
+
+const section = (title: string, body: string) =>
+	`<section className="flex flex-col gap-4">\n\t<p className="text-sm font-medium text-foreground">${title}</p>\n${indent(body, 1)}\n</section>`;
+
+/** Every variant and state side by side: the first two axes as a table, the rest as rows, then states */
+export function componentPageModule({ componentPath, component, props }: VariantGridParams): string {
+	const axes = variantAxes(component);
+	const states = componentStates(component);
+	const base = props ?? sampleProps(component);
+	const icons = new Map<string, string>();
+	const at = (extra: PreviewProps) => element(component.name, { ...base, ...extra }, icons);
+	const [first, second, ...rest] = axes;
+	const sections: string[] = [];
+
+	if (first && second) {
+		const rows = first.options.map((row) => ({
+			label: row,
+			cells: second.options.map((column) => at({ [first.name]: row, [second.name]: column })),
+		}));
+
+		sections.push(section(`${first.name} × ${second.name}`, table(second.options, rows)));
+	} else if (first) {
+		sections.push(
+			section(
+				first.name,
+				table(first.options, [{ label: "", cells: first.options.map((o) => at({ [first.name]: o })) }]),
+			),
+		);
+	}
+
+	for (const axis of rest) {
+		const cells = axis.options.map((option) => at({ [axis.name]: option }));
+
+		sections.push(section(axis.name, table(axis.options, [{ label: "", cells }])));
+	}
+
+	if (states.length) {
+		const columns = ["default", ...states];
+		const options = first?.options ?? [""];
+
+		const rows = options.map((option) => {
+			const pick: PreviewProps = first && option ? { [first.name]: option } : {};
+
+			return { label: option, cells: [at(pick), ...states.map((state) => at({ ...pick, [state]: true }))] };
+		});
+
+		sections.push(section("States", table(columns, rows)));
+	}
+
+	if (!sections.length) sections.push(at({}));
+	const body = `<div className="flex flex-col gap-12">\n${indent(sections.join("\n"), 1)}\n</div>`;
+	const imports = [...iconImport(icons), `import { ${component.name} } from "${previewImport(componentPath)}";`];
+
+	return moduleSource(imports, `${previewName(component.name)}Page`, body, "page");
 }

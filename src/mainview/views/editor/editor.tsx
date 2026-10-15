@@ -131,6 +131,7 @@ import { noteSelection } from "../../../shared/design/polish";
 import { checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog } from "./design-check-dialog";
 import { DesignSystemDialog } from "./design-system-dialog";
+import { ComponentPage } from "./component-page";
 import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
 import { layoutGrids } from "./layout-grids";
@@ -248,6 +249,7 @@ export function EditorView({
 	const [playStart, setPlayStart] = useState<string | null>(null);
 	const [designChecks, setDesignChecks] = useState<ScreenCheck[] | null>(null);
 	const [designSystemOpen, setDesignSystemOpen] = useState(false);
+	const [componentPage, setComponentPage] = useState<string | null>(null);
 	/** The screen whose name field in the inspector takes focus */
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const [paletteOpen, setPaletteOpen] = useState(false);
@@ -494,6 +496,12 @@ export function EditorView({
 	});
 
 	const selectComponent = useCallback((path: string | null) => setSelection(path ? [path] : []), [setSelection]);
+
+	const changeComponentFile = useCallback(
+		(path: string, source: string) =>
+			change((snapshot) => ({ ...snapshot, files: { ...snapshot.files, [path]: source } })),
+		[change],
+	);
 
 	const projectName = project?.canvas.name ?? "Untitled design";
 	const selectedComponentPath = selectedComponent?.path ?? null;
@@ -2171,6 +2179,7 @@ export function EditorView({
 				onShowScreens={showScreens}
 				onMakeComponent={makeComponent}
 				onDismissSuggestion={dismissSuggestion}
+				onOpenPage={setComponentPage}
 			/>
 		),
 		[
@@ -2645,6 +2654,15 @@ export function EditorView({
 				onChange={changeDesignSystem}
 				onImportTokens={importDesignTokens}
 				onReplaceDesign={replaceDesign}
+			/>
+			<ComponentPage
+				component={components.find((c) => c.path === componentPage) ?? null}
+				files={files}
+				frames={frames}
+				onClose={() => setComponentPage(null)}
+				onChangeFile={changeComponentFile}
+				onShowScreens={showScreens}
+				onSelectComponent={selectComponent}
 			/>
 			{designChecks && (
 				<DesignCheckDialog results={designChecks} onSelect={selectElement} onClose={() => setDesignChecks(null)} />

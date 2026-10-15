@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Component, Monitor, Search, Smartphone, Sparkles, Tablet, X } from "lucide-react";
+import { ArrowLeft, Component, LayoutGrid, Monitor, Search, Smartphone, Sparkles, Tablet, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ export type ComponentsPanelProps = {
 	/** Returns why it failed, or null */
 	onMakeComponent: (group: DuplicateGroup, name: string) => string | null;
 	onDismissSuggestion: (key: string) => void;
+	onOpenPage: (path: string) => void;
 };
 
 const DEVICE_ICONS: Record<Device, typeof Monitor> = { mobile: Smartphone, tablet: Tablet, desktop: Monitor };
@@ -282,9 +283,11 @@ function useNearViewport<T extends Element>() {
 		const element = ref.current;
 
 		if (!element) return;
+
 		const observer = new IntersectionObserver((entries) => setNear(entries.at(-1)?.isIntersecting ?? false), {
 			rootMargin: "200px 0px",
 		});
+
 		observer.observe(element);
 
 		return () => observer.disconnect();
@@ -437,16 +440,25 @@ function ComponentDetail({
 	onBack,
 	onSelectComponent,
 	onShowScreens,
+	onOpenPage,
 }: ComponentsPanelProps & { component: ProjectComponent; systemFiles: ProjectFiles; onBack: () => void }) {
 	const name = component.exports[0]?.name ?? screenNameFromPath(component.path);
 
 	return (
 		<div className="flex flex-col gap-5 p-4">
 			<div className="flex flex-col gap-1">
-				<Button variant="ghost" size="xs" className="-ml-1.5 self-start text-muted-foreground" onClick={onBack}>
-					<ArrowLeft />
-					Components
-				</Button>
+				<div className="flex items-center justify-between">
+					<Button variant="ghost" size="xs" className="-ml-1.5 text-muted-foreground" onClick={onBack}>
+						<ArrowLeft />
+						Components
+					</Button>
+					{component.exports.length ? (
+						<Button variant="outline" size="xs" onClick={() => onOpenPage(component.path)}>
+							<LayoutGrid />
+							Open page
+						</Button>
+					) : null}
+				</div>
 				<span className="truncate font-mono text-[11px] text-subtle-foreground" title={component.path}>
 					{component.path}
 				</span>

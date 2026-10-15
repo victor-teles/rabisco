@@ -37,8 +37,9 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 
 **Components**
 
-- ⬜ A component page with every variant and state side by side
-- ⬜ Edit variants and slots visually: add a variant, set its classes, see every usage
+- ✅ A component page with every variant and state side by side: "Open page" in a component's detail shows the first two variant axes as a table, the other axes as rows, and each boolean prop (and `disabled` on form elements) as a state (`views/editor/component-page.tsx`, `componentPageModule` in `src/shared/components/preview.ts`)
+- ✅ Edit variants visually: add an option to a `cva` axis, set its classes, remove an unused option. Each option shows how many usages pick it, and the page lists every file that uses the component (`src/shared/components/variant-edit.ts`)
+- ⬜ Edit slots visually: the `children` and node props a component renders, filled per usage
 - ⬜ Swap a component for another in place, keeping matching props
 - ⬜ Shared libraries across projects: a folder of components and tokens that projects import
 - ⬜ Starter kits beyond shadcn: more uai blocks, icon packs and design systems from known products
