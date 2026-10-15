@@ -33,6 +33,7 @@ import { createPublishService } from "./publish";
 import { createHostClients } from "./publish-hosts";
 import { createPages } from "./publish-pages";
 import { createShareService, readScreenRuntime } from "./share";
+import { createLibraryStore } from "./libraries";
 import { createProjectStore } from "./store";
 
 const DEV_SERVER_URL = "http://localhost:5173";
@@ -52,6 +53,19 @@ async function getMainViewUrl(): Promise<string> {
 	// The built UI can't tell the channel apart; development-only tools read it from the hash
 	return `views://mainview/index.html${channel === "dev" ? "#channel=dev" : ""}`;
 }
+
+const libraries = createLibraryStore({
+	documentsDir: Utils.paths.documents,
+	userDataDir: Utils.paths.userData,
+	showItemInFolder: (path) => Utils.showItemInFolder(path),
+	pickFolder: () =>
+		Utils.openFileDialog({
+			startingFolder: Utils.paths.documents,
+			canChooseFiles: false,
+			canChooseDirectory: true,
+			allowsMultipleSelection: false,
+		}),
+});
 
 const store = createProjectStore({
 	documentsDir: Utils.paths.documents,
@@ -300,6 +314,12 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			revealProject: ({ path }) => (store.revealProject(path), ok),
 			importContext: ({ from }) => findContextFiles(from),
 			fetchBrandKit: ({ url }) => fetchBrandKit(url),
+			listLibraries: () => libraries.listLibraries(),
+			readLibrary: ({ id }) => libraries.readLibrary(id),
+			addLibraryFolder: () => libraries.addLibraryFolder(),
+			createLibrary: ({ name, files }) => libraries.createLibrary(name, files),
+			writeLibrary: ({ id, changes }) => libraries.writeLibrary(id, changes),
+			revealLibrary: ({ id }) => (libraries.revealLibrary(id), ok),
 			captureUrl: async ({ path, url, width }) => {
 				await assertReachable(captureAddress(url));
 				const capture = await urlCaptures.capture(url, width);

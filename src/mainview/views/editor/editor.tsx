@@ -936,6 +936,20 @@ export function EditorView({
 		[change],
 	);
 
+	/** One undo step; library tokens written to DESIGN.md re-theme the screens at once (decision 0045) */
+	const changeLibrary = useCallback(
+		(recipe: (files: ProjectFiles) => ProjectFiles) =>
+			change((snapshot) => {
+				const files = recipe(snapshot.files);
+				const design = files["DESIGN.md"];
+
+				return design === snapshot.files["DESIGN.md"]
+					? { ...snapshot, files }
+					: { ...snapshot, files, theme: withSource(designTokensOf(design), designSourceOf(design)) };
+			}),
+		[change],
+	);
+
 	/** One undo step that writes DESIGN.md and re-themes the screens; picking a style is the request to apply it */
 	const startFromStyle = useCallback(
 		(id: StyleId) => {
@@ -2669,6 +2683,7 @@ export function EditorView({
 				onChange={changeDesignSystem}
 				onImportTokens={importDesignTokens}
 				onReplaceDesign={replaceDesign}
+				onChangeLibrary={changeLibrary}
 			/>
 			<ComponentPage
 				component={components.find((c) => c.path === componentPage) ?? null}

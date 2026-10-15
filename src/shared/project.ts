@@ -146,7 +146,11 @@ export const isContextFile = (path: string) => path === "PRODUCT.md" || path ===
 /** Bigger files aren't context, and would blow up every prompt */
 export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 
-export const isProjectFile = (path: string) => isScreenFile(path) || isComponentFile(path) || isContextFile(path);
+/** The shared library the project copies from (decision 0045) */
+export const LIBRARY_FILE = "library.json";
+
+export const isProjectFile = (path: string) =>
+	isScreenFile(path) || isComponentFile(path) || isContextFile(path) || path === LIBRARY_FILE;
 
 /** `~/Documents/Rabisco/my-app.rabisco` → `my-app` */
 export function projectNameFromPath(path: string) {

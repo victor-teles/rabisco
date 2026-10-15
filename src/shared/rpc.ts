@@ -7,6 +7,7 @@ import type { Attachment, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
 import type { RepoInfo } from "./export/repo-sync";
+import type { LibraryContents, LibrarySummary } from "./libraries";
 import type { AgentClientId, AgentClientStatus } from "./mcp/clients";
 import type { AgentCall, AgentServerStatus, ToolResult } from "./mcp/tools";
 import type { BackupReason, SavedHistory } from "./saved-history";
@@ -115,6 +116,17 @@ export type RabiscoRPC = {
 			/** Writes nothing: the editor applies the result as one undoable step. */
 			/** Reads a Design.md, CSS theme or token file from the web. Writes nothing. */
 			fetchBrandKit: { params: { url: string }; response: { url: string; text: string; contentType: string } };
+			/** Shared libraries (decision 0045): the folders in `Documents/Rabisco/Libraries` and the added ones */
+			listLibraries: { params: {}; response: LibrarySummary[] };
+			/** Its DESIGN.md and `components/*.tsx`; `null` when this Mac doesn't have it */
+			readLibrary: { params: { id: string }; response: LibraryContents | null };
+			/** Opens a folder dialog; `null` when cancelled */
+			addLibraryFolder: { params: {}; response: LibrarySummary | null };
+			/** In `Documents/Rabisco/Libraries`; `files` hold its `rabisco-library.json` */
+			createLibrary: { params: { name: string; files: ProjectFiles }; response: LibrarySummary };
+			/** Only DESIGN.md and `components/*.tsx`. Not an undo step: other projects read the library */
+			writeLibrary: { params: { id: string; changes: FileChange[] }; response: LibrarySummary };
+			revealLibrary: { params: { id: string }; response: { ok: true } };
 			captureUrl: {
 				params: { path: string; url: string; width: number };
 				response: { capture: UrlCapture; copied: number; failed: number };

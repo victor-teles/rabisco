@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Copy, Import, MoreHorizontal, Plus, Search, Trash2, Unlink, Wand2 } from "lucide-react";
+import { Copy, Import, LibraryBig, MoreHorizontal, Plus, Search, Trash2, Unlink, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,8 +46,10 @@ import {
 	type TokenKind,
 } from "../../../shared/context/tokens";
 import { isComponentFile, screenNameFromPath } from "../../../shared/project";
+import { LIBRARY_FILE, parseLibraryLink } from "../../../shared/libraries";
 import type { ProjectFiles } from "../../../shared/types";
 import { BrandImportDialog, type BrandImport } from "./brand-import-dialog";
+import { LibraryDialog } from "./library-dialog";
 import { AddTokenForm, TokenField } from "./token-fields";
 import { isTyping } from "./shortcuts";
 
@@ -110,6 +112,8 @@ export type DesignSystemDialogProps = {
 	onChange: (change: DesignSystemChange) => void;
 	onImportTokens: (tokens: DesignTokens) => void;
 	onReplaceDesign: (markdown: string) => void;
+	/** One undo step over the library's components, DESIGN.md and library.json (decision 0045) */
+	onChangeLibrary: (recipe: (files: ProjectFiles) => ProjectFiles) => void;
 };
 
 /** Every token by kind, where screens use it, and the raw values that should be tokens. Changes write DESIGN.md and the
@@ -122,8 +126,11 @@ export function DesignSystemDialog({
 	onChange,
 	onImportTokens,
 	onReplaceDesign,
+	onChangeLibrary,
 }: DesignSystemDialogProps) {
 	const design = files["DESIGN.md"];
+	const library = useMemo(() => parseLibraryLink(files[LIBRARY_FILE]), [files]);
+	const [libraryOpen, setLibraryOpen] = useState(false);
 
 	const tokens = useMemo(() => {
 		const written = designTokensOf(design);
@@ -234,6 +241,10 @@ export function DesignSystemDialog({
 							className="h-7 w-44 pl-7 text-xs md:text-xs"
 						/>
 					</div>
+					<Button variant="ghost" size="xs" onClick={() => setLibraryOpen(true)} title="Shared library">
+						<LibraryBig />
+						<span className="max-w-32 truncate">{library ? library.name : "Library"}</span>
+					</Button>
 					<Button variant="ghost" size="xs" onClick={() => setImporting({ kind: "import" })}>
 						<Import />
 						Import…
@@ -363,6 +374,13 @@ export function DesignSystemDialog({
 					onClose={() => setImporting(null)}
 					onApplyTokens={onImportTokens}
 					onReplaceDesign={onReplaceDesign}
+				/>
+				<LibraryDialog
+					open={libraryOpen}
+					onOpenChange={setLibraryOpen}
+					files={files}
+					applied={applied}
+					onChange={onChangeLibrary}
 				/>
 			</DialogContent>
 		</Dialog>

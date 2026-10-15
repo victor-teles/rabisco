@@ -367,6 +367,25 @@ function createBrowserApi(): RabiscoApi {
 		async importContext() {
 			throw new Error("Import needs the desktop app");
 		},
+		// Libraries are folders, so the browser has none
+		async listLibraries() {
+			return [];
+		},
+		async readLibrary() {
+			return null;
+		},
+		async addLibraryFolder() {
+			throw new Error("Libraries need the Rabisco desktop app.");
+		},
+		async createLibrary() {
+			throw new Error("Libraries need the Rabisco desktop app.");
+		},
+		async writeLibrary() {
+			throw new Error("Libraries need the Rabisco desktop app.");
+		},
+		async revealLibrary() {
+			return ok;
+		},
 		async pickExportFolder() {
 			return "browser://downloads";
 		},

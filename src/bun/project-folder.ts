@@ -30,6 +30,7 @@ import {
 	FRAME_SIZE,
 	isDevice,
 	isProjectFile,
+	LIBRARY_FILE,
 	projectNameFromPath,
 	reconcileFrames,
 	screenNameFromPath,
@@ -79,13 +80,15 @@ export function assertProjectDir(path: string) {
 /** Also rejects `..` and absolute paths. */
 export function assertProjectFilePath(path: string) {
 	if (!isString(path) || !isProjectFile(path)) {
-		throw new Error(`Rabisco can only write screens/*.tsx, components/*.tsx, PRODUCT.md and DESIGN.md (got "${path}")`);
+		throw new Error(
+			`Rabisco can only write screens/*.tsx, components/*.tsx, PRODUCT.md, DESIGN.md and library.json (got "${path}")`,
+		);
 	}
 }
 
 /** Project files by name only; context files may not exist. */
 function projectFileCandidates(dir: string) {
-	const candidates = ["PRODUCT.md", "DESIGN.md"];
+	const candidates = ["PRODUCT.md", "DESIGN.md", LIBRARY_FILE];
 
 	for (const sub of FILE_DIRS) {
 		if (!isDirectory(join(dir, sub))) continue;
@@ -113,7 +116,7 @@ export function readProjectFiles(dir: string, only?: (path: string) => boolean):
 export function listProjectFiles(dir: string): ProjectFiles {
 	return Object.fromEntries(
 		projectFileCandidates(dir)
-			.filter((path) => !path.endsWith(".md"))
+			.filter((path) => path.endsWith(".tsx"))
 			.map((path) => [path, ""]),
 	);
 }

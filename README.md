@@ -179,7 +179,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥⌘A` (element selected)                                  | Select matching: the same component, or the same classes, in the screen            |
 | Prompt with elements selected                             | Change only those elements (point and prompt)                                      |
 | `⌥2`                                                      | Components panel: project components, the shadcn library and suggestions           |
-| `⌥3`                                                      | Design system: tokens by kind and their uses; rename, detach, delete, import       |
+| `⌥3`                                                      | Design system: tokens and their uses; rename, detach, delete, import; library      |
 | `/` or `⌘F` (Components panel open)                       | Search components                                                                  |
 | Drag from the Components panel                            | Add the component to the screen under the pointer                                  |
 | `⇧D`                                                      | Code tab: the selected screen's or component's structure and editable source       |
