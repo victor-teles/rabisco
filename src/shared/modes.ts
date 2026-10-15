@@ -140,7 +140,7 @@ export function resolveModes(
 export const defaultMode = (theme: DesignTokens) => resolveModes({ x: 0, y: 0, width: 0, height: 0 }, [], theme);
 
 /** Without a theme: only the scheme group */
-export const DEFAULT_MODE: ResolvedMode = defaultMode({ light: {}, dark: {} });
+export const DEFAULT_MODE: ResolvedMode = intern({ [SCHEME]: "light" });
 
 export function targetModes(
 	paths: readonly string[],
