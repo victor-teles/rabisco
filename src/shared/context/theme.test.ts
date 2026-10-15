@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { DesignTokens } from "./tokens";
 import { DESIGN_TEMPLATE } from "./templates";
 import { designSourceOf, parseThemeReply, themeUpdateOf, tokenBlock, tokenChanges, type AppliedTheme } from "./theme";
 
@@ -91,6 +92,25 @@ describe("parseThemeReply", () => {
 		const { light, dark } = parseThemeReply(tokenBlock(tokens));
 		expect({ light, dark }).toEqual(tokens);
 		expect(tokenBlock({ light: { primary: "#000" }, dark: {} })).not.toContain("Dark");
+	});
+
+	test("round-trips mode groups through tokenBlock", () => {
+		const tokens: DesignTokens = {
+			light: { primary: "#0052ff" },
+			dark: {},
+			modes: [
+				{
+					name: "brand",
+					options: [
+						{ name: "default", light: {}, dark: {} },
+						{ name: "acme", light: { primary: "#e11d48" }, dark: { primary: "#fb7185" } },
+					],
+				},
+			],
+		};
+
+		const { light, dark, modes } = parseThemeReply(tokenBlock(tokens));
+		expect([light, dark, modes]).toEqual([tokens.light, tokens.dark, tokens.modes]);
 	});
 });
 

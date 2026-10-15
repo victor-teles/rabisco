@@ -18,6 +18,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import { FRAME_SIZE, isScreenFile, screenNameFromPath } from "../../../shared/project";
 import { resolveLink } from "../../../shared/prototype/links";
 import {
@@ -32,7 +33,7 @@ import {
 	type Size,
 } from "../../../shared/prototype/transitions";
 import type { StepMotion } from "../../../shared/prototype/walkthrough";
-import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { defaultMode, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { saveWalkthrough, type CapturedImage, type CapturedStep } from "./export/walkthrough-export";
 import { isTyping, PLAY_BACK_KEYS, PLAY_FORWARD_KEYS } from "./shortcuts";
@@ -85,6 +86,7 @@ export function PlayView({
 	start,
 	frames,
 	sections,
+	theme,
 	files,
 	projectName,
 	onClose,
@@ -92,6 +94,7 @@ export function PlayView({
 	start: string;
 	frames: Frame[];
 	sections: CanvasSection[];
+	theme: DesignTokens;
 	files: ProjectFiles;
 	projectName: string;
 	onClose: () => void;
@@ -123,7 +126,7 @@ export function PlayView({
 	const modeOf = (file: string) => {
 		const target = frames.find((f) => f.file === file);
 
-		return target ? resolveModes(target, sections) : DEFAULT_MODE;
+		return target ? resolveModes(target, sections, theme) : defaultMode(theme);
 	};
 
 	// Scale down to fit the window, never up

@@ -8,6 +8,7 @@ import {
 	parseDesignTokens,
 	type DesignTokens,
 	type ParsedDesignTokens,
+	type TokenValues,
 } from "./tokens";
 
 /** The theme screens render with; `source` is the DESIGN.md it was read from (missing in older projects) */
@@ -38,7 +39,7 @@ export function designSourceOf(markdown: string | undefined): string | undefined
 }
 
 export const hasTokens = (tokens: DesignTokens) =>
-	Object.keys(tokens.light).length > 0 || Object.keys(tokens.dark).length > 0;
+	Object.keys(tokens.light).length > 0 || Object.keys(tokens.dark).length > 0 || Boolean(tokens.modes?.length);
 
 export type ThemeUpdate =
 	/** DESIGN.md lists tokens (or has no content): they apply as they are, without AI */
@@ -88,9 +89,20 @@ export function tokenBlock(tokens: DesignTokens): string {
 	const lines = (values: Record<string, string>) =>
 		orderedTokenNames(values).map((name) => `- ${name}: ${values[name]}`);
 
-	const dark = lines(tokens.dark);
+	const scheme = (values: TokenValues, heading: string) => {
+		const dark = lines(values.dark);
 
-	return [`## Tokens`, "", ...lines(tokens.light), ...(dark.length ? ["", "### Dark", "", ...dark] : []), ""].join(
-		"\n",
+		return [...lines(values.light), ...(dark.length ? ["", heading, "", ...dark] : [])];
+	};
+
+	const options = (tokens.modes ?? []).flatMap((group) =>
+		group.options.flatMap((option) => [
+			"",
+			`### ${group.name} mode: ${option.name}`,
+			"",
+			...scheme(option, "#### Dark"),
+		]),
 	);
+
+	return [`## Tokens`, "", ...scheme(tokens, "### Dark"), ...options, ""].join("\n");
 }

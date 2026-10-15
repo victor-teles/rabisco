@@ -15,7 +15,8 @@ import { HANDLE_CURSOR, HANDLES, handleSides, handleSpan, resizeRect, type Handl
 import { cn } from "@/lib/utils";
 import type { ViewportStore } from "@/lib/viewport";
 import { ThemeMenu } from "./theme-controls";
-import { inheritedModes, SCHEME } from "../../../shared/modes";
+import type { DesignTokens } from "../../../shared/context/tokens";
+import { inheritedModes, modeGroups } from "../../../shared/modes";
 import { MIN_SECTION_SIZE, membersOf, SECTION_COLORS } from "../../../shared/sections";
 import type { CanvasSection, Frame, SectionColor } from "../../../shared/types";
 
@@ -81,6 +82,7 @@ const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width ===
 
 type SectionsLayerProps = {
 	sections: CanvasSection[];
+	theme: DesignTokens;
 	frames: Frame[];
 	viewport: ViewportStore;
 	selectedId: string | null;
@@ -93,7 +95,7 @@ type SectionsLayerProps = {
 	onStartRename: (id: string) => void;
 	onRename: (id: string, name: string | null) => void;
 	onRecolor: (id: string, color: SectionColor) => void;
-	onTheme: (id: string, option: string | undefined) => void;
+	onTheme: (id: string, group: string, option: string | undefined) => void;
 	onDelete: (id: string) => void;
 	onSelectScreens: (files: string[]) => void;
 };
@@ -246,6 +248,7 @@ function SectionView({
 	section,
 	frames,
 	sections,
+	theme,
 	selectedId,
 	renaming,
 	interactive,
@@ -398,9 +401,10 @@ function SectionView({
 								</ContextMenuSubContent>
 							</ContextMenuSub>
 							<ThemeMenu
-								value={section.modes?.[SCHEME]}
-								inherited={inheritedModes(section, sections)[SCHEME]!}
-								onChange={(option) => onTheme(section.id, option)}
+								groups={modeGroups(theme)}
+								value={section.modes}
+								inherited={inheritedModes(section, sections, theme)}
+								onChange={(group, option) => onTheme(section.id, group, option)}
 							/>
 							<ContextMenuItem onSelect={() => onSelectScreens(membersOf(section, sections, frames).frames)}>
 								Select screens

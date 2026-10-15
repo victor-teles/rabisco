@@ -37,7 +37,7 @@ async function contextText(input: AgentCopyInput, screens: Frame[]) {
 		name: frame.name || screenNameFromPath(frame.file),
 		width: frame.width,
 		height: frame.height,
-		mode: resolveModes(frame, sections),
+		mode: resolveModes(frame, sections, theme),
 		screenshot: dir && shots[i] ? `${dir}/${shotName(frame.file)}` : null,
 		elements: input.elements.flatMap((element) => {
 			const described = element.file === frame.file ? describeElement(files, element) : null;

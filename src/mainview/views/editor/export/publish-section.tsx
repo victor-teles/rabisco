@@ -68,7 +68,12 @@ export function PublishSection({ context, onOpenGit }: { context: ExportContext;
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
 	const passwordRef = useRef<HTMLInputElement>(null);
-	const screenCount = useMemo(() => shareScreens(frames, files, sections).length, [frames, files, sections]);
+
+	const screenCount = useMemo(
+		() => shareScreens(frames, files, sections, theme).length,
+		[frames, files, sections, theme],
+	);
+
 	const info = PUBLISH_HOST_INFO[host];
 	const viaGit = host === "github";
 	const ready = pages?.state === "ready" ? pages : null;

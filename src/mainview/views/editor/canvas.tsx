@@ -59,6 +59,7 @@ import { MeasureLayer, useAltHeld } from "./measure-layer";
 import { Minimap } from "./minimap";
 import { PinchCanvas } from "./pinch-canvas";
 import { focusOwnsKey, isTyping } from "./shortcuts";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
@@ -218,6 +219,8 @@ type CanvasProps = {
 	underlay?: React.ReactNode;
 	/** Screen names that would run into a section's name hide */
 	sections?: CanvasSection[];
+	/** The applied theme, for its mode groups */
+	theme: DesignTokens;
 	children?: React.ReactNode;
 };
 
@@ -399,6 +402,7 @@ export function Canvas({
 	overlay,
 	underlay,
 	sections = NO_SECTIONS,
+	theme,
 	children,
 }: CanvasProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -438,8 +442,8 @@ export function Canvas({
 	const crowded = useMemo(() => labelLimits(shown, sections, labelWidth), [shown, sections]);
 
 	const modes = useMemo(
-		() => new Map(frames.map((frame) => [frame.file, resolveModes(frame, sections)])),
-		[frames, sections],
+		() => new Map(frames.map((frame) => [frame.file, resolveModes(frame, sections, theme)])),
+		[frames, sections, theme],
 	);
 
 	const framesRef = useRef(shown);
@@ -1939,7 +1943,7 @@ export function Canvas({
 							key={frame.file}
 							frame={frame}
 							files={drafts.files}
-							mode={resolveModes(frame, sections)}
+							mode={resolveModes(frame, sections, theme)}
 							selected={false}
 							view={view}
 							writing={drafts.writing[frame.file]}

@@ -96,7 +96,7 @@ import { editLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
-import { chooseMode, resolveModes, SCHEME } from "../../../shared/modes";
+import { chooseMode, resolveModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
@@ -198,8 +198,15 @@ const THEME_APPLIED_MS = 10_000;
 const updateKey = (update: ThemeUpdate) =>
 	update.kind === "read" ? `read:${update.source}` : `tokens:${tokenBlock(update.tokens)}`;
 
-const withSource = (theme: AppliedTheme, source: string | undefined): AppliedTheme =>
-	source ? { light: theme.light, dark: theme.dark, source } : { light: theme.light, dark: theme.dark };
+function withSource(theme: AppliedTheme, source: string | undefined): AppliedTheme {
+	const sourced: AppliedTheme = { light: theme.light, dark: theme.dark };
+
+	if (theme.modes) sourced.modes = theme.modes;
+
+	if (source) sourced.source = source;
+
+	return sourced;
+}
 
 /** Arrow-key nudges closer together than this are one undo step */
 const NUDGE_BURST_MS = 800;
@@ -1104,11 +1111,11 @@ export function EditorView({
 	const renameScreen = useCallback((file: string, name: string) => patchFrame(file, { name }), [patchFrame]);
 
 	const setScreenTheme = useCallback(
-		(targets: string[], option: string | undefined) =>
+		(targets: string[], group: string, option: string | undefined) =>
 			change((snapshot) => ({
 				...snapshot,
 				frames: snapshot.frames.map((frame) =>
-					targets.includes(frame.file) ? { ...frame, modes: chooseMode(frame.modes, SCHEME, option) } : frame,
+					targets.includes(frame.file) ? { ...frame, modes: chooseMode(frame.modes, group, option) } : frame,
 				),
 			})),
 		[change],
@@ -1474,10 +1481,18 @@ export function EditorView({
 			},
 			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
 			copyImage: (format, starts) =>
-				single && void copyImage(format, single, files, appliedTokens, resolveModes(single, sections.sections), starts),
+				single &&
+				void copyImage(
+					format,
+					single,
+					files,
+					appliedTokens,
+					resolveModes(single, sections.sections, appliedTokens),
+					starts,
+				),
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
-		...screenThemeActions({ selected, sections: sections.sections, setTheme: setScreenTheme }),
+		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
 		{
 			id: "send-comments",
 			label: "Send comments to chat",
@@ -1578,14 +1593,18 @@ export function EditorView({
 			group: "Export",
 			chords: [{ code: "KeyC", mod: true, shift: true }],
 			enabled: single !== null,
-			run: () => single && void copyImage("png", single, files, appliedTokens, resolveModes(single, sections.sections)),
+			run: () =>
+				single &&
+				void copyImage("png", single, files, appliedTokens, resolveModes(single, sections.sections, appliedTokens)),
 		},
 		{
 			id: "copy-svg",
 			label: "Copy as SVG",
 			group: "Export",
 			enabled: single !== null,
-			run: () => single && void copyImage("svg", single, files, appliedTokens, resolveModes(single, sections.sections)),
+			run: () =>
+				single &&
+				void copyImage("svg", single, files, appliedTokens, resolveModes(single, sections.sections, appliedTokens)),
 		},
 		{
 			id: "copy-figma",
@@ -2367,6 +2386,7 @@ export function EditorView({
 							<ScreensPanel
 								frames={frames}
 								files={files}
+								theme={appliedTokens}
 								selection={selection}
 								onSelect={selectFromList}
 								onContextSelect={selectForMenu}
@@ -2450,6 +2470,7 @@ export function EditorView({
 						<Canvas
 							frames={frames}
 							files={files}
+							theme={appliedTokens}
 							drafts={drafts}
 							agentEditing={agentMarks}
 							selection={selection}
@@ -2490,6 +2511,7 @@ export function EditorView({
 								<>
 									<SectionsLayer
 										sections={sections.sections}
+										theme={appliedTokens}
 										frames={frames}
 										viewport={viewport}
 										selectedId={sections.selectedId}
@@ -2615,6 +2637,7 @@ export function EditorView({
 								start={playStart}
 								frames={frames}
 								sections={sections.sections}
+								theme={appliedTokens}
 								files={files}
 								projectName={projectName}
 								onClose={() => setPlayStart(null)}
@@ -2626,7 +2649,7 @@ export function EditorView({
 								image={screenshotCompare.image}
 								files={files}
 								theme={appliedTokens}
-								screenMode={resolveModes(screenshotCompare.frame, sections.sections)}
+								screenMode={resolveModes(screenshotCompare.frame, sections.sections, appliedTokens)}
 								onClose={() => setScreenshotPair(null)}
 							/>
 						) : null}
@@ -2635,6 +2658,7 @@ export function EditorView({
 								group={compareGroup}
 								frames={frames}
 								sections={sections.sections}
+								theme={appliedTokens}
 								files={files}
 								onPick={pick}
 								onClose={() => setCompareBase(null)}
@@ -2645,6 +2669,7 @@ export function EditorView({
 					<Inspector
 						frames={frames}
 						sections={sections.sections}
+						theme={appliedTokens}
 						section={sections.sections.find((section) => section.id === sections.selectedId) ?? null}
 						onSectionTheme={sections.setTheme}
 						files={files}

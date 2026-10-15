@@ -4,6 +4,7 @@ import { ScreenFrame, screenBackdrop } from "@/components/app/screen-preview";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { matchesScreen, stepTarget } from "@/lib/screen-list";
 import { cn } from "@/lib/utils";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import { isString } from "../../../shared/guards";
 import { modeLabel, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import { groupBySection } from "../../../shared/sections";
@@ -30,6 +31,7 @@ type ScreensPanelProps = {
 	/** Moves `files` in front of `before`, or to the end; one undo step */
 	onReorder: (files: string[], before: string | null) => void;
 	sections?: CanvasSection[];
+	theme: DesignTokens;
 	onSelectSection?: (id: string) => void;
 };
 
@@ -48,6 +50,7 @@ export const ScreensPanel = memo(function ScreensPanel({
 	onRename,
 	onReorder,
 	sections = NO_SECTIONS,
+	theme,
 	onSelectSection,
 }: ScreensPanelProps) {
 	const [query, setQuery] = useState("");
@@ -144,7 +147,7 @@ export const ScreensPanel = memo(function ScreensPanel({
 										key={frame.file}
 										frame={frame}
 										files={files}
-										mode={resolveModes(frame, sections)}
+										mode={resolveModes(frame, sections, theme)}
 										selected={selected.has(frame.file)}
 										renaming={renaming === frame.file}
 										drop={drop?.file === frame.file ? (drop.after ? "after" : "before") : null}

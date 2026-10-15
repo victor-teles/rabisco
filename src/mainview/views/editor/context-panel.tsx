@@ -49,6 +49,7 @@ import { contextBody } from "../../../shared/context/body";
 import { CONTEXT_TEMPLATES } from "../../../shared/context/templates";
 import { normalizeTokenName, renameError, type TokenEdit, type TokenMode } from "../../../shared/context/token-edit";
 import {
+	contestedTokenNames,
 	designTokensOf,
 	isCustomToken,
 	orderedTokenNames,
@@ -57,7 +58,9 @@ import {
 	tokenKind,
 	validateToken,
 	type DesignTokens,
+	type TokenModeGroup,
 } from "../../../shared/context/tokens";
+import { groupLabel, optionLabel } from "../../../shared/modes";
 import { MAX_CONTEXT_FILE_BYTES } from "../../../shared/project";
 import type { ContextFileName, ProjectFiles } from "../../../shared/types";
 import { BrandImportDialog, logoPixels, type BrandImport } from "./brand-import-dialog";
@@ -537,7 +540,7 @@ function TokenEditor({
 				</Tooltip>
 			</div>
 
-			{names.length || adding ? (
+			{names.length || parsed.modes || adding ? (
 				<div
 					className={cn(ROW, "shrink-0 px-2 pb-0.5 text-[10px] font-medium text-subtle-foreground uppercase")}
 					aria-hidden
@@ -562,9 +565,10 @@ function TokenEditor({
 						onClose={() => setAdding(false)}
 					/>
 				) : null}
+				{parsed.modes ? <ModeGroups groups={parsed.modes} /> : null}
 			</div>
 
-			{!names.length && !adding && hasContent ? (
+			{!names.length && !parsed.modes && !adding && hasContent ? (
 				// Any format works: the theme is read with AI, on request (decision 0009)
 				<div className="px-4 pt-1">
 					<EmptyState variant="compact" aria-label="No tokens">
@@ -594,6 +598,49 @@ function TokenEditor({
 						</li>
 					))}
 				</ul>
+			) : null}
+		</div>
+	);
+}
+
+function ModeGroups({ groups }: { groups: TokenModeGroup[] }) {
+	const contested = contestedTokenNames(groups);
+
+	return (
+		<div className="flex flex-col gap-2 pt-2 pb-1" aria-label="Mode groups">
+			{groups.map((group) => (
+				<div key={group.name} className="flex flex-col">
+					<div className="flex items-baseline gap-2 px-1.5 pb-0.5">
+						<span className="text-xs font-medium text-muted-foreground">{groupLabel(group.name)}</span>
+						<span className="truncate text-[11px] text-subtle-foreground">
+							{group.options.map((option) => optionLabel(option.name)).join(", ")}
+						</span>
+					</div>
+					{group.options.map((option) => {
+						const names = orderedTokenNames(option.light, option.dark);
+
+						return names.length ? (
+							<div key={option.name} className="flex flex-col">
+								<span className="px-1.5 pt-1 text-[11px] text-subtle-foreground">{optionLabel(option.name)}</span>
+								{names.map((name) => (
+									<div key={name} className={cn(ROW, "py-0.5 font-mono text-[11px] text-muted-foreground")}>
+										<span className="truncate px-1.5" title={name}>
+											{name}
+										</span>
+										<span className="truncate px-1.5">{option.light[name] ?? ""}</span>
+										<span className="truncate px-1.5">{option.dark[name] ?? ""}</span>
+									</div>
+								))}
+							</div>
+						) : null;
+					})}
+				</div>
+			))}
+			{contested.length ? (
+				<p className="px-1.5 text-[11px]/4 text-pretty text-warning">
+					More than one group sets <span className="font-mono">{contested.join(", ")}</span>. The group written later in
+					DESIGN.md wins.
+				</p>
 			) : null}
 		</div>
 	);

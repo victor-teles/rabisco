@@ -6,8 +6,9 @@ import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import { screenNameFromPath } from "../../../shared/project";
-import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../../../shared/modes";
+import { defaultMode, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 import { altNumber, type VariationGroup } from "../../../shared/variations";
 import { isTyping } from "./shortcuts";
@@ -41,7 +42,7 @@ type Column = {
 	mode: ResolvedMode;
 };
 
-function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSection[]): Column[] {
+function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSection[], theme: DesignTokens): Column[] {
 	const byFile = new Map(frames.map((frame) => [frame.file, frame]));
 	const sibling = group.files.map((file) => byFile.get(file)).find(Boolean);
 
@@ -57,7 +58,7 @@ function columnsOf(group: VariationGroup, frames: Frame[], sections: CanvasSecti
 			width: size.width,
 			height: size.height,
 			radius: frame?.device === "desktop" ? 6 : 28,
-			mode: frame ? resolveModes(frame, sections) : DEFAULT_MODE,
+			mode: frame ? resolveModes(frame, sections, theme) : defaultMode(theme),
 		};
 	});
 }
@@ -67,6 +68,7 @@ export function CompareView({
 	group,
 	frames,
 	sections,
+	theme,
 	files,
 	onPick,
 	onClose,
@@ -74,6 +76,7 @@ export function CompareView({
 	group: VariationGroup;
 	frames: Frame[];
 	sections: CanvasSection[];
+	theme: DesignTokens;
 	files: ProjectFiles;
 	onPick: (file: string) => void;
 	onClose: () => void;
@@ -81,7 +84,7 @@ export function CompareView({
 	const rootRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const columnRefs = useRef(new Map<string, HTMLDivElement>());
-	const columns = columnsOf(group, frames, sections);
+	const columns = columnsOf(group, frames, sections, theme);
 	const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
 	const [zoomSetting, setZoomSetting] = useState<number | "fit">("fit");
 	const [fitZoom, setFitZoom] = useState(1);

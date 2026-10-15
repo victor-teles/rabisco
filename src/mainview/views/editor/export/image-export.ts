@@ -64,7 +64,7 @@ async function renderAll(
 			try {
 				results[index] = {
 					frame,
-					snapshots: await renderScreen(frame, files, theme, resolveModes(frame, sections), rasters),
+					snapshots: await renderScreen(frame, files, theme, resolveModes(frame, sections, theme), rasters),
 				};
 			} catch (error) {
 				results[index] = { frame, message: error instanceof Error ? error.message : String(error) };

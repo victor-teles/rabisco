@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { themeTokensText } from "./theme-tokens";
+import type { DesignTokens } from "../../shared/context/tokens";
+import { modesText, themeTokensText } from "./theme-tokens";
 
 describe("themeTokensText", () => {
 	test("lists each custom token with the classes it makes and its values", () => {
@@ -47,4 +48,26 @@ describe("themeTokensText", () => {
 		expect(themeTokensText({ light: {}, dark: {} })).toBeNull();
 		expect(themeTokensText({ light: { "not-a-token": "1" }, dark: {} })).toBeNull();
 	});
+});
+
+test("modesText lists the values of the options the targets render in", () => {
+	const theme: DesignTokens = {
+		light: {},
+		dark: {},
+		modes: [
+			{
+				name: "brand",
+				options: [
+					{ name: "default", light: {}, dark: {} },
+					{ name: "acme", light: { primary: "#e11d48" }, dark: { primary: "#fb7185" } },
+				],
+			},
+		],
+	};
+
+	const text = modesText({ "screens/a.tsx": { scheme: "light", brand: "acme" } }, theme);
+
+	expect(text).toContain('- screens/a.tsx: light, acme (data-mode-brand="acme")');
+	expect(text).toContain("- brand acme values, over the project's: primary: #e11d48; primary (dark): #fb7185");
+	expect(modesText({ "screens/a.tsx": { scheme: "dark", brand: "default" } }, theme)).not.toContain("values, over");
 });

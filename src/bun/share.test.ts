@@ -460,6 +460,7 @@ test("shareScreens keeps picked screens in canvas order", () => {
 		[frame("screens/b.tsx"), frame("screens/a.alt-1.tsx"), frame("screens/a.tsx"), frame("screens/gone.tsx")],
 		files,
 		[],
+		{ light: {}, dark: {} },
 	);
 
 	expect(screens.map((screen) => [screen.file, screen.name])).toEqual([
@@ -492,7 +493,10 @@ test("shareScreens gives each screen the mode of its section", () => {
 		modes: { scheme: "dark" },
 	};
 
-	const screens = shareScreens([frame("screens/a.tsx", 0), frame("screens/b.tsx", 1200)], files, [dark]);
+	const screens = shareScreens([frame("screens/a.tsx", 0), frame("screens/b.tsx", 1200)], files, [dark], {
+		light: {},
+		dark: {},
+	});
 
 	expect(screens.map((screen) => screen.mode)).toEqual([{ scheme: "light" }, { scheme: "dark" }]);
 });

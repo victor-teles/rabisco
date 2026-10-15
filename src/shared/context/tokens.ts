@@ -40,7 +40,18 @@ export const TOKEN_KINDS = ["color", "radius", "font", "font-weight", "text", "s
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 
 /** Names without the `--` prefix */
-export type DesignTokens = { light: Record<string, string>; dark: Record<string, string> };
+/** Token values by name */
+export type TokenSet = Record<string, string>;
+
+export type TokenValues = { light: TokenSet; dark: TokenSet };
+
+/** One option of a mode group: only the tokens it changes (decision 0028) */
+export type TokenModeOption = TokenValues & { name: string };
+
+/** `### <Group> mode: <Option>` headings; the first option is the default */
+export type TokenModeGroup = { name: string; options: TokenModeOption[] };
+
+export type DesignTokens = TokenValues & { modes?: TokenModeGroup[] };
 
 export type InvalidToken = {
 	name: string;
@@ -245,9 +256,32 @@ export function orderedTokenNames(...modes: Record<string, string>[]): string[] 
 	return [...builtIn, ...[...names].filter((name) => !isOneOf(TOKEN_NAMES, name))];
 }
 
-/** Every custom name in either mode, sorted */
+/** Every custom name in either scheme or any mode option, sorted */
 export function customTokenNames(tokens: DesignTokens): string[] {
-	return orderedTokenNames(tokens.light, tokens.dark).filter(isCustomToken).sort();
+	const options = (tokens.modes ?? []).flatMap((group) =>
+		group.options.flatMap((option) => [option.light, option.dark]),
+	);
+
+	return orderedTokenNames(tokens.light, tokens.dark, ...options)
+		.filter(isCustomToken)
+		.sort();
+}
+
+/** The tokens more than one group sets; the group written later wins */
+export function contestedTokenNames(groups: readonly TokenModeGroup[]): string[] {
+	const setBy = new Map<string, Set<string>>();
+
+	for (const group of groups) {
+		for (const option of group.options) {
+			for (const name of [...Object.keys(option.light), ...Object.keys(option.dark)]) {
+				const owners = setBy.get(name) ?? new Set<string>();
+				owners.add(group.name);
+				setBy.set(name, owners);
+			}
+		}
+	}
+
+	return [...setBy].flatMap(([name, owners]) => (owners.size > 1 ? [name] : []));
 }
 
 /** Keeps line breaks so line numbers stay right; an unclosed comment runs to the end. */
@@ -259,7 +293,28 @@ const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 
 const ENTRY = /^(\s*[-*+]\s+)`?(?:--)?([a-z0-9][\w-]*)`?\s*:\s*(.*?)\s*$/i;
 
-type TokenEntry = { name: string; value: string; dark: boolean; /** 0-based */ index: number };
+type ModeRef = { group: string; option: string };
+
+type TokenEntry = { name: string; value: string; dark: boolean; mode?: ModeRef; /** 0-based */ index: number };
+
+type ModeHeading = ModeRef & { title: string; /** 0-based */ index: number; reason?: string };
+
+const MODE_HEADING = /^(.*?)\bmode\s*:\s*(.*)$/i;
+
+/** The `scheme` group is the Dark heading (decision 0028) */
+const SCHEME_GROUP_NAME = "scheme";
+
+const isModeName = (name: string) => /^[a-z0-9-]+$/.test(name);
+
+export const modeSlug = (name: string) =>
+	name
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+
+type HeadingPath = { level: number; dark: boolean; mode?: ModeRef; dropped?: boolean }[];
 
 type TokenSection = {
 	level: number;
@@ -271,15 +326,36 @@ type TokenSection = {
 	darkHeading?: number;
 };
 
-type TokenScan = { entries: TokenEntry[]; sections: TokenSection[] };
+type TokenScan = { entries: TokenEntry[]; sections: TokenSection[]; modes: ModeHeading[] };
 
-/** Sub-headings containing "dark" switch to dark values. Comments and code fences don't count. */
+function modeHeading(title: string, index: number, taken: Map<string, Set<string>>): ModeHeading | null {
+	const match = MODE_HEADING.exec(title);
+
+	if (!match) return null;
+	const group = modeSlug(match[1]!);
+	const option = modeSlug(match[2]!);
+	const heading: ModeHeading = { group, option, title, index };
+
+	if (!group || !option) heading.reason = "Name the group and the option, e.g. Brand mode: Acme";
+	else if (group === SCHEME_GROUP_NAME) heading.reason = "The scheme group is the Dark heading";
+	else if (taken.get(group)?.has(option)) heading.reason = "This group already has this option";
+	else taken.set(group, (taken.get(group) ?? new Set()).add(option));
+
+	return heading;
+}
+
+/**
+ * Sub-headings containing "dark" switch to dark values; `### <Group> mode: <Option>` starts a mode option, with its
+ * own `#### Dark`. Comments and code fences don't count.
+ */
 function scanTokens(markdown: string): TokenScan {
 	const lines = stripComments(markdown).split(/\r?\n/);
 	const entries: TokenEntry[] = [];
 	const sections: TokenSection[] = [];
+	const modes: ModeHeading[] = [];
+	const taken = new Map<string, Set<string>>();
 	let section: TokenSection | null = null;
-	let path: { level: number; dark: boolean }[] = [];
+	let path: HeadingPath = [];
 	let fence: string | null = null;
 
 	lines.forEach((text, index) => {
@@ -304,11 +380,21 @@ function scanTokens(markdown: string): TokenScan {
 			const title = heading[2]!.trim();
 
 			if (section && level > section.level) {
-				const dark = /dark/i.test(title);
 				path = path.filter((h) => h.level < level);
+				const mode = modeHeading(title, index, taken);
+
+				if (mode) {
+					modes.push(mode);
+					path.push(mode.reason ? { level, dark: false, dropped: true } : { level, dark: false, mode });
+
+					return;
+				}
+
+				const dark = /dark/i.test(title);
+				const inMode = path.some((h) => h.mode || h.dropped);
 				path.push({ level, dark });
 
-				if (dark && section.darkHeading === undefined) section.darkHeading = index;
+				if (dark && !inMode && section.darkHeading === undefined) section.darkHeading = index;
 
 				return;
 			}
@@ -324,28 +410,52 @@ function scanTokens(markdown: string): TokenScan {
 
 		const entry = section && ENTRY.exec(text);
 
-		if (!entry) return;
-		entries.push({
+		if (!entry || path.some((h) => h.dropped)) return;
+		const mode = [...path].reverse().find((h) => h.mode)?.mode;
+
+		const token: TokenEntry = {
 			name: entry[2]!.toLowerCase(),
 			value: cleanValue(entry[3]!),
 			dark: path.some((h) => h.dark),
 			index,
-		});
+		};
+
+		if (mode) token.mode = mode;
+		entries.push(token);
 	});
 
-	return { entries, sections };
+	return { entries, sections, modes };
 }
 
-/** The last valid value wins. */
+/** The last valid value wins. Groups and options keep the order DESIGN.md writes them in. */
 export function parseDesignTokens(markdown: string): ParsedDesignTokens {
 	const result: ParsedDesignTokens = { light: {}, dark: {}, invalid: [] };
+	const { entries, modes } = scanTokens(markdown);
+	const groups = new Map<string, TokenModeGroup>();
+	const options = new Map<string, TokenModeOption>();
 
-	for (const { name, value, dark, index } of scanTokens(markdown).entries) {
+	for (const heading of modes) {
+		if (heading.reason) {
+			result.invalid.push({ name: heading.title, value: "", line: heading.index + 1, reason: heading.reason });
+			continue;
+		}
+
+		const group = groups.get(heading.group) ?? { name: heading.group, options: [] };
+		const option: TokenModeOption = { name: heading.option, light: {}, dark: {} };
+		group.options.push(option);
+		groups.set(heading.group, group);
+		options.set(`${heading.group}:${heading.option}`, option);
+	}
+
+	for (const { name, value, dark, mode, index } of entries) {
 		const reason = validateToken(name, value);
+		const target = mode ? options.get(`${mode.group}:${mode.option}`) : result;
 
 		if (reason) result.invalid.push({ name, value, line: index + 1, reason });
-		else (dark ? result.dark : result.light)[name] = value;
+		else if (target) (dark ? target.dark : target.light)[name] = value;
 	}
+
+	if (groups.size) result.modes = [...groups.values()];
 
 	return result;
 }
@@ -370,7 +480,8 @@ export function setDesignToken(markdown: string, name: string, mode: "light" | "
 	const lines = markdown.split("\n");
 	const { entries, sections } = scanTokens(markdown);
 	const dark = mode === "dark";
-	const matches = entries.filter((entry) => entry.name === name && entry.dark === dark);
+	const projectEntries = entries.filter((entry) => !entry.mode);
+	const matches = projectEntries.filter((entry) => entry.name === name && entry.dark === dark);
 	const line = (bullet = "- ") => `${bullet}${name}: ${value}`;
 
 	if (value === null) {
@@ -397,7 +508,7 @@ export function setDesignToken(markdown: string, name: string, mode: "light" | "
 		return `${body}${body ? "\n\n" : ""}${block.join("\n")}\n`;
 	}
 
-	const anchor = entries.filter((entry) => entry.dark === dark && entry.index < section.end).at(-1)?.index;
+	const anchor = projectEntries.filter((entry) => entry.dark === dark && entry.index < section.end).at(-1)?.index;
 
 	const insert = (at: number, block: string[]) => {
 		if (lines[at] !== undefined && !isBlank(lines[at]) && !ENTRY.test(lines[at]!)) block.push("");
@@ -476,18 +587,33 @@ export function declarations(values: Record<string, string>): [string, string][]
 // Light built-in colors use `:root:not(.dark)` so they don't beat the theme's own `.dark` values. Custom tokens have
 // no theme value, so their light value applies in dark mode too unless they set a dark one.
 // Values are re-validated so hand-built `tokens` can't inject CSS.
+// A mode option's selectors carry its attribute, so they beat the project values in both schemes (decision 0028).
 export function tokensToCss(tokens: DesignTokens): string {
-	const builtInColors = Object.fromEntries(
-		Object.entries(tokens.light).filter(([name]) => isOneOf(COLOR_TOKENS, name)),
+	const blocks = (values: TokenValues, attribute = "") => {
+		const builtInColors = Object.fromEntries(
+			Object.entries(values.light).filter(([name]) => isOneOf(COLOR_TOKENS, name)),
+		);
+
+		const rest = Object.fromEntries(Object.entries(values.light).filter(([name]) => !(name in builtInColors)));
+
+		return (
+			block(`:root${attribute}`, declarations(rest)) +
+			block(`:root:not(.dark)${attribute}`, declarations(builtInColors)) +
+			block(attribute ? `:root.dark${attribute}` : ".dark", declarations(values.dark))
+		);
+	};
+
+	const options = (tokens.modes ?? []).flatMap((group) =>
+		isModeName(group.name) && group.name !== SCHEME_GROUP_NAME
+			? group.options.flatMap((option) => {
+					if (!isModeName(option.name)) return [];
+
+					return [blocks(option, `[data-mode-${group.name}="${option.name}"]`)];
+				})
+			: [],
 	);
 
-	const rest = Object.fromEntries(Object.entries(tokens.light).filter(([name]) => !(name in builtInColors)));
-
-	return (
-		block(":root", declarations(rest)) +
-		block(":root:not(.dark)", declarations(builtInColors)) +
-		block(".dark", declarations(tokens.dark))
-	);
+	return blocks(tokens) + options.join("");
 }
 
 /** What `bg-brand` falls back to before a value arrives, or in a mode without one */
@@ -534,15 +660,32 @@ const NO_TOKENS: DesignTokens = { light: {}, dark: {} };
 /** The valid tokens of DESIGN.md, the way screens apply them */
 export function designTokensOf(markdown: string | undefined): DesignTokens {
 	if (!markdown) return NO_TOKENS;
-	const { light, dark } = parseDesignTokens(markdown);
+	const { light, dark, modes } = parseDesignTokens(markdown);
 
-	return { light, dark };
+	return modes ? { light, dark, modes } : { light, dark };
 }
 
-/** Tokens added, changed or removed; a light and a dark value count apart */
-export function changedTokenCount(from: DesignTokens, to: DesignTokens): number {
-	const count = (a: Record<string, string>, b: Record<string, string>) =>
-		[...new Set([...Object.keys(a), ...Object.keys(b)])].filter((name) => a[name] !== b[name]).length;
+/** Every value keyed by its place, `brand=acme:primary` for a mode option's; an option with no values still counts */
+function placedValues(tokens: DesignTokens, scheme: "light" | "dark") {
+	const places = (tokens.modes ?? []).flatMap((group) =>
+		group.options.flatMap((option) => {
+			const place = `${group.name}=${option.name}:`;
+			const values = Object.entries(option[scheme]).map(([name, value]): [string, string] => [place + name, value]);
 
-	return count(from.light, to.light) + count(from.dark, to.dark);
+			return scheme === "light" ? [[place, ""] satisfies [string, string], ...values] : values;
+		}),
+	);
+
+	return new Map([...Object.entries(tokens[scheme]), ...places]);
+}
+
+/** Tokens added, changed or removed; a light and a dark value count apart, and so does each mode option */
+export function changedTokenCount(from: DesignTokens, to: DesignTokens): number {
+	const count = (a: Map<string, string>, b: Map<string, string>) =>
+		[...new Set([...a.keys(), ...b.keys()])].filter((name) => a.get(name) !== b.get(name)).length;
+
+	return (
+		count(placedValues(from, "light"), placedValues(to, "light")) +
+		count(placedValues(from, "dark"), placedValues(to, "dark"))
+	);
 }

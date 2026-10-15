@@ -267,7 +267,9 @@ export function createGenerationController(session: ProjectSession, env: Control
 		try {
 			await env.flushFiles();
 			const canvas = session.state()?.canvas;
-			const modes = canvas && targetModes(params.targets ?? [], canvas.frames, canvas.sections ?? []);
+
+			const modes =
+				canvas && targetModes(params.targets ?? [], canvas.frames, canvas.sections ?? [], canvas.theme ?? NO_THEME);
 
 			return await env.api.generate(modes ? { ...params, modes } : params);
 		} finally {

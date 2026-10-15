@@ -35,7 +35,7 @@ async function capture(
 	const screens: FigmaExportScreen[] = [];
 
 	for (const frame of frames) {
-		const { tree, images } = await renderOffstage(frame, files, theme, resolveModes(frame, sections), (host) =>
+		const { tree, images } = await renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), (host) =>
 			host.figmaCapture(fonts),
 		);
 

@@ -37,12 +37,13 @@ import { useVariations } from "@/hooks/use-variations";
 import type { Alignment, Axis } from "@/lib/align";
 import { cn } from "@/lib/utils";
 import { variationName } from "@/lib/variations";
+import type { DesignTokens } from "../../../shared/context/tokens";
 import { DEFAULT_LAYOUT_GRID, normalizeLayoutGrid } from "../../../shared/layout-grid";
-import { chooseMode, inheritedModes, resolveModes, SCHEME } from "../../../shared/modes";
+import { chooseMode, inheritedModes, modeGroups, resolveModes } from "../../../shared/modes";
 import { isScreenFile } from "../../../shared/project";
 import type { CanvasSection, Device, Frame, LayoutGrid, ProjectFiles } from "../../../shared/types";
 import { groupOf, isAlternate } from "../../../shared/variations";
-import { ThemeToggle } from "./theme-controls";
+import { ThemeToggles } from "./theme-controls";
 import {
 	ALIGN_SHORTCUTS,
 	CODE_VIEW_KEYS,
@@ -67,8 +68,9 @@ export type FramePatch = Partial<
 type InspectorProps = {
 	frames: Frame[];
 	sections: CanvasSection[];
+	theme: DesignTokens;
 	section: CanvasSection | null;
-	onSectionTheme: (id: string, option: string | undefined) => void;
+	onSectionTheme: (id: string, group: string, option: string | undefined) => void;
 	files: ProjectFiles;
 	selection: string[];
 	tab: InspectorTab;
@@ -264,10 +266,11 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 						onDeviceChange={(device: Device) => device !== frame.device && onChange(frame.file, { device })}
 					/>
 				</div>
-				<ThemeToggle
-					value={frame.modes?.[SCHEME]}
-					inherited={resolveModes({ ...frame, modes: undefined }, props.sections)[SCHEME]!}
-					onChange={(option) => onChange(frame.file, { modes: chooseMode(frame.modes, SCHEME, option) })}
+				<ThemeToggles
+					groups={modeGroups(props.theme)}
+					value={frame.modes}
+					inherited={resolveModes({ ...frame, modes: undefined }, props.sections, props.theme)}
+					onChange={(group, option) => onChange(frame.file, { modes: chooseMode(frame.modes, group, option) })}
 				/>
 			</Section>
 			<LayoutGridSection {...props} />
@@ -278,15 +281,16 @@ function FrameDetails(props: InspectorProps & { frame: Frame }) {
 	);
 }
 
-function SectionDetails({ section, sections, onSectionTheme }: InspectorProps & { section: CanvasSection }) {
+function SectionDetails({ section, sections, theme, onSectionTheme }: InspectorProps & { section: CanvasSection }) {
 	return (
 		<div className="flex flex-col gap-4 p-4">
 			<Section title="Section">
 				<span className="truncate text-[13px]">{section.name}</span>
-				<ThemeToggle
-					value={section.modes?.[SCHEME]}
-					inherited={inheritedModes(section, sections)[SCHEME]!}
-					onChange={(option) => onSectionTheme(section.id, option)}
+				<ThemeToggles
+					groups={modeGroups(theme)}
+					value={section.modes}
+					inherited={inheritedModes(section, sections, theme)}
+					onChange={(group, option) => onSectionTheme(section.id, group, option)}
 				/>
 			</Section>
 		</div>

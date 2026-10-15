@@ -30,7 +30,7 @@ import {
 	isScreenFile,
 	uniqueScreenPath,
 } from "../../shared/project";
-import { MODE_GROUPS, resolveModes } from "../../shared/modes";
+import { modeGroups, resolveModes } from "../../shared/modes";
 import { sectionOf } from "../../shared/sections";
 import type { CanvasComment, CanvasDoc, Device, ElementLock, Frame, ProjectFiles } from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
@@ -217,6 +217,7 @@ const treeOf = (source: string, node: OutlineNode): TreeNode => ({
 async function getProject(context: AgentContext): Promise<Json> {
 	const { canvas, files } = context;
 	const sections = canvas.sections ?? [];
+	const theme = appliedTheme(canvas, files);
 	const git = await context.gitStatus().catch(() => null);
 
 	return {
@@ -232,7 +233,7 @@ async function getProject(context: AgentContext): Promise<Json> {
 			width: frame.width,
 			height: frame.height,
 			section: sectionOf(frame, sections)?.name ?? null,
-			mode: { ...resolveModes(frame, sections) },
+			mode: { ...resolveModes(frame, sections, theme) },
 			alternate: isAlternate(frame.file),
 		})),
 		components: Object.keys(files).filter(isComponentFile).sort(),
@@ -302,8 +303,8 @@ function getDesignTokens(context: AgentContext): Json {
 	const design = context.files["DESIGN.md"];
 
 	return {
-		applied: { light: theme.light, dark: theme.dark },
-		modes: MODE_GROUPS.map((group) => ({ name: group.name, options: [...group.options] })),
+		applied: { light: theme.light, dark: theme.dark, modes: theme.modes ?? [] },
+		modes: modeGroups(theme).map((group) => ({ name: group.name, options: [...group.options] })),
 		appliedFromCurrentDesign: theme.source === undefined || theme.source === designSourceOf(design),
 		designMd: design ?? null,
 	};

@@ -135,7 +135,7 @@ export async function exportHtml(context: ExportContext) {
 		const parent = await api.pickExportFolder({});
 
 		if (!parent) return;
-		const mode = resolveModes(frame, context.sections);
+		const mode = resolveModes(frame, context.sections, context.theme);
 		const markup = await renderOffstage(frame, context.files, context.theme, mode, (host) => host.markup());
 		const css = await standaloneCss(extractCandidates(markup), context.theme);
 		const files = htmlScreen({ title: frame.name, markup, css, mode, assets: await projectAssets.base64() });

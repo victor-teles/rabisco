@@ -226,6 +226,8 @@ async function readTheme(
 
 	const theme: AppliedTheme = { light: parsed.light, dark: parsed.dark, source: designSourceOf(design) };
 
+	if (parsed.modes) theme.modes = parsed.modes;
+
 	return { ok: true, changes: [], frames: [], reply: reply.trim(), problems: [], context: ["DESIGN.md"], theme };
 }
 

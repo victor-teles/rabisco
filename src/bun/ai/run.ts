@@ -18,7 +18,7 @@ import { designTokensOf, type DesignTokens } from "../../shared/context/tokens";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
 import { resolveFocused } from "../../shared/ai/focus";
 import { focusNotes } from "../../shared/ai/focus-guard";
-import { DEFAULT_MODE, modeKey, type ResolvedMode } from "../../shared/modes";
+import { defaultMode, modeKey, type ResolvedMode } from "../../shared/modes";
 import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
 import { DENIED_STATUS, EDIT_MISMATCH_STATUS } from "./protocol";
@@ -340,7 +340,10 @@ export async function runThemeReading(options: {
 		);
 	}
 
-	const theme: AppliedTheme = { light: parsed.light, dark: parsed.dark };
+	const theme: AppliedTheme = parsed.modes
+		? { light: parsed.light, dark: parsed.dark, modes: parsed.modes }
+		: { light: parsed.light, dark: parsed.dark };
+
 	const source = designSourceOf(request.context.design);
 
 	if (source) theme.source = source;
@@ -439,13 +442,14 @@ export type BuildRequestParams = {
 
 export const DEFAULT_REQUEST_CHARS = 150_000;
 
-function changedModes(targets: string[], modes: Record<string, ResolvedMode> | undefined) {
+function changedModes(targets: string[], modes: Record<string, ResolvedMode> | undefined, theme: DesignTokens) {
 	const changed: Record<string, ResolvedMode> = {};
+	const defaults = modeKey(defaultMode(theme));
 
 	for (const path of targets) {
 		const mode = modes?.[path];
 
-		if (mode && modeKey(mode) !== modeKey(DEFAULT_MODE)) changed[path] = mode;
+		if (mode && modeKey(mode) !== defaults) changed[path] = mode;
 	}
 
 	return Object.keys(changed).length ? changed : undefined;
@@ -527,10 +531,13 @@ export function buildGenerationRequest(params: BuildRequestParams): GenerationRe
 
 	const theme = params.theme ?? designTokensOf(files["DESIGN.md"]);
 
-	if (!contextTarget && hasTokens(theme)) request.theme = { light: theme.light, dark: theme.dark };
+	if (!contextTarget && hasTokens(theme))
+		request.theme = theme.modes
+			? { light: theme.light, dark: theme.dark, modes: theme.modes }
+			: { light: theme.light, dark: theme.dark };
 
 	if (targets.length) request.targets = targets;
-	const modes = contextTarget ? undefined : changedModes(targets, params.modes);
+	const modes = contextTarget ? undefined : changedModes(targets, params.modes, theme);
 
 	if (modes) request.modes = modes;
 

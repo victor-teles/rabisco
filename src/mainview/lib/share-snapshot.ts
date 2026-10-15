@@ -18,7 +18,7 @@ export async function buildShareSnapshot(input: {
 	start?: string;
 }): Promise<ShareSnapshot> {
 	const { files } = input;
-	const screens = shareScreens(input.frames, files, input.sections);
+	const screens = shareScreens(input.frames, files, input.sections, input.theme);
 
 	if (screens.length === 0) throw new Error("There are no screens to share yet");
 	// First: a new custom token name restarts the compiler

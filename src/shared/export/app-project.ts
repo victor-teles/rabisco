@@ -4,7 +4,7 @@
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import { assetKey, PUBLIC_DIR, type ProjectAssets } from "../assets";
 import { customTokenNames, tokenThemeCss, tokensToCss, type DesignTokens } from "../context/tokens";
-import { DEFAULT_MODE, resolveModes, type ResolvedMode } from "../modes";
+import { defaultMode, resolveModes, type ResolvedMode } from "../modes";
 import { isComponentFile, isScreenFile } from "../project";
 import { isAlternate } from "../variations";
 import type { CanvasSection, ExportFile, Frame, ProjectFiles } from "../types";
@@ -378,7 +378,7 @@ export function buildProject(
 			id: pageId(file),
 			identifier: screenIdentifier(pageId(file)),
 			module: file.replace(/\.tsx$/, ""),
-			mode: frame ? resolveModes(frame, input.sections ?? []) : DEFAULT_MODE,
+			mode: frame ? resolveModes(frame, input.sections ?? [], input.theme) : defaultMode(input.theme),
 		};
 	});
 

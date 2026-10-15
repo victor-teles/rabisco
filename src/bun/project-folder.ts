@@ -23,7 +23,7 @@ import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import { parseLayoutGrid } from "../shared/layout-grid";
 import { normalizeImages } from "../shared/moodboard";
-import { normalizeModes } from "../shared/modes";
+import { normalizeModes, normalizeTokenModes } from "../shared/modes";
 import { normalizeSections } from "../shared/sections";
 import {
 	emptyCanvas,
@@ -213,7 +213,10 @@ function parseTheme(theme: JsonObject): AppliedTheme {
 		);
 
 	const parsed: AppliedTheme = { light: mode(theme.light), dark: mode(theme.dark) };
+	const modes = normalizeTokenModes(theme.modes);
 	const source = optionalString(theme.source);
+
+	if (modes) parsed.modes = modes;
 
 	if (source) parsed.source = source;
 

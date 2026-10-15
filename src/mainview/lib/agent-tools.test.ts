@@ -290,7 +290,7 @@ describe("runAgentTool", () => {
 		const tokens = json(await call("get_design_tokens"));
 
 		expect(tokens).toEqual({
-			applied: { light: { primary: "#2563eb" }, dark: {} },
+			applied: { light: { primary: "#2563eb" }, dark: {}, modes: [] },
 			modes: [{ name: "scheme", options: ["light", "dark"] }],
 			appliedFromCurrentDesign: true,
 			designMd: DESIGN,

@@ -313,7 +313,7 @@ function VersionPreview({ snapshot }: { snapshot: Snapshot }) {
 										files={snapshot.files}
 										width={frame.width}
 										height={frame.height}
-										mode={resolveModes(frame, snapshot.sections ?? [])}
+										mode={resolveModes(frame, snapshot.sections ?? [], snapshot.theme ?? NO_TOKENS)}
 										live={false}
 									/>
 								</span>

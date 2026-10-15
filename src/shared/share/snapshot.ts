@@ -1,5 +1,6 @@
 // Built in the webview, where TSX compiles and Tailwind builds; the main process only checks and serves it.
 import { assetKey } from "../assets";
+import type { DesignTokens } from "../context/tokens";
 import { isFiniteNumber, isNumber, isString } from "../guards";
 import { isJsonArray, isJsonObject, type Json, type JsonObject } from "../json";
 import { normalizeModes, resolveModes, type ResolvedMode } from "../modes";
@@ -127,12 +128,26 @@ export function assertSnapshot(value: Json | undefined): ShareSnapshot {
 }
 
 /** Canvas order, without alternates */
-export function shareScreens(frames: Frame[], files: ProjectFiles, sections: readonly CanvasSection[]): ShareScreen[] {
+export function shareScreens(
+	frames: Frame[],
+	files: ProjectFiles,
+	sections: readonly CanvasSection[],
+	theme: DesignTokens,
+): ShareScreen[] {
 	return frames.flatMap((frame) => {
 		const { file, name, device, width, height } = frame;
 
 		return isScreenFile(file) && !isAlternate(file) && files[file] !== undefined
-			? [{ file, name: name || screenNameFromPath(file), device, width, height, mode: resolveModes(frame, sections) }]
+			? [
+					{
+						file,
+						name: name || screenNameFromPath(file),
+						device,
+						width,
+						height,
+						mode: resolveModes(frame, sections, theme),
+					},
+				]
 			: [];
 	});
 }

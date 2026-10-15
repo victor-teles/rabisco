@@ -47,7 +47,7 @@ async function checkScreen(frame: Frame, input: DesignCheckInput): Promise<Scree
 			frame,
 			input.files,
 			input.theme,
-			resolveModes(frame, input.sections),
+			resolveModes(frame, input.sections, input.theme),
 			async (host) => ({
 				fromLayout: await host.lint(),
 				image: input.raster ? await screenshot(host, input.raster(frame)) : undefined,

@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { DESIGN_TEMPLATE } from "./templates";
 import {
 	changedTokenCount,
+	contestedTokenNames,
 	customTokenNames,
 	declarations,
 	designTokensOf,
 	formatTextStyle,
+	modeSlug,
 	parseDesignTokens,
 	parseTextStyle,
 	setDesignToken,
@@ -438,5 +440,144 @@ describe("validateTokenName", () => {
 		expect(validateTokenName("radius")).toBeNull();
 		expect(validateTokenName("brand")).toContain("Unknown token name");
 		expect(validateTokenName("radius-lg")).toContain("Built in");
+	});
+});
+
+const MODES = `## Tokens
+
+- primary: #2563eb
+
+### Dark
+
+- primary: #60a5fa
+
+### Brand mode: Default
+
+### Brand mode: Acme
+
+- primary: #e11d48
+- color-brand: #be123c
+
+#### Dark
+
+- primary: #fb7185
+
+### Density mode: Compact
+
+- spacing: 0.2rem
+
+### Brand mode: acme
+
+- primary: #000000
+
+### Mode: Nameless
+
+- primary: #111111
+
+### Scheme mode: Dim
+
+### Colors: Neutral
+
+- ring: #a3a3a3
+`;
+
+describe("mode groups", () => {
+	test("reads groups and options in DESIGN.md order, with each option's dark values", () => {
+		const parsed = parseDesignTokens(MODES);
+
+		expect(parsed.light).toEqual({ primary: "#2563eb", ring: "#a3a3a3" });
+		expect(parsed.dark).toEqual({ primary: "#60a5fa" });
+		expect(parsed.modes).toEqual([
+			{
+				name: "brand",
+				options: [
+					{ name: "default", light: {}, dark: {} },
+					{ name: "acme", light: { primary: "#e11d48", "color-brand": "#be123c" }, dark: { primary: "#fb7185" } },
+				],
+			},
+			{ name: "density", options: [{ name: "compact", light: { spacing: "0.2rem" }, dark: {} }] },
+		]);
+	});
+
+	test("reports a taken, empty or scheme heading and ignores its tokens", () => {
+		expect(parseDesignTokens(MODES).invalid.map(({ name, line }) => [name, line])).toEqual([
+			["Brand mode: acme", 24],
+			["Mode: Nameless", 28],
+			["Scheme mode: Dim", 32],
+		]);
+	});
+
+	test("names become slugs", () => {
+		expect(modeSlug("Big Sky")).toBe("big-sky");
+		expect(modeSlug("  Ação!  ")).toBe("acao");
+		expect(modeSlug("!!")).toBe("");
+	});
+
+	test("a DESIGN.md without groups has no modes", () => {
+		expect(parseDesignTokens(DESIGN)).not.toHaveProperty("modes");
+		expect(designTokensOf(DESIGN)).not.toHaveProperty("modes");
+	});
+
+	test("tokensToCss writes each option after the base blocks", () => {
+		expect(tokensToCss(designTokensOf(MODES))).toBe(
+			":root:not(.dark) {\n\t--primary: #2563eb;\n\t--ring: #a3a3a3;\n}\n" +
+				".dark {\n\t--primary: #60a5fa;\n}\n" +
+				':root[data-mode-brand="acme"] {\n\t--color-brand: #be123c;\n}\n' +
+				':root:not(.dark)[data-mode-brand="acme"] {\n\t--primary: #e11d48;\n}\n' +
+				':root.dark[data-mode-brand="acme"] {\n\t--primary: #fb7185;\n}\n' +
+				':root[data-mode-density="compact"] {\n\t--spacing: 0.2rem;\n}\n',
+		);
+	});
+
+	test("tokensToCss skips names that aren't slugs and invalid values", () => {
+		const css = tokensToCss({
+			light: {},
+			dark: {},
+			modes: [
+				{ name: 'x"]{}', options: [{ name: "a", light: { spacing: "1rem" }, dark: {} }] },
+				{ name: "brand", options: [{ name: "acme", light: { primary: "red;}" }, dark: {} }] },
+			],
+		});
+
+		expect(css).toBe("");
+	});
+
+	test("custom names in options go to the compiler", () => {
+		expect(customTokenNames(designTokensOf(MODES))).toEqual(["color-brand"]);
+	});
+
+	test("a token two groups set is contested", () => {
+		const { modes = [] } = parseDesignTokens(
+			`## Tokens\n\n### Brand mode: Acme\n\n- primary: red\n\n### Tone mode: Warm\n\n- primary: orange\n- ring: blue\n`,
+		);
+
+		expect(contestedTokenNames(modes)).toEqual(["primary"]);
+	});
+
+	test("a new or changed option counts as a change", () => {
+		const base = designTokensOf("## Tokens\n\n- primary: red\n");
+		const empty = designTokensOf("## Tokens\n\n- primary: red\n\n### Brand mode: Default\n");
+		const acme = designTokensOf("## Tokens\n\n- primary: red\n\n### Brand mode: Default\n\n- ring: blue\n");
+
+		expect(changedTokenCount(base, empty)).toBe(1);
+		expect(changedTokenCount(empty, acme)).toBe(1);
+		expect(changedTokenCount(acme, acme)).toBe(0);
+	});
+
+	test("setDesignToken leaves option lines alone", () => {
+		const next = setDesignToken(MODES, "primary", "light", "#16a34a");
+
+		expect(parseDesignTokens(next).light.primary).toBe("#16a34a");
+		expect(parseDesignTokens(next).modes).toEqual(parseDesignTokens(MODES).modes);
+
+		const dark = setDesignToken(
+			"## Tokens\n\n- primary: red\n\n### Brand mode: Acme\n\n#### Dark\n\n- primary: pink\n",
+			"ring",
+			"dark",
+			"#000",
+		);
+
+		expect(designTokensOf(dark).dark).toEqual({ ring: "#000" });
+		expect(designTokensOf(dark).modes?.[0]?.options[0]?.dark).toEqual({ primary: "pink" });
 	});
 });

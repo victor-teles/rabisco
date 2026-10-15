@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { designTokensOf } from "../context/tokens";
 import { exportFixture } from "./export-fixture";
 import { nextProject } from "./next-project";
 import { reactRouterProject } from "./react-router-project";
@@ -138,5 +139,19 @@ describe("screen modes", () => {
 		expect(next["src/app/welcome/page.tsx"]).toContain('const mode = {"scheme":"light"};');
 		expect(router["src/app/routes/settings.tsx"]).toContain(settingsMode);
 		expect(router["src/lib/screen-mode.tsx"]).toBeString();
+	});
+
+	test("a section's DESIGN.md mode option reaches its screens and the stylesheet", () => {
+		const theme = designTokensOf(
+			"## Tokens\n\n### Brand mode: Default\n\n### Brand mode: Acme\n\n- primary: #e11d48\n",
+		);
+
+		const acme = { ...dark, modes: { brand: "acme" } };
+		const out = byPath(viteProject({ ...input, theme, sections: [acme] }));
+		const app = out["src/App.tsx"]!;
+
+		expect(app).toContain('{ id: "settings", Screen: SettingsScreen, mode: {"scheme":"light","brand":"acme"} }');
+		expect(app).toContain('{ id: "welcome", Screen: WelcomeScreen, mode: {"scheme":"light","brand":"default"} }');
+		expect(out["src/index.css"]).toContain(':root:not(.dark)[data-mode-brand="acme"] {\n\t--primary: #e11d48;\n}');
 	});
 });

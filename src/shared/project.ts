@@ -186,7 +186,7 @@ export function coverFor(canvas: CanvasDoc, files: ProjectFiles): ScreenSource |
 		height: frame.height,
 		files: coverFiles,
 		theme: appliedTheme(canvas, files),
-		mode: resolveModes(frame, canvas.sections ?? []),
+		mode: resolveModes(frame, canvas.sections ?? [], appliedTheme(canvas, files)),
 	};
 }
 

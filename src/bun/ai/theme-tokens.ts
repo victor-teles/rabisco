@@ -82,5 +82,17 @@ export function modesText(modes: Record<string, ResolvedMode>, tokens: DesignTok
 	if (screens.some(([, mode]) => mode[SCHEME] === "dark") && dark.length)
 		lines.push(`- Dark values: ${dark.map(([name, value]) => `${name}: ${value}`).join("; ")}`);
 
+	for (const group of tokens?.modes ?? []) {
+		for (const option of group.options) {
+			const values = [
+				...Object.entries(option.light).map(([name, value]) => `${name}: ${value}`),
+				...Object.entries(option.dark).map(([name, value]) => `${name} (dark): ${value}`),
+			];
+
+			if (values.length && screens.some(([, mode]) => mode[group.name] === option.name))
+				lines.push(`- ${group.name} ${option.name} values, over the project's: ${values.join("; ")}`);
+		}
+	}
+
 	return lines.join("\n");
 }

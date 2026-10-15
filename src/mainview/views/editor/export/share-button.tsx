@@ -22,7 +22,7 @@ import { copyLater, copyText, errorMessage, timeAgo } from "./share-utils";
 const publishedFingerprints = new Map<string, string>();
 
 const fingerprintOf = (frames: Frame[], sections: readonly CanvasSection[], files: ProjectFiles, theme: DesignTokens) =>
-	hashString(JSON.stringify([shareScreens(frames, files, sections), files, theme]));
+	hashString(JSON.stringify([shareScreens(frames, files, sections, theme), files, theme]));
 
 type ShareTab = "link" | "web" | "git";
 
@@ -122,7 +122,12 @@ function LinkSection({
 	const [copied, setCopied] = useState(false);
 	const fieldRef = useRef<HTMLInputElement>(null);
 	const fingerprint = useMemo(() => fingerprintOf(frames, sections, files, theme), [frames, sections, files, theme]);
-	const screenCount = useMemo(() => shareScreens(frames, files, sections).length, [frames, files, sections]);
+
+	const screenCount = useMemo(
+		() => shareScreens(frames, files, sections, theme).length,
+		[frames, files, sections, theme],
+	);
+
 	const stale = status !== null && publishedFingerprints.get(projectPath) !== fingerprint;
 
 	const snapshot = useCallback(

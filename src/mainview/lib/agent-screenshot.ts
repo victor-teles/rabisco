@@ -40,7 +40,7 @@ async function crop(dataUrl: string, box: Box, scale: number): Promise<string> {
 /** Rendered offstage like the design check, so it works for screens off the viewport */
 export function agentScreenshot(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number | null) =>
-		renderOffstage(frame, files, theme, resolveModes(frame, sections), async (host) => {
+		renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), async (host) => {
 			if (start === null) {
 				const height = (await host.measure()) ?? frame.height;
 				const scale = screenshotScale(frame.width, height, frame.width, 1);
@@ -66,7 +66,7 @@ export function agentScreenshot(files: ProjectFiles, theme: DesignTokens, sectio
 
 export function agentElementBox(files: ProjectFiles, theme: DesignTokens, sections: readonly CanvasSection[]) {
 	return (frame: Frame, start: number) =>
-		renderOffstage(frame, files, theme, resolveModes(frame, sections), async (host) => {
+		renderOffstage(frame, files, theme, resolveModes(frame, sections, theme), async (host) => {
 			const [box] = (await host.elementBoxes(start, sourceVersion(files[frame.file] ?? ""))) ?? [];
 
 			return box ?? null;
