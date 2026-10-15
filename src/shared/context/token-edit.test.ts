@@ -142,3 +142,16 @@ describe("seedDesignTokens", () => {
 		expect(seedDesignTokens("# Design\n", undefined)).toBe("# Design\n");
 	});
 });
+
+describe("font families and weights", () => {
+	test("can't share a class", () => {
+		const tokens = { light: { "font-display": "Inter" }, dark: {} };
+
+		expect(parseTokenForm({ name: "font-weight-display", light: "600", dark: "" }, tokens).errors?.name).toBe(
+			"font-display already makes the class font-display",
+		);
+		expect(
+			renameError({ light: { "font-weight-heavy": "650" }, dark: {} }, "font-weight-heavy", "font-weight-x"),
+		).toBeNull();
+	});
+});

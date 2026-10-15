@@ -116,7 +116,7 @@ function suggestion(found: ColorClass, colors: string[]) {
 type Occurrence = { found: ColorClass; start: number; count: number };
 
 /** Each string literal and template chunk, which is where classes live (not comments or JSX text) */
-function classTokens(source: string): { text: string; start: number }[] {
+export function classTokens(source: string): { text: string; start: number }[] {
 	const parsed = parseFile(source);
 	const found: { text: string; start: number }[] = [];
 

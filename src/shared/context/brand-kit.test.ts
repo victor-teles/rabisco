@@ -10,6 +10,14 @@ describe("brandKitUrl", () => {
 		);
 	});
 
+	test("reads a tweakcn theme from its registry file", () => {
+		expect(brandKitUrl("https://tweakcn.com/themes/cm9abc123")).toBe("https://tweakcn.com/r/themes/cm9abc123.json");
+		expect(brandKitUrl("tweakcn.com/editor/theme?theme=amethyst-haze")).toBe(
+			"https://tweakcn.com/r/themes/amethyst-haze.json",
+		);
+		expect(brandKitUrl("https://tweakcn.com/r/themes/x.json")).toBe("https://tweakcn.com/r/themes/x.json");
+	});
+
 	test("rejects empty input and other schemes", () => {
 		expect(brandKitUrl("  ")).toBeNull();
 		expect(brandKitUrl("file:///etc/passwd")).toBeNull();

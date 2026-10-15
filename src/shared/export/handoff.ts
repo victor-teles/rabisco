@@ -89,7 +89,7 @@ function tokenRows(theme: DesignTokens, usedBy: Map<string, string[]>) {
 	const dark = resolvedTokens(theme, "dark");
 
 	return [...new Set([...light.keys(), ...dark.keys()])].flatMap((name) => {
-		if (name.endsWith("--line-height")) return [];
+		if (name.includes("--")) return [];
 
 		const lineHeight = light.get(`${name}--line-height`);
 		const value = light.get(name) ?? null;

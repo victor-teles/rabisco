@@ -13,8 +13,10 @@ const CLASSES: Record<TokenKind, (utility: string) => string[]> = {
 	color: (utility) => [`bg-${utility}`, `text-${utility}`, `border-${utility}`],
 	radius: (utility) => [`rounded-${utility}`],
 	font: (utility) => [`font-${utility}`],
+	"font-weight": (utility) => [`font-${utility}`],
 	text: (utility) => [`text-${utility}`],
 	spacing: (utility) => [`p-${utility}`, `gap-${utility}`],
+	shadow: (utility) => [`shadow-${utility}`],
 };
 
 /** `#e11d48, dark #fb7185`; a token set in one mode only shows that mode */
@@ -47,6 +49,12 @@ export function themeTokensText(tokens: DesignTokens): string | null {
 		const kind = tokenKind(name);
 
 		if (kind) lines.push(`- ${CLASSES[kind](tokenUtility(name)).join(" / ")} (${name}: ${valuesOf(tokens, name)})`);
+	}
+
+	if ([...custom].some((name) => tokenKind(name) === "text")) {
+		lines.push(
+			"- A text-* token is a text style: its one class sets the size and any line height, weight and tracking it lists. Don't add font-*, leading-* or tracking-* classes next to it unless the design needs a change.",
+		);
 	}
 
 	return lines.join("\n");

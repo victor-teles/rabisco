@@ -115,6 +115,7 @@ function placement(name: string): { group: string; name: string } | null {
 
 /** A reference to another color is a DTCG alias; values DTCG can't hold, like `color-mix()`, are left to tokens.css */
 function dtcgToken(name: string, value: string): DtcgToken | null {
+	if (/--(?:font-weight|letter-spacing)$/.test(name)) return null;
 	const place = placement(name.replace(/--line-height$/, ""));
 
 	if (!place) return null;
@@ -149,6 +150,10 @@ function dtcgToken(name: string, value: string): DtcgToken | null {
 
 		case "font":
 			return { ...place, type: "fontFamily", value: fontFamilyValue(value) };
+		case "font-weight":
+			return { ...place, type: "fontWeight", value: /^\d+$/.test(value) ? Number(value) : value };
+		case "shadow":
+			return null;
 
 		default: {
 			const dimension = dimensionValue(value);

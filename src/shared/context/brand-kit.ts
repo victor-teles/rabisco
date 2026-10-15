@@ -1,5 +1,6 @@
 import { isString } from "../guards";
 import { isJsonObject, type Json, type JsonObject } from "../json";
+import { dtcgEntries, figmaEntries } from "./token-import";
 import {
 	COLOR_TOKENS,
 	designTokensOf,
@@ -17,6 +18,16 @@ export type BrandKit =
 
 export const MAX_BRAND_KIT_BYTES = 512 * 1024;
 
+/** A tweakcn theme page or editor link names the theme its registry file serves */
+function tweakcnTheme(url: URL): string | null {
+	if (url.hostname !== "tweakcn.com" && url.hostname !== "www.tweakcn.com") return null;
+	const shared = /^\/themes\/([\w-]+)\/?$/.exec(url.pathname)?.[1];
+	const preset = url.pathname.startsWith("/editor/theme") ? url.searchParams.get("theme") : null;
+	const theme = shared ?? preset;
+
+	return theme && /^[\w-]+$/.test(theme) ? theme : null;
+}
+
 const GITHUB_BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/;
 
 export function brandKitUrl(input: string): string | null {
@@ -32,6 +43,9 @@ export function brandKitUrl(input: string): string | null {
 	}
 
 	if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+	const tweakcn = tweakcnTheme(url);
+
+	if (tweakcn) return `https://tweakcn.com/r/themes/${tweakcn}.json`;
 	const blob = GITHUB_BLOB.exec(url.href);
 
 	return blob ? `https://raw.githubusercontent.com/${blob[1]}/${blob[2]}/${blob[3]}` : url.href;
@@ -45,12 +59,54 @@ const isBuiltInColor = (name: string) => COLOR_TOKENS.some((color) => color === 
 
 const BARE_HSL = /^-?\d*\.?\d+(?:deg)?\s+\d*\.?\d+%\s+\d*\.?\d+%$/;
 
-const GROUP_ALIASES = new Map([
+/** Group names other tools use, longest first, and the kind they hold */
+const GROUP_ALIASES: [string, string][] = [
+	["font-families", "font"],
+	["font-family", "font"],
+	["font-weights", "font-weight"],
+	["font-sizes", "text"],
+	["font-size", "text"],
+	["border-radius", "radius"],
+	["corner-radius", "radius"],
+	["box-shadows", "shadow"],
+	["box-shadow", "shadow"],
+	["text-styles", "text"],
+	["typography", "text"],
+	["elevation", "shadow"],
+	["shadows", "shadow"],
+	["colours", "color"],
+	["colour", "color"],
 	["colors", "color"],
 	["fonts", "font"],
 	["radii", "radius"],
+	["rounded", "radius"],
 	["sizes", "spacing"],
+	["space", "spacing"],
+];
+
+/** The kind a DTCG type holds, when the group name doesn't say */
+const TYPE_KINDS = new Map([
+	["color", "color"],
+	["fontFamily", "font"],
+	["fontWeight", "font-weight"],
+	["shadow", "shadow"],
+	["typography", "text"],
+	["dimension", "spacing"],
 ]);
+
+const aliasGroup = (name: string) => {
+	const alias = GROUP_ALIASES.find(([group]) => name === group || name.startsWith(`${group}-`));
+
+	return alias ? alias[1] + name.slice(alias[0].length) : name;
+};
+
+/** `fontWeight`, `Font Weight` and `font_weight` are `font-weight` */
+export const kebabSegment = (segment: string) =>
+	segment
+		.replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
 
 function tokenValue(raw: string): string {
 	const value = raw.replace(/\s*!important\s*$/i, "").trim();
@@ -58,15 +114,14 @@ function tokenValue(raw: string): string {
 	return BARE_HSL.test(value) ? `hsl(${value})` : value;
 }
 
-function tokenNameFor(raw: string, value: string): string | null {
-	const name = raw
-		.trim()
-		.toLowerCase()
-		.replace(/^--/, "")
-		.replace(/^([a-z]+)(?=-|$)/, (group) => GROUP_ALIASES.get(group) ?? group);
-
+function tokenNameFor(raw: string, value: string, type: string | null = null): string | null {
+	const name = aliasGroup(raw.trim().toLowerCase().replace(/^--/, ""));
 	const builtIn = name.replace(/^color-/, "");
+	const kind = type ? TYPE_KINDS.get(type) : undefined;
+	const rest = name.replace(/^[a-z0-9]+-(?=.)/, "");
 	const candidates = [name, builtIn, `color-${name}`];
+
+	if (kind && !name.startsWith(`${kind}-`)) candidates.push(`${kind}-${name}`, `${kind}-${rest}`);
 
 	for (const candidate of candidates) {
 		if (candidate.startsWith("color-") && isBuiltInColor(candidate.slice(6))) continue;
@@ -77,11 +132,11 @@ function tokenNameFor(raw: string, value: string): string | null {
 	return null;
 }
 
-function addToken(tokens: DesignTokens, dark: boolean, rawName: string, rawValue: string) {
+function addToken(tokens: DesignTokens, dark: boolean, rawName: string, rawValue: string, type: string | null = null) {
 	const value = tokenValue(rawValue);
 
 	if (/^var\(/i.test(value)) return;
-	const name = tokenNameFor(rawName, value);
+	const name = tokenNameFor(rawName, value, type);
 
 	if (name) tokens[dark ? "dark" : "light"][name] = value;
 }
@@ -130,25 +185,6 @@ function stringRecord(value: Json | undefined): [string, string][] {
 	return Object.entries(value).flatMap(([name, entry]) => (isString(entry) ? [[name, entry]] : []));
 }
 
-function leafValue(value: Json | undefined): string | null {
-	if (isString(value)) return value;
-
-	if (!isJsonObject(value)) return null;
-	const leaf = value.$value ?? value.value;
-
-	return isString(leaf) ? leaf : null;
-}
-
-function walkJson(value: JsonObject, path: string[], visit: (path: string[], value: string) => void) {
-	for (const [key, entry] of Object.entries(value)) {
-		if (key.startsWith("$")) continue;
-		const leaf = leafValue(entry);
-
-		if (leaf !== null) visit([...path, key], leaf);
-		else if (isJsonObject(entry)) walkJson(entry, [...path, key], visit);
-	}
-}
-
 function jsonTokens(root: JsonObject): DesignTokens {
 	const tokens = emptyTokens();
 	const vars = root.cssVars;
@@ -163,13 +199,11 @@ function jsonTokens(root: JsonObject): DesignTokens {
 		return tokens;
 	}
 
-	walkJson(root, [], (path, value) => {
-		const segments = path.map((segment) => segment.toLowerCase());
-		const dark = segments.includes("dark");
-		const name = segments.filter((segment) => segment !== "dark" && segment !== "light").join("-");
+	for (const entry of figmaEntries(root) ?? dtcgEntries(root)) {
+		const name = entry.path.map(kebabSegment).filter(Boolean).join("-");
 
-		if (name) addToken(tokens, dark, name, value);
-	});
+		if (name) addToken(tokens, entry.dark, name, entry.value, entry.type);
+	}
 
 	return tokens;
 }
@@ -210,7 +244,11 @@ export function parseBrandKit(text: string, url: string, contentType = ""): Bran
 			: { kind: "error", message: "That JSON file can't be read." };
 	}
 
-	if (type.includes("text/css") || path.endsWith(".css") || /^(?:@[a-z-]+|:root)[^{]*\{/i.test(trimmed)) {
+	if (
+		type.includes("text/css") ||
+		path.endsWith(".css") ||
+		/^(?:@[a-z-]+|:root|html|body|\.[a-z][\w-]*)[^{]*\{/i.test(trimmed)
+	) {
 		return tokenKit(cssTokens(trimmed));
 	}
 

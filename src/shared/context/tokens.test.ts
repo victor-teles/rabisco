@@ -3,11 +3,15 @@ import { DESIGN_TEMPLATE } from "./templates";
 import {
 	changedTokenCount,
 	customTokenNames,
+	declarations,
 	designTokensOf,
+	formatTextStyle,
 	parseDesignTokens,
+	parseTextStyle,
 	setDesignToken,
 	TOKEN_NAMES,
 	tokenClass,
+	tokenKind,
 	tokenThemeCss,
 	tokensToCss,
 	tokenUtility,
@@ -288,7 +292,9 @@ describe("custom tokens", () => {
 		expect(validateToken("font-display", '"Inter";')).not.toBeNull();
 		expect(validateToken("color-primary", "#fff")).toContain("primary");
 		expect(validateToken("radius-lg", "1rem")).not.toBeNull();
-		expect(validateToken("shadow-card", "0 1px red")).not.toBeNull();
+		expect(validateToken("shadow-card", "red")).not.toBeNull();
+		expect(validateToken("shadow-sm", "0 1px red")).not.toBeNull();
+		expect(validateToken("font-weight-bold", "700")).not.toBeNull();
 		expect(validateToken("color-Brand", "#fff")).not.toBeNull();
 		expect(validateToken("color-", "#fff")).not.toBeNull();
 	});
@@ -317,9 +323,44 @@ describe("custom tokens", () => {
 				"\t--color-brand: currentcolor;\n" +
 				"\t--text-display: 1rem;\n" +
 				"\t--text-display--line-height: normal;\n" +
+				"\t--text-display--font-weight: inherit;\n" +
+				"\t--text-display--letter-spacing: inherit;\n" +
 				"}\n",
 		);
 		expect(tokenThemeCss([])).toBe("");
+	});
+
+	test("shadows and font weights are their own kinds; a shadow's class reads the stylesheet's value", () => {
+		expect(tokenKind("font-weight-heavy")).toBe("font-weight");
+		expect(tokenClass("font-weight-heavy")).toBe("font-heavy");
+		expect(tokenClass("shadow-card")).toBe("shadow-card");
+		expect(validateToken("font-weight-heavy", "650")).toBeNull();
+		expect(validateToken("font-weight-heavy", "heavy")).not.toBeNull();
+		expect(validateToken("shadow-card", "0 4px 12px rgb(0 0 0 / 0.1), inset 0 0 0 1px #0001")).toBeNull();
+		expect(validateToken("shadow-card", "0 4px url(x)")).not.toBeNull();
+		expect(validateToken("shadow-card", "0 4px 12px red; color: red")).not.toBeNull();
+		expect(tokenThemeCss(["shadow-card", "font-weight-heavy"])).toBe(
+			"@theme reference {\n\t--shadow-card: var(--shadow-card, 0 0 #0000);\n\t--font-weight-heavy: inherit;\n}\n",
+		);
+	});
+
+	test("a text style carries its weight and tracking as variables", () => {
+		expect(validateToken("text-heading", "2rem/1.2 600 -0.01em")).toBeNull();
+		expect(validateToken("text-heading", "2rem 600 -0.01em;")).not.toBeNull();
+		expect(parseTextStyle("2rem/1.2 600 -0.01em")).toEqual({
+			size: "2rem",
+			lineHeight: "1.2",
+			weight: "600",
+			tracking: "-0.01em",
+		});
+		expect(parseTextStyle("1rem bold")).toEqual({ size: "1rem", weight: "bold" });
+		expect(formatTextStyle({ size: "1rem", weight: "500" })).toBe("1rem 500");
+		expect(declarations({ "text-heading": "2rem/1.2 600 -0.01em" })).toEqual([
+			["text-heading", "2rem"],
+			["text-heading--line-height", "1.2"],
+			["text-heading--font-weight", "600"],
+			["text-heading--letter-spacing", "-0.01em"],
+		]);
 	});
 });
 

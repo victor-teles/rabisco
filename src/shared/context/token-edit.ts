@@ -2,6 +2,7 @@ import {
 	designTokensOf,
 	orderedTokenNames,
 	setDesignToken,
+	tokenUtility,
 	validateToken,
 	validateTokenName,
 	type DesignTokens,
@@ -28,13 +29,24 @@ export const normalizeTokenName = (raw: string) => raw.trim().toLowerCase().repl
 
 const hasToken = (tokens: DesignTokens, name: string) => name in tokens.light || name in tokens.dark;
 
+/** `font-display` and `font-weight-display` would both be the class `font-display` */
+function classTaken(tokens: DesignTokens, name: string): string | null {
+	const twin = name.startsWith("font-weight-")
+		? `font-${name.slice("font-weight-".length)}`
+		: name.startsWith("font-")
+			? `font-weight-${name.slice("font-".length)}`
+			: null;
+
+	return twin && hasToken(tokens, twin) ? `${twin} already makes the class font-${tokenUtility(name)}` : null;
+}
+
 /** `null` when `from` can become `to` with the values it has */
 export function renameError(tokens: DesignTokens, from: string, to: string): string | null {
 	if (to === from) return null;
 
 	if (hasToken(tokens, to)) return `${to} is already a token`;
 
-	const nameError = validateTokenName(to);
+	const nameError = validateTokenName(to) ?? classTaken(tokens, to);
 
 	if (nameError) return nameError;
 
@@ -61,7 +73,7 @@ export function parseTokenForm(
 	if (!name) errors.name = "Name the token";
 	else if (hasToken(tokens, name)) errors.name = `${name} is already a token`;
 	else {
-		const nameError = validateTokenName(name);
+		const nameError = validateTokenName(name) ?? classTaken(tokens, name);
 
 		if (nameError) errors.name = nameError;
 	}

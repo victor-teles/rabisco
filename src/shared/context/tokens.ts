@@ -35,7 +35,7 @@ export const TOKEN_NAMES = [...COLOR_TOKENS, "radius", ...FONT_TOKENS, "spacing"
 export type TokenName = (typeof TOKEN_NAMES)[number];
 
 /** Custom tokens use Tailwind v4 theme namespaces, so the name is the class: `color-brand` is `bg-brand` (decision 0013) */
-export const TOKEN_KINDS = ["color", "radius", "font", "text", "spacing"] as const;
+export const TOKEN_KINDS = ["color", "radius", "font", "font-weight", "text", "spacing", "shadow"] as const;
 
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 
@@ -82,20 +82,76 @@ const LENGTH = /^(?:0|\d*\.?\d+(?:px|rem|em|%))$/i;
 /** `3rem` or `3rem/1.1`; the line height is a number or a length */
 const FONT_SIZE = /^(0|\d*\.?\d+(?:px|rem|em|%))(?:\s*\/\s*(0|\d*\.?\d+(?:px|rem|em|%)?))?$/i;
 
+const FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000|normal|bold)$/i;
+
+/** A text style: the size and line height, then an optional weight and tracking, e.g. `2rem/1.2 600 -0.01em` */
+const TEXT_STYLE =
+	/^(\S+?(?:\s*\/\s*\S+)?)(?:\s+([1-9]\d{0,2}|1000|normal|bold))?(?:\s+(0|-?\d*\.?\d+(?:px|rem|em)))?$/i;
+
+const SHADOW_LENGTH = /^(?:0|-?\d*\.?\d+(?:px|rem|em))$/i;
+
 const FONT_FAMILY = String.raw`(?:"[a-z0-9 -]+"|'[a-z0-9 -]+'|[a-z][a-z0-9 -]*)`;
 
 const FONT_STACK = new RegExp(String.raw`^${FONT_FAMILY}(?:\s*,\s*${FONT_FAMILY})*$`, "i");
 
-const CUSTOM_NAME = /^(color|radius|font|text|spacing)-([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
+const CUSTOM_NAME = /^(color|radius|font-weight|font|text|spacing|shadow)-([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
 
 /** Theme names the screen theme derives from the built-in tokens */
 const DERIVED_RADII = new Set(["sm", "md", "lg", "xl"]);
+
+/** Tailwind's own scales, which a custom name would replace in every screen */
+const BUILT_IN_SHADOWS = new Set(["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "none", "inner"]);
+
+const BUILT_IN_WEIGHTS = new Set([
+	"thin",
+	"extralight",
+	"light",
+	"normal",
+	"medium",
+	"semibold",
+	"bold",
+	"extrabold",
+	"black",
+]);
 
 const isOneOf = <T extends string>(names: readonly T[], value: string): value is T =>
 	names.some((name) => name === value);
 
 const isColor = (value: string) =>
 	HEX.test(value) || COLOR_FUNCTION.test(value) || VAR_REF.test(value) || NAMED_COLORS.has(value.toLowerCase());
+
+/** Outside parentheses, so `rgb(0 0 0 / 0.1)` stays one part */
+function splitOutside(value: string, separator: RegExp): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let part = "";
+
+	for (const char of value) {
+		if (char === "(") depth++;
+		else if (char === ")") depth--;
+
+		if (depth === 0 && separator.test(char)) {
+			parts.push(part);
+			part = "";
+		} else part += char;
+	}
+
+	return [...parts, part];
+}
+
+/** `0 1px 3px rgb(0 0 0 / 0.1), inset 0 0 0 1px #0001`: two to four lengths, a color and `inset` per layer */
+function isShadow(value: string): boolean {
+	if (value === "none") return true;
+
+	return splitOutside(value, /,/).every((layer) => {
+		const words = splitOutside(layer.trim(), /\s/).filter(Boolean);
+		const lengths = words.filter((word) => SHADOW_LENGTH.test(word)).length;
+		const colors = words.filter((word) => !SHADOW_LENGTH.test(word) && word !== "inset" && isColor(word)).length;
+		const insets = words.filter((word) => word === "inset").length;
+
+		return lengths >= 2 && lengths <= 4 && colors <= 1 && insets <= 1 && lengths + colors + insets === words.length;
+	});
+}
 
 export const isCustomToken = (name: string) => !isOneOf(TOKEN_NAMES, name) && CUSTOM_NAME.test(name);
 
@@ -119,8 +175,10 @@ const CLASS_PREFIX: Record<TokenKind, string> = {
 	color: "bg",
 	radius: "rounded",
 	font: "font",
+	"font-weight": "font",
 	text: "text",
 	spacing: "p",
+	shadow: "shadow",
 };
 
 /** One class a custom token makes, e.g. `bg-brand` or `p-gutter`; `null` for built-in names */
@@ -148,6 +206,10 @@ export function validateTokenName(name: string): string | null {
 		return "Built in: rounded-sm to rounded-xl follow radius";
 	}
 
+	if (kind === "shadow" && BUILT_IN_SHADOWS.has(utility)) return `Built in: shadow-${utility} is Tailwind's`;
+
+	if (kind === "font-weight" && BUILT_IN_WEIGHTS.has(utility)) return `Built in: font-${utility} is Tailwind's`;
+
 	return null;
 }
 
@@ -164,7 +226,11 @@ export function validateToken(name: string, value: string): string | null {
 		case "font":
 			return FONT_STACK.test(value) ? null : 'Not a font stack, e.g. "Inter", system-ui, sans-serif';
 		case "text":
-			return FONT_SIZE.test(value) ? null : "Not a font size, e.g. 3rem or 3rem/1.1";
+			return parseTextStyle(value) ? null : "Not a text style, e.g. 3rem, 3rem/1.1 or 2rem/1.2 600 -0.01em";
+		case "font-weight":
+			return FONT_WEIGHT.test(value) ? null : "Not a font weight, e.g. 600 or bold";
+		case "shadow":
+			return isShadow(value) ? null : "Not a shadow, e.g. 0 4px 12px rgb(0 0 0 / 0.1)";
 		case "radius":
 		case "spacing":
 			return LENGTH.test(value) ? null : "Not a length, e.g. 0.5rem or 8px";
@@ -363,21 +429,47 @@ function block(selector: string, entries: [string, string][]) {
 	return `${selector} {\n${entries.map(([name, value]) => `\t--${name}: ${value};\n`).join("")}}\n`;
 }
 
-/** A text token's line height is its own variable, the way Tailwind's theme declares font sizes */
+export type TextStyle = { size: string; lineHeight?: string; weight?: string; tracking?: string };
+
+/** The parts of a `text-*` value; `null` when it isn't one */
+export function parseTextStyle(value: string): TextStyle | null {
+	const match = TEXT_STYLE.exec(value.trim());
+	const size = match ? FONT_SIZE.exec(match[1]!) : null;
+
+	if (!match || !size) return null;
+	const style: TextStyle = { size: size[1]! };
+
+	if (size[2] !== undefined) style.lineHeight = size[2];
+
+	if (match[2] !== undefined) style.weight = match[2];
+
+	if (match[3] !== undefined) style.tracking = match[3];
+
+	return style;
+}
+
+export function formatTextStyle({ size, lineHeight, weight, tracking }: TextStyle): string {
+	return [lineHeight === undefined ? size : `${size}/${lineHeight}`, weight, tracking].filter(Boolean).join(" ");
+}
+
+/** A text token's line height, weight and tracking are their own variables, the way Tailwind's theme declares them */
 export function declarations(values: Record<string, string>): [string, string][] {
 	return Object.entries(values).flatMap(([name, value]): [string, string][] => {
 		if (validateToken(name, value) !== null) return [];
 
-		const size = tokenKind(name) === "text" ? FONT_SIZE.exec(value) : null;
+		const style = tokenKind(name) === "text" ? parseTextStyle(value) : null;
 
-		if (size?.[2]) {
-			return [
-				[name, size[1]!],
-				[`${name}--line-height`, size[2]],
-			];
-		}
+		if (!style) return [[name, value]];
 
-		return [[name, value]];
+		const parts: [string, string][] = [[name, style.size]];
+
+		if (style.lineHeight !== undefined) parts.push([`${name}--line-height`, style.lineHeight]);
+
+		if (style.weight !== undefined) parts.push([`${name}--font-weight`, style.weight]);
+
+		if (style.tracking !== undefined) parts.push([`${name}--letter-spacing`, style.tracking]);
+
+		return parts;
 	});
 }
 
@@ -403,8 +495,10 @@ const FALLBACKS: Record<TokenKind, string> = {
 	color: "currentcolor",
 	radius: "0",
 	font: "inherit",
+	"font-weight": "inherit",
 	text: "1rem",
 	spacing: "0",
+	shadow: "0 0 #0000",
 };
 
 /**
@@ -418,9 +512,18 @@ export function tokenThemeCss(names: Iterable<string>): string {
 
 		if (!kind) return [];
 
-		const line = `\t--${name}: ${FALLBACKS[kind]};`;
+		// Tailwind writes a shadow's value into the class, so it has to be a reference to the stylesheet's
+		const fallback = kind === "shadow" ? `var(--${name}, ${FALLBACKS[kind]})` : FALLBACKS[kind];
+		const line = `\t--${name}: ${fallback};`;
 
-		return kind === "text" ? [line, `\t--${name}--line-height: normal;`] : [line];
+		if (kind !== "text") return [line];
+
+		return [
+			line,
+			`\t--${name}--line-height: normal;`,
+			`\t--${name}--font-weight: inherit;`,
+			`\t--${name}--letter-spacing: inherit;`,
+		];
 	});
 
 	return lines.length ? `@theme reference {\n${lines.join("\n")}\n}\n` : "";
