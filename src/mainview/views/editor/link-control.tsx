@@ -55,7 +55,23 @@ const isMode = (value: string): value is OverlayMode => value === "overlay" || v
 const isTransitionName = (value: string): value is LinkTransition => TRANSITIONS.some((name) => name === value);
 
 /** Writes `data-link-to` (decision 0007); a link written as code is read-only */
-export function LinkControl({ files, frames, element, onChange, disabled }: LinkControlProps) {
+export function LinkControl(props: LinkControlProps) {
+	const { files, element } = props;
+	const source = element ? files[element.file] : undefined;
+	const node = element && source !== undefined ? findElement(parseJsx(source), element.start) : null;
+
+	if (!element || !node || node.name === null) return null;
+
+	return (
+		<section className="flex flex-col gap-2 border-b p-4">
+			<h3 className="text-xs font-medium text-subtle-foreground">Prototype</h3>
+			<LinkFields {...props} />
+		</section>
+	);
+}
+
+/** The inspector's Prototype rows, also shown in the popover of a connector selected on the canvas */
+export function LinkFields({ files, frames, element, onChange, disabled }: LinkControlProps) {
 	const source = element ? files[element.file] : undefined;
 	const node = element && source !== undefined ? findElement(parseJsx(source), element.start) : null;
 
@@ -86,8 +102,7 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 	const options = !code && target !== null && target.kind !== "back";
 
 	return (
-		<section className="flex flex-col gap-2 border-b p-4">
-			<h3 className="text-xs font-medium text-subtle-foreground">Prototype</h3>
+		<>
 			<div className="flex min-h-8 items-center gap-2">
 				<span className="w-[72px] shrink-0 truncate text-xs text-muted-foreground">Link to</span>
 				<div className="flex min-w-0 flex-1 items-center">
@@ -173,7 +188,7 @@ export function LinkControl({ files, frames, element, onChange, disabled }: Link
 					/>
 				</>
 			) : null}
-		</section>
+		</>
 	);
 }
 

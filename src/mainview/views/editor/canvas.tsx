@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { ChromeLayer, ChromePortal, chromeBox, snapToPixel, zoomed } from "./chrome-layer";
 import { ElementHandles } from "./element-handles";
 import { LayoutGrids } from "./layout-grids";
+import { LinkHandle } from "./link-handle";
 import { LinksLayer } from "./links-layer";
 import { MeasureLayer, useAltHeld } from "./measure-layer";
 import { Minimap } from "./minimap";
@@ -63,7 +64,8 @@ import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
-import { screenNameFromPath } from "../../../shared/project";
+import { isScreenFile, screenNameFromPath } from "../../../shared/project";
+import { hasExpressionLink, linkOfElement } from "../../../shared/prototype/links";
 import { resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../shared/types";
 import { FRAME_GAP } from "../../../shared/project";
@@ -199,6 +201,13 @@ type CanvasProps = {
 	onMoveEntry?: (element: ElementRef, move: { from: number; to: number; version: string }) => void;
 	/** The selection's resize, padding and gap handles; one undo step per call */
 	onEditClasses?: (element: ElementRef, edit: (classes: string) => string) => void;
+	/** Dragging the selected element's link handle onto another screen links it there */
+	onLinkElement?: (element: ElementRef, file: string) => void;
+	/** The link whose connector was clicked; `linkEditor` shows in a popover there */
+	selectedLink?: ElementRef | null;
+	/** A click on a connector; `null` when its popover closes */
+	onSelectLink?: (link: ElementRef | null) => void;
+	linkEditor?: React.ReactNode;
 	locks?: ElementLock[];
 	/** For elements that hold more than text */
 	onEditTextElsewhere?: (element: ElementRef) => void;
@@ -390,6 +399,10 @@ export function Canvas({
 	onMoveElement,
 	onMoveEntry,
 	onEditClasses,
+	onLinkElement,
+	selectedLink = null,
+	onSelectLink,
+	linkEditor,
 	locks,
 	onEditTextElsewhere,
 	onPlaceComment,
@@ -1959,7 +1972,14 @@ export function Canvas({
 						/>
 					))}
 					<LayoutGrids frames={shown} />
-					<LinksLayer frames={shown} files={rendered} selected={element} />
+					<LinksLayer
+						frames={shown}
+						files={rendered}
+						selected={element}
+						selectedLink={selectedLink}
+						onSelectLink={tool === "move" && !panning && !drafts && !editing ? onSelectLink : undefined}
+						editor={linkEditor}
+					/>
 					{hover && !isSelectedElement(hover, element, elements) ? (
 						<ElementOutline
 							frame={shown.find((f) => f.file === hover.file)}
@@ -2006,6 +2026,31 @@ export function Canvas({
 								isElementLocked(locks, element.file, files[element.file], element.start)
 									? undefined
 									: onEditClasses
+							}
+							link={
+								editing ||
+								draggingElement ||
+								drafts ||
+								tool !== "move" ||
+								panning ||
+								elements.length ||
+								!onLinkElement ||
+								isElementLocked(locks, element.file, files[element.file], element.start)
+									? undefined
+									: {
+											toCanvas,
+											targetAt: (clientX, clientY) => {
+												const target = frameAt(clientX, clientY);
+
+												return target &&
+													target.file !== element.file &&
+													isScreenFile(target.file) &&
+													files[target.file] !== undefined
+													? target
+													: null;
+											},
+											onLink: (target) => onLinkElement(element, target.file),
+										}
 							}
 						/>
 					) : null}
@@ -2653,6 +2698,7 @@ function SelectedElement({
 	dropping,
 	onBoxes,
 	onEditClasses,
+	link,
 }: {
 	element: ElementRef;
 	others: number[];
@@ -2665,6 +2711,8 @@ function SelectedElement({
 	onBoxes: (file: string, start: number, boxes: Box[]) => void;
 	/** Shows the handles that write classes */
 	onEditClasses?: (element: ElementRef, edit: (classes: string) => string) => void;
+	/** Shows the link handle on elements of a screen */
+	link?: Pick<React.ComponentProps<typeof LinkHandle>, "toCanvas" | "targetAt" | "onLink">;
 }) {
 	const [boxes, setBoxes] = useState<Box[]>([]);
 	const [spacing, setSpacing] = useState<Spacing | null>(null);
@@ -2696,6 +2744,8 @@ function SelectedElement({
 	const info = onEditClasses ? readClassName(source, element.start) : null;
 	const first = boxes[0];
 	const handles = onEditClasses && info?.editable && layout && first && frame ? { info, layout, first } : null;
+	const linkable =
+		link && first && frame && node.name !== null && isScreenFile(element.file) && !hasExpressionLink(node);
 
 	return (
 		<>
@@ -2723,6 +2773,14 @@ function SelectedElement({
 						onCommit={(edit) => onEditClasses?.(element, edit)}
 					/>
 				</ChromePortal>
+			) : null}
+			{linkable && !dropping ? (
+				<LinkHandle
+					at={{ x: frame.x + first.x + first.width, y: frame.y + first.y + first.height / 2 }}
+					linked={linkOfElement(node) !== null}
+					zoom={zoom}
+					{...link}
+				/>
 			) : null}
 		</>
 	);

@@ -1,5 +1,6 @@
-import { memo, useMemo, useSyncExternalStore } from "react";
-import { type Connector, connectorsOf, linkAnchors, OUTWARD, type Point, routesOf } from "@/lib/connectors";
+import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { type Connector, connectorsOf, linkAnchors, OUTWARD, type Point, type Route, routesOf } from "@/lib/connectors";
 import { linkBoxes, subscribeLinkBoxes } from "@/lib/render/link-boxes";
 import { cn } from "@/lib/utils";
 import { ChromePortal } from "./chrome-layer";
@@ -17,6 +18,9 @@ const DOT = 3;
 
 const STUB = 40;
 
+/** Screen pixels: the invisible stroke a click on a connector hits */
+const HIT = 12;
+
 /** Canvas units */
 const MAX_BOW = 320;
 
@@ -31,15 +35,50 @@ const HEAD = `0,0 ${-ARROW},${-ARROW / 2} ${-ARROW},${ARROW / 2}`;
 
 const degreesOf = (direction: Point) => (Math.atan2(direction.y, direction.x) * 180) / Math.PI;
 
-/** Prototype links (decision 0007), in canvas coordinates. Never takes pointer input. */
+const bowOf = (from: Point, to: Point) =>
+	Math.min(MAX_BOW, Math.max(40, Math.hypot(to.x - from.x, to.y - from.y) * 0.4));
+
+/** `at` in canvas units; `offset` in screen pixels, along a stub */
+type Middle = { at: Point; offset: Point };
+
+function middleOf({ from, to, fromSide, toSide }: Route): Middle {
+	const out = OUTWARD[fromSide];
+
+	if (!toSide) return { at: from, offset: { x: (out.x * STUB) / 2, y: (out.y * STUB) / 2 } };
+	const into = OUTWARD[toSide];
+	const bow = bowOf(from, to);
+
+	// The cubic at t = ½
+	return {
+		at: {
+			x: (from.x + 3 * (from.x + out.x * bow) + 3 * (to.x + into.x * bow) + to.x) / 8,
+			y: (from.y + 3 * (from.y + out.y * bow) + 3 * (to.y + into.y * bow) + to.y) / 8,
+		},
+		offset: { x: 0, y: 0 },
+	};
+}
+
+const sameRef = (a: ElementRef, b: ElementRef) => a.file === b.file && a.start === b.start;
+
+/**
+ * Prototype links (decision 0007), in canvas coordinates. With `onSelectLink`, a click on a connector selects its link,
+ * and `editor` shows in a popover at the selected link's connector.
+ */
 export const LinksLayer = memo(function LinksLayer({
 	frames,
 	files,
 	selected,
+	selectedLink = null,
+	onSelectLink,
+	editor,
 }: {
 	frames: Frame[];
 	files: ProjectFiles;
 	selected?: ElementRef | null;
+	selectedLink?: ElementRef | null;
+	/** `null` when the popover closes */
+	onSelectLink?: (link: ElementRef | null) => void;
+	editor?: ReactNode;
 }) {
 	const boxes = useSyncExternalStore(subscribeLinkBoxes, linkBoxes);
 
@@ -55,6 +94,33 @@ export const LinksLayer = memo(function LinksLayer({
 
 	// The selected connector draws last, on top
 	const ordered = [...routes].sort((a, b) => Number(isSelected(a.connector)) - Number(isSelected(b.connector)));
+
+	const picked = selectedLink
+		? routes.find((route) => route.connector.links.some((link) => sameRef(link, selectedLink)))
+		: undefined;
+
+	const middle = picked ? middleOf(picked) : null;
+
+	const hit = (connector: Connector, d: string, transform?: string) =>
+		onSelectLink ? (
+			<path
+				d={d}
+				fill="none"
+				stroke="transparent"
+				className="cursor-pointer"
+				style={{ pointerEvents: "stroke", strokeWidth: transform ? HIT : unzoomed(HIT), transform }}
+				onPointerDown={(event) => {
+					if (event.button !== 0) return;
+					event.stopPropagation();
+					event.preventDefault();
+				}}
+				onDoubleClick={(event) => event.stopPropagation()}
+				onClick={(event) => {
+					event.stopPropagation();
+					onSelectLink(connector.links[0]!);
+				}}
+			/>
+		) : null;
 
 	return (
 		<>
@@ -84,6 +150,8 @@ export const LinksLayer = memo(function LinksLayer({
 										}}
 									/>
 								) : null}
+								{lead ? hit(connector, `M ${start.x} ${start.y} L ${from.x} ${from.y}`) : null}
+								{hit(connector, `M 0 0 L ${end.x} ${end.y}`, atScreenScale(from))}
 								<circle r={DOT} fill={color} style={{ transform: atScreenScale(start) }} />
 								<g style={{ transform: atScreenScale(from) }}>
 									<path
@@ -105,16 +173,17 @@ export const LinksLayer = memo(function LinksLayer({
 					}
 
 					const into = OUTWARD[toSide];
-					const distance = Math.hypot(to.x - from.x, to.y - from.y);
-					const bow = Math.min(MAX_BOW, Math.max(40, distance * 0.4));
+					const bow = bowOf(from, to);
 					const c1 = { x: from.x + out.x * bow, y: from.y + out.y * bow };
 					const c2 = { x: to.x + into.x * bow, y: to.y + into.y * bow };
+					const curve = `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`;
 
 					return (
 						<g key={connector.key} opacity={active ? 1 : broken ? 0.8 : 0.45}>
+							{hit(connector, curve)}
 							{/* Butt-capped to the tip, so the arrowhead covers its end */}
 							<path
-								d={`M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`}
+								d={curve}
 								fill="none"
 								stroke={color}
 								style={{
@@ -154,6 +223,30 @@ export const LinksLayer = memo(function LinksLayer({
 					</ChromePortal>
 				);
 			})}
+			{middle && onSelectLink ? (
+				<ChromePortal box={middle.at}>
+					<Popover open onOpenChange={(open) => !open && onSelectLink(null)}>
+						<PopoverAnchor asChild>
+							<div
+								className="absolute size-0"
+								style={{ transform: `translate(${middle.offset.x}px, ${middle.offset.y}px)` }}
+							/>
+						</PopoverAnchor>
+						<PopoverContent
+							side="bottom"
+							sideOffset={10}
+							className="flex w-64 flex-col gap-1 p-3"
+							// Keeps focus on the canvas, so ⌫ deletes the link
+							onOpenAutoFocus={(event) => event.preventDefault()}
+							onCloseAutoFocus={(event) => event.preventDefault()}
+							onPointerDown={(event) => event.stopPropagation()}
+							onDoubleClick={(event) => event.stopPropagation()}
+						>
+							{editor}
+						</PopoverContent>
+					</Popover>
+				</ChromePortal>
+			) : null}
 		</>
 	);
 });

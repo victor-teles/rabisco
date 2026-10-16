@@ -98,7 +98,7 @@ import {
 	type DesignTokens,
 	type TokenValues,
 } from "../../../shared/context/tokens";
-import { editLink, type LinkEdit } from "../../../shared/prototype/links";
+import { editLink, readLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
@@ -119,7 +119,7 @@ import { ContextPanel } from "./context-panel";
 import { ElementArrange, Inspector, type ArrangeRefusals, type FramePatch, type InspectorTab } from "./inspector";
 import { linkActions } from "./link-actions";
 import { screenThemeActions, THEME_MENU } from "./theme-actions";
-import { LinkControl } from "./link-control";
+import { LinkControl, LinkFields } from "./link-control";
 import { NodeProps } from "./node-props";
 import { ElementBreadcrumb } from "./element-breadcrumb";
 import { LayersPanel } from "./layers-panel";
@@ -250,6 +250,8 @@ export function EditorView({
 	} = useProject(projectPath);
 
 	const [tool, setTool] = useState<Tool>("move");
+	/** A link picked by its connector on the canvas; it shows while its element stays selected */
+	const [pickedLink, setPickedLink] = useState<ElementRef | null>(null);
 	const showFps = useShowFps();
 	const [tab, setTab] = useState<InspectorTab>("design");
 	const sidePanel = useSidePanel();
@@ -1335,12 +1337,42 @@ export function EditorView({
 		[editFile],
 	);
 
+	const linkElement = useCallback(
+		(element: ElementRef, file: string) => changeLink(element, { to: file }),
+		[changeLink],
+	);
+
 	/** The selected element, when it is in the one selected screen */
 	const element =
 		structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
 
 	/** The elements ⇧-click added to `element` */
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
+
+	const selectedLink =
+		pickedLink &&
+		element &&
+		!extraElements.length &&
+		element.file === pickedLink.file &&
+		element.start === pickedLink.start &&
+		readLink(files, pickedLink) !== null
+			? pickedLink
+			: null;
+
+	const selectLink = useCallback(
+		(link: ElementRef | null) => {
+			if (link) selectElement(link.file, link);
+			setPickedLink(link);
+		},
+		[selectElement],
+	);
+
+	const removeSelectedLink = useCallback(() => {
+		if (!selectedLink) return;
+		changeLink(selectedLink, { to: null });
+		setPickedLink(null);
+	}, [selectedLink, changeLink]);
+
 	const elementWidth = (element && frames.find((frame) => frame.file === element.file)?.width) ?? null;
 
 	const elementFile = element?.file;
@@ -1494,6 +1526,16 @@ export function EditorView({
 			run: () => setSelection(frames.map((frame) => frame.file)),
 		},
 		{
+			id: "delete-link",
+			label: "Remove link",
+			group: "Prototype",
+			chords: [{ key: "Backspace" }, { key: "Delete" }],
+			enabled: selectedLink !== null,
+			hidden: true,
+			destructive: true,
+			run: removeSelectedLink,
+		},
+		{
 			id: "delete-element",
 			label: "Delete",
 			group: "Element",
@@ -1512,6 +1554,7 @@ export function EditorView({
 			hidden: true,
 			run: () => {
 				if (tool !== "move" && tool !== "hand") setTool("move");
+				else if (selectedLink) setPickedLink(null);
 				else if (element && extraElements.length) structure.select(element);
 				else if (element) structure.select(parentElement(element));
 				else setSelection([]);
@@ -2536,6 +2579,33 @@ export function EditorView({
 							onMoveElement={moveElementTo}
 							onMoveEntry={moveEntryTo}
 							onEditClasses={editHandleClasses}
+							onLinkElement={linkElement}
+							selectedLink={selectedLink}
+							onSelectLink={selectLink}
+							linkEditor={
+								selectedLink ? (
+									<>
+										<h3 className="pb-1 text-xs font-medium text-subtle-foreground">Prototype link</h3>
+										<LinkFields
+											files={files}
+											frames={frames}
+											element={selectedLink}
+											disabled={structure.busy}
+											onChange={changeLink}
+										/>
+										<Button
+											variant="ghost"
+											size="xs"
+											disabled={structure.busy}
+											className="mt-1 w-full justify-between text-xs font-normal text-destructive hover:text-destructive"
+											onClick={removeSelectedLink}
+										>
+											Remove link
+											<Kbd>⌫</Kbd>
+										</Button>
+									</>
+								) : null
+							}
 							locks={locks}
 							onEditTextElsewhere={editTextElsewhere}
 							onPlaceComment={comments.startDraft}
