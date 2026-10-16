@@ -58,6 +58,30 @@ function middleOf({ from, to, fromSide, toSide }: Route): Middle {
 	};
 }
 
+function hostOf(url: string) {
+	try {
+		return new URL(url).host || url;
+	} catch {
+		return url;
+	}
+}
+
+type StubLabel = { text: string; title: string };
+
+function stubLabel(connector: Connector): StubLabel {
+	if (connector.kind === "broken")
+		return { text: `Missing: ${connector.to}`, title: `${connector.to} is not a screen of this project` };
+
+	if (connector.kind === "anchor") return { text: `#${connector.id}`, title: `Scrolls to #${connector.id}` };
+
+	if (connector.kind === "url")
+		return connector.url.toLowerCase().startsWith("mailto:")
+			? { text: connector.url.slice("mailto:".length), title: `Writes an email to ${connector.url.slice(7)}` }
+			: { text: `${hostOf(connector.url)} ↗`, title: `Opens ${connector.url}` };
+
+	return { text: "Back", title: "Goes back to the previous screen" };
+}
+
 const sameRef = (a: ElementRef, b: ElementRef) => a.file === b.file && a.start === b.start;
 
 /**
@@ -204,8 +228,8 @@ export const LinksLayer = memo(function LinksLayer({
 			{ordered.map(({ connector, from, fromSide, toSide }) => {
 				if (toSide || connector.kind === "screen") return null;
 				const out = OUTWARD[fromSide];
-				const missing = connector.kind === "broken" ? connector.to : null;
-				const broken = missing !== null;
+				const broken = connector.kind === "broken";
+				const { text, title } = stubLabel(connector);
 
 				return (
 					<ChromePortal key={connector.key} box={from}>
@@ -216,9 +240,9 @@ export const LinksLayer = memo(function LinksLayer({
 								isSelected(connector) && !broken && "border-primary/50 text-primary",
 							)}
 							style={{ transform: `translate(${out.x * (STUB + 4)}px, ${out.y * (STUB + 4)}px) translateY(-50%)` }}
-							title={broken ? `${missing} is not a screen of this project` : "Goes back to the previous screen"}
+							title={title}
 						>
-							{broken ? `Missing: ${missing}` : "Back"}
+							{text}
 						</div>
 					</ChromePortal>
 				);

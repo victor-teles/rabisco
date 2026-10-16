@@ -2744,6 +2744,7 @@ function SelectedElement({
 	const info = onEditClasses ? readClassName(source, element.start) : null;
 	const first = boxes[0];
 	const handles = onEditClasses && info?.editable && layout && first && frame ? { info, layout, first } : null;
+
 	const linkable =
 		link && first && frame && node.name !== null && isScreenFile(element.file) && !hasExpressionLink(node);
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { findElement, parseJsx } from "../jsx";
+import { CLICK } from "./triggers";
 import {
+	anchorIds,
 	editLink,
 	effectiveTransition,
 	hasExpressionLink,
@@ -147,7 +149,7 @@ describe("resolving links", () => {
 		expect(resolveLink("screens/profile.tsx", FILES)).toEqual({ kind: "broken", to: "screens/profile.tsx" });
 		// Components and context files are not screens
 		expect(resolveLink("components/tab-bar.tsx", FILES)).toEqual({ kind: "broken", to: "components/tab-bar.tsx" });
-		expect(resolveLink("https://example.com", FILES).kind).toBe("broken");
+		expect(resolveLink("screens/#x", FILES).kind).toBe("broken");
 	});
 });
 
@@ -176,9 +178,12 @@ describe("transitions and overlays", () => {
 
 	test("reads literal transition and mode, and ignores code and unknown values", () => {
 		const written = `<a data-link-to="b" data-link-transition="Push" data-link-mode={"sheet"} />`;
-		expect(linkSettingsOfElement(findElement(parseJsx(written), 0)!)).toEqual({ transition: "push", mode: "sheet" });
+		expect(linkSettingsOfElement(findElement(parseJsx(written), 0)!)).toMatchObject({
+			transition: "push",
+			mode: "sheet",
+		});
 		const code = `<a data-link-to="b" data-link-transition={kind} data-link-mode="popup" />`;
-		expect(linkSettingsOfElement(findElement(parseJsx(code), 0)!)).toEqual({ transition: null, mode: null });
+		expect(linkSettingsOfElement(findElement(parseJsx(code), 0)!)).toMatchObject({ transition: null, mode: null });
 	});
 
 	test("an unwritten transition is instant, or the overlay's own default", () => {
@@ -193,9 +198,9 @@ describe("transitions and overlays", () => {
 		expect(pushed).toContain(`<button data-link-to="screens/b.tsx" data-link-transition="push">`);
 		expect(editLink(pushed, START, { transition: "instant" })).toBe(SOURCE);
 		const sheet = editLink(SOURCE, START, { mode: "sheet" })!;
-		expect(settingsOf(sheet)).toEqual({ transition: null, mode: "sheet" });
+		expect(settingsOf(sheet)).toMatchObject({ transition: null, mode: "sheet" });
 		expect(editLink(sheet, START, { transition: "slide" })).toBe(sheet);
-		expect(settingsOf(editLink(sheet, START, { transition: "instant" })!)).toEqual({
+		expect(settingsOf(editLink(sheet, START, { transition: "instant" })!)).toMatchObject({
 			transition: "instant",
 			mode: "sheet",
 		});
@@ -204,10 +209,68 @@ describe("transitions and overlays", () => {
 
 	test("removing a link or pointing it back drops its transition and mode", () => {
 		const full = editLink(SOURCE, START, { mode: "overlay", transition: "push" })!;
-		expect(settingsOf(full)).toEqual({ transition: "push", mode: "overlay" });
+		expect(settingsOf(full)).toMatchObject({ transition: "push", mode: "overlay" });
 		expect(editLink(full, START, { to: null })).toBe(SOURCE.replace(` data-link-to="screens/b.tsx"`, ""));
 		expect(editLink(full, START, { to: "back" })).toBe(SOURCE.replace("screens/b.tsx", "back"));
 		expect(editLink(full, START, { to: "screens/c.tsx" })).toBe(full.replace("screens/b.tsx", "screens/c.tsx"));
 		expect(editLink(SOURCE, 3, { transition: "push" })).toBeNull();
+	});
+});
+
+describe("timing, triggers and actions (decision 0046)", () => {
+	const SOURCE = `export default function A() {\n\treturn <button data-link-to="screens/b.tsx">Go</button>;\n}\n`;
+	const START = SOURCE.indexOf("<button");
+	const settingsOf = (source: string) => linkSettingsOfElement(findElement(parseJsx(source), START)!);
+
+	test("reads duration, easing and trigger, forgiving units and case", () => {
+		const written = `<a data-link-to="b" data-link-duration="0.2s" data-link-easing="Ease-Out" data-link-trigger="after 1s" />`;
+		expect(linkSettingsOfElement(findElement(parseJsx(written), 0)!)).toMatchObject({
+			duration: 200,
+			easing: "ease-out",
+			trigger: { kind: "after", ms: 1000 },
+		});
+		const unknown = `<a data-link-to="b" data-link-duration="slow" data-link-easing="bouncy" data-link-trigger="swipe" />`;
+		expect(linkSettingsOfElement(findElement(parseJsx(unknown), 0)!)).toMatchObject({
+			duration: null,
+			easing: null,
+			trigger: CLICK,
+		});
+	});
+
+	test("writes timing and a trigger, and a click trigger needs no attribute", () => {
+		const timed = editLink(SOURCE, START, {
+			duration: 150,
+			easing: "ease-in",
+			trigger: { kind: "key", key: "Enter" },
+		})!;
+
+		expect(timed).toContain(`data-link-duration="150" data-link-easing="ease-in" data-link-trigger="key Enter"`);
+		expect(editLink(timed, START, { duration: null, easing: null, trigger: CLICK })).toBe(SOURCE);
+	});
+
+	test("an anchor or a URL drops what only moving between screens needs, and keeps the trigger", () => {
+		const full = editLink(SOURCE, START, { transition: "push", duration: 200, trigger: { kind: "hover" } })!;
+		expect(editLink(full, START, { to: "#pricing" })).toBe(
+			SOURCE.replace("screens/b.tsx", "#pricing").replace(">Go", ` data-link-trigger="hover">Go`),
+		);
+		expect(settingsOf(editLink(full, START, { to: "https://example.com" })!)).toMatchObject({
+			transition: null,
+			duration: null,
+			trigger: { kind: "hover" },
+		});
+		expect(editLink(full, START, { to: null })).toBe(SOURCE.replace(` data-link-to="screens/b.tsx"`, ""));
+	});
+
+	test("resolves anchors and URLs", () => {
+		expect(resolveLink("#pricing", FILES)).toEqual({ kind: "anchor", id: "pricing" });
+		expect(resolveLink(" https://example.com/a ", FILES)).toEqual({ kind: "url", url: "https://example.com/a" });
+		expect(resolveLink("mailto:hi@example.com", FILES)).toEqual({ kind: "url", url: "mailto:hi@example.com" });
+		expect(resolveLink("#", FILES).kind).toBe("broken");
+	});
+
+	test("lists the literal ids a screen can scroll to", () => {
+		const source = `export default function A() {\n\treturn <main><section id="pricing" /><div id={x} /><p id="faq" /><b id="a b" /></main>;\n}\n`;
+		expect(anchorIds(source)).toEqual(["pricing", "faq"]);
+		expect(anchorIds("<main")).toEqual([]);
 	});
 });

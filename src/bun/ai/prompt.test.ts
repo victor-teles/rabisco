@@ -153,6 +153,7 @@ describe("systemPrompt", () => {
 		expect(prompt).toContain("Keep every `data-link-to` attribute");
 		expect(prompt).toContain("Keep `data-link-transition`");
 		expect(prompt).toContain("`data-link-mode`");
+		expect(prompt).toContain("every other `data-link-*` attribute");
 	});
 
 	test("teaches theme token classes", () => {

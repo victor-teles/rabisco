@@ -33,4 +33,17 @@ describe("play history", () => {
 		expect(forward.direction).toBe("forward");
 		expect(stepForward(forward.history)).toBeNull();
 	});
+
+	test("back and forward replay the timing of the link that opened the screen", () => {
+		const timing = { duration: 150, easing: "ease-out" } as const;
+		const toB = pushVisit(startHistory("screens/a.tsx"), "screens/b.tsx", "push", timing)!;
+		expect(toB.timing).toEqual(timing);
+		const back = stepBack(toB.history)!;
+		expect(back.timing).toEqual(timing);
+		expect(stepForward(back.history)!.timing).toEqual(timing);
+		expect(stepBack(pushVisit(back.history, "screens/c.tsx", "push")!.history)!.timing).toEqual({
+			duration: null,
+			easing: null,
+		});
+	});
 });

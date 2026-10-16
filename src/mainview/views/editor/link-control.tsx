@@ -1,27 +1,48 @@
-import { ChevronDown, CircleAlert, CornerUpLeft, Link2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, CircleAlert, CornerUpLeft, ExternalLink, Hash, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { isScreenFile, screenNameFromPath } from "../../../shared/project";
 import {
+	anchorIds,
 	BACK,
 	effectiveTransition,
 	hasExpressionLink,
+	isUrl,
 	linkOfElement,
 	linkSettingsOfElement,
 	resolveLink,
 	type ElementRef,
 	type LinkEdit,
 } from "../../../shared/prototype/links";
-import { TRANSITIONS, type LinkTransition, type OverlayMode } from "../../../shared/prototype/transitions";
+import {
+	EASINGS,
+	parseDuration,
+	parseEasing,
+	TRANSITION_MS,
+	TRANSITIONS,
+	type LinkTransition,
+	type OverlayMode,
+} from "../../../shared/prototype/transitions";
+import {
+	DEFAULT_DELAY_MS,
+	DEFAULT_KEY,
+	keyLabel,
+	type LinkTrigger,
+	type TriggerKind,
+} from "../../../shared/prototype/triggers";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 
 export type LinkControlProps = {
@@ -37,6 +58,10 @@ const NONE = "";
 
 const NAVIGATE = "navigate";
 
+const DEFAULT = "default";
+
+const ANCHOR_PREFIX = "#";
+
 const MODE_LABELS: Record<OverlayMode | typeof NAVIGATE, string> = {
 	navigate: "Navigate",
 	overlay: "Overlay",
@@ -50,9 +75,52 @@ const TRANSITION_LABELS: Record<LinkTransition, string> = {
 	push: "Push",
 };
 
+const TRIGGER_LABELS: Record<TriggerKind, string> = {
+	click: "On click",
+	hover: "On hover",
+	press: "On press",
+	after: "After delay",
+	key: "Key press",
+};
+
+const EASING_LABELS: Record<keyof typeof EASINGS | typeof DEFAULT, string> = {
+	default: "Default",
+	linear: "Linear",
+	"ease-in": "Ease in",
+	"ease-out": "Ease out",
+	"ease-in-out": "Ease in and out",
+};
+
+const DURATIONS = [100, 150, 200, 300, 500, 800];
+
+const DELAYS = [300, 500, 800, 1000, 2000, 3000, 5000];
+
+const ms = (value: number) => `${value} ms`;
+
+const msKey = (value: number) => `${value}ms`;
+
+/** Presets, plus the written value when it isn't one */
+function msLabels(presets: number[], current: number | null, fallback?: string) {
+	const values = [...new Set([...presets, ...(current === null ? [] : [current])])].sort((a, b) => a - b);
+	// `150ms`, not `150`: integer-like keys would sort before "default"
+	const entries = values.map((value) => [msKey(value), ms(value)]);
+
+	return Object.fromEntries(fallback ? [[DEFAULT, fallback], ...entries] : entries);
+}
+
 const isMode = (value: string): value is OverlayMode => value === "overlay" || value === "sheet";
 
 const isTransitionName = (value: string): value is LinkTransition => TRANSITIONS.some((name) => name === value);
+
+const isTriggerKind = (value: string): value is TriggerKind => Object.hasOwn(TRIGGER_LABELS, value);
+
+function triggerOf(kind: TriggerKind, current: LinkTrigger): LinkTrigger {
+	if (kind === current.kind) return current;
+
+	if (kind === "after") return { kind, ms: DEFAULT_DELAY_MS };
+
+	return kind === "key" ? { kind, key: DEFAULT_KEY } : { kind };
+}
 
 /** Writes `data-link-to` (decision 0007); a link written as code is read-only */
 export function LinkControl(props: LinkControlProps) {
@@ -72,19 +140,31 @@ export function LinkControl(props: LinkControlProps) {
 
 /** The inspector's Prototype rows, also shown in the popover of a connector selected on the canvas */
 export function LinkFields({ files, frames, element, onChange, disabled }: LinkControlProps) {
+	/** "Open URL…" shows the field before there is a URL to write */
+	const [urlDraft, setUrlDraft] = useState<{ element: ElementRef; value: string } | null>(null);
 	const source = element ? files[element.file] : undefined;
 	const node = element && source !== undefined ? findElement(parseJsx(source), element.start) : null;
 
-	if (!element || !node || node.name === null) return null;
+	if (!element || !node || node.name === null || source === undefined) return null;
 
 	const written = linkOfElement(node);
 	const target = written === null ? null : resolveLink(written, files);
-	const value = !target ? NONE : target.kind === "screen" ? target.file : target.kind === "back" ? BACK : written!;
+
+	const value = !target
+		? NONE
+		: target.kind === "screen"
+			? target.file
+			: target.kind === "back"
+				? BACK
+				: target.kind === "anchor"
+					? `${ANCHOR_PREFIX}${target.id}`
+					: written!;
 
 	const screens = frames.filter(
 		(frame) => isScreenFile(frame.file) && files[frame.file] !== undefined && frame.file !== element.file,
 	);
 
+	const anchors = anchorIds(source);
 	const nameOf = (file: string) => frames.find((frame) => frame.file === file)?.name || screenNameFromPath(file);
 
 	const label = !target
@@ -93,13 +173,35 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 			? nameOf(target.file)
 			: target.kind === "back"
 				? "Back"
-				: `Missing: ${target.to}`;
+				: target.kind === "anchor"
+					? `Scroll to #${target.id}`
+					: target.kind === "url"
+						? "Open URL"
+						: `Missing: ${target.to}`;
+
+	const draft =
+		urlDraft && urlDraft.element.file === element.file && urlDraft.element.start === element.start ? urlDraft : null;
 
 	const code = hasExpressionLink(node);
 	const settings = linkSettingsOfElement(node);
 	const mode = settings.mode ?? NAVIGATE;
 	const transition = effectiveTransition(settings);
-	const options = !code && target !== null && target.kind !== "back";
+	const screenLink = !code && target?.kind === "screen";
+	const timing = screenLink && transition !== "instant";
+	const { trigger } = settings;
+
+	const link = (to: string | null) => {
+		setUrlDraft(null);
+		onChange(element, { to });
+	};
+
+	const commitUrl = (url: string) => {
+		const next = url.trim();
+
+		if (isUrl(next) && next !== written) link(next);
+		else if (!next && target?.kind === "url") link(null);
+		else setUrlDraft(null);
+	};
 
 	return (
 		<>
@@ -129,10 +231,16 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 											<CircleAlert className="size-3.5 shrink-0 text-destructive" aria-hidden />
 										) : target?.kind === "back" ? (
 											<CornerUpLeft className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+										) : target?.kind === "anchor" ? (
+											<Hash className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+										) : target?.kind === "url" || draft ? (
+											<ExternalLink className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
 										) : target ? (
 											<Link2 className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
 										) : null}
-										<span className={cn("truncate", !target && "text-subtle-foreground")}>{label}</span>
+										<span className={cn("truncate", !target && !draft && "text-subtle-foreground")}>
+											{draft && target?.kind !== "url" ? "Open URL" : label}
+										</span>
 									</span>
 									<ChevronDown className="size-3 shrink-0 text-muted-foreground" />
 								</Button>
@@ -140,7 +248,7 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 							<DropdownMenuContent align="end" className="max-h-80 min-w-44">
 								<DropdownMenuRadioGroup
 									value={value}
-									onValueChange={(next) => next !== value && onChange(element, { to: next === NONE ? null : next })}
+									onValueChange={(next) => next !== value && link(next === NONE ? null : next)}
 								>
 									<DropdownMenuRadioItem value={NONE} className="text-[13px]">
 										None
@@ -164,13 +272,95 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 										Back
 										<span className="ml-auto pl-3 text-xs text-subtle-foreground">previous screen</span>
 									</DropdownMenuRadioItem>
+									{anchors.length ? (
+										<>
+											<DropdownMenuSeparator />
+											<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+												Scroll to
+											</DropdownMenuLabel>
+											{anchors.map((id) => (
+												<DropdownMenuRadioItem
+													key={id}
+													value={`${ANCHOR_PREFIX}${id}`}
+													className="font-mono text-[12px]"
+												>
+													<span className="truncate">#{id}</span>
+												</DropdownMenuRadioItem>
+											))}
+										</>
+									) : null}
 								</DropdownMenuRadioGroup>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem
+									className="text-[13px]"
+									onSelect={() =>
+										setUrlDraft({
+											element,
+											value: target?.kind === "url" ? target.url : "https://",
+										})
+									}
+								>
+									Open URL…
+								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}
 				</div>
 			</div>
-			{options ? (
+			{!code && (target?.kind === "url" || draft) ? (
+				<div className="flex min-h-8 items-center gap-2">
+					<span className="w-[72px] shrink-0 truncate text-xs text-muted-foreground">URL</span>
+					<Input
+						key={`${element.file}:${element.start}:${written}`}
+						aria-label="URL"
+						autoFocus={!!draft}
+						disabled={disabled}
+						defaultValue={draft ? draft.value : target?.kind === "url" ? target.url : ""}
+						placeholder="https://"
+						spellCheck={false}
+						className="h-7 min-w-0 flex-1 px-2 font-mono text-[12px]"
+						onBlur={(event) => commitUrl(event.currentTarget.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") commitUrl(event.currentTarget.value);
+							else if (event.key === "Escape") {
+								event.stopPropagation();
+								setUrlDraft(null);
+								event.currentTarget.blur();
+							}
+						}}
+					/>
+				</div>
+			) : null}
+			{!code && target !== null ? (
+				<>
+					<OptionRow
+						label="Trigger"
+						value={trigger.kind}
+						labels={TRIGGER_LABELS}
+						disabled={disabled}
+						onChange={(next) => isTriggerKind(next) && onChange(element, { trigger: triggerOf(next, trigger) })}
+					/>
+					{trigger.kind === "after" ? (
+						<OptionRow
+							label="Delay"
+							value={msKey(trigger.ms)}
+							labels={msLabels(DELAYS, trigger.ms)}
+							disabled={disabled}
+							onChange={(next) =>
+								onChange(element, { trigger: { kind: "after", ms: parseDuration(next) ?? DEFAULT_DELAY_MS } })
+							}
+						/>
+					) : null}
+					{trigger.kind === "key" ? (
+						<KeyRow
+							value={trigger.key}
+							disabled={disabled}
+							onChange={(key) => onChange(element, { trigger: { kind: "key", key } })}
+						/>
+					) : null}
+				</>
+			) : null}
+			{screenLink ? (
 				<>
 					<OptionRow
 						label="Open as"
@@ -188,7 +378,58 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 					/>
 				</>
 			) : null}
+			{timing ? (
+				<>
+					<OptionRow
+						label="Duration"
+						value={settings.duration === null ? DEFAULT : msKey(settings.duration)}
+						labels={msLabels(DURATIONS, settings.duration, `Default · ${ms(TRANSITION_MS)}`)}
+						disabled={disabled}
+						onChange={(next) => onChange(element, { duration: parseDuration(next) })}
+					/>
+					<OptionRow
+						label="Easing"
+						value={settings.easing ?? DEFAULT}
+						labels={EASING_LABELS}
+						disabled={disabled}
+						onChange={(next) => onChange(element, { easing: parseEasing(next) })}
+					/>
+				</>
+			) : null}
 		</>
+	);
+}
+
+/** Focus it and press a key; Tab and Escape keep their usual meaning */
+function KeyRow({ value, disabled, onChange }: { value: string; disabled?: boolean; onChange: (key: string) => void }) {
+	const [listening, setListening] = useState(false);
+
+	return (
+		<div className="flex min-h-8 items-center gap-2">
+			<span className="w-[72px] shrink-0 truncate text-xs text-muted-foreground">Key</span>
+			<Button
+				variant="outline"
+				size="xs"
+				disabled={disabled}
+				aria-label="Key"
+				className={cn(
+					"h-7 min-w-0 flex-1 justify-start px-2 text-xs font-normal",
+					listening && "border-primary text-muted-foreground",
+				)}
+				onClick={() => setListening(true)}
+				onBlur={() => setListening(false)}
+				onKeyDown={(event) => {
+					if (!listening || event.key === "Tab" || event.metaKey || event.ctrlKey || event.altKey) return;
+					event.preventDefault();
+					event.stopPropagation();
+					setListening(false);
+
+					if (event.key !== "Escape" && event.key !== "Shift") onChange(event.key);
+				}}
+			>
+				{listening ? "Press a key…" : keyLabel(value)}
+			</Button>
+		</div>
 	);
 }
 

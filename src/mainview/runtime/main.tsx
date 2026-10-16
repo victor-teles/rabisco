@@ -105,7 +105,7 @@ function publishedMarkup(root: HTMLElement) {
 	return copy.innerHTML;
 }
 
-const play = createPlay(rootElement, post);
+const play = createPlay(rootElement, post, () => renderedVersion ?? "");
 
 const pick = createPickMode(() => entry, post);
 
@@ -550,6 +550,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		const icons = preloadIcons(Object.values(message.modules).flatMap((payload) => payload?.icons ?? []));
 
 		if (entryChanged || invalid.has(entry) || !registry.isLoaded(entry) || renderPending) requestRender(icons);
+	} else if (message?.type === "play-key") {
+		play.key(message.key);
 	}
 });
 

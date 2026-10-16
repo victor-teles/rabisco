@@ -58,6 +58,8 @@ export type HostMessage =
 	| { type: "end-edit"; commit: boolean }
 	/** Play mode (decision 0007): `data-link-to` clicks post `navigate` instead of their default. */
 	| { type: "play"; on: boolean }
+	/** A key pressed in the play view while the frame doesn't have focus, for `key` link triggers (decision 0046) */
+	| { type: "play-key"; key: string }
 	/** Offscreen: stop measuring and streaming boxes until resumed. */
 	| { type: "pause"; on: boolean }
 	/** Answered by a `measured` with the same `id`. */
@@ -250,7 +252,14 @@ export const LINK_TRANSITION_ATTRIBUTE = "data-link-transition";
 
 export const LINK_MODE_ATTRIBUTE = "data-link-mode";
 
-export type LinkOptions = { transition?: string; mode?: string };
+export const LINK_DURATION_ATTRIBUTE = "data-link-duration";
+
+export const LINK_EASING_ATTRIBUTE = "data-link-easing";
+
+export const LINK_TRIGGER_ATTRIBUTE = "data-link-trigger";
+
+/** As written; the host parses them (decisions 0022, 0046) */
+export type LinkOptions = { transition?: string; mode?: string; duration?: string; easing?: string };
 
 export const locationOf = (entry: string, start: number) => `${entry}:${start}`;
 
@@ -490,7 +499,9 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 				"to" in data &&
 				isString(data.to) &&
 				(!("transition" in data) || data.transition === undefined || isString(data.transition)) &&
-				(!("mode" in data) || data.mode === undefined || isString(data.mode))
+				(!("mode" in data) || data.mode === undefined || isString(data.mode)) &&
+				(!("duration" in data) || data.duration === undefined || isString(data.duration)) &&
+				(!("easing" in data) || data.easing === undefined || isString(data.easing))
 			);
 		case "contextmenu":
 			return (

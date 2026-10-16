@@ -8,13 +8,19 @@ import { isComponentFile, isScreenFile } from "../project";
 import type { FileChange, ProjectFiles } from "../types";
 import {
 	defaultOverlayTransition,
+	LINK_DURATION_ATTRIBUTE,
+	LINK_EASING_ATTRIBUTE,
 	LINK_MODE_ATTRIBUTE,
 	LINK_TRANSITION_ATTRIBUTE,
+	parseDuration,
+	parseEasing,
 	parseOverlayMode,
 	parseTransition,
+	type LinkEasing,
 	type LinkTransition,
 	type OverlayMode,
 } from "./transitions";
+import { formatTrigger, LINK_TRIGGER_ATTRIBUTE, parseTrigger, type LinkTrigger } from "./triggers";
 
 export const LINK_ATTRIBUTE = "data-link-to";
 
@@ -25,7 +31,13 @@ export type ElementRef = { file: string; start: number };
 /** `to` as written */
 export type ProjectLink = ElementRef & { to: string };
 
-export type ResolvedLink = { kind: "screen"; file: string } | { kind: "back" } | { kind: "broken"; to: string };
+/** Decision 0046: `#id` scrolls the screen to an element, a URL opens in the browser */
+export type ResolvedLink =
+	| { kind: "screen"; file: string }
+	| { kind: "back" }
+	| { kind: "anchor"; id: string }
+	| { kind: "url"; url: string }
+	| { kind: "broken"; to: string };
 
 /** `{"…"}`, `{'…'}` or `` {`…`} `` without interpolation */
 function stringLiteral(text: string): string | undefined {
@@ -63,19 +75,44 @@ export function linkOfElement(element: JsxElement): string | null {
 	return literalAttribute(element, LINK_ATTRIBUTE);
 }
 
-export type LinkSettings = { transition: LinkTransition | null; mode: OverlayMode | null };
+export type LinkSettings = {
+	transition: LinkTransition | null;
+	mode: OverlayMode | null;
+	duration: number | null;
+	easing: LinkEasing | null;
+	trigger: LinkTrigger;
+};
 
 export function linkSettingsOfElement(element: JsxElement): LinkSettings {
 	return {
 		transition: parseTransition(literalAttribute(element, LINK_TRANSITION_ATTRIBUTE)),
 		mode: parseOverlayMode(literalAttribute(element, LINK_MODE_ATTRIBUTE)),
+		duration: parseDuration(literalAttribute(element, LINK_DURATION_ATTRIBUTE)),
+		easing: parseEasing(literalAttribute(element, LINK_EASING_ATTRIBUTE)),
+		trigger: parseTrigger(literalAttribute(element, LINK_TRIGGER_ATTRIBUTE)),
 	};
 }
 
-export const effectiveTransition = (settings: LinkSettings): LinkTransition =>
+export const effectiveTransition = (settings: Pick<LinkSettings, "transition" | "mode">): LinkTransition =>
 	settings.transition ?? (settings.mode ? defaultOverlayTransition(settings.mode) : "instant");
 
-export type LinkEdit = { to?: string | null; transition?: LinkTransition; mode?: OverlayMode | null };
+export type LinkEdit = {
+	to?: string | null;
+	transition?: LinkTransition;
+	mode?: OverlayMode | null;
+	duration?: number | null;
+	easing?: LinkEasing | null;
+	trigger?: LinkTrigger;
+};
+
+/** Only a link to a screen moves between screens, so only it has a transition, a mode and timing */
+const SCREEN_ONLY = [LINK_TRANSITION_ATTRIBUTE, LINK_MODE_ATTRIBUTE, LINK_DURATION_ATTRIBUTE, LINK_EASING_ATTRIBUTE];
+
+const isScreenTarget = (to: string) => {
+	const target = to.trim();
+
+	return !!target && target.toLowerCase() !== BACK && !isAnchor(target) && !isUrl(target);
+};
 
 const isDefaultTransition = (transition: LinkTransition, mode: OverlayMode | null) =>
 	transition === effectiveTransition({ transition: null, mode });
@@ -85,14 +122,23 @@ export function editLink(source: string, start: number, edit: LinkEdit): string 
 
 	if (edit.to !== undefined) {
 		next = setLink(next, start, edit.to);
-		const plain = edit.to === null || !edit.to.trim() || edit.to.trim().toLowerCase() === BACK;
+		const removed = edit.to === null || !edit.to.trim();
 
-		if (plain && next !== null) next = setAttribute(next, start, LINK_TRANSITION_ATTRIBUTE, null);
+		for (const name of isScreenTarget(edit.to ?? "") ? [] : SCREEN_ONLY)
+			if (next !== null) next = setAttribute(next, start, name, null);
 
-		if (plain && next !== null) next = setAttribute(next, start, LINK_MODE_ATTRIBUTE, null);
+		if (removed && next !== null) next = setAttribute(next, start, LINK_TRIGGER_ATTRIBUTE, null);
 	}
 
 	if (edit.mode !== undefined && next !== null) next = setAttribute(next, start, LINK_MODE_ATTRIBUTE, edit.mode);
+
+	if (edit.duration !== undefined && next !== null)
+		next = setAttribute(next, start, LINK_DURATION_ATTRIBUTE, edit.duration === null ? null : String(edit.duration));
+
+	if (edit.easing !== undefined && next !== null) next = setAttribute(next, start, LINK_EASING_ATTRIBUTE, edit.easing);
+
+	if (edit.trigger !== undefined && next !== null)
+		next = setAttribute(next, start, LINK_TRIGGER_ATTRIBUTE, formatTrigger(edit.trigger));
 
 	if (edit.transition !== undefined && next !== null) {
 		const parsed = parseFile(next);
@@ -153,6 +199,22 @@ export function listLinks(files: ProjectFiles): ProjectLink[] {
 	return links;
 }
 
+/** The literal `id`s of a file's elements: what `#id` links can scroll to */
+export function anchorIds(source: string): string[] {
+	const parsed = parseFile(source);
+
+	if (!parsed.ok) return [];
+	const ids = new Set<string>();
+
+	for (const element of flatten(parsed)) {
+		const id = literalAttribute(element, "id");
+
+		if (id !== null && isAnchor(`#${id}`)) ids.add(id);
+	}
+
+	return [...ids];
+}
+
 export function linkStarts(source: string): number[] {
 	if (!source.includes(LINK_ATTRIBUTE)) return [];
 	const parsed = parseFile(source);
@@ -176,8 +238,16 @@ export function normalizeTarget(to: string): string {
 	return path;
 }
 
+export const isAnchor = (to: string) => /^#[^\s#]+$/.test(to.trim());
+
+export const isUrl = (to: string) => /^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i.test(to.trim());
+
 export function resolveLink(to: string, files: ProjectFiles): ResolvedLink {
 	if (to.trim().toLowerCase() === BACK) return { kind: "back" };
+
+	if (isAnchor(to)) return { kind: "anchor", id: to.trim().slice(1) };
+
+	if (isUrl(to)) return { kind: "url", url: to.trim() };
 	const file = normalizeTarget(to);
 
 	return isScreenFile(file) && files[file] !== undefined ? { kind: "screen", file } : { kind: "broken", to };

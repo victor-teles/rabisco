@@ -1,8 +1,11 @@
 // Reads React fibers because components may not forward `data-rabisco-loc` to the DOM.
 import {
+	LINK_DURATION_ATTRIBUTE,
+	LINK_EASING_ATTRIBUTE,
 	LINK_MODE_ATTRIBUTE,
 	LINK_TO_ATTRIBUTE,
 	LINK_TRANSITION_ATTRIBUTE,
+	LINK_TRIGGER_ATTRIBUTE,
 	LOC_ATTRIBUTE,
 	locationOf,
 	type Box,
@@ -25,6 +28,9 @@ type FiberProps = {
 	[LINK_TO_ATTRIBUTE]?: unknown;
 	[LINK_TRANSITION_ATTRIBUTE]?: unknown;
 	[LINK_MODE_ATTRIBUTE]?: unknown;
+	[LINK_DURATION_ATTRIBUTE]?: unknown;
+	[LINK_EASING_ATTRIBUTE]?: unknown;
+	[LINK_TRIGGER_ATTRIBUTE]?: unknown;
 };
 
 export type FiberType = { name?: unknown; displayName?: unknown; render?: FiberType; type?: FiberType };

@@ -9,13 +9,19 @@ type Rect = { x: number; y: number; width: number; height: number };
 
 export type Side = "left" | "right" | "top" | "bottom";
 
-/** Links of a source screen that go to the same place; `to` is a stub for "back" and missing screens */
+/** Links of a source screen that go to the same place; anything but a screen is drawn as a stub */
 export type Connector = {
 	key: string;
 	source: Frame;
 	links: ProjectLink[];
 	anchor: Rect | null;
-} & ({ kind: "screen"; target: Frame } | { kind: "back" } | { kind: "broken"; to: string });
+} & (
+	| { kind: "screen"; target: Frame }
+	| { kind: "back" }
+	| { kind: "anchor"; id: string }
+	| { kind: "url"; url: string }
+	| { kind: "broken"; to: string }
+);
 
 export type Route = { connector: Connector; start: Point; from: Point; to: Point; fromSide: Side; toSide: Side | null };
 
@@ -105,15 +111,25 @@ export function connectorsOf(
 		// A link to the screen itself goes nowhere visible
 		if (resolved.kind === "screen" && (!target || target === source)) continue;
 		const anchor = anchorOf(link);
-		const to = resolved.kind === "screen" ? resolved.file : resolved.kind === "back" ? "back" : `?${resolved.to}`;
+
+		const to =
+			resolved.kind === "screen"
+				? resolved.file
+				: resolved.kind === "back"
+					? "back"
+					: resolved.kind === "anchor"
+						? `#${resolved.id}`
+						: resolved.kind === "url"
+							? resolved.url
+							: `?${resolved.to}`;
+
 		const key = anchor ? `${source.file}:${link.start}→${to}` : `${source.file}→${to}`;
 		const existing = connectors.get(key);
 
 		if (existing) existing.links.push(link);
 		else if (resolved.kind === "screen")
 			connectors.set(key, { key, source, links: [link], anchor, kind: "screen", target: target! });
-		else if (resolved.kind === "back") connectors.set(key, { key, source, links: [link], anchor, kind: "back" });
-		else connectors.set(key, { key, source, links: [link], anchor, kind: "broken", to: resolved.to });
+		else connectors.set(key, { key, source, links: [link], anchor, ...resolved });
 	}
 
 	return [...connectors.values()];

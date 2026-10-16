@@ -5,10 +5,16 @@ import { normalizeTarget } from "../shared/prototype/links";
 import { assertSnapshot, shareScreens, type ShareSnapshot } from "../shared/share/snapshot";
 import {
 	overlayRect,
+	parseDuration,
+	parseEasing,
 	parseOverlayMode,
 	parseTransition,
+	screenTransition,
+	timed,
+	type LinkTiming,
 	type OverlayMode,
 	type Rect,
+	type ScreenTransition,
 	type Size,
 } from "../shared/prototype/transitions";
 import {
@@ -98,6 +104,43 @@ describe("viewerFiles", () => {
 		]) {
 			expect(normalize(to)).toBe(normalizeTarget(to));
 		}
+	});
+
+	test("the viewer reads link timing like the app", () => {
+		type ViewerTiming = {
+			parseDuration: (value: string | undefined) => number | null;
+			parseEasing: (value: string | undefined) => string | null;
+			timed: (plan: ScreenTransition | null, timing: LinkTiming) => ScreenTransition | null;
+		};
+
+		// SAFETY: LINK_OPTIONS_JS declares these three functions with these signatures
+		const viewer = new Function(`${LINK_OPTIONS_JS}; return { parseDuration, parseEasing, timed };`)() as ViewerTiming;
+
+		for (const value of [
+			undefined,
+			"",
+			"200",
+			"200ms",
+			" 0.25s ",
+			"5000",
+			"5001",
+			"fast",
+			"Ease-Out",
+			"linear",
+			"spring",
+		]) {
+			expect(viewer.parseDuration(value)).toBe(parseDuration(value));
+			expect(viewer.parseEasing(value)).toBe(parseEasing(value));
+		}
+
+		const plan = screenTransition("push", "forward", false);
+
+		for (const timing of [
+			{ duration: null, easing: null },
+			{ duration: 120, easing: "ease-in" as const },
+			{ duration: 0, easing: null },
+		])
+			expect(viewer.timed(plan, timing)).toEqual(timed(plan, timing));
 	});
 
 	test("the viewer reads transitions, overlay modes and overlay sizes like the app", () => {

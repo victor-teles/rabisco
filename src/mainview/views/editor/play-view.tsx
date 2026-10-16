@@ -6,6 +6,7 @@ import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import { currentVisit, pushVisit, startHistory, stepBack, stepForward, type PlayStep } from "@/lib/play-history";
 import type { FrameHost } from "@/lib/render/frame-host";
 import type { LinkOptions, SnapshotRaster } from "@/lib/render/protocol";
+import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,8 +26,11 @@ import {
 	overlayMotion,
 	overlayRect,
 	parseOverlayMode,
+	parseTiming,
 	parseTransition,
 	screenTransition,
+	timed,
+	type LinkTiming,
 	type LinkTransition,
 	type OverlayMode,
 	type ScreenTransition,
@@ -54,7 +58,14 @@ type Layer = { id: number; file: string };
 
 type LayerMotion = { id: number; plan: ScreenTransition; running: boolean };
 
-type Overlay = { id: number; file: string; mode: OverlayMode; transition: LinkTransition | null; closing: boolean };
+type Overlay = {
+	id: number;
+	file: string;
+	mode: OverlayMode;
+	transition: LinkTransition | null;
+	timing: LinkTiming;
+	closing: boolean;
+};
 
 type Recording = { steps: CapturedStep[]; last: string; pending: StepMotion | null; busy: boolean };
 
@@ -178,7 +189,10 @@ export function PlayView({
 		(step: PlayStep | null) => {
 			if (!step) return;
 			setHistory(step.history);
-			show(currentVisit(step.history).file, screenTransition(step.transition, step.direction, prefersReducedMotion()));
+			show(
+				currentVisit(step.history).file,
+				timed(screenTransition(step.transition, step.direction, prefersReducedMotion()), step.timing),
+			);
 		},
 		[show],
 	);
@@ -223,7 +237,7 @@ export function PlayView({
 		const top = overlays.filter((overlay) => !overlay.closing).at(-1);
 
 		if (!top) return;
-		const motion = overlayMotion(top.mode, top.transition, false, prefersReducedMotion());
+		const motion = timed(overlayMotion(top.mode, top.transition, false, prefersReducedMotion()), top.timing);
 		noteMotion(motion ? { kind: "overlay", motion, opening: false } : null);
 		setOverlays((list) => list.map((overlay) => (overlay.id === top.id ? { ...overlay, closing: true } : overlay)));
 	}, [overlays, noteMotion]);
@@ -233,9 +247,9 @@ export function PlayView({
 	}, []);
 
 	const go = useCallback(
-		(file: string, transition: LinkTransition = "instant") => {
+		(file: string, transition: LinkTransition = "instant", timing?: LinkTiming) => {
 			setOverlays([]);
-			apply(pushVisit(history, file, transition));
+			apply(pushVisit(history, file, transition, timing));
 		},
 		[history, apply],
 	);
@@ -290,17 +304,24 @@ export function PlayView({
 			if (target.kind === "screen") {
 				const transition = parseTransition(options.transition);
 				const mode = parseOverlayMode(options.mode);
+				const timing = parseTiming(options.duration, options.easing);
 
-				if (!mode) go(target.file, transition ?? "instant");
+				if (!mode) go(target.file, transition ?? "instant", timing);
 				else {
-					const motion = overlayMotion(mode, transition, true, prefersReducedMotion());
+					const motion = timed(overlayMotion(mode, transition, true, prefersReducedMotion()), timing);
 					noteMotion(motion ? { kind: "overlay", motion, opening: true } : null);
 
 					setOverlays((list) => [
 						...list,
-						{ id: nextId.current++, file: target.file, mode, transition, closing: false },
+						{ id: nextId.current++, file: target.file, mode, transition, timing, closing: false },
 					]);
 				}
+			} else if (target.kind === "url") {
+				if (target.url.toLowerCase().startsWith("mailto:"))
+					toast("This link writes an email", { description: target.url.slice("mailto:".length) });
+				else void api.openExternal({ url: target.url });
+			} else if (target.kind === "anchor") {
+				// The frame scrolls to its own anchors and doesn't send them
 			} else if (target.kind === "back") {
 				if (canBack || overlayOpen) back();
 				else toast("This is the first screen", { description: "There's nothing to go back to yet." });
@@ -379,6 +400,8 @@ export function PlayView({
 		return () => clearInterval(timer);
 	}, [recordingSince]);
 
+	const topId = () => overlays.filter((overlay) => !overlay.closing).at(-1)?.id ?? layers.at(-1)?.id ?? 0;
+
 	const hostFor = (id: number) => (host: FrameHost | null) => {
 		if (host) hosts.current.set(id, host);
 		else hosts.current.delete(id);
@@ -409,6 +432,10 @@ export function PlayView({
 		} else {
 			// Default actions (button activation) still happen
 			event.stopPropagation();
+
+			// A frame with focus hears its own keys
+			if (!mod && !event.altKey && !event.repeat && !(event.target instanceof HTMLIFrameElement))
+				hosts.current.get(topId())?.playKey(event.key);
 		}
 	});
 
@@ -641,7 +668,7 @@ function OverlayLayer({
 	const [shown, setShown] = useState(false);
 	const rect = overlayRect(overlay.mode, screen, size);
 	const closed = useEffectEvent(() => onClosed(overlay.id));
-	const { mode, transition, closing } = overlay;
+	const { mode, transition, timing: linkTiming, closing } = overlay;
 
 	useEffect(() => {
 		if (shown) return;
@@ -651,7 +678,7 @@ function OverlayLayer({
 	}, [shown]);
 
 	useLayoutEffect(() => {
-		const motion = shown ? overlayMotion(mode, transition, !closing, prefersReducedMotion()) : null;
+		const motion = shown ? timed(overlayMotion(mode, transition, !closing, prefersReducedMotion()), linkTiming) : null;
 
 		if (!motion) {
 			if (closing) closed();
@@ -673,7 +700,7 @@ function OverlayLayer({
 
 			for (const animation of animations) animation?.cancel();
 		};
-	}, [shown, mode, transition, closing]);
+	}, [shown, mode, transition, linkTiming, closing]);
 
 	return (
 		<div className={cn("absolute inset-0 z-10", closing && "pointer-events-none")}>

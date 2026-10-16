@@ -2,6 +2,10 @@ export const LINK_TRANSITION_ATTRIBUTE = "data-link-transition";
 
 export const LINK_MODE_ATTRIBUTE = "data-link-mode";
 
+export const LINK_DURATION_ATTRIBUTE = "data-link-duration";
+
+export const LINK_EASING_ATTRIBUTE = "data-link-easing";
+
 export const TRANSITIONS = ["instant", "dissolve", "slide", "push"] as const;
 
 export type LinkTransition = (typeof TRANSITIONS)[number];
@@ -33,6 +37,57 @@ export const TRANSITION_MS = 300;
 export const TRANSITION_EASING = "cubic-bezier(0.2, 0, 0, 1)";
 
 const MOTION: Motion = { duration: TRANSITION_MS, easing: TRANSITION_EASING };
+
+export const MAX_DURATION_MS = 5_000;
+
+/** Tailwind's curves (decision 0046) */
+export const EASINGS = {
+	linear: "linear",
+	"ease-in": "cubic-bezier(0.4, 0, 1, 1)",
+	"ease-out": "cubic-bezier(0, 0, 0.2, 1)",
+	"ease-in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
+} as const;
+
+export type LinkEasing = keyof typeof EASINGS;
+
+const isEasing = (value: string): value is LinkEasing => Object.hasOwn(EASINGS, value);
+
+/** `null` fields use the motion defaults */
+export type LinkTiming = { duration: number | null; easing: LinkEasing | null };
+
+export const DEFAULT_TIMING: LinkTiming = { duration: null, easing: null };
+
+/** `200`, `200ms` or `0.2s`, up to `MAX_DURATION_MS` */
+export function parseDuration(value: string | null | undefined): number | null {
+	const match = /^(\d+(?:\.\d+)?)\s*(ms|s)?$/.exec(value?.trim().toLowerCase() ?? "");
+
+	if (!match) return null;
+	const ms = Math.round(Number(match[1]) * (match[2] === "s" ? 1000 : 1));
+
+	return ms <= MAX_DURATION_MS ? ms : null;
+}
+
+export function parseEasing(value: string | null | undefined): LinkEasing | null {
+	const name = value?.trim().toLowerCase();
+
+	return name && isEasing(name) ? name : null;
+}
+
+export const parseTiming = (duration: string | null | undefined, easing: string | null | undefined): LinkTiming => ({
+	duration: parseDuration(duration),
+	easing: parseEasing(easing),
+});
+
+/** A plan with the link's own duration and easing */
+export function timed<T extends Motion>(plan: T | null, timing: LinkTiming): T | null {
+	if (!plan) return null;
+
+	return {
+		...plan,
+		duration: timing.duration ?? plan.duration,
+		easing: timing.easing ? EASINGS[timing.easing] : plan.easing,
+	};
+}
 
 const isTransition = (value: string): value is LinkTransition => TRANSITIONS.some((name) => name === value);
 

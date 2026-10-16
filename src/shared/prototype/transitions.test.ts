@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+	EASINGS,
+	parseDuration,
+	parseEasing,
+	timed,
 	defaultOverlayTransition,
 	overlayMotion,
 	overlayRect,
@@ -107,5 +111,25 @@ describe("overlays", () => {
 			width: 390,
 			height: 844,
 		});
+	});
+});
+
+describe("link timing (decision 0046)", () => {
+	test("parses milliseconds and seconds up to the limit", () => {
+		expect(parseDuration("200")).toBe(200);
+		expect(parseDuration("200ms")).toBe(200);
+		expect(parseDuration("0.25s")).toBe(250);
+		expect(parseDuration("5000")).toBe(5000);
+
+		for (const value of [null, "", "fast", "-100", "5001", "1m"]) expect(parseDuration(value)).toBeNull();
+		expect(parseEasing(" Ease-In-Out ")).toBe("ease-in-out");
+		expect(parseEasing("spring")).toBeNull();
+	});
+
+	test("a link's timing replaces the plan's defaults, and none keeps them", () => {
+		const plan = screenTransition("push", "forward", false)!;
+		expect(timed(plan, { duration: 120, easing: "linear" })).toMatchObject({ duration: 120, easing: EASINGS.linear });
+		expect(timed(plan, { duration: null, easing: null })).toEqual(plan);
+		expect(timed(null, { duration: 120, easing: null })).toBeNull();
 	});
 });

@@ -1,6 +1,8 @@
 // Relative URLs and a classic data script (not `fetch`) so the site works from `file://`. The runtime is
 // inlined because a sandboxed `file://` frame can't load scripts from other files.
 import {
+	EASINGS,
+	MAX_DURATION_MS,
 	OVERLAY_MODES,
 	overlayMotion,
 	screenTransition,
@@ -34,7 +36,26 @@ export const NORMALIZE_TARGET_JS = `function normalizeTarget(to) {
 	return path;
 }`;
 
-export const LINK_OPTIONS_JS = `function parseTransition(value) {
+export const LINK_OPTIONS_JS = `var EASINGS = ${JSON.stringify(EASINGS)};
+function parseDuration(value) {
+	var match = /^(\\d+(?:\\.\\d+)?)\\s*(ms|s)?$/.exec(String(value || "").trim().toLowerCase());
+	if (!match) return null;
+	var ms = Math.round(Number(match[1]) * (match[2] === "s" ? 1000 : 1));
+	return ms <= ${MAX_DURATION_MS} ? ms : null;
+}
+function parseEasing(value) {
+	var name = String(value || "").trim().toLowerCase();
+	return Object.prototype.hasOwnProperty.call(EASINGS, name) ? name : null;
+}
+function timed(plan, timing) {
+	if (!plan || !timing) return plan;
+	var next = {};
+	for (var key in plan) next[key] = plan[key];
+	if (timing.duration !== null && timing.duration !== undefined) next.duration = timing.duration;
+	if (timing.easing) next.easing = EASINGS[timing.easing];
+	return next;
+}
+function parseTransition(value) {
 	var name = String(value || "").trim().toLowerCase();
 	return ${JSON.stringify(TRANSITIONS)}.indexOf(name) === -1 ? null : name;
 }
@@ -491,6 +512,7 @@ const PICK_JS = `var inspectButton = document.getElementById("inspect");
 		var key = event.key.toLowerCase();
 		if (key === "i") setPickMode(pickMode === "inspect" ? null : "inspect");
 		else if (key === "c" && commentButton) setPickMode(pickMode === "point" ? null : "point");
+		else if (!event.repeat) playKey(event.key);
 	});`;
 
 /** Same messages as `FrameHost`; the screen lives in the URL hash so links and the back button work. */
@@ -554,6 +576,7 @@ const viewerJs = () => `(function () {
 	var current = null;
 	var depth = 0;
 	var arrivedWith = "instant";
+	var arrivedTiming = null;
 	var toastTimer = 0;
 	var frames = [];
 	var layers = [];
@@ -619,6 +642,14 @@ const viewerJs = () => `(function () {
 		var file = "";
 		try { file = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
 		return byFile[file] ? file : data.start;
+	}
+
+	/** Key link triggers (decision 0046) while the viewer, not a frame, has focus */
+	function playKey(key) {
+		if (pickMode) return;
+		var open = overlays.filter(function (overlay) { return !overlay.closing; });
+		var record = open.length ? open[open.length - 1].record : layers[layers.length - 1].record;
+		if (record && record.ready) post(record, { type: "play-key", key: key });
 	}
 
 	function overlayOpen() {
@@ -709,7 +740,7 @@ const viewerJs = () => `(function () {
 	}
 
 	function overlayMotion(overlay, opening) {
-		return MOTIONS.overlays[overlay.mode + ":" + (overlay.transition || "") + ":" + (opening ? "open" : "close") + ":" + (reducedMotion() ? 1 : 0)] || null;
+		return timed(MOTIONS.overlays[overlay.mode + ":" + (overlay.transition || "") + ":" + (opening ? "open" : "close") + ":" + (reducedMotion() ? 1 : 0)] || null, overlay.timing);
 	}
 
 	function removeOverlay(overlay) {
@@ -723,7 +754,7 @@ const viewerJs = () => `(function () {
 		overlays.slice().forEach(removeOverlay);
 	}
 
-	function openOverlay(file, mode, transition) {
+	function openOverlay(file, mode, transition, timing) {
 		var screen = byFile[current];
 		var target = byFile[file];
 		var rect = overlayRect(mode, screen, target);
@@ -742,7 +773,7 @@ const viewerJs = () => `(function () {
 		panel.appendChild(record.iframe);
 		element.appendChild(backdrop);
 		element.appendChild(panel);
-		var overlay = { element: element, backdrop: backdrop, panel: panel, record: record, mode: mode, transition: transition, closing: false, animations: [] };
+		var overlay = { element: element, backdrop: backdrop, panel: panel, record: record, mode: mode, transition: transition, timing: timing, closing: false, animations: [] };
 		backdrop.addEventListener("click", closeOverlay);
 		overlays.push(overlay);
 		scaler.appendChild(element);
@@ -752,8 +783,8 @@ const viewerJs = () => `(function () {
 			element.style.visibility = "";
 			var plan = overlayMotion(overlay, true);
 			if (!plan) return;
-			var timing = { duration: plan.duration, easing: plan.easing };
-			overlay.animations = [animate(panel, plan.panel, timing), animate(backdrop, plan.backdrop, timing)];
+			var options = { duration: plan.duration, easing: plan.easing };
+			overlay.animations = [animate(panel, plan.panel, options), animate(backdrop, plan.backdrop, options)];
 		});
 	}
 
@@ -773,14 +804,15 @@ const viewerJs = () => `(function () {
 		setTimeout(function () { removeOverlay(overlay); }, plan.duration);
 	}
 
-	function go(file, transition) {
+	function go(file, transition, timing) {
 		clearOverlays();
 		if (file === current) return;
 		depth++;
 		arrivedWith = transition || "instant";
-		try { history.pushState({ depth: depth, transition: arrivedWith }, "", "#" + encodeURIComponent(file)); }
+		arrivedTiming = timing || null;
+		try { history.pushState({ depth: depth, transition: arrivedWith, timing: arrivedTiming }, "", "#" + encodeURIComponent(file)); }
 		catch (error) { /* some file:// pages refuse pushState: the screen still changes */ }
-		show(file, screenMotion(arrivedWith, "forward"));
+		show(file, timed(screenMotion(arrivedWith, "forward"), arrivedTiming));
 	}
 
 	function back() {
@@ -790,13 +822,18 @@ const viewerJs = () => `(function () {
 	}
 
 	function follow(message) {
-		if (String(message.to).trim().toLowerCase() === "back") return back();
+		var to = String(message.to).trim();
+		if (to.toLowerCase() === "back") return back();
+		// Decision 0046: the frame scrolls to its own anchors; web and mail links leave the prototype
+		if (to.charAt(0) === "#") return;
+		if (/^(https?:\\/\\/|mailto:)/i.test(to)) return void window.open(to, "_blank", "noopener");
 		var file = normalizeTarget(message.to);
 		if (!byFile[file]) return toast("This link goes nowhere yet");
 		var mode = parseOverlayMode(message.mode);
 		var transition = parseTransition(message.transition);
-		if (mode) openOverlay(file, mode, transition);
-		else go(file, transition);
+		var timing = { duration: parseDuration(message.duration), easing: parseEasing(message.easing) };
+		if (mode) openOverlay(file, mode, transition, timing);
+		else go(file, transition, timing);
 	}
 
 	data.screens.forEach(function (screen) {
@@ -815,9 +852,11 @@ const viewerJs = () => `(function () {
 	window.addEventListener("popstate", function (event) {
 		var next = (event.state && event.state.depth) || 0;
 		var transition = (event.state && event.state.transition) || "instant";
-		var plan = next < depth ? screenMotion(arrivedWith, "back") : next > depth ? screenMotion(transition, "forward") : null;
+		var timing = (event.state && event.state.timing) || null;
+		var plan = next < depth ? timed(screenMotion(arrivedWith, "back"), arrivedTiming) : next > depth ? timed(screenMotion(transition, "forward"), timing) : null;
 		depth = next;
 		arrivedWith = transition;
+		arrivedTiming = timing;
 		clearOverlays();
 		show(fromHash(), plan);
 	});

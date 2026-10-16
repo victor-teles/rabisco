@@ -1,11 +1,15 @@
 // Play mode (decision 0007). Links are read from React fibers so components that don't forward the prop still link.
 import {
+	LINK_DURATION_ATTRIBUTE,
+	LINK_EASING_ATTRIBUTE,
 	LINK_MODE_ATTRIBUTE,
 	LINK_TO_ATTRIBUTE,
 	LINK_TRANSITION_ATTRIBUTE,
+	LINK_TRIGGER_ATTRIBUTE,
 	type FrameMessage,
 	type LinkOptions,
 } from "../lib/render/protocol";
+import { matchesKey, parseTrigger, type LinkTrigger } from "../../shared/prototype/triggers";
 import { fiberOf, hostElements, rootFiber, textProp, type Fiber } from "./inspect";
 
 /** Marks the DOM of linked component elements, which don't carry `data-link-to` themselves. */
@@ -17,19 +21,40 @@ const linkOf = (fiber: Fiber) => textProp(fiber, LINK_TO_ATTRIBUTE)?.trim() || n
 
 export type LinkClick = { to: string } & LinkOptions;
 
-const fromFiber = (fiber: Fiber, to: string): LinkClick => ({
-	to,
-	transition: textProp(fiber, LINK_TRANSITION_ATTRIBUTE)?.trim() || undefined,
-	mode: textProp(fiber, LINK_MODE_ATTRIBUTE)?.trim() || undefined,
-});
+/** A link with what sets it off, and the DOM it covers */
+type FoundLink = { link: LinkClick; trigger: LinkTrigger; elements: Element[] };
 
-const fromElement = (element: Element, to: string): LinkClick => ({
-	to,
-	transition: element.getAttribute(LINK_TRANSITION_ATTRIBUTE)?.trim() || undefined,
-	mode: element.getAttribute(LINK_MODE_ATTRIBUTE)?.trim() || undefined,
-});
+const optional = (value: string | null | undefined) => value?.trim() || undefined;
 
-export function linkAt(target: EventTarget | null): LinkClick | null {
+function fromFiber(fiber: Fiber, to: string): FoundLink {
+	return {
+		link: {
+			to,
+			transition: optional(textProp(fiber, LINK_TRANSITION_ATTRIBUTE)),
+			mode: optional(textProp(fiber, LINK_MODE_ATTRIBUTE)),
+			duration: optional(textProp(fiber, LINK_DURATION_ATTRIBUTE)),
+			easing: optional(textProp(fiber, LINK_EASING_ATTRIBUTE)),
+		},
+		trigger: parseTrigger(textProp(fiber, LINK_TRIGGER_ATTRIBUTE)),
+		elements: hostElements(fiber),
+	};
+}
+
+function fromElement(element: Element, to: string): FoundLink {
+	return {
+		link: {
+			to,
+			transition: optional(element.getAttribute(LINK_TRANSITION_ATTRIBUTE)),
+			mode: optional(element.getAttribute(LINK_MODE_ATTRIBUTE)),
+			duration: optional(element.getAttribute(LINK_DURATION_ATTRIBUTE)),
+			easing: optional(element.getAttribute(LINK_EASING_ATTRIBUTE)),
+		},
+		trigger: parseTrigger(element.getAttribute(LINK_TRIGGER_ATTRIBUTE)),
+		elements: [element],
+	};
+}
+
+function foundAt(target: EventTarget | null): FoundLink | null {
 	const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
 
 	if (!element) return null;
@@ -46,9 +71,88 @@ export function linkAt(target: EventTarget | null): LinkClick | null {
 	return linked && value ? fromElement(linked, value) : null;
 }
 
-export function createPlay(container: Element, post: (message: FrameMessage) => void) {
+export function linkAt(target: EventTarget | null): LinkClick | null {
+	return foundAt(target)?.link ?? null;
+}
+
+/** Every link of the rendered screen, in source order */
+function linksOf(container: Element): FoundLink[] {
+	const found: FoundLink[] = [];
+	const root = rootFiber(container);
+
+	const visit = (fiber: Fiber) => {
+		for (let node: Fiber | null = fiber; node; node = node.sibling) {
+			const to = linkOf(node);
+
+			if (to) found.push(fromFiber(node, to));
+
+			if (node.child) visit(node.child);
+		}
+	};
+
+	if (root?.child) visit(root.child);
+
+	return found;
+}
+
+const reducedMotion = () => "matchMedia" in window && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Escape, ⌘[ and ⌘] belong to play mode */
+const isPlayKey = (event: KeyboardEvent) => event.key === "Escape" || event.metaKey || event.ctrlKey || event.altKey;
+
+const isTyping = (target: EventTarget | null) =>
+	target instanceof HTMLElement && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
+
+/** `rendered` names what the frame last rendered, `""` before that: a delay starts again when it changes */
+export function createPlay(container: Element, post: (message: FrameMessage) => void, rendered: () => string) {
 	let playing = false;
 	const style = document.createElement("style");
+	/** A press link fired on pointer-down: its click must not fire a click link too */
+	let pressed = false;
+	let timers: number[] = [];
+	let timedScreen: string | null = null;
+
+	// Decision 0046: `#id` scrolls this screen; everything else goes to the host
+	const fire = (link: LinkClick) => {
+		if (!link.to.startsWith("#")) return post({ type: "navigate", ...link });
+		const target = document.getElementById(link.to.slice(1));
+		target?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+	};
+
+	const clearTimers = () => {
+		for (const timer of timers) clearTimeout(timer);
+		timers = [];
+	};
+
+	const stopTimers = () => {
+		clearTimers();
+		timedScreen = null;
+	};
+
+	const startTimers = () => {
+		if (!rendered() || timedScreen === rendered()) return;
+		stopTimers();
+		timedScreen = rendered();
+
+		for (const { link, trigger } of linksOf(container))
+			if (trigger.kind === "after")
+				timers.push(
+					window.setTimeout(() => {
+						// The first delay to run out wins, until the screen shows again
+						clearTimers();
+
+						if (playing) fire(link);
+					}, trigger.ms),
+				);
+	};
+
+	const pressKey = (key: string) => {
+		const found = linksOf(container).find(({ trigger }) => matchesKey(trigger, key));
+
+		if (found) fire(found.link);
+
+		return !!found;
+	};
 
 	const refresh = () => {
 		for (const marked of container.querySelectorAll(`[${MARK}]`)) marked.removeAttribute(MARK);
@@ -66,6 +170,7 @@ export function createPlay(container: Element, post: (message: FrameMessage) => 
 		};
 
 		if (root?.child) visit(root.child);
+		startTimers();
 	};
 
 	// Capture phase: the link wins over the screen's own handlers and defaults
@@ -73,12 +178,14 @@ export function createPlay(container: Element, post: (message: FrameMessage) => 
 		"click",
 		(event) => {
 			if (!playing || event.button !== 0) return;
-			const link = linkAt(event.target);
+			const found = foundAt(event.target);
 
-			if (link) {
+			if (found && (found.trigger.kind === "click" || pressed)) {
 				event.preventDefault();
 				event.stopPropagation();
-				post({ type: "navigate", ...link });
+
+				if (!pressed) fire(found.link);
+				pressed = false;
 
 				return;
 			}
@@ -90,9 +197,45 @@ export function createPlay(container: Element, post: (message: FrameMessage) => 
 		},
 		true,
 	);
+	window.addEventListener(
+		"pointerdown",
+		(event) => {
+			pressed = false;
+
+			if (!playing || event.button !== 0) return;
+			const found = foundAt(event.target);
+
+			if (found?.trigger.kind !== "press") return;
+			event.stopPropagation();
+			pressed = true;
+			fire(found.link);
+		},
+		true,
+	);
+	window.addEventListener(
+		"pointerover",
+		(event) => {
+			if (!playing) return;
+			const found = foundAt(event.target);
+
+			if (found?.trigger.kind !== "hover") return;
+			const from = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+
+			// Moving between the element's own children isn't entering it
+			if (from && found.elements.some((element) => element.contains(from))) return;
+			fire(found.link);
+		},
+		true,
+	);
 	// Bubble phase: a dialog or menu of the screen that closes on Escape keeps it
 	window.addEventListener("keydown", (event) => {
-		if (playing && event.key === "Escape" && !event.defaultPrevented) post({ type: "escape" });
+		if (!playing || event.defaultPrevented) return;
+
+		if (event.key === "Escape") return post({ type: "escape" });
+
+		if (isPlayKey(event) || event.repeat || isTyping(event.target)) return;
+
+		if (pressKey(event.key)) event.preventDefault();
 	});
 
 	return {
@@ -106,9 +249,17 @@ export function createPlay(container: Element, post: (message: FrameMessage) => 
 			if (on) {
 				style.textContent = POINTER_CSS;
 				document.head.appendChild(style);
-			} else style.remove();
+			} else {
+				style.remove();
+				stopTimers();
+			}
+
 			refresh();
 		},
 		refresh,
+		/** From the play view, while the frame doesn't have focus */
+		key(key: string) {
+			if (playing) pressKey(key);
+		},
 	};
 }

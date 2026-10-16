@@ -324,6 +324,11 @@ export class FrameHost {
 		});
 	}
 
+	/** For `key` link triggers (decision 0046) while focus is outside the frame */
+	playKey(key: string) {
+		if (this.#play && this.#ready) this.#post({ type: "play-key", key });
+	}
+
 	setPlay(on: boolean) {
 		if (on === this.#play) return;
 		this.#play = on;
@@ -494,7 +499,12 @@ export class FrameHost {
 			else if (message.state === "done") edit.resolve(message.text);
 		} else if (message?.type === "navigate") {
 			if (this.#play && message.to.trim())
-				this.onNavigate?.(message.to, { transition: message.transition, mode: message.mode });
+				this.onNavigate?.(message.to, {
+					transition: message.transition,
+					mode: message.mode,
+					duration: message.duration,
+					easing: message.easing,
+				});
 		} else if (
 			message?.type === "measured" ||
 			message?.type === "snapshot" ||
