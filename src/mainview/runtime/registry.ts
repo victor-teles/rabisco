@@ -104,6 +104,10 @@ export class ModuleRegistry<External> {
 		return this.#payloads.get(path)?.source;
 	}
 
+	sources(): ReadonlyMap<string, string> {
+		return new Map([...this.#payloads].map(([path, payload]) => [path, payload.source]));
+	}
+
 	isLoaded(path: string) {
 		return this.#cache.has(path);
 	}

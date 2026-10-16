@@ -74,7 +74,26 @@ let version = 0;
 
 let renderedVersion: string | null = null;
 
-let tracked: { start: number; version: string; sent: string } | null = null;
+let tracked: { start: number; version: string; path?: string; sent: string } | null = null;
+
+let renderedModules: ReadonlyMap<string, string> = new Map();
+
+const moduleVersions = new Map<string, string>();
+
+function versionOf(path: string | undefined) {
+	if (path === undefined || path === entry) return renderedVersion;
+	const source = renderedModules.get(path);
+
+	if (source === undefined) return null;
+	let known = moduleVersions.get(source);
+
+	if (known === undefined) {
+		known = sourceVersion(source);
+		moduleVersions.set(source, known);
+	}
+
+	return known;
+}
 
 let linked: { starts: number[]; version: string; sent: string } | null = null;
 
@@ -121,8 +140,8 @@ function measure() {
 }
 
 function reportBoxes() {
-	if (!tracked || !entry || tracked.version !== renderedVersion) return;
-	const instances = instancesOf(rootElement, locationOf(entry, tracked.start));
+	if (!tracked || !entry || tracked.version !== versionOf(tracked.path)) return;
+	const instances = instancesOf(rootElement, locationOf(tracked.path ?? entry, tracked.start));
 	const boxes = boxesOf(instances);
 	const spacing = instances[0] ? spacingOf(instances[0]) : null;
 	const layout = instances[0] ? layoutOf(instances[0]) : null;
@@ -276,18 +295,30 @@ class Boundary extends Component<{ version: number; children: ReactNode }, { fai
 }
 
 /** Reports the commit only after the screen's own effects have run. */
-function Rendered({ source, version, children }: { source: string; version: number; children: ReactNode }) {
+function Rendered({
+	source,
+	modules,
+	version,
+	children,
+}: {
+	source: string;
+	modules: ReadonlyMap<string, string>;
+	version: number;
+	children: ReactNode;
+}) {
 	// Before paint: the committed DOM already shows the new order, and a frame with both would jump
 	useLayoutEffect(() => clearOrder(false), [source, version]);
 
 	useEffect(() => {
 		renderedVersion = source;
+		renderedModules = modules;
+		moduleVersions.clear();
 		// The committed classes take over from a handle's preview
 		clearPreview();
 		hideOverlay();
 		post({ type: "rendered" });
 		scheduleMeasure();
-	}, [source, version]);
+	}, [source, modules, version]);
 
 	return children;
 }
@@ -329,7 +360,7 @@ function mountScreen() {
 	if (!Screen) return;
 	root.render(
 		<Boundary key={mount} version={version}>
-			<Rendered source={sourceVersion(registry.source(entry) ?? "")} version={version}>
+			<Rendered source={sourceVersion(registry.source(entry) ?? "")} modules={registry.sources()} version={version}>
 				<Screen />
 			</Rendered>
 		</Boundary>,
@@ -385,6 +416,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 							starts: hit.starts,
 							version: renderedVersion,
 							boxes: hit.indices.slice(0, 1).map((i) => boxOf(located[i]!.elements)),
+							inner: located.flatMap(({ loc }) => {
+								const known = versionOf(loc.slice(0, loc.lastIndexOf(":")));
+
+								return known === null ? [] : [{ loc, version: known }];
+							}),
 						}
 					: null,
 		});
@@ -394,10 +430,12 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 
 		post({ type: "drop-layout", id, layout: layout && { ...layout, version: layoutVersion } });
 	} else if (message?.type === "element-boxes") {
-		const { id, start, version: boxesVersion } = message;
+		const { id, start, version: boxesVersion, path } = message;
 
 		const boxes =
-			entry && boxesVersion === renderedVersion ? boxesOf(instancesOf(rootElement, locationOf(entry, start))) : null;
+			entry && boxesVersion === versionOf(path)
+				? boxesOf(instancesOf(rootElement, locationOf(path ?? entry, start)))
+				: null;
 
 		post({ type: "element-boxes", id, boxes });
 	} else if (message?.type === "placements") {
@@ -418,7 +456,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			placements: placements?.length === starts.length ? placements : null,
 		});
 	} else if (message?.type === "track") {
-		tracked = message.start === null ? null : { start: message.start, version: message.version, sent: "" };
+		tracked =
+			message.start === null ? null : { start: message.start, version: message.version, path: message.path, sent: "" };
 		reportBoxes();
 	} else if (message?.type === "links") {
 		linked = message.starts.length ? { starts: message.starts, version: message.version, sent: "" } : null;
@@ -434,11 +473,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			previewOrder(instancesOf(rootElement, locationOf(entry, message.start)), message.preview);
 	} else if (message?.type === "edit-text") {
 		textEdit?.finish(true);
-		const { start, version: editVersion } = message;
+		const { start, version: editVersion, path } = message;
 		const refuse = () => post({ type: "text-edit", start, version: editVersion, state: "refused" });
 
-		if (!entry || editVersion !== renderedVersion) return refuse();
-		const loc = locationOf(entry, start);
+		if (!entry || editVersion !== versionOf(path)) return refuse();
+		const loc = locationOf(path ?? entry, start);
 
 		const under =
 			message.x === undefined || message.y === undefined
@@ -511,6 +550,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		post({ type: "picked-color", id: message.id, color: entry ? colorAt(message.x, message.y) : null });
 	} else if (message?.type === "play") {
 		play.set(message.on === true);
+	} else if (message?.type === "play-key") {
+		play.key(message.key);
 	} else if (message?.type === "pick-mode") {
 		pick.set(message.mode);
 	} else if (message?.type === "pins") {
@@ -550,8 +591,6 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		const icons = preloadIcons(Object.values(message.modules).flatMap((payload) => payload?.icons ?? []));
 
 		if (entryChanged || invalid.has(entry) || !registry.isLoaded(entry) || renderPending) requestRender(icons);
-	} else if (message?.type === "play-key") {
-		play.key(message.key);
 	}
 });
 

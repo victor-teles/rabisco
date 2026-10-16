@@ -28,12 +28,13 @@ So an override needs a home in the source. It must read like code a developer wo
 - **Detach** replaces the usage with the component's JSX, props filled in, and imports adjusted.
 - **Editing from a usage** writes to the component file. Selecting an element inside a usage resolves its `data-rabisco-loc` to the component file, not the screen.
 
-## Open questions
+## Open questions, as Phase 26 answers them
 
-- Which gesture steps inside a usage. Double-click edits text today, and Enter edits text on an element without children.
-- How the inspector shows which fields are overridden, and whether it shows a component default next to the usage value.
-- Whether shadcn components count as instances. They take `className` already, but they live in the runtime bundle, so "edit the component" can't apply to them.
-- How `Apply to component` handles a `className` that conflicts with the root's classes. `tailwind-merge` decides at run time; the write must decide in the source.
+- **Stepping inside.** Double-click or `Enter` on a usage steps inside it. Inside, a click picks the component's elements and double-click edits their text. A bar names the component and its usage count, and `Esc` steps out.
+- **Component or this usage.** The bar switches between editing the component (every usage) and this usage. On this usage, text and class edits become overrides and other edits are refused.
+- **Marking overrides.** The props panel marks overridden props, and the bar counts the overrides and resets them. It doesn't show the component's default next to a usage value yet.
+- **shadcn components.** They are not instances: only project components (`components/*.tsx`) can be stepped into, reset, applied or detached.
+- **Apply and conflicting classes.** The write runs `tailwind-merge` on the root's classes and the override, so the source holds what the usage rendered.
 
 ## Consequences
 

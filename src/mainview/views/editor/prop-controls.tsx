@@ -50,6 +50,7 @@ export type PropControlsProps = {
 	onAddAttribute?: (name: string, value: Literal) => void;
 	/** Replaces the field of a slot (`children` or a node prop) that holds elements or code; `undefined` keeps it */
 	slot?: (name: string) => React.ReactNode | undefined;
+	overridden?: ReadonlySet<string>;
 };
 
 const SEGMENTED_MAX_OPTIONS = 3;
@@ -87,6 +88,7 @@ export function PropControls({
 	adornment,
 	onAddAttribute,
 	slot,
+	overridden,
 }: PropControlsProps) {
 	const props = spec ? visibleProps(spec) : [];
 	const fieldEvents = { onFocus: onFieldFocus, onBlur: onFieldBlur };
@@ -107,7 +109,12 @@ export function PropControls({
 				const filled = slot?.(prop.name);
 
 				return (
-					<PropRow key={prop.name} label={prop.name} title={propSignature(prop)}>
+					<PropRow
+						key={prop.name}
+						label={prop.name}
+						title={overridden?.has(prop.name) ? `${propSignature(prop)} · overridden here` : propSignature(prop)}
+						marked={overridden?.has(prop.name)}
+					>
 						{filled === undefined ? (
 							<Control
 								name={prop.name}
@@ -259,11 +266,13 @@ function PropRow({
 	label,
 	title,
 	subtle,
+	marked,
 	children,
 }: {
 	label: string;
 	title: string;
 	subtle?: boolean;
+	marked?: boolean;
 	children: React.ReactNode;
 }) {
 	return (
@@ -272,9 +281,14 @@ function PropRow({
 				title={title}
 				className={cn(
 					"w-[72px] shrink-0 truncate text-xs",
-					subtle ? "text-subtle-foreground" : "text-muted-foreground",
+					marked
+						? "font-medium text-violet-700 dark:text-violet-300"
+						: subtle
+							? "text-subtle-foreground"
+							: "text-muted-foreground",
 				)}
 			>
+				{marked ? <span className="mr-1 inline-block size-1.5 rounded-full bg-violet-500 align-middle" /> : null}
 				{label}
 			</span>
 			<div className="flex min-w-0 flex-1 items-center gap-1">{children}</div>

@@ -179,6 +179,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘H` (element selected, or the eye in Layers)            | Hide or show: writes `hidden` in the TSX                                           |
 | `⇧⌘L` (element selected, or the lock in Layers)           | Lock or unlock: the canvas can't select, move or resize it; Layers still can       |
 | `⌥⌘A` (element selected)                                  | Select matching: the same component, or the same classes, in the screen            |
+| Double-click or `Enter` on a component usage              | Edit the component in place: every usage updates; `Esc` steps out                  |
+| `⌥⌘B` (component usage selected)                          | Detach: inline the usage as plain JSX with its props filled in                     |
 | Prompt with elements selected                             | Change only those elements (point and prompt)                                      |
 | `⌥2`                                                      | Components panel: project components, the shadcn library and suggestions           |
 | `⌥3`                                                      | Design system: tokens and their uses; rename, detach, delete, import; library      |

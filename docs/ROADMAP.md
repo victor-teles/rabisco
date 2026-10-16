@@ -56,20 +56,20 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 
 ---
 
-## Phase 26: Components and motion ⬜ 🧭
+## Phase 26: Components and motion 🚧 🧭
 
 _Principles: Component based by default · Direct manipulation over prompts · Screens are React_
 
 A component can be edited only from the Components tab or the code view, a usage can't differ from it except through its props, links are made one at a time in the inspector, and screens have no motion beyond link transitions. Figma users expect a main component with instances, links drawn on the canvas, and animation presets.
 
-**Main component and instances** ([0026](./decisions/0026-component-overrides-in-source.md) 🧭)
+**Main component and instances** ([0026](./decisions/0026-component-overrides-in-source.md))
 
-- ⬜ Edit a component from any usage on the canvas: step inside the usage, edit its elements in place, and see every other usage update. A bar names the component and its usage count, and Esc steps out
-- ⬜ "Go to component" from a usage's menu: select the component in the Components tab and open its file
-- ⬜ Overrides on one usage: text, string props and classes changed on that usage only, written at the call site. The inspector marks overridden fields
-- ⬜ "Reset overrides" on a usage, and "Apply to component" to move a usage's overrides into the component for every usage
-- ⬜ "Detach" (⌥⌘B) inlines a usage as plain JSX, with its props filled in
-- ⬜ Layers and the inspector show usages as instances, with the component's name and a link to it
+- ✅ Edit a component from any usage on the canvas: step inside the usage, edit its elements in place, and see every other usage update. A bar names the component and its usage count, and Esc steps out
+- ✅ "Go to component" from a usage's menu: select the component in the Components tab and open its file
+- ✅ Overrides on one usage: text, string props and classes changed on that usage only, written at the call site. The inspector marks overridden fields
+- ✅ "Reset overrides" on a usage, and "Apply to component" to move a usage's overrides into the component for every usage
+- ✅ "Detach" (⌥⌘B) inlines a usage as plain JSX, with its props filled in
+- ✅ Layers and the inspector show usages as instances, with the component's name and a link to it
 
 **Prototype links on the canvas**
 

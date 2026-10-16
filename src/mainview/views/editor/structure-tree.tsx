@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ChevronDown, ChevronRight, Component, Eye, EyeOff, Lock, LockOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, Component, Diamond, Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { elementHover } from "@/lib/element-hover";
 import { buildOutline, visibleRows, type Outline, type OutlineNode } from "@/lib/outline";
@@ -275,10 +275,17 @@ export function StructureTree({
 								)
 							) : null}
 						</span>
-						{isComponent ? (
+						{row.component?.source === "project" ? (
+							<Diamond className="size-3 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+						) : isComponent ? (
 							<Component className="size-3 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
 						) : null}
 						<span
+							title={
+								row.component?.source === "project"
+									? `Instance of ${row.component.exportName} · ${row.component.path}`
+									: undefined
+							}
 							className={cn(
 								"shrink-0 font-mono text-[11px]",
 								isComponent

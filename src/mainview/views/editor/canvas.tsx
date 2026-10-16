@@ -64,7 +64,7 @@ import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import type { Problem } from "../../../shared/ai/contract";
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { readClassName } from "../../../shared/tailwind/classes";
-import { isScreenFile, screenNameFromPath } from "../../../shared/project";
+import { isComponentFile, isScreenFile, screenNameFromPath } from "../../../shared/project";
 import { hasExpressionLink, linkOfElement } from "../../../shared/prototype/links";
 import { resolveDraft, resolveModes, type ResolvedMode } from "../../../shared/modes";
 import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../shared/types";
@@ -93,6 +93,31 @@ export type CanvasHandle = {
 
 /** `start` is the element's offset in the file's current source */
 export type ElementRef = { file: string; start: number };
+
+export type InstanceScope = { file: string; start: number; component: string };
+
+type InnerHit = { loc: string; version: string };
+
+function innerElement(
+	inner: readonly InnerHit[],
+	usage: ElementRef,
+	files: ProjectFiles,
+	component?: string,
+): ElementRef | null {
+	const at = inner.findIndex((item) => item.loc === `${usage.file}:${usage.start}`);
+
+	for (const { loc, version } of inner.slice(0, Math.max(at, 0))) {
+		const split = loc.lastIndexOf(":");
+		const file = loc.slice(0, split);
+		const source = files[file];
+
+		if (file === usage.file || (component !== undefined && file !== component) || !isComponentFile(file)) continue;
+
+		if (source !== undefined && sourceVersion(source) === version) return { file, start: Number(loc.slice(split + 1)) };
+	}
+
+	return null;
+}
 
 const isSelectedElement = (hover: ElementRef, element: ElementRef | null, extras: ElementRef[]) =>
 	!!element &&
@@ -211,6 +236,8 @@ type CanvasProps = {
 	locks?: ElementLock[];
 	/** For elements that hold more than text */
 	onEditTextElsewhere?: (element: ElementRef) => void;
+	instance?: InstanceScope | null;
+	onEnterInstance?: (usage: ElementRef, inner: ElementRef | null) => boolean;
 	onPlaceComment?: (point: Point) => void;
 	onInsert?: (insert: CanvasInsert) => void;
 	/** Items of the right-click menu on screens; `files` is the selection it acts on */
@@ -405,6 +432,8 @@ export function Canvas({
 	linkEditor,
 	locks,
 	onEditTextElsewhere,
+	instance = null,
+	onEnterInstance,
 	onPlaceComment,
 	onInsert,
 	screenMenu,
@@ -508,6 +537,7 @@ export function Canvas({
 	const filesRef = useRef(rendered);
 	const selectionRef = useRef(selection);
 	const callbacks = useRef({ onEditText, onEditTextElsewhere, onPatchFrame, onFixRender });
+	const instanceRef = useRef(instance);
 	const menuTrigger = useRef<HTMLSpanElement>(null);
 	/** Client coordinates, for pasting under the pointer */
 	const lastPointer = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -539,6 +569,7 @@ export function Canvas({
 		selectionRef.current = selection;
 		failuresRef.current = failures;
 		callbacks.current = { onEditText, onEditTextElsewhere, onPatchFrame, onFixRender };
+		instanceRef.current = instance;
 	});
 
 	const updateVisible = useCallback(() => {
@@ -753,14 +784,17 @@ export function Canvas({
 			const source = filesRef.current[target.file];
 			const node = source === undefined ? null : findElement(parseJsx(source), target.start);
 			const text = node && node.name !== null && !isVoidElement(node) ? readChildrenText(node) : null;
-			const host = hostFor(target.file);
+			const scope = instanceRef.current;
+			const inside = scope?.component === target.file;
+			const host = hostFor(inside ? scope.file : target.file);
 
 			menuRequest.current++;
 
 			if (source === undefined || text === null || !host) return callbacks.current.onEditTextElsewhere?.(target);
+			const path = inside ? target.file : undefined;
 			// The frame takes pointer input and focus while editing, so the caret can be placed with the mouse
 			void host
-				.editText({ start: target.start, version: sourceVersion(source), text, ...point }, () => {
+				.editText({ start: target.start, version: sourceVersion(source), text, ...point, path }, () => {
 					setEditing(target);
 					host.frame.focus();
 				})
@@ -1405,12 +1439,14 @@ export function Canvas({
 		const open = unlockedStarts(source, lockedStarts(locks, frame.file, source), starts);
 		const [first] = open;
 
-		if (first === starts[0]) return { starts, boxes: hit.boxes ?? [], point: local };
+		const inner = hit.inner ?? [];
+
+		if (first === starts[0]) return { starts, boxes: hit.boxes ?? [], point: local, inner };
 
 		if (first === undefined) return null;
 		const boxes = await host.elementBoxes(first, hit.version);
 
-		return { starts: open, boxes: [boxes?.find((box) => contains(box, local)) ?? null], point: local };
+		return { starts: open, boxes: [boxes?.find((box) => contains(box, local)) ?? null], point: local, inner };
 	};
 
 	/** `keepSelected`: a right-click on one of several selected elements keeps them all, as in Figma */
@@ -1421,6 +1457,14 @@ export function Canvas({
 
 		if (request !== picking.current) return "cancelled";
 		const start = found?.starts[0];
+		const scope = instance?.file === frame.file ? instance : null;
+		const inside = found && scope ? innerElement(found.inner, scope, filesRef.current, scope.component) : null;
+
+		if (inside) {
+			onSelectElement?.(frame.file, inside);
+
+			return { ...found!, inside };
+		}
 
 		const kept =
 			keepSelected &&
@@ -1430,7 +1474,7 @@ export function Canvas({
 
 		if (!kept) onSelectElement?.(frame.file, start === undefined ? null : { file: frame.file, start });
 
-		return found;
+		return found && { ...found, inside: null };
 	};
 
 	const updateHover = (clientX: number, clientY: number, deep: boolean) => {
@@ -1453,7 +1497,8 @@ export function Canvas({
 					(meta || (selection.length === 1 && selection[0] === frame.file));
 
 				const found = eligible ? await elementsAt(frame, x, y) : null;
-				const box = found?.boxes[0];
+				const scope = instance?.file === frame?.file ? instance : null;
+				const box = scope && found && innerElement(found.inner, scope, filesRef.current) ? undefined : found?.boxes[0];
 				const next = found && box && frame ? { file: frame.file, start: found.starts[0]!, box } : null;
 				setHover((current) => (sameHover(current, next) ? current : next));
 
@@ -1857,7 +1902,13 @@ export function Canvas({
 
 		if (!frame) return;
 		void pickElement(frame, event.clientX, event.clientY).then((found) => {
-			if (found && found !== "cancelled") editText({ file: frame.file, start: found.starts[0]! }, found.point);
+			if (!found || found === "cancelled") return;
+
+			if (found.inside) return editText(found.inside, found.point);
+			const usage = { file: frame.file, start: found.starts[0]! };
+
+			if (onEnterInstance?.(usage, innerElement(found.inner, usage, filesRef.current))) return;
+			editText(usage, found.point);
 		});
 	};
 
@@ -2011,8 +2062,11 @@ export function Canvas({
 						<SelectedElement
 							key={element.file}
 							element={element}
+							frameFile={instance?.component === element.file ? instance.file : element.file}
 							others={elements.map((extra) => extra.start)}
-							frame={shown.find((f) => f.file === element.file)}
+							frame={shown.find(
+								(f) => f.file === (instance?.component === element.file ? instance.file : element.file),
+							)}
 							source={rendered[element.file]}
 							host={hostFor}
 							zoom={zoomOf}
@@ -2690,6 +2744,7 @@ function DropOutline({ preview, frame }: { preview: DropPreview; frame: Frame | 
 /** The last boxes stay up while a newer version renders, so edits don't flicker */
 function SelectedElement({
 	element,
+	frameFile,
 	others,
 	frame,
 	source,
@@ -2701,6 +2756,7 @@ function SelectedElement({
 	link,
 }: {
 	element: ElementRef;
+	frameFile: string;
 	others: number[];
 	frame: Frame | undefined;
 	source: string | undefined;
@@ -2719,8 +2775,9 @@ function SelectedElement({
 	const [layout, setLayout] = useState<ElementLayout | null>(null);
 	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
 	const version = source === undefined ? "" : sourceVersion(source);
+	const path = frameFile === element.file ? undefined : element.file;
 	useEffect(() => {
-		const target = host(element.file);
+		const target = host(frameFile);
 
 		if (!target || !version) return;
 
@@ -2731,17 +2788,17 @@ function SelectedElement({
 			onBoxes(element.file, update.start, update.boxes);
 		};
 
-		target.track(element.start, version);
+		target.track(element.start, version, path);
 
 		return () => {
 			target.onBoxes = null;
 			target.track(null, version);
 		};
-	}, [host, element.file, element.start, version, frame?.width, frame?.height, onBoxes]);
+	}, [host, frameFile, path, element.file, element.start, version, frame?.width, frame?.height, onBoxes]);
 	const node = source === undefined ? null : findElement(parseJsx(source), element.start);
 
 	if (!node || source === undefined) return null;
-	const info = onEditClasses ? readClassName(source, element.start) : null;
+	const info = onEditClasses && !path ? readClassName(source, element.start) : null;
 	const first = boxes[0];
 	const handles = onEditClasses && info?.editable && layout && first && frame ? { info, layout, first } : null;
 

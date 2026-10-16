@@ -11,7 +11,8 @@ import { clearSlot, componentSlots, slotFill } from "../../../shared/components/
 import { cachedComponentApi } from "../../../shared/components/usages";
 import { findElement, parseJsx, type JsxElement } from "../../../shared/jsx";
 import { iconAt, swapIcon } from "../../../shared/jsx/icons";
-import { isComponentFile } from "../../../shared/project";
+import { usageOverrides } from "../../../shared/components/instances";
+import { isComponentFile, isScreenFile } from "../../../shared/project";
 import { linkHrefToScreen } from "../../../shared/prototype/links";
 import type { DesignTokens } from "../../../shared/context/tokens";
 import type { Frame, ProjectFiles } from "../../../shared/types";
@@ -27,6 +28,7 @@ type NodePropsProps = {
 	structure: Structure;
 	onEndStep: () => void;
 	onOpenComponent?: (path: string) => void;
+	onEditInstance?: (usage: { file: string; start: number }) => void;
 	/** For the screen picker of `href` */
 	frames?: Frame[];
 	/** Where a picked image is copied; without it `src` has no picker */
@@ -53,6 +55,7 @@ export const NodeProps = memo(function NodeProps({
 	structure,
 	onEndStep,
 	onOpenComponent,
+	onEditInstance,
 	frames,
 	projectPath,
 	tokens,
@@ -83,6 +86,7 @@ export const NodeProps = memo(function NodeProps({
 				structure={structure}
 				onEndStep={onEndStep}
 				onOpenComponent={onOpenComponent}
+				onEditInstance={onEditInstance}
 				frames={frames}
 				projectPath={projectPath}
 				tokens={tokens}
@@ -104,6 +108,7 @@ function ElementProps({
 	structure,
 	onEndStep,
 	onOpenComponent,
+	onEditInstance,
 	frames = [],
 	projectPath,
 	tokens,
@@ -121,6 +126,12 @@ function ElementProps({
 	);
 
 	const spec = componentSpec(ref, files, UI_SOURCES);
+
+	const overridden = useMemo(
+		() => new Set(ref?.source === "project" ? usageOverrides(files, { path: file, start }).map((o) => o.name) : []),
+		[ref, files, file, start],
+	);
+
 	const burst = useRef(0);
 	// Not per element: editing hover styles across several elements keeps the state
 	const variant = useSyncExternalStore(styleState.subscribe, styleState.current);
@@ -205,14 +216,27 @@ function ElementProps({
 			<section className="flex flex-col gap-2 border-b p-4">
 				<div className="flex h-5 items-center gap-1.5">
 					{ref ? <Component className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden /> : null}
-					<h3
-						className={cn(
-							"min-w-0 truncate font-mono text-xs font-medium",
-							ref ? "text-violet-700 dark:text-violet-300" : "text-foreground/80",
-						)}
-					>
-						{element.name ?? "Fragment"}
-					</h3>
+					{ref?.source === "project" && onOpenComponent ? (
+						<h3 className="min-w-0 truncate font-mono text-xs font-medium text-violet-700 dark:text-violet-300">
+							<button
+								type="button"
+								className="hover:underline"
+								title={`Instance of ${ref.exportName} · Go to component`}
+								onClick={() => onOpenComponent(ref.path)}
+							>
+								{element.name}
+							</button>
+						</h3>
+					) : (
+						<h3
+							className={cn(
+								"min-w-0 truncate font-mono text-xs font-medium",
+								ref ? "text-violet-700 dark:text-violet-300" : "text-foreground/80",
+							)}
+						>
+							{element.name ?? "Fragment"}
+						</h3>
+					)}
 					<span className="shrink-0 text-xs text-subtle-foreground tabular-nums">line {line}</span>
 					<div className="flex-1" />
 					{ref && element.name && !icon ? (
@@ -229,13 +253,15 @@ function ElementProps({
 							}}
 						/>
 					) : null}
-					{ref?.source === "project" && onOpenComponent ? (
+					{ref?.source === "project" && (onEditInstance || onOpenComponent) ? (
 						<Button
 							variant="ghost"
 							size="xs"
 							className="-mr-1.5 text-muted-foreground"
-							onClick={() => onOpenComponent(ref.path)}
-							title={`Edit ${ref.path}; every screen that uses it updates`}
+							onClick={() =>
+								isScreenFile(file) && onEditInstance ? onEditInstance({ file, start }) : onOpenComponent?.(ref.path)
+							}
+							title={`Edit ${ref.exportName} from here; every usage updates (↵)`}
 						>
 							<CornerUpRight />
 							Edit
@@ -270,6 +296,7 @@ function ElementProps({
 						adornment={adornment}
 						onAddAttribute={(name, value) => structure.setProp(target, name, value)}
 						slot={slot}
+						overridden={overridden}
 						spec={spec}
 						values={values}
 						extra={extra}

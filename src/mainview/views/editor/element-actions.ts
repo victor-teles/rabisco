@@ -53,6 +53,10 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	"wrap-element-in-stack",
 	"unwrap-element",
 	"make-component",
+	{
+		label: "Instance",
+		items: ["edit-component", "go-to-component", SEPARATOR, "reset-overrides", "apply-overrides", "detach-instance"],
+	},
 	SEPARATOR,
 	"move-element-earlier",
 	"move-element-later",
@@ -191,6 +195,17 @@ type Options = {
 	pasteScreens: (data: PasteData) => void;
 	/** Renders the elements at `starts` in the element's screen */
 	copyImage: (format: ImageFormat, starts: number[]) => void;
+	instance: InstanceActions;
+};
+
+export type InstanceActions = {
+	usage: boolean;
+	overridden: boolean;
+	enter: () => void;
+	goTo: () => void;
+	reset: () => void;
+	apply: () => void;
+	detach: () => void;
 };
 
 /** Go after the editor's hidden Escape action, which wins the Esc key that `select-parent` only shows */
@@ -209,6 +224,7 @@ export function elementActions({
 	showSource,
 	pasteScreens,
 	copyImage,
+	instance,
 }: Options): Action[] {
 	const source = element ? files[element.file] : undefined;
 	const child = element && source !== undefined ? firstChildStart(source, element.start) : null;
@@ -261,6 +277,14 @@ export function elementActions({
 			chords: [{ key: "Escape" }, { key: "Enter", shift: true }],
 			enabled: on,
 			run: selectParent,
+		},
+		{
+			id: "edit-component",
+			label: "Edit component",
+			group: "Element",
+			chords: [{ key: "Enter" }],
+			enabled: one && instance.usage,
+			run: instance.enter,
 		},
 		{
 			// Figma's ↵ selects children; on an element without any, `edit-text` takes the key
@@ -453,6 +477,35 @@ export function elementActions({
 			enabled: true,
 			global: true,
 			run: structure.startNaming,
+		},
+		{
+			id: "go-to-component",
+			label: "Go to component",
+			group: "Element",
+			enabled: one && instance.usage,
+			run: instance.goTo,
+		},
+		{
+			id: "reset-overrides",
+			label: "Reset overrides",
+			group: "Element",
+			enabled: one && instance.overridden,
+			run: instance.reset,
+		},
+		{
+			id: "apply-overrides",
+			label: "Apply to component",
+			group: "Element",
+			enabled: one && instance.overridden,
+			run: instance.apply,
+		},
+		{
+			id: "detach-instance",
+			label: "Detach instance",
+			group: "Element",
+			chords: [{ code: "KeyB", mod: true, alt: true }],
+			enabled: one && instance.usage,
+			run: instance.detach,
 		},
 		{
 			id: "ask-ai",

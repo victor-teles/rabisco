@@ -108,7 +108,36 @@ import { chooseMode, optionLabel, resolveModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { CanvasSection, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
-import { Canvas, withMoves, type CanvasHandle, type ElementRef, type FrameMove, type Tool } from "./canvas";
+import {
+	Canvas,
+	withMoves,
+	type CanvasHandle,
+	type ElementRef,
+	type FrameMove,
+	type InstanceScope,
+	type Tool,
+} from "./canvas";
+import { InstanceBar, type InstanceMode } from "./instance-bar";
+import {
+	applyOverrides,
+	componentRoot,
+	detachUsage,
+	instanceAt,
+	overrideAttribute,
+	overrideClassChange,
+	overrideClasses,
+	overrideText,
+	resetOverrides,
+	usageClasses,
+	usageOverrides,
+	type InstanceResult,
+	type UsageRef,
+} from "../../../shared/components/instances";
+import { componentElements } from "../../../shared/components/variant-edit";
+import type { PropSpec } from "../../../shared/components/api";
+import type { Literal } from "@/lib/props";
+import { isString } from "../../../shared/guards";
+import { readClassName, setClassName } from "../../../shared/tailwind/classes";
 import { ChatPanel, type ComposerInsert, type HeldPrompt } from "./chat-panel";
 import { CommentsLayer } from "./comments-layer";
 import { CommentsList } from "./comments-list";
@@ -574,12 +603,134 @@ export function EditorView({
 		[change],
 	);
 
-	const codeFile = selection.length === 1 ? selection[0]! : null;
+	const [instanceScope, setInstanceScope] = useState<InstanceScope | null>(null);
+	const [instanceMode, setInstanceMode] = useState<InstanceMode>("component");
+
+	const instance = useMemo(() => {
+		if (!instanceScope || selection.length !== 1 || selection[0] !== instanceScope.file) return null;
+		const found = instanceAt(files, instanceScope.file, instanceScope.start);
+
+		return found?.componentPath === instanceScope.component ? { ...instanceScope, exportName: found.exportName } : null;
+	}, [instanceScope, files, selection]);
+
+	useEffect(() => {
+		if (instanceScope && !instance) setInstanceScope(null);
+	}, [instanceScope, instance]);
+
+	const codeFile = instance ? instance.component : selection.length === 1 ? selection[0]! : null;
 	const showCode = useCallback(() => setTab("code"), []);
 	const liveStructure = useStructure({ files, file: codeFile, stateRef, change, onShowCode: showCode, busy });
 	const { node, select: selectNode, naming, setNaming, makeComponent: makeNodeComponent } = liveStructure;
 	const { nodes, toggle: toggleNode } = liveStructure;
-	const { removeNode, editCode, editFile, setProp, setChildren, editClasses } = liveStructure;
+	const { removeNode, editCode: editComponentCode, editFile } = liveStructure;
+
+	const {
+		setProp: setComponentProp,
+		setChildren: setComponentChildren,
+		editClasses: editComponentClasses,
+	} = liveStructure;
+
+	const changeUsage = useCallback(
+		(write: (files: ProjectFiles) => InstanceResult) => {
+			const current = stateRef.current?.files;
+
+			if (!current) return null;
+
+			if (busy) {
+				toast("Wait for the generation to finish");
+
+				return null;
+			}
+
+			const result = write(current);
+
+			if (!result.ok) {
+				toast(result.reason);
+
+				return null;
+			}
+
+			change((snapshot) => ({ ...snapshot, files: applyFileChanges(snapshot.files, result.changes) }));
+
+			return result;
+		},
+		[stateRef, busy, change],
+	);
+
+	const overriding = instance && instanceMode === "usage" ? instance : null;
+
+	const overridden = useCallback(
+		(target: ElementRef, write: (files: ProjectFiles, usage: UsageRef) => InstanceResult) => {
+			if (!overriding || target.file !== overriding.component) return false;
+			changeUsage((current) => write(current, { path: overriding.file, start: overriding.start }));
+
+			return true;
+		},
+		[overriding, changeUsage],
+	);
+
+	const editCode = useCallback(
+		(path: string, text: string, step?: string) => {
+			const current = stateRef.current?.files[path];
+
+			if (!overriding || path !== overriding.component || current === undefined) {
+				editComponentCode(path, text, step);
+
+				return;
+			}
+
+			const before = node ? readClassName(current, node.start) : null;
+			const after = node ? readClassName(text, node.start) : null;
+
+			if (!node || !before || !after || setClassName(current, node.start, after.classes) !== text) {
+				toast("This usage can override text and classes", {
+					description: "Switch to Component to change anything else.",
+				});
+
+				return;
+			}
+
+			overridden(node, (files, usage) => overrideClassChange(files, usage, node.start, before.classes, after.classes));
+		},
+		[stateRef, overriding, node, overridden, editComponentCode],
+	);
+
+	const setProp = useCallback(
+		(target: ElementRef, name: string, value: Literal | null, spec?: PropSpec, step?: string) => {
+			const handled = overridden(target, (current, usage) =>
+				isString(value)
+					? overrideAttribute(current, usage, target.start, name, value)
+					: { ok: false, reason: "Only text and string values can be overridden on one usage." },
+			);
+
+			if (!handled) setComponentProp(target, name, value, spec, step);
+		},
+		[overridden, setComponentProp],
+	);
+
+	const setChildren = useCallback(
+		(target: ElementRef, text: string, step?: string) => {
+			if (!overridden(target, (current, usage) => overrideText(current, usage, target.start, text)))
+				setComponentChildren(target, text, step);
+		},
+		[overridden, setComponentChildren],
+	);
+
+	const editClasses = useCallback(
+		(target: ElementRef, edit: (classes: string) => string, step?: string) => {
+			const handled = overridden(target, (current, usage) => {
+				const classes = usageClasses(current, usage, target.start);
+
+				return classes === null
+					? { ok: false, reason: "That element isn't in the component anymore." }
+					: overrideClasses(current, usage, target.start, edit(classes));
+			});
+
+			if (!handled) editComponentClasses(target, edit, step);
+		},
+		[overridden, editComponentClasses],
+	);
+
 	const { startNaming, duplicateNode, wrapNode } = liveStructure;
 	const { wrapInStackNode, unwrapNode, moveNodeAmongSiblings, moveNodeTo, pasteIntoNode } = liveStructure;
 	const { moveNodeEntry, moveNodeAcross, moveNodeBy, arrangeNodes, restyleSelected } = liveStructure;
@@ -712,13 +863,56 @@ export function EditorView({
 		(file: string, element: ElementRef | null) => {
 			const current = stateRef.current?.canvas.selection;
 
+			if (element && element.file !== instanceScope?.component) setInstanceScope(null);
+
 			if (!current || current.length !== 1 || current[0] !== file) setSelection([file]);
 			selectNode(element);
 
 			// Element props and styles live in the Design tab; the Code tab follows the selection in its outline
 			if (element) setTab((tab) => (tab === "context" || tab === "components" ? "design" : tab));
 		},
+		[stateRef, setSelection, selectNode, instanceScope],
+	);
+
+	const enterInstance = useCallback(
+		(usage: ElementRef, inner: ElementRef | null) => {
+			const current = stateRef.current?.files ?? {};
+			const found = isScreenFile(usage.file) ? instanceAt(current, usage.file, usage.start) : null;
+			const source = found ? current[found.componentPath] : undefined;
+
+			if (!found || source === undefined) return false;
+			const root = componentRoot(source, found.exportName);
+
+			const target =
+				inner?.file === found.componentPath ? inner : root === null ? null : { file: found.componentPath, start: root };
+
+			setInstanceScope({ file: usage.file, start: usage.start, component: found.componentPath });
+			setInstanceMode("component");
+
+			if (stateRef.current?.canvas.selection.join() !== usage.file) setSelection([usage.file]);
+			selectNode(target);
+			setTab((tab) => (tab === "context" || tab === "components" ? "design" : tab));
+
+			return true;
+		},
 		[stateRef, setSelection, selectNode],
+	);
+
+	const exitInstance = useCallback(() => {
+		if (!instance) return;
+		setInstanceScope(null);
+		selectNode({ file: instance.file, start: instance.start });
+	}, [instance, selectNode]);
+
+	const editInstance = useCallback((usage: ElementRef) => void enterInstance(usage, null), [enterInstance]);
+
+	const goToComponent = useCallback(
+		(path: string) => {
+			setInstanceScope(null);
+			selectComponent(path);
+			setTab("components");
+		},
+		[selectComponent],
 	);
 
 	const noteActions = useMemo<DesignNoteActions>(
@@ -1410,12 +1604,44 @@ export function EditorView({
 		[changeLink],
 	);
 
-	/** The selected element, when it is in the one selected screen */
+	/** The selected element, when it is in the one selected screen or the component stepped into from it */
 	const element =
-		structure.node && selection.length === 1 && structure.node.file === selection[0] ? structure.node : null;
+		structure.node &&
+		selection.length === 1 &&
+		(structure.node.file === selection[0] || structure.node.file === instance?.component)
+			? structure.node
+			: null;
 
 	/** The elements ⇧-click added to `element` */
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
+
+	const instanceRoot = instance ? componentRoot(files[instance.component] ?? "", instance.exportName) : null;
+	const selectedUsage = element && !extraElements.length ? instanceAt(files, element.file, element.start) : null;
+
+	const usageOf = (target: ElementRef): UsageRef => ({ path: target.file, start: target.start });
+
+	const runOnUsage = (write: (files: ProjectFiles, usage: UsageRef) => InstanceResult, done?: string) => {
+		if (!element) return;
+		const result = changeUsage((current) => write(current, usageOf(element)));
+
+		if (result && done) toast(done);
+
+		return result;
+	};
+
+	const instanceActions = {
+		usage: selectedUsage !== null,
+		overridden: !!element && selectedUsage !== null && usageOverrides(files, usageOf(element)).length > 0,
+		enter: () => element && enterInstance(element, null),
+		goTo: () => selectedUsage && goToComponent(selectedUsage.componentPath),
+		reset: () => runOnUsage(resetOverrides, "Reset overrides"),
+		apply: () => runOnUsage(applyOverrides, `Applied to ${selectedUsage?.exportName ?? "the component"}`),
+		detach: () => {
+			const result = runOnUsage(detachUsage);
+
+			if (result && element) structure.select({ file: element.file, start: result.start });
+		},
+	};
 
 	const selectedLink =
 		pickedLink &&
@@ -1623,6 +1849,7 @@ export function EditorView({
 			run: () => {
 				if (tool !== "move" && tool !== "hand") setTool("move");
 				else if (selectedLink) setPickedLink(null);
+				else if (instance && (!element || element.start === instanceRoot)) exitInstance();
 				else if (element && extraElements.length) structure.select(element);
 				else if (element) structure.select(parentElement(element));
 				else setSelection([]);
@@ -1645,6 +1872,7 @@ export function EditorView({
 			pasteScreens: (data) => actionById(screenActions(screenContext), "paste-screens")?.paste?.(data),
 			copyImage: (format, starts) =>
 				single && void copyImage(format, single, files, appliedTokens, sections.sections, starts),
+			instance: instanceActions,
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
@@ -1908,6 +2136,14 @@ export function EditorView({
 			run: () => sidePanel.toggleTab("screens"),
 		},
 		{
+			id: "toggle-assets",
+			label: "Assets",
+			group: "View",
+			chords: [{ code: ASSETS_VIEW_CODE, alt: true }],
+			enabled: loaded,
+			run: () => sidePanel.toggleTab("assets"),
+		},
+		{
 			id: "toggle-history",
 			label: "Version history",
 			group: "View",
@@ -2016,14 +2252,6 @@ export function EditorView({
 			hidden: true,
 			global: true,
 			run: () => setPaletteOpen(true),
-		},
-		{
-			id: "toggle-assets",
-			label: "Assets",
-			group: "View",
-			chords: [{ code: ASSETS_VIEW_CODE, alt: true }],
-			enabled: loaded,
-			run: () => sidePanel.toggleTab("assets"),
 		},
 		{
 			id: "shortcut-sheet",
@@ -2330,7 +2558,8 @@ export function EditorView({
 					file={codeFile}
 					structure={structure}
 					onEndStep={endStep}
-					onOpenComponent={selectComponent}
+					onOpenComponent={goToComponent}
+					onEditInstance={editInstance}
 					frames={frames}
 					projectPath={projectPath}
 					tokens={appliedTokens}
@@ -2360,7 +2589,8 @@ export function EditorView({
 			codeSource,
 			structure,
 			endStep,
-			selectComponent,
+			goToComponent,
+			editInstance,
 			frames,
 			projectPath,
 			appliedTokens,
@@ -2640,6 +2870,20 @@ export function EditorView({
 					/>
 
 					<div className="relative min-w-0 flex-1">
+						{instance ? (
+							<InstanceBar
+								name={instance.exportName}
+								usages={componentElements(files, instance.component, instance.exportName).length}
+								mode={instanceMode}
+								overrides={usageOverrides(files, { path: instance.file, start: instance.start })}
+								onModeChange={setInstanceMode}
+								onGoTo={() => goToComponent(instance.component)}
+								onReset={() =>
+									changeUsage((current) => resetOverrides(current, { path: instance.file, start: instance.start }))
+								}
+								onDone={exitInstance}
+							/>
+						) : null}
 						<Canvas
 							frames={frames}
 							files={files}
@@ -2698,6 +2942,8 @@ export function EditorView({
 							}
 							locks={locks}
 							onEditTextElsewhere={editTextElsewhere}
+							instance={instance}
+							onEnterInstance={enterInstance}
 							onPlaceComment={comments.startDraft}
 							onInsert={insertTools.insert}
 							screenMenu={screenMenu}

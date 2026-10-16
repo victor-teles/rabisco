@@ -264,7 +264,7 @@ describe("hit testing", () => {
 			hit: { path: "screens/a.tsx", starts: [95, 40], version, boxes: [box] },
 		});
 		// Missing boxes become null, aligned with the starts
-		expect(await pending).toEqual({ path: "screens/a.tsx", starts: [95, 40], version, boxes: [box, null] });
+		expect(await pending).toEqual({ path: "screens/a.tsx", starts: [95, 40], version, boxes: [box, null], inner: [] });
 
 		const other = host.hitTest(1, 1);
 		const second = lastPosted(posted, "hit-test");
@@ -409,6 +409,16 @@ describe("hit testing", () => {
 		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: { ...dropLayout, children } })).toBe(false);
 		const { direction: _, ...withoutDirection } = dropLayout;
 		expect(isFrameMessage({ type: "drop-layout", id: 1, layout: withoutDirection })).toBe(false);
+	});
+
+	test("track names the component file of an element inside a usage", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		host.track(40, "v1", "components/plan-card.tsx");
+		expect(posted.at(-1)).toEqual({ type: "track", start: 40, version: "v1", path: "components/plan-card.tsx" });
+		host.track(40, "v1");
+		expect(posted.at(-1)).toEqual({ type: "track", start: 40, version: "v1" });
 	});
 
 	test("track sends the element once ready, and only current boxes come back", () => {

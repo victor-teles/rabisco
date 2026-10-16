@@ -84,7 +84,7 @@ let hitTestId = 0;
 
 let requestId = 0;
 
-type TrackedElement = { start: number | null; version: string };
+type TrackedElement = { start: number | null; version: string; path?: string };
 
 type LinkedElements = { entry: string; source: string; starts: number[]; version: string };
 
@@ -287,11 +287,11 @@ export class FrameHost {
 		});
 	}
 
-	track(start: number | null, version: string) {
-		if (start === this.#tracked.start && version === this.#tracked.version) return;
-		this.#tracked = { start, version };
+	track(start: number | null, version: string, path?: string) {
+		if (start === this.#tracked.start && version === this.#tracked.version && path === this.#tracked.path) return;
+		this.#tracked = { start, version, path };
 
-		if (this.#ready) this.#post({ type: "track", start, version });
+		if (this.#ready) this.#post({ type: "track", start, version, path });
 	}
 
 	/** Inline styles on the element while a handle drags; `null` restores them. The next render restores them too */
@@ -306,7 +306,7 @@ export class FrameHost {
 
 	/** Resolves with the new text, `null` if cancelled, or `undefined` if the frame refused. */
 	editText(
-		edit: { start: number; version: string; text: string; x?: number; y?: number },
+		edit: { start: number; version: string; text: string; x?: number; y?: number; path?: string },
 		onStart?: () => void,
 	): Promise<string | null | undefined> {
 		this.#textEdit?.resolve(null);
@@ -383,9 +383,13 @@ export class FrameHost {
 	}
 
 	/** One box per rendered instance; `null` when the frame shows another version or doesn't answer. */
-	async elementBoxes(start: number, version: string): Promise<Box[] | null> {
+	async elementBoxes(start: number, version: string, path?: string): Promise<Box[] | null> {
 		if (!this.#sentEntry) return null;
-		const reply = await this.#request({ type: "element-boxes", id: ++requestId, start, version }, HIT_TEST_TIMEOUT_MS);
+
+		const reply = await this.#request(
+			{ type: "element-boxes", id: ++requestId, start, version, path },
+			HIT_TEST_TIMEOUT_MS,
+		);
 
 		return reply?.type === "element-boxes" ? reply.boxes : null;
 	}
@@ -476,6 +480,7 @@ export class FrameHost {
 							starts: [...hit.starts],
 							version: hit.version,
 							boxes: hitBoxes(hit.boxes, hit.starts.length),
+							inner: hit.inner ?? [],
 						}
 					: null,
 			);

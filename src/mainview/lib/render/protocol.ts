@@ -43,18 +43,18 @@ export type HostMessage =
 	/** Answered by a `drop-layout` with the same `id`; `x`, `y` pick the instance under the pointer (else the first). */
 	| { type: "drop-layout"; id: number; start: number; version: string; x: number; y: number }
 	/** Answered by an `element-boxes` with the same `id`: where the element at `start` renders, without tracking it. */
-	| { type: "element-boxes"; id: number; start: number; version: string }
+	| { type: "element-boxes"; id: number; start: number; version: string; path?: string }
 	/** Answered by a `placements` with the same `id`: where each element sits in its containing block. */
 	| { type: "placements"; id: number; starts: number[]; version: string }
 	/** Stream `boxes` for the element at `start` on every layout change until the next `track`; `null` stops. */
-	| { type: "track"; start: number | null; version: string }
+	| { type: "track"; start: number | null; version: string; path?: string }
 	| { type: "links"; starts: number[]; version: string }
 	/** Inline styles on every instance of the elements at `starts` while a handle drags; `null` (or the next render) restores them */
 	| { type: "preview-style"; starts: number[]; version: string; style: Record<string, string> | null }
 	/** Shifts the instances of a dragged list item until the next render; `null` slides them back */
 	| { type: "preview-order"; start: number; version: string; preview: OrderPreview | null }
 	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
-	| { type: "edit-text"; start: number; version: string; text: string; x?: number; y?: number }
+	| { type: "edit-text"; start: number; version: string; text: string; x?: number; y?: number; path?: string }
 	| { type: "end-edit"; commit: boolean }
 	/** Play mode (decision 0007): `data-link-to` clicks post `navigate` instead of their default. */
 	| { type: "play"; on: boolean }
@@ -199,6 +199,7 @@ export type FrameHit = {
 	starts: number[];
 	version: string;
 	boxes?: (Box | null)[];
+	inner?: { loc: string; version: string }[];
 };
 
 export const sourceVersion = (source: string) => hashString(source);
@@ -280,16 +281,21 @@ function isBox(box: unknown): box is Box {
 
 const isBoxOrNull = (box: unknown): box is Box | null => box === null || isBox(box);
 
+const isInnerHit = (item: unknown): item is { loc: string; version: string } =>
+	isObject(item) && "loc" in item && "version" in item && isString(item.loc) && isString(item.version);
+
 function isFrameHit(hit: unknown): hit is FrameHit {
 	if (!isObject(hit) || !("path" in hit) || !("starts" in hit) || !("version" in hit)) return false;
 	const boxes = "boxes" in hit ? hit.boxes : undefined;
+	const inner = "inner" in hit ? hit.inner : undefined;
 
 	return (
 		isString(hit.path) &&
 		isString(hit.version) &&
 		Array.isArray(hit.starts) &&
 		hit.starts.every(isNumber) &&
-		(boxes === undefined || (Array.isArray(boxes) && boxes.every(isBoxOrNull)))
+		(boxes === undefined || (Array.isArray(boxes) && boxes.every(isBoxOrNull))) &&
+		(inner === undefined || (Array.isArray(inner) && inner.every(isInnerHit)))
 	);
 }
 
