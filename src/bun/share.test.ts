@@ -158,6 +158,8 @@ describe("viewerFiles", () => {
 			'if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });',
 		);
 		expect(assertSnapshot(withImages)).toEqual(withImages);
+		const withFont = { ...snapshot(), assets: { "/fonts/brand-sans.woff2": "data:font/woff2;base64,Zm9udA==" } };
+		expect(assertSnapshot(withFont)).toEqual(withFont);
 		expect(() => assertSnapshot({ ...snapshot(), assets: { "/images/a.png": "https://x.test/a.png" } })).toThrow(
 			"isn't an image",
 		);

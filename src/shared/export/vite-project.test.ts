@@ -255,3 +255,12 @@ test("copies the project's images into public/, where Vite serves them at /", ()
 	expect(byPath(project)["README.md"]).toContain("`public/`: the images the screens show");
 	expect(byPath(viteProject(input))["README.md"]).not.toContain("`public/`");
 });
+
+test("embeds the project's fonts: the files in public/ and an @font-face for each", () => {
+	const project = viteProject({ ...input, assets: { "/fonts/brand-sans-700.woff2": "Zm9udA==" } });
+	const css = byPath(project)["src/index.css"]!;
+
+	expect(project.files.find((file) => file.path === "public/fonts/brand-sans-700.woff2")?.encoding).toBe("base64");
+	expect(css).toContain('font-family: "Brand Sans";\n\tsrc: url("/fonts/brand-sans-700.woff2") format("woff2");');
+	expect(byPath(viteProject(input))["src/index.css"]).not.toContain("@font-face");
+});

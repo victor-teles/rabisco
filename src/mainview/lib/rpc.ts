@@ -5,6 +5,7 @@ import { agentOpener } from "@/lib/agent-open";
 import { brandKitUrl } from "../../shared/context/brand-kit";
 import { kitFiles } from "../../shared/components/starter-kits";
 import { starterFiles } from "../../shared/context/styles";
+import { FONTS_PREFIX, fontFileName } from "../../shared/fonts";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../../shared/moodboard";
 import { coverFor, emptyCanvas, isProjectFile, reconcileFrames, summarizeProject } from "../../shared/project";
 import { errorResult, NO_PROJECT, type AgentCall, type ToolResult } from "../../shared/mcp/tools";
@@ -287,6 +288,29 @@ function createBrowserApi(): RabiscoApi {
 		// Nowhere to copy a file to: the webview keeps the bytes for the session
 		async addMoodboardImage({ mediaType }) {
 			return { src: `${MOODBOARD_PREFIX}${crypto.randomUUID()}.${MOODBOARD_EXTENSIONS[mediaType]}` };
+		},
+		async addFont({ name }) {
+			const file = fontFileName(name);
+
+			if (!file) throw new Error(`Not a font Rabisco can use: ${name}. Pick a woff2, woff, ttf or otf file.`);
+
+			return { src: `${FONTS_PREFIX}${file}` };
+		},
+		async canGenerateImages() {
+			return { ok: import.meta.env.DEV };
+		},
+		async generateImage({ prompt, aspect, name }) {
+			if (!import.meta.env.DEV) throw new Error("Image generation needs the Rabisco desktop app.");
+			const { mockImage } = await import("../../bun/ai/providers/mock");
+			const image = mockImage({ prompt, aspect });
+
+			const base =
+				name
+					.toLowerCase()
+					.replace(/[^a-z0-9]+/g, "-")
+					.replace(/^-+|-+$/g, "") || "image";
+
+			return { src: `/images/${base}-${crypto.randomUUID().slice(0, 8)}.svg`, data: image.data };
 		},
 		async appendMessages({ path, chatId, messages }) {
 			const stored = mustRead(path);

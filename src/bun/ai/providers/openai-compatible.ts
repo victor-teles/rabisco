@@ -1,4 +1,10 @@
-import type { GenerationRequest, Provider, ProviderCapabilities, ProviderModel } from "../../../shared/ai/contract";
+import type {
+	GenerationRequest,
+	ImageRequest,
+	Provider,
+	ProviderCapabilities,
+	ProviderModel,
+} from "../../../shared/ai/contract";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
 import { isString } from "../../../shared/guards";
 import type { JsonObject } from "../../../shared/json";
@@ -18,6 +24,7 @@ import {
 	type StreamPart,
 	toProviderError,
 } from "./api-common";
+import { openAIImage, openRouterImage, type ImageMaker } from "./images";
 
 const OLLAMA_DOWN = {
 	message: "Ollama isn't running",
@@ -121,6 +128,25 @@ export function createOpenAICompatibleProvider(options: ApiProviderOptions): Pro
 		return listed.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
+	async function postJson(path: string, body: JsonObject, signal: AbortSignal): Promise<JsonObject> {
+		let response: Response;
+
+		try {
+			response = await fetcher(`${requireBase()}${path}`, {
+				method: "POST",
+				headers: await headers(),
+				signal,
+				body: JSON.stringify(body),
+			});
+		} catch (error) {
+			throw connectionError(error, signal);
+		}
+
+		if (!response.ok) throw await errorFromResponse(response);
+
+		return objectOr(parseJson(await response.text()));
+	}
+
 	async function* stream(request: GenerationRequest, signal: AbortSignal): AsyncGenerator<StreamPart> {
 		const base = requireBase();
 		const model = request.model || config.defaultModel;
@@ -215,7 +241,10 @@ export function createOpenAICompatibleProvider(options: ApiProviderOptions): Pro
 		}
 	}
 
-	return {
+	const imageMaker: ImageMaker | null =
+		config.type === "openai" ? openAIImage : config.type === "openrouter" ? openRouterImage : null;
+
+	const provider: Provider = {
 		id: config.id,
 		kind: "api",
 		label: config.label,
@@ -259,6 +288,17 @@ export function createOpenAICompatibleProvider(options: ApiProviderOptions): Pro
 			return runTextGeneration(request, signal, () => stream(request, signal));
 		},
 	};
+
+	if (imageMaker)
+		provider.generateImage = async (request: ImageRequest, signal: AbortSignal) => {
+			try {
+				return await imageMaker((path, body) => postJson(path, body, signal), request);
+			} catch (error) {
+				throw connectionError(error, signal);
+			}
+		};
+
+	return provider;
 
 	function keyFix() {
 		return `Add your ${info?.label ?? "API"} key in Settings${info?.helpUrl ? `. Create one at ${info.helpUrl.replace(/^https:\/\//, "")}` : ""}.`;

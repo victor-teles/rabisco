@@ -98,8 +98,8 @@ function assertAssets(assets: Json): asserts assets is Record<string, string> {
 	if (!isJsonObject(assets)) throw new Error("Snapshot assets aren't a map");
 
 	for (const [src, url] of Object.entries(assets))
-		if (!assetKey(src) || !isString(url) || !url.startsWith("data:image/"))
-			throw new Error(`Snapshot asset ${src} isn't an image`);
+		if (!assetKey(src) || !isString(url) || !/^data:(?:image|font)\//.test(url))
+			throw new Error(`Snapshot asset ${src} isn't an image or a font`);
 }
 
 function assertShareSnapshot(value: Json | undefined): asserts value is ShareSnapshot {

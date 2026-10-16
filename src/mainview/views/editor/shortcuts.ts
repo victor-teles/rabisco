@@ -32,6 +32,10 @@ export const DESIGN_SYSTEM_KEYS = "⌥3";
 
 export const DESIGN_SYSTEM_CODE = "Digit3";
 
+export const ASSETS_VIEW_KEYS = "⌥4";
+
+export const ASSETS_VIEW_CODE = "Digit4";
+
 /** Figma's Layers panel: ⌥1. Matched on `event.code` (`Digit1`) since ⌥ changes `event.key` on macOS */
 export const SCREENS_VIEW_KEYS = "⌥1";
 

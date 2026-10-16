@@ -309,6 +309,13 @@ const rpc = BrowserView.defineRPC<RabiscoRPC>({
 			addMoodboardImage: ({ path, name, mediaType, data }) => ({
 				src: store.addMoodboardImage(path, name, mediaType, data),
 			}),
+			addFont: ({ path, name, data }) => ({ src: store.addFont(path, name, data) }),
+			canGenerateImages: async () => ({ ok: await ai.canGenerateImages() }),
+			generateImage: async ({ path, prompt, aspect, name }) => {
+				const image = await ai.generateImage({ prompt, aspect });
+
+				return { src: store.addGeneratedImage(path, name, image), data: image.data };
+			},
 			removeRecent: ({ path }) => (store.removeRecent(path), ok),
 			deleteProject: ({ path }) => (store.deleteProject(path), ok),
 			revealProject: ({ path }) => (store.revealProject(path), ok),

@@ -2,10 +2,13 @@ import type {
 	ElementFocus,
 	GenerationEvent,
 	GenerationPlan,
+	GeneratedImage,
 	GenerationRequest,
+	ImageRequest,
 	PlannedScreen,
 	Provider,
 } from "../../../shared/ai/contract";
+import { hashString } from "../../../shared/jsx/hash";
 import { pascalName, PLAN_LIMITS, planBlock } from "../../../shared/ai/plan";
 import { contextBody } from "../../../shared/context/body";
 import { DESIGN_RULE_LABELS } from "../../../shared/design/findings";
@@ -189,7 +192,27 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 		health: async () => ({ ok: true, version: "dev" }),
 		listModels: async () => [{ id: "mock", label: "Mock (dev)" }],
 		generate,
+		generateImage: async (request, signal) => {
+			await sleep(delay, signal);
+
+			return mockImage(request);
+		},
 	};
+}
+
+const MOCK_IMAGE_SIZES = { square: [1024, 1024], landscape: [1536, 1024], portrait: [1024, 1536] } as const;
+
+const escapeXml = (text: string) =>
+	text.replace(/[^\x20-\x7e]/g, "").replace(/[<>&"]/g, (char) => `&#${char.charCodeAt(0)};`);
+
+export function mockImage(request: ImageRequest): GeneratedImage {
+	const [width, height] = MOCK_IMAGE_SIZES[request.aspect];
+	const hue = Number.parseInt(hashString(request.prompt), 36) % 360;
+	const caption = escapeXml(request.prompt.split("\n", 1)[0]!.slice(0, 60));
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 70% 62%)"/><stop offset="1" stop-color="hsl(${(hue + 60) % 360} 65% 38%)"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${width * 0.72}" cy="${height * 0.3}" r="${height * 0.12}" fill="hsl(${hue} 90% 88%)" opacity="0.8"/><text x="48" y="${height - 56}" font-family="sans-serif" font-size="40" fill="white" opacity="0.85">${caption}</text></svg>`;
+
+	return { mediaType: "image/svg+xml", data: btoa(svg) };
 }
 
 const VARIANT_ACCENTS = ["blue", "violet", "emerald", "orange", "rose", "teal", "amber", "fuchsia"];

@@ -10,8 +10,9 @@ import {
 	writeFileSync,
 } from "fs";
 import { basename, extname, join } from "path";
-import type { Attachment } from "../shared/ai/contract";
+import type { Attachment, GeneratedImage } from "../shared/ai/contract";
 import { assetKey, PUBLIC_DIR, type AssetChange, type AssetDigests, type ProjectAssets } from "../shared/assets";
+import { FONTS_PREFIX, fontFileName } from "../shared/fonts";
 import { MOODBOARD_EXTENSIONS, MOODBOARD_PREFIX } from "../shared/moodboard";
 import { assertProjectDir } from "./project-folder";
 
@@ -58,19 +59,7 @@ export function importImage(projectDir: string, file: string): string {
 	}
 }
 
-export function saveMoodboardImage(
-	projectDir: string,
-	name: string,
-	mediaType: Attachment["mediaType"],
-	data: string,
-): string {
-	assertProjectDir(projectDir);
-	const bytes = Buffer.from(data, "base64");
-
-	if (bytes.length > MAX_ASSET_BYTES) throw new Error(`${name} is over ${MAX_ASSET_BYTES / 1024 / 1024} MB.`);
-	const dir = join(projectDir, PUBLIC_DIR, MOODBOARD_PREFIX);
-	const base = slug(basename(name, extname(name)));
-	const extension = MOODBOARD_EXTENSIONS[mediaType];
+function writeUnique(dir: string, base: string, extension: string, bytes: Buffer): string {
 	mkdirSync(dir, { recursive: true });
 
 	for (let n = 1; ; n++) {
@@ -81,8 +70,63 @@ export function saveMoodboardImage(
 
 		if (!existsSync(target)) writeFileSync(target, bytes);
 
-		return `${MOODBOARD_PREFIX}${file}`;
+		return file;
 	}
+}
+
+function decodeAsset(name: string, data: string): Buffer {
+	const bytes = Buffer.from(data, "base64");
+
+	if (bytes.length > MAX_ASSET_BYTES) throw new Error(`${name} is over ${MAX_ASSET_BYTES / 1024 / 1024} MB.`);
+
+	return bytes;
+}
+
+export function saveMoodboardImage(
+	projectDir: string,
+	name: string,
+	mediaType: Attachment["mediaType"],
+	data: string,
+): string {
+	assertProjectDir(projectDir);
+	const bytes = decodeAsset(name, data);
+	const base = slug(basename(name, extname(name)));
+
+	const file = writeUnique(
+		join(projectDir, PUBLIC_DIR, MOODBOARD_PREFIX),
+		base,
+		MOODBOARD_EXTENSIONS[mediaType],
+		bytes,
+	);
+
+	return `${MOODBOARD_PREFIX}${file}`;
+}
+
+const GENERATED_EXTENSIONS: Record<GeneratedImage["mediaType"], string> = {
+	"image/png": "png",
+	"image/jpeg": "jpg",
+	"image/webp": "webp",
+	"image/svg+xml": "svg",
+};
+
+export function saveGeneratedImage(projectDir: string, name: string, image: GeneratedImage): string {
+	assertProjectDir(projectDir);
+	const bytes = decodeAsset(name, image.data);
+	const file = writeUnique(join(projectDir, IMAGES_DIR), slug(name), GENERATED_EXTENSIONS[image.mediaType], bytes);
+
+	return `/images/${file}`;
+}
+
+export function saveFont(projectDir: string, name: string, data: string): string {
+	assertProjectDir(projectDir);
+	const file = fontFileName(name);
+
+	if (!file) throw new Error(`Not a font Rabisco can use: ${name}. Pick a woff2, woff, ttf or otf file.`);
+	const dir = join(projectDir, PUBLIC_DIR, FONTS_PREFIX);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, file), decodeAsset(name, data));
+
+	return `${FONTS_PREFIX}${file}`;
 }
 
 /** Bigger files stay out of frames: their bytes cross RPC as base64 */

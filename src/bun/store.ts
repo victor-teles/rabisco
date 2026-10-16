@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { join, resolve } from "path";
-import type { Attachment } from "../shared/ai/contract";
+import type { Attachment, GeneratedImage } from "../shared/ai/contract";
 import type { AssetChange, AssetWrite } from "../shared/assets";
 import type { BackupReason, SavedHistory } from "../shared/saved-history";
 import type { StyleId } from "../shared/context/styles";
@@ -15,7 +15,7 @@ import type {
 	ProjectSummary,
 	ScreenSource,
 } from "../shared/types";
-import { AssetTracker, importImage, saveMoodboardImage } from "./assets";
+import { AssetTracker, importImage, saveFont, saveGeneratedImage, saveMoodboardImage } from "./assets";
 import { migrateLegacyProjects } from "./migrate";
 import {
 	CANVAS_FILE,
@@ -200,6 +200,22 @@ export function createProjectStore(options: StoreOptions) {
 		addMoodboardImage(path: string, name: string, mediaType: Attachment["mediaType"], data: string): string {
 			assertProject(path);
 			const src = saveMoodboardImage(path, name, mediaType, data);
+			pushAssets(normalize(path));
+
+			return src;
+		},
+
+		addGeneratedImage(path: string, name: string, image: GeneratedImage): string {
+			assertProject(path);
+			const src = saveGeneratedImage(path, name, image);
+			pushAssets(normalize(path));
+
+			return src;
+		},
+
+		addFont(path: string, name: string, data: string): string {
+			assertProject(path);
+			const src = saveFont(path, name, data);
 			pushAssets(normalize(path));
 
 			return src;

@@ -693,3 +693,29 @@ describe("visual review", () => {
 		expect(requests).toHaveLength(0);
 	});
 });
+
+describe("generateImage", () => {
+	test("uses an enabled provider with an image model, without naming it", async () => {
+		const { ai } = setup();
+
+		expect(await ai.canGenerateImages()).toBe(true);
+		const image = await ai.generateImage({ prompt: "A lighthouse", aspect: "landscape" });
+
+		expect(image.mediaType).toBe("image/svg+xml");
+	});
+
+	test("says how to set one up when no provider has an image model", async () => {
+		const root = tempDir();
+
+		const ai = createAiService({
+			userDataDir: join(root, "userData"),
+			secrets: createMemorySecretStore(),
+			includeMock: false,
+			send: () => {},
+			detect: async () => ({}),
+		});
+
+		expect(await ai.canGenerateImages()).toBe(false);
+		await expect(ai.generateImage({ prompt: "x", aspect: "square" })).rejects.toThrow("No image model is set up");
+	});
+});

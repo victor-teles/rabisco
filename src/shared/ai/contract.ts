@@ -36,11 +36,25 @@ export interface Provider {
 	/** Must stop promptly on abort and end the stream with exactly one `done` or `error` event. */
 	generate(request: GenerationRequest, signal: AbortSignal): AsyncIterable<GenerationEvent>;
 
+	generateImage?(request: ImageRequest, signal: AbortSignal): Promise<GeneratedImage>;
+
 	/** The user's and the project's own commands for this tool, run as `/name args` from the chat */
 	listCommands?(projectPath: string): Promise<ProviderCommand[]>;
 	/** The prompt `/name args` stands for, or `null` when there is no such command */
 	expandCommand?(projectPath: string, name: string, args: string): Promise<string | null>;
 }
+
+export type ImageAspect = "square" | "landscape" | "portrait";
+
+export type ImageRequest = {
+	prompt: string;
+	aspect: ImageAspect;
+};
+
+export type GeneratedImage = {
+	mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml";
+	data: string;
+};
 
 export type ProviderCommand = {
 	/** Without the slash; nested folders join with `:` (`git:commit`) */

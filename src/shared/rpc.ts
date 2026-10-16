@@ -3,7 +3,7 @@ import type { AssetChange, AssetWrite } from "./assets";
 import type { UrlCapture } from "./import/url-capture";
 import type { StyleId } from "./context/styles";
 import type { KitId } from "./components/starter-kits";
-import type { Attachment, ProviderCommand } from "./ai/contract";
+import type { Attachment, ImageAspect, ProviderCommand } from "./ai/contract";
 import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
 import type { RepoInfo } from "./export/repo-sync";
@@ -75,6 +75,12 @@ export type RabiscoRPC = {
 			addMoodboardImage: {
 				params: { path: string; name: string; mediaType: Attachment["mediaType"]; data: string };
 				response: { src: string };
+			};
+			addFont: { params: { path: string; name: string; data: string }; response: { src: string } };
+			canGenerateImages: { params: {}; response: { ok: boolean } };
+			generateImage: {
+				params: { path: string; prompt: string; aspect: ImageAspect; name: string };
+				response: { src: string; data: string };
 			};
 			removeRecent: { params: { path: string }; response: { ok: true } };
 			/** Moves the folder to the trash */

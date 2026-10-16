@@ -95,6 +95,8 @@ import {
 	addModeOption,
 	designTokensOf,
 	modeSlug,
+	setDesignToken,
+	tokenKind,
 	type DesignTokens,
 	type TokenValues,
 } from "../../../shared/context/tokens";
@@ -150,6 +152,9 @@ import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
 import { ScreensPanel } from "./screens-panel";
+import { fontToken, leadingFamily, type FontFamily } from "../../../shared/fonts";
+import { replacePlaceholders, type PlaceholderImage } from "../../../shared/placeholder-images";
+import { AssetsPanel } from "./assets-panel";
 import { MoodboardLayer } from "./moodboard-layer";
 import { SectionDraw, SectionsLayer } from "./sections-layer";
 import { FindPanel } from "./find-panel";
@@ -168,6 +173,7 @@ import {
 	ownsKey,
 	PLAY_KEYS,
 	SCREENS_VIEW_CODE,
+	ASSETS_VIEW_CODE,
 	SIDE_PANEL_CODE,
 } from "./shortcuts";
 
@@ -951,6 +957,66 @@ export function EditorView({
 		[change],
 	);
 
+	const addFontTokens = useCallback(
+		(families: FontFamily[]) =>
+			change((snapshot) => {
+				const named = new Set(
+					Object.entries({ ...snapshot.theme?.dark, ...snapshot.theme?.light }).flatMap(([name, value]) =>
+						tokenKind(name) === "font" ? [leadingFamily(value)] : [],
+					),
+				);
+
+				const missing = families.filter((family) => !named.has(family.family.toLowerCase()));
+
+				if (!missing.length) return snapshot;
+				let design = seedDesignTokens(snapshot.files["DESIGN.md"] ?? "", snapshot.theme);
+
+				for (const family of missing) {
+					const token = fontToken(family);
+					design = setDesignToken(design, token.name, "light", token.value);
+				}
+
+				return {
+					...snapshot,
+					files: { ...snapshot.files, "DESIGN.md": design },
+					theme: withSource(designTokensOf(design), designSourceOf(design)),
+				};
+			}),
+		[change],
+	);
+
+	const removeAsset = useCallback(
+		(src: string) =>
+			change((snapshot) => {
+				if (!snapshot.assets || !(src in snapshot.assets)) return snapshot;
+				const assets = { ...snapshot.assets };
+				delete assets[src];
+
+				return { ...snapshot, assets };
+			}),
+		[change],
+	);
+
+	const replaceWithImages = useCallback(
+		(images: PlaceholderImage[]) => {
+			let count = 0;
+
+			change((snapshot) => {
+				const { files: next, replaced } = replacePlaceholders(snapshot.files, images);
+				count = replaced;
+
+				return replaced ? { ...snapshot, files: next } : snapshot;
+			});
+
+			if (count)
+				toast.success(`Replaced ${count} ${count === 1 ? "placeholder" : "placeholders"} with images`, {
+					description: "Press ⌘Z to undo.",
+				});
+			else toast("The placeholders changed while the images were made, so nothing was replaced");
+		},
+		[change],
+	);
+
 	const settleDraft = useCallback(
 		(
 			id: string,
@@ -1304,6 +1370,8 @@ export function EditorView({
 		},
 		[stateRef, setSelection],
 	);
+
+	const openAssetUse = useCallback((file: string) => selectFromList(file, false), [selectFromList]);
 
 	const revealSection = useCallback(
 		(id: string) => {
@@ -1950,6 +2018,14 @@ export function EditorView({
 			run: () => setPaletteOpen(true),
 		},
 		{
+			id: "toggle-assets",
+			label: "Assets",
+			group: "View",
+			chords: [{ code: ASSETS_VIEW_CODE, alt: true }],
+			enabled: loaded,
+			run: () => sidePanel.toggleTab("assets"),
+		},
+		{
 			id: "shortcut-sheet",
 			label: "Keyboard shortcuts",
 			group: "Help",
@@ -2479,6 +2555,20 @@ export function EditorView({
 								sections={sections.sections}
 								onSelectSection={revealSection}
 							/>
+						}
+						assets={
+							project ? (
+								<AssetsPanel
+									projectPath={projectPath}
+									files={files}
+									frames={frames}
+									theme={appliedTokens}
+									onOpenFile={openAssetUse}
+									onAddFontTokens={addFontTokens}
+									onRemoveAsset={removeAsset}
+									onReplacePlaceholders={replaceWithImages}
+								/>
+							) : null
 						}
 						chat={
 							<ChatPanel

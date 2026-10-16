@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { assetKey, rewriteCssUrls, rewriteSrcset } from "../../shared/assets";
+import { fontFace } from "../../shared/fonts";
 import { isString } from "../../shared/guards";
 import type { AssetPayload } from "../lib/render/protocol";
 
@@ -20,6 +21,7 @@ export class FrameAssets {
 	#urls = new Map<string, string>();
 	/** By the object URLs this frame made, for snapshots */
 	#blobs = new Map<string, Blob>();
+	#faces = new Map<string, FontFace>();
 
 	/** Whether anything changed */
 	apply(assets: Record<string, AssetPayload | null>, reset = false): boolean {
@@ -43,6 +45,8 @@ export class FrameAssets {
 				this.#urls.set(key, url);
 				this.#blobs.set(url, payload);
 			}
+
+			this.#addFont(key);
 		}
 
 		return changed;
@@ -110,7 +114,31 @@ export class FrameAssets {
 		return next;
 	}
 
+	#addFont(key: string) {
+		const face = fontFace(key);
+		const url = this.#urls.get(key);
+
+		if (!face || !url || typeof FontFace === "undefined") return;
+
+		const loaded = new FontFace(face.family, `url("${url}")`, {
+			weight: String(face.weight),
+			style: face.style,
+			display: "swap",
+		});
+
+		this.#faces.set(key, loaded);
+		document.fonts.add(loaded);
+		loaded.load().catch(() => console.warn(`Couldn't load the font ${key}`));
+	}
+
 	#drop(key: string) {
+		const face = this.#faces.get(key);
+
+		if (face) {
+			document.fonts.delete(face);
+			this.#faces.delete(key);
+		}
+
 		const url = this.#urls.get(key);
 
 		if (url === undefined) return;

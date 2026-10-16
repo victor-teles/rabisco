@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "fs";
 import { join } from "path";
-import { assetDigest, AssetTracker, importImage, listAssets, saveMoodboardImage } from "./assets";
+import {
+	assetDigest,
+	AssetTracker,
+	importImage,
+	listAssets,
+	saveFont,
+	saveGeneratedImage,
+	saveMoodboardImage,
+} from "./assets";
 import { tempDir } from "./test-utils";
 
 describe("saveMoodboardImage", () => {
@@ -93,5 +101,30 @@ describe("AssetTracker", () => {
 			{ src: "/images/logo.png", data: base64("new logo"), digest: assetDigest(Buffer.from("new logo")) },
 		]);
 		expect(tracker.changes()).toEqual([]);
+	});
+});
+
+describe("saveGeneratedImage and saveFont", () => {
+	test("writes a generated image into public/images under its name", () => {
+		const project = tempDir();
+		const data = Buffer.from("<svg/>").toString("base64");
+
+		expect(saveGeneratedImage(project, "Food brunch", { mediaType: "image/svg+xml", data })).toBe(
+			"/images/food-brunch.svg",
+		);
+		expect(readFileSync(join(project, "public/images/food-brunch.svg"), "utf8")).toBe("<svg/>");
+	});
+
+	test("writes a font under its family, weight and style, replacing the same face", () => {
+		const project = tempDir();
+
+		expect(saveFont(project, "BrandSans-Bold.woff2", Buffer.from("v1").toString("base64"))).toBe(
+			"/fonts/brand-sans-700.woff2",
+		);
+		saveFont(project, "Brand Sans Bold.woff2", Buffer.from("v2").toString("base64"));
+
+		expect(readFileSync(join(project, "public/fonts/brand-sans-700.woff2"), "utf8")).toBe("v2");
+		expect(listAssets(project).has("/fonts/brand-sans-700.woff2")).toBe(true);
+		expect(() => saveFont(project, "notes.txt", "")).toThrow("Not a font");
 	});
 });

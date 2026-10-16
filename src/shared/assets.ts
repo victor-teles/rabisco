@@ -21,6 +21,10 @@ const ASSET_TYPES = new Map([
 	["svg", "image/svg+xml"],
 	["avif", "image/avif"],
 	["ico", "image/x-icon"],
+	["woff2", "font/woff2"],
+	["woff", "font/woff"],
+	["ttf", "font/ttf"],
+	["otf", "font/otf"],
 ]);
 
 /** `null` when Rabisco doesn't load files of this kind into frames */

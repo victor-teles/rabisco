@@ -3,6 +3,7 @@
 
 import { SCREEN_THEME_CSS } from "../../mainview/lib/render/theme";
 import { assetKey, PUBLIC_DIR, type ProjectAssets } from "../assets";
+import { fontFaceCss } from "../fonts";
 import { customTokenNames, tokenThemeCss, tokensToCss, type DesignTokens } from "../context/tokens";
 import { defaultMode, resolveModes, type ResolvedMode } from "../modes";
 import { isComponentFile, isScreenFile } from "../project";
@@ -262,12 +263,14 @@ export function ScreenMode({ mode, children }: { mode: Readonly<Record<string, s
 }
 `;
 
-function stylesheet(theme: DesignTokens) {
+function stylesheet(theme: DesignTokens, assets: string[]) {
 	const tokens = tokensToCss(theme);
 	const custom = tokenThemeCss(customTokenNames(theme));
+	const fonts = fontFaceCss(assets);
 
 	return [
 		`@import "tailwindcss";\n@import "tw-animate-css";\n`,
+		fonts && `/* The project's fonts, from public/fonts */\n${fonts}\n`,
 		`/* The screen theme: shadcn tokens with neutral colors */\n${SCREEN_THEME_CSS.trim()}\n`,
 		custom && `/* The custom DESIGN.md tokens, so bg-brand and rounded-card exist; values are set below */\n${custom}`,
 		`/* Screens fill the window, like a frame on the canvas */\nhtml,\nbody,\n#root {\n\theight: 100%;\n}\n`,
@@ -403,7 +406,13 @@ export function buildProject(
 			),
 		},
 		...framework.files(context),
-		{ path: framework.stylesheet, content: stylesheet(input.theme) },
+		{
+			path: framework.stylesheet,
+			content: stylesheet(
+				input.theme,
+				assets.map(([key]) => key),
+			),
+		},
 		{ path: "src/lib/utils.ts", content: UTILS },
 		...ui.map((module) => ({ path: `src/components/ui/${module}.tsx`, content: input.uiSources[module]! })),
 		...projectFiles.map((file) => ({ path: `src/${file}`, content: files[file]! })),

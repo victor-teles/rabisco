@@ -82,3 +82,13 @@ test("the page's <html> carries the mode the frame rendered in", () => {
 	expect(page({ scheme: "dark", brand: "acme" })).toContain('<html lang="en" class="dark" data-mode-brand="acme">');
 	expect(page({ scheme: "dark", '"><script>': "x" })).toContain('<html lang="en" class="dark">');
 });
+
+test("a page embeds the fonts its stylesheet names", () => {
+	const fonts = { "/fonts/brand-sans.woff2": "Zm9udA==", "/fonts/other.woff2": "eA==" };
+	const css = ':root{--font-display:"Brand Sans",sans-serif}';
+	const files = byPath(htmlScreen({ title: "A", markup: "<p>Hi</p>", css, assets: fonts }));
+
+	expect(files["styles.css"]!.content).toContain('src: url("fonts/brand-sans.woff2") format("woff2")');
+	expect(files["fonts/brand-sans.woff2"]).toMatchObject({ encoding: "base64" });
+	expect(files["fonts/other.woff2"]).toBeUndefined();
+});

@@ -8,7 +8,14 @@ import type {
 	ImprovePromptResult,
 	ProjectFiles,
 } from "../../shared/types";
-import type { ProviderCommand, ScreenMeta, Usage } from "../../shared/ai/contract";
+import type {
+	GeneratedImage,
+	ImageRequest,
+	Provider,
+	ProviderCommand,
+	ScreenMeta,
+	Usage,
+} from "../../shared/ai/contract";
 import { isAlternate } from "../../shared/variations";
 import { clampVariations, combineVariations, createVariantRenamer, variationsNote } from "../../shared/ai/variants";
 import { chatPath, parseChat, readCanvas, readFileIfExists, readProjectFiles } from "../project-folder";
@@ -81,6 +88,14 @@ export function createAiService(options: AiServiceOptions) {
 		statuses = statuses ? [...statuses.filter((s) => s.id !== id), status] : null;
 
 		return status;
+	}
+
+	function imageProviders(): Provider[] {
+		return registry.configs().flatMap((config) => {
+			const provider = config.enabled ? registry.get(config.id) : null;
+
+			return provider?.generateImage ? [provider] : [];
+		});
 	}
 
 	async function resolveFor(task: string, picked: string) {
@@ -190,6 +205,22 @@ export function createAiService(options: AiServiceOptions) {
 			} finally {
 				running.delete(params.generationId);
 			}
+		},
+
+		async canGenerateImages(): Promise<boolean> {
+			await sync();
+
+			return imageProviders().length > 0;
+		},
+
+		async generateImage(request: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage> {
+			await sync();
+			const [provider] = imageProviders();
+
+			if (!provider?.generateImage)
+				throw new Error("No image model is set up. Add a provider that makes images in Settings.");
+
+			return provider.generateImage(request, signal ?? new AbortController().signal);
 		},
 
 		/** The active model's provider commands; an unavailable model or a tool without commands has none */

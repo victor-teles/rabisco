@@ -1,6 +1,7 @@
 // One screen as a static page: the markup the frame rendered and a stylesheet with just its classes.
 
 import { assetKey, type ProjectAssets } from "../assets";
+import { fontFaceCss, fontFamilies } from "../fonts";
 import { isModeSlug, SCHEME, type ResolvedMode } from "../modes";
 import type { ExportFile } from "../types";
 
@@ -52,20 +53,32 @@ const page = (title: string, markup: string, mode: ResolvedMode | undefined) => 
 </html>
 `;
 
+function usedFontFaces(input: HtmlScreenInput): string {
+	const text = `${input.markup}\n${input.css}`.toLowerCase();
+
+	const srcs = fontFamilies(Object.keys(input.assets ?? {})).flatMap((family) =>
+		text.includes(family.family.toLowerCase()) ? family.faces.map((face) => face.src) : [],
+	);
+
+	return fontFaceCss(srcs);
+}
+
 export function htmlScreen(input: HtmlScreenInput): ExportFile[] {
 	const images = new Map<string, string>();
+	const faces = usedFontFaces(input);
+	const css = faces ? `${faces}\n${input.css}` : input.css;
 
 	for (const [src, content] of Object.entries(input.assets ?? {})) {
 		const key = assetKey(src);
 
-		if (key && (atValueStart(key).test(input.markup) || atValueStart(key).test(input.css))) images.set(key, content);
+		if (key && (atValueStart(key).test(input.markup) || atValueStart(key).test(css))) images.set(key, content);
 	}
 
 	const keys = [...images.keys()].sort();
 
 	return [
 		{ path: "index.html", content: page(input.title, relativeImages(input.markup, keys), input.mode) },
-		{ path: "styles.css", content: relativeImages(input.css, keys) },
+		{ path: "styles.css", content: relativeImages(css, keys) },
 		...keys.map((key): ExportFile => ({ path: key.slice(1), content: images.get(key)!, encoding: "base64" })),
 	];
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { History, LayoutList, MessageSquare, PanelLeftClose, type LucideIcon } from "lucide-react";
+import { History, Images, LayoutList, MessageSquare, PanelLeftClose, type LucideIcon } from "lucide-react";
 import { ResizeHandle, usePanelSize } from "@/components/app/resize-handle";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -7,9 +7,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { isBoolean } from "../../../shared/guards";
-import { SCREENS_VIEW_KEYS, SIDE_PANEL_KEYS } from "./shortcuts";
+import { ASSETS_VIEW_KEYS, SCREENS_VIEW_KEYS, SIDE_PANEL_KEYS } from "./shortcuts";
 
-export type SideTab = "chat" | "screens" | "history";
+export type SideTab = "chat" | "screens" | "assets" | "history";
 
 const TAB_KEY = "rabisco:side-tab";
 
@@ -18,7 +18,7 @@ const OPEN_KEY = "rabisco:side-open";
 const WIDTH = { key: "rabisco:side-width", initial: 340, min: 328, max: 560 };
 
 const isSideTab = (value: string | null): value is SideTab =>
-	value === "chat" || value === "screens" || value === "history";
+	value === "chat" || value === "screens" || value === "assets" || value === "history";
 
 function storedOpen() {
 	try {
@@ -68,6 +68,7 @@ export type SidePanelState = ReturnType<typeof useSidePanel>;
 const TABS: { tab: SideTab; label: string; icon: LucideIcon; keys?: string }[] = [
 	{ tab: "chat", label: "Chat", icon: MessageSquare },
 	{ tab: "screens", label: "Screens", icon: LayoutList, keys: SCREENS_VIEW_KEYS },
+	{ tab: "assets", label: "Assets", icon: Images, keys: ASSETS_VIEW_KEYS },
 	{ tab: "history", label: "History", icon: History },
 ];
 
@@ -76,6 +77,7 @@ export function SidePanel({
 	state,
 	chat,
 	screens,
+	assets,
 	history,
 	screenCount,
 	revealChat = 0,
@@ -86,6 +88,7 @@ export function SidePanel({
 	/** In the header while the chat shows */
 	chatActions?: ReactNode;
 	screens: ReactNode;
+	assets: ReactNode;
 	history: ReactNode;
 	screenCount: number;
 	/** Bumped to show the chat, e.g. when Ask AI puts the caret there */
@@ -178,6 +181,7 @@ export function SidePanel({
 			{open ? header : rail}
 			<div className={cn("flex min-h-0 flex-1 flex-col", (!open || tab !== "chat") && "hidden")}>{chat}</div>
 			{open && tab === "screens" ? screens : null}
+			{open && tab === "assets" ? assets : null}
 			{open && tab === "history" ? history : null}
 			{open ? <ResizeHandle edge="right" label="Resize the panel" panel={size} /> : null}
 		</aside>

@@ -48,9 +48,9 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 
 **Assets**
 
-- ⬜ An assets panel: project images, icons and fonts, with usage counts
-- ⬜ Upload and use custom fonts, embedded in exports
-- ⬜ AI image generation for real photos and illustrations, through the provider layer, replacing placeholders on request
+- ✅ An assets panel (`⌥4`, a tab of the left panel): project images, fonts and lucide icons, each with its use count and the screens that use it. Unused images and fonts can be deleted as an undo step ([0047](./decisions/0047-fonts-in-public-and-images-from-providers.md), [LIT-48](/LIT/issues/LIT-48), `views/editor/assets-panel.tsx`, `src/shared/asset-usage.ts`)
+- ✅ Upload and use custom fonts: "Add font" copies woff2, woff, ttf or otf files to `public/fonts/`, named for their family, weight and style, and adds a `font-<family>` token to DESIGN.md. Frames load them with `FontFace`. The code, HTML and website exports, share links and publish embed them (`src/shared/fonts.ts`)
+- ✅ AI image generation for real photos and illustrations, through the provider layer, replacing placeholders on request: the Assets panel lists the photo, avatar, illustration and map placeholders, and "Replace all" or one placeholder's button makes an image for each. The images go to `public/images/`, and all the replacements are one undo step. Providers may implement `generateImage` (OpenAI and OpenRouter do), and nothing outside `src/bun/ai/providers/` knows which one runs (`src/shared/placeholder-images.ts`)
 
 **Done when** a team can keep one design system across projects, and every new screen uses it.
 
@@ -73,11 +73,11 @@ A component can be edited only from the Components tab or the code view, a usage
 
 **Prototype links on the canvas**
 
-- ⬜ Drag from a selected element's link handle to a screen to link it, as in Figma. Drop on empty canvas to cancel
-- ⬜ Click a connector to select the link: edit its transition and mode in a popover, Delete removes it
-- ⬜ Duration and easing for a transition, with defaults from motion tokens 🧭 (extends [0022](./decisions/0022-link-transitions-and-overlays.md))
-- ⬜ Triggers other than a click: hover, press, after a delay, and a key 🧭
-- ⬜ Actions other than navigate: scroll to an element, open a URL, and switch a component's variant 🧭
+- ✅ Drag from a selected element's link handle to a screen to link it, as in Figma. Drop on empty canvas to cancel (`views/editor/link-handle.tsx`)
+- ✅ Click a connector to select the link: edit its transition and mode in a popover, Delete removes it
+- ✅ Duration and easing for a transition, `data-link-duration` and `data-link-easing` ([0046](./decisions/0046-link-timing-triggers-and-actions.md), extends [0022](./decisions/0022-link-transitions-and-overlays.md)). The defaults move to motion tokens with the Motion items below
+- ✅ Triggers other than a click: hover, press, after a delay, and a key, `data-link-trigger` ([0046](./decisions/0046-link-timing-triggers-and-actions.md))
+- 🚧 Actions other than navigate: scroll to an element (`#id`) and open a URL are done ([0046](./decisions/0046-link-timing-triggers-and-actions.md)). Switching a component's variant needs its own decision 🧭
 
 **Motion** ([0027](./decisions/0027-motion-in-source.md) 🧭)
 
