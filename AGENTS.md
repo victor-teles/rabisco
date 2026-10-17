@@ -101,5 +101,6 @@ The formatter and linter enforce most style. Run them; do not argue with them.
 - Commit messages: imperative mood, sentence case, no prefix (for example "Fix Phase 8 bugs and bundle the Claude binary in the app").
 
 ## Browser and computer access
+
 - If you need to interact with a browser (open sites, click, fill forms, screenshots, scraping), use the agent-browser skill.
 - If you need to operate the computer (native desktop apps, Finder, system settings, anything outside a browser), use the Mac app via the Cua Driver.

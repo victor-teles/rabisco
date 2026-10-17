@@ -13,7 +13,7 @@
 | Option                                         | Covers arrows | Cost                                      |
 | ---------------------------------------------- | ------------- | ----------------------------------------- |
 | Our own subset of the official Inter release   | yes           | about 29 KB for 4 weights, a build script |
-| The full Inter files from the official release | yes           | over 1 MB for 4 weights                     |
+| The full Inter files from the official release | yes           | over 1 MB for 4 weights                   |
 | Keep the gap, count it in the toast            | no            | none                                      |
 
 ## Decision
