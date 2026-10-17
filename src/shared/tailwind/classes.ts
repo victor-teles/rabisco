@@ -660,6 +660,28 @@ function arbitraryType(value: string): "color" | "length" | "number" | "var" | "
 	return "other";
 }
 
+/** `[url(/hero.jpg)]` or `[image:var(--x)]` */
+export const isImageValue = (value: string) => {
+	const inner = bracketed(value);
+
+	return inner !== null && (/^url\(.+\)$/.test(inner) || inner.startsWith("image:"));
+};
+
+/** `/hero.jpg` → `[url(/hero.jpg)]`; quotes and spaces are left out, as Tailwind needs */
+export function imageValue(url: string): string | null {
+	const text = url
+		.trim()
+		.replace(/^url\((.*)\)$/, "$1")
+		.replace(/^["']|["']$/g, "");
+
+	if (!text || /[\s"'()]/.test(text)) return null;
+
+	return `[url(${text})]`;
+}
+
+/** `[url(/hero.jpg)]` → `/hero.jpg`; `null` for a gradient */
+export const imageUrl = (value: string) => /^\[url\((.+)\)\]$/.exec(value)?.[1] ?? null;
+
 const OPACITY_MODIFIER = /^(?:\d+(?:\.\d+)?|\[[^\]]+\]|\([^)]+\))$/;
 
 export function isColorValue(value: string): boolean {
@@ -689,7 +711,8 @@ export type Scale = {
 		| "opacity"
 		| "shadow"
 		| "zIndex"
-		| "gridColumns";
+		| "gridColumns"
+		| "blur";
 	options: ScaleOption[];
 	negative?: boolean;
 };
@@ -909,6 +932,41 @@ export const GRID_COLUMNS_SCALE: Scale = {
 	],
 };
 
+export const GRID_ROWS_SCALE: Scale = {
+	kind: "gridColumns",
+	options: [
+		...[1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: String(n) })),
+		{ value: "none", label: "none" },
+		{ value: "subgrid", label: "subgrid" },
+	],
+};
+
+export const SPAN_SCALE: Scale = {
+	kind: "gridColumns",
+	options: [
+		...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ value: String(n), label: String(n) })),
+		{ value: "full", label: "full", hint: "every track" },
+	],
+};
+
+const BLUR_SIZES: [string, number][] = [
+	["xs", 4],
+	["sm", 8],
+	["md", 12],
+	["lg", 16],
+	["xl", 24],
+	["2xl", 40],
+	["3xl", 64],
+];
+
+export const BLUR_SCALE: Scale = {
+	kind: "blur",
+	options: [
+		{ value: "none", label: "none" },
+		...BLUR_SIZES.map(([name, px]) => ({ value: name, label: name, hint: `${px}px` })),
+	],
+};
+
 /** Spaces become `_`, as Tailwind expects */
 const arbitrary = (text: string) => `[${text.trim().replace(/\s+/g, "_")}]`;
 
@@ -991,6 +1049,14 @@ export function parseScaleInput(input: string, scale: Scale): string | null {
 				return Number(text) % 1 === 0 ? String(Number(text)) : `[${Number(text) / 100}]`;
 
 			return null;
+		case "blur":
+			if (number !== null || px) {
+				const n = number ?? Number(px![1]);
+
+				return optionByHint(scale, `${n}px`)?.value ?? (n === 0 ? "none" : arbitrary(`${n}px`));
+			}
+
+			break;
 		case "zIndex":
 		case "gridColumns":
 			if (number !== null && number % 1 === 0 && (scale.kind === "zIndex" || number > 0))
@@ -1107,6 +1173,17 @@ export type SimpleProp =
 	| "zIndex"
 	| "overflow"
 	| "gridColumns"
+	| "gridRows"
+	| "gridFlow"
+	| "colSpan"
+	| "rowSpan"
+	| "backgroundImage"
+	| "backgroundSize"
+	| "gradientFrom"
+	| "gradientVia"
+	| "gradientTo"
+	| "blur"
+	| "backdropBlur"
 	| "flex"
 	| "flexGrow"
 	| "flexShrink"
@@ -1282,6 +1359,18 @@ const Z_VALUE = /^(?:auto|\d+|\[.+\]|\(.+\))$/;
 
 const GRID_COLUMNS_VALUE = /^(?:\d+|none|subgrid|\[.+\]|\(.+\))$/;
 
+const GRID_FLOW = new Set(["row", "col", "dense", "row-dense", "col-dense"]);
+
+const SPAN_VALUE = /^(?:\d+|full|\[.+\]|\(.+\))$/;
+
+/** `linear-to-r`, `linear-45`, `gradient-to-r` (v3), `radial`, `conic-180` */
+const GRADIENT =
+	/^(?:linear-to-(?:t|tr|r|br|b|bl|l|tl)|linear-\d+|gradient-to-(?:t|tr|r|br|b|bl|l|tl)|radial|conic(?:-\d+)?)$/;
+
+const BACKGROUND_SIZE = new Set(["auto", "cover", "contain"]);
+
+const BLUR_VALUE = /^(?:xs|sm|md|lg|xl|2xl|3xl|none|\[.+\]|\(.+\))$/;
+
 /** `grow`, `grow-0`, `flex-grow-0` (v3), `grow-[2]` */
 const GROW_VALUE = /^(?:\d+|\[.+\]|\(.+\))$/;
 
@@ -1334,6 +1423,24 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 
 		if (u.startsWith("grid-cols-") && GRID_COLUMNS_VALUE.test(u.slice(10)))
 			return hit("gridColumns", "grid-cols", u.slice(10));
+
+		if (u.startsWith("grid-rows-") && GRID_COLUMNS_VALUE.test(u.slice(10)))
+			return hit("gridRows", "grid-rows", u.slice(10));
+
+		if (u.startsWith("grid-flow-") && GRID_FLOW.has(u.slice(10))) return hit("gridFlow", "grid-flow", u.slice(10));
+
+		if (u.startsWith("col-span-") && SPAN_VALUE.test(u.slice(9))) return hit("colSpan", "col-span", u.slice(9));
+
+		if (u.startsWith("row-span-") && SPAN_VALUE.test(u.slice(9))) return hit("rowSpan", "row-span", u.slice(9));
+
+		if (u === "blur") return hit("blur", "blur", "");
+
+		if (u.startsWith("blur-") && BLUR_VALUE.test(u.slice(5))) return hit("blur", "blur", u.slice(5));
+
+		if (u === "backdrop-blur") return hit("backdropBlur", "backdrop-blur", "");
+
+		if (u.startsWith("backdrop-blur-") && BLUR_VALUE.test(u.slice(14)))
+			return hit("backdropBlur", "backdrop-blur", u.slice(14));
 
 		if (u.startsWith("flex-") && FLEX_DIRECTION.has(u.slice(5))) return hit("flexDirection", "flex", u.slice(5));
 
@@ -1422,7 +1529,24 @@ function classifyUtility(u: string, negative: boolean): ClassHit | null {
 
 	if ((match = /^leading-(.+)$/.exec(u))) return hit("lineHeight", "leading", match[1]!);
 
-	if ((match = /^bg-(.+)$/.exec(u))) return isColorValue(match[1]!) ? hit("backgroundColor", "bg", match[1]!) : null;
+	if ((match = /^bg-(.+)$/.exec(u))) {
+		const value = match[1]!;
+
+		if (isColorValue(value)) return hit("backgroundColor", "bg", value);
+
+		if (GRADIENT.test(value) || isImageValue(value)) return hit("backgroundImage", "bg", value);
+
+		if (BACKGROUND_SIZE.has(value)) return hit("backgroundSize", "bg", value);
+
+		return null;
+	}
+
+	if ((match = /^(from|via|to)-(.+)$/.exec(u)) && isColorValue(match[2]!))
+		return hit(
+			match[1] === "from" ? "gradientFrom" : match[1] === "via" ? "gradientVia" : "gradientTo",
+			match[1]!,
+			match[2]!,
+		);
 
 	if ((match = /^opacity-(.+)$/.exec(u)))
 		return /^\d*\.?\d+$/.test(match[1]!) || arbitraryType(match[1]!) ? hit("opacity", "opacity", match[1]!) : null;
@@ -1555,6 +1679,17 @@ const SIMPLE_PREFIX: Record<SimpleProp, string> = {
 	zIndex: "z",
 	overflow: "overflow",
 	gridColumns: "grid-cols",
+	gridRows: "grid-rows",
+	gridFlow: "grid-flow",
+	colSpan: "col-span",
+	rowSpan: "row-span",
+	backgroundImage: "bg",
+	backgroundSize: "bg",
+	gradientFrom: "from",
+	gradientVia: "via",
+	gradientTo: "to",
+	blur: "blur",
+	backdropBlur: "backdrop-blur",
 	flex: "flex",
 	flexGrow: "grow",
 	flexShrink: "shrink",

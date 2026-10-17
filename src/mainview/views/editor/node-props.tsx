@@ -333,6 +333,7 @@ function ElementProps({
 					variant={variant}
 					onVariantChange={styleState.set}
 					tokens={tokens}
+					projectPath={projectPath}
 				/>
 			)}
 		</>

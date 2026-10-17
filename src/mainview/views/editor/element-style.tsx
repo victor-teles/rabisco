@@ -58,6 +58,7 @@ import {
 	type Direction,
 } from "../../../shared/tailwind/auto-layout";
 import {
+	BLUR_SCALE,
 	BORDER_WIDTH_SCALE,
 	classNameOf,
 	colorCss,
@@ -67,6 +68,9 @@ import {
 	getBox,
 	getStyle,
 	GRID_COLUMNS_SCALE,
+	GRID_ROWS_SCALE,
+	imageUrl,
+	imageValue,
 	INSET_SCALE,
 	LETTER_SPACING_SCALE,
 	LINE_HEIGHT_SCALE,
@@ -85,6 +89,7 @@ import {
 	SHADOW_SCALE,
 	SIZE_SCALE,
 	SPACING_SCALE,
+	SPAN_SCALE,
 	splitModifier,
 	THEME_COLORS,
 	usedVariants,
@@ -95,6 +100,13 @@ import {
 	type SimpleProp,
 } from "../../../shared/tailwind/classes";
 import { applyTextStyle, detachTextStyle } from "../../../shared/tailwind/text-style";
+import {
+	CONSTRAINT_LABELS,
+	CONSTRAINTS,
+	readConstraint,
+	setConstraint,
+	type ConstraintAxis,
+} from "../../../shared/tailwind/constraints";
 import {
 	applyPreset,
 	DELAY_STEPS,
@@ -112,6 +124,7 @@ import {
 	type TimingPart,
 } from "../../../shared/motion/presets";
 import { EYEDROPPER_KEYS, Eyedropper, EyedropperShortcut } from "./eyedropper";
+import { ImagePickButton } from "./prop-pickers";
 import { isTyping } from "./shortcuts";
 
 export type ElementStyleProps = {
@@ -133,6 +146,8 @@ export type ElementStyleProps = {
 	tokens?: DesignTokens;
 	/** Plays the selected elements' motion of that kind again in the canvas */
 	onReplayMotion?: (kind: MotionKind) => void;
+	/** Where a picked fill image is copied; without it the image fill takes a typed path only */
+	projectPath?: string;
 };
 
 const REPLACED = new Set([
@@ -225,6 +240,30 @@ const BREAKPOINTS: { value: string; label: string; hint?: string }[] = [
 	{ value: "lg", label: "lg", hint: "≥ 1024px" },
 ];
 
+const GRID_FLOW_OPTIONS: ScaleOption[] = [
+	{ value: "row", label: "Rows", hint: "row" },
+	{ value: "col", label: "Columns", hint: "col" },
+	{ value: "dense", label: "Rows, dense", hint: "dense" },
+	{ value: "col-dense", label: "Columns, dense", hint: "col-dense" },
+];
+
+const GRADIENT_OPTIONS: ScaleOption[] = [
+	{ value: "linear-to-r", label: "Linear →", hint: "to-r" },
+	{ value: "linear-to-b", label: "Linear ↓", hint: "to-b" },
+	{ value: "linear-to-br", label: "Linear ↘", hint: "to-br" },
+	{ value: "linear-to-tr", label: "Linear ↗", hint: "to-tr" },
+	{ value: "linear-to-l", label: "Linear ←", hint: "to-l" },
+	{ value: "linear-to-t", label: "Linear ↑", hint: "to-t" },
+	{ value: "radial", label: "Radial" },
+	{ value: "conic", label: "Conic" },
+];
+
+const BACKGROUND_SIZE_OPTIONS: ScaleOption[] = [
+	{ value: "cover", label: "Fill", hint: "cover" },
+	{ value: "contain", label: "Fit", hint: "contain" },
+	{ value: "auto", label: "Original", hint: "auto" },
+];
+
 const BORDER_STYLE_OPTIONS: ScaleOption[] = ["solid", "dashed", "dotted", "double", "none"].map((value) => ({
 	value,
 	label: value,
@@ -301,6 +340,7 @@ export function ElementStyle({
 	onVariantChange,
 	tokens = NO_TOKENS,
 	onReplayMotion,
+	projectPath,
 }: ElementStyleProps) {
 	const burst = useRef(0);
 	const [picking, setPicking] = useState<Picking | null>(null);
@@ -402,17 +442,7 @@ export function ElementStyle({
 			<SizeSection classes={classes} edit={edit} />
 			<PositionSection classes={classes} edit={edit} />
 			{hasText ? <TypographySection classes={classes} edit={edit} /> : null}
-			<Section title="Fill">
-				<ColorField
-					label="Background"
-					value={getStyle(classes, "backgroundColor", variant)}
-					mixed={backgroundMixed}
-					edit={edit}
-					onPick={(value, field) =>
-						edit.apply((classes) => setStyle(classes, "backgroundColor", value, variant), field && `bg:${field}`)
-					}
-				/>
-			</Section>
+			<FillSection classes={classes} edit={edit} backgroundMixed={backgroundMixed} projectPath={projectPath} />
 			<BorderSection classes={classes} edit={edit} />
 			<EffectsSection classes={classes} edit={edit} />
 			<MotionSection classes={classes} edit={edit} onReplay={onReplayMotion} />
@@ -604,14 +634,36 @@ function LayoutSection({ classes, edit }: SectionProps) {
 							onChange={styleWriter(edit, "alignItems")}
 						/>
 					</Row>
-					<Row label="Columns">
+					<div className="grid grid-cols-2 gap-2">
 						<ScaleField
+							label="Cols"
 							ariaLabel="Grid columns"
 							value={getStyle(classes, "gridColumns", edit.variant)}
 							mixed={mixedStyle(edit, "gridColumns")}
 							scale={GRID_COLUMNS_SCALE}
 							edit={edit}
 							onChange={styleWriter(edit, "gridColumns")}
+						/>
+						<ScaleField
+							label="Rows"
+							ariaLabel="Grid rows"
+							value={getStyle(classes, "gridRows", edit.variant)}
+							mixed={mixedStyle(edit, "gridRows")}
+							scale={GRID_ROWS_SCALE}
+							placeholder="auto"
+							edit={edit}
+							onChange={styleWriter(edit, "gridRows")}
+						/>
+					</div>
+					<Row label="Flow">
+						<SelectField
+							label="Grid flow"
+							value={getStyle(classes, "gridFlow", edit.variant)}
+							mixed={mixedStyle(edit, "gridFlow")}
+							options={GRID_FLOW_OPTIONS}
+							placeholder="Rows"
+							edit={edit}
+							onChange={styleWriter(edit, "gridFlow")}
 						/>
 					</Row>
 					<BoxField title="Gap" group="gap" scale={SPACING_SCALE} linked={GAP_ALL} split={GAP_AXES} edit={edit} />
@@ -848,7 +900,30 @@ function ItemSection({ classes, edit, parent }: SectionProps & { parent: ParentL
 						</ToggleGroup>
 					</Row>
 				</>
-			) : null}
+			) : (
+				<div className="grid grid-cols-2 gap-2">
+					<ScaleField
+						label="Cols"
+						ariaLabel="Column span"
+						value={getStyle(classes, "colSpan", edit.variant)}
+						mixed={mixedStyle(edit, "colSpan")}
+						scale={SPAN_SCALE}
+						placeholder="1"
+						edit={edit}
+						onChange={styleWriter(edit, "colSpan")}
+					/>
+					<ScaleField
+						label="Rows"
+						ariaLabel="Row span"
+						value={getStyle(classes, "rowSpan", edit.variant)}
+						mixed={mixedStyle(edit, "rowSpan")}
+						scale={SPAN_SCALE}
+						placeholder="1"
+						edit={edit}
+						onChange={styleWriter(edit, "rowSpan")}
+					/>
+				</div>
+			)}
 			<Row label="Align self">
 				<SelectField
 					label="Align self"
@@ -881,6 +956,12 @@ function PositionSection({ classes, edit }: SectionProps) {
 					onChange={styleWriter(edit, "position")}
 				/>
 			</Row>
+			{placed && position !== "relative" && position !== "sticky" ? (
+				<div className="grid grid-cols-2 gap-2">
+					<ConstraintField axis="x" classes={classes} edit={edit} />
+					<ConstraintField axis="y" classes={classes} edit={edit} />
+				</div>
+			) : null}
 			{placed ? (
 				<BoxField title="Inset" group="inset" scale={INSET_SCALE} linked={ALL_SIDES} split={SIDES} edit={edit} />
 			) : null}
@@ -896,6 +977,26 @@ function PositionSection({ classes, edit }: SectionProps) {
 				/>
 			</Row>
 		</Section>
+	);
+}
+
+function ConstraintField({ axis, classes, edit }: SectionProps & { axis: ConstraintAxis }) {
+	const value = readConstraint(classes, axis, edit.variant);
+	const options = CONSTRAINTS.map((constraint) => ({ value: constraint, label: CONSTRAINT_LABELS[axis][constraint] }));
+
+	return (
+		<SelectField
+			label={axis === "x" ? "Horizontal constraint" : "Vertical constraint"}
+			value={value}
+			mixed={isMixed(edit, (own) => readConstraint(own, axis, edit.variant))}
+			options={options}
+			edit={edit}
+			onChange={(next) =>
+				edit.apply((own) =>
+					setConstraint(own, axis, CONSTRAINTS.find((constraint) => constraint === next) ?? null, edit.variant),
+				)
+			}
+		/>
 	);
 }
 
@@ -1223,6 +1324,220 @@ function BorderSection({ classes, edit }: SectionProps) {
 	);
 }
 
+const DEFAULT_GRADIENT = { kind: "linear-to-r", from: "primary", to: "primary/40" };
+
+function FillSection({
+	classes,
+	edit,
+	backgroundMixed,
+	projectPath,
+}: SectionProps & { backgroundMixed: boolean; projectPath?: string }) {
+	const image = getStyle(classes, "backgroundImage", edit.variant);
+	const [addingImage, setAddingImage] = useState(false);
+	const url = image === null ? (addingImage ? "" : null) : imageUrl(image);
+	const gradient = image !== null && url === null;
+
+	const colorWriter = (prop: SimpleProp, field: string) => (value: string | null, part?: string) =>
+		edit.apply((classes) => setStyle(classes, prop, value, edit.variant), part && `${field}:${part}`);
+
+	const setImage = (value: string | null) => {
+		setAddingImage(false);
+		edit.apply((own) => {
+			const next = setStyle(own, "backgroundImage", value, edit.variant);
+
+			return getStyle(own, "backgroundSize", edit.variant) === null
+				? setStyle(next, "backgroundSize", "cover", edit.variant)
+				: next;
+		});
+	};
+
+	const removeGradient = () =>
+		edit.apply((own) =>
+			(["backgroundImage", "gradientFrom", "gradientVia", "gradientTo"] as const).reduce(
+				(next, prop) => setStyle(next, prop, null, edit.variant),
+				own,
+			),
+		);
+
+	const removeImage = () => {
+		setAddingImage(false);
+		edit.apply((own) =>
+			setStyle(setStyle(own, "backgroundImage", null, edit.variant), "backgroundSize", null, edit.variant),
+		);
+	};
+
+	const addGradient = () =>
+		edit.apply((own) => {
+			const typed = setStyle(own, "backgroundImage", DEFAULT_GRADIENT.kind, edit.variant);
+			const from = getStyle(own, "gradientFrom", edit.variant) ?? DEFAULT_GRADIENT.from;
+			const to = getStyle(own, "gradientTo", edit.variant) ?? DEFAULT_GRADIENT.to;
+
+			return setStyle(setStyle(typed, "gradientFrom", from, edit.variant), "gradientTo", to, edit.variant);
+		});
+
+	const add =
+		image === null && !addingImage ? (
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						className="-mr-1.5 size-5 text-subtle-foreground"
+						aria-label="Add a gradient or image fill"
+						title="Add a gradient or image fill"
+						disabled={edit.disabled}
+					>
+						<Plus />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="min-w-40">
+					<DropdownMenuItem className="text-[13px]" onSelect={addGradient}>
+						Gradient
+					</DropdownMenuItem>
+					<DropdownMenuItem className="text-[13px]" onSelect={() => setAddingImage(true)}>
+						Image
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		) : null;
+
+	return (
+		<Section title="Fill" action={add}>
+			<Row label="Color">
+				<ColorField
+					label="Background"
+					value={getStyle(classes, "backgroundColor", edit.variant)}
+					mixed={backgroundMixed}
+					edit={edit}
+					onPick={colorWriter("backgroundColor", "bg")}
+				/>
+			</Row>
+			{gradient ? (
+				<>
+					<Row label="Gradient">
+						<div className="flex min-w-0 flex-1 items-center gap-1">
+							<div className="min-w-0 flex-1">
+								<SelectField
+									label="Gradient type"
+									value={image}
+									mixed={mixedStyle(edit, "backgroundImage")}
+									options={GRADIENT_OPTIONS}
+									edit={edit}
+									onChange={(next) =>
+										next === null ? removeGradient() : styleWriter(edit, "backgroundImage")(next, false)
+									}
+								/>
+							</div>
+							<RemoveButton label="Remove gradient" disabled={edit.disabled} onClick={removeGradient} />
+						</div>
+					</Row>
+					<GradientStop label="From" prop="gradientFrom" classes={classes} edit={edit} />
+					<GradientStop label="Via" prop="gradientVia" classes={classes} edit={edit} />
+					<GradientStop label="To" prop="gradientTo" classes={classes} edit={edit} />
+				</>
+			) : null}
+			{url !== null ? (
+				<>
+					<Row label="Image">
+						<div className="flex min-w-0 flex-1 items-center gap-1">
+							<ImageUrlField url={url} edit={edit} onChange={setImage} />
+							{projectPath ? (
+								<ImagePickButton
+									projectPath={projectPath}
+									disabled={edit.disabled}
+									onPicked={(src) => setImage(imageValue(src))}
+								/>
+							) : null}
+							<RemoveButton label="Remove image" disabled={edit.disabled} onClick={removeImage} />
+						</div>
+					</Row>
+					{image === null ? null : (
+						<Row label="Size">
+							<SelectField
+								label="Image size"
+								value={getStyle(classes, "backgroundSize", edit.variant)}
+								mixed={mixedStyle(edit, "backgroundSize")}
+								options={BACKGROUND_SIZE_OPTIONS}
+								placeholder="Original"
+								edit={edit}
+								onChange={styleWriter(edit, "backgroundSize")}
+							/>
+						</Row>
+					)}
+				</>
+			) : null}
+		</Section>
+	);
+}
+
+function GradientStop({ label, prop, classes, edit }: SectionProps & { label: string; prop: SimpleProp }) {
+	return (
+		<Row label={label}>
+			<ColorField
+				label={`Gradient ${label.toLowerCase()}`}
+				value={getStyle(classes, prop, edit.variant)}
+				mixed={mixedStyle(edit, prop)}
+				edit={edit}
+				onPick={(value, field) =>
+					edit.apply((classes) => setStyle(classes, prop, value, edit.variant), field && `${prop}:${field}`)
+				}
+			/>
+		</Row>
+	);
+}
+
+/** A path in `public/` (`/images/hero.jpg`) or a URL; quotes and spaces can't go in a class */
+function ImageUrlField({ url, edit, onChange }: { url: string; edit: Edit; onChange: (value: string | null) => void }) {
+	const [draft, setDraft] = useState<string | null>(null);
+	const invalid = draft !== null && draft.trim() !== "" && imageValue(draft) === null;
+
+	const commit = () => {
+		if (draft === null) return;
+		const next = imageValue(draft);
+
+		if (next !== null) onChange(next);
+		setDraft(null);
+	};
+
+	return (
+		<input
+			value={draft ?? url}
+			placeholder="/images/hero.jpg"
+			aria-label="Image path"
+			aria-invalid={invalid || undefined}
+			title={invalid ? "No spaces or quotes in the path" : url}
+			disabled={edit.disabled}
+			spellCheck={false}
+			onChange={(event) => setDraft(event.target.value)}
+			onBlur={commit}
+			onKeyDown={(event) => {
+				if (event.key === "Enter") commit();
+				else if (event.key === "Escape") setDraft(null);
+			}}
+			className={cn(
+				"h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2 font-mono text-[11px] outline-none placeholder:text-subtle-foreground focus:border-ring disabled:opacity-50",
+				invalid && "border-destructive/60 focus:border-destructive/60",
+			)}
+		/>
+	);
+}
+
+function RemoveButton({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
+	return (
+		<Button
+			variant="ghost"
+			size="icon-xs"
+			className="size-8 shrink-0 text-muted-foreground"
+			aria-label={label}
+			title={label}
+			disabled={disabled}
+			onClick={onClick}
+		>
+			<X className="size-3.5" />
+		</Button>
+	);
+}
+
 function EffectsSection({ classes, edit }: SectionProps) {
 	return (
 		<Section title="Effects">
@@ -1247,6 +1562,40 @@ function EffectsSection({ classes, edit }: SectionProps) {
 					onChange={styleWriter(edit, "boxShadow")}
 				/>
 			</Row>
+			{getStyle(classes, "boxShadow", edit.variant) !== null &&
+			getStyle(classes, "boxShadow", edit.variant) !== "none" ? (
+				<Row label="Color">
+					<ColorField
+						label="Shadow color"
+						value={getStyle(classes, "shadowColor", edit.variant)}
+						mixed={mixedStyle(edit, "shadowColor")}
+						edit={edit}
+						onPick={(value, field) =>
+							edit.apply((classes) => setStyle(classes, "shadowColor", value, edit.variant), field && `shadow:${field}`)
+						}
+					/>
+				</Row>
+			) : null}
+			<div className="grid grid-cols-2 gap-2">
+				<ScaleField
+					label="Blur"
+					ariaLabel="Layer blur"
+					value={getStyle(classes, "blur", edit.variant)}
+					mixed={mixedStyle(edit, "blur")}
+					scale={BLUR_SCALE}
+					edit={edit}
+					onChange={styleWriter(edit, "blur")}
+				/>
+				<ScaleField
+					label="Backdrop"
+					ariaLabel="Background blur"
+					value={getStyle(classes, "backdropBlur", edit.variant)}
+					mixed={mixedStyle(edit, "backdropBlur")}
+					scale={BLUR_SCALE}
+					edit={edit}
+					onChange={styleWriter(edit, "backdropBlur")}
+				/>
+			</div>
 		</Section>
 	);
 }

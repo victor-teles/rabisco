@@ -118,8 +118,8 @@ _Principles: UX first (a bad generation costs one keystroke) · Variations, not 
 
 _Principles: Direct manipulation over prompts · Keyboard first (Figma conventions)_
 
-- ⬜ A grid layout panel: columns, rows, gaps and spans, written as `grid-*` classes
-- ⬜ Fill editor with gradients, image fills and opacity; shadow and blur editors with presets
+- ✅ A grid layout panel: columns, rows, gaps and spans, written as `grid-*` classes
+- ✅ Fill editor with gradients, image fills and opacity; shadow and blur editors with presets
 - ⬜ Rich text: bold, italic and links inside a text block, written as `<strong>`, `<em>` and `<a>`
 - ⬜ Rulers and guides on frames (⇧R)
 - ⬜ Sticky notes and arrows on the canvas, for annotations that aren't screens
@@ -127,7 +127,7 @@ _Principles: Direct manipulation over prompts · Keyboard first (Figma conventio
 - ⬜ Tidy up: arrange selected screens in a grid
 - ⬜ Pages in a project, each with its own canvas
 - ⬜ A vector pen tool, written as inline SVG
-- ⬜ Constraints for absolutely positioned elements, as `inset-*` classes
+- ✅ Constraints for absolutely positioned elements, as `inset-*` classes
 
 **Done when** a Figma user can lay out a dashboard with grids, gradients and annotations, with no prompt.
 

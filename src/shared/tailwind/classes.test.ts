@@ -8,8 +8,11 @@ import {
 	describeValue,
 	FONT_SIZE_SCALE,
 	FONT_WEIGHT_SCALE,
+	BLUR_SCALE,
 	getBox,
 	GRID_COLUMNS_SCALE,
+	imageUrl,
+	imageValue,
 	INSET_SCALE,
 	getStyle,
 	isColorValue,
@@ -297,9 +300,26 @@ describe("classifyClass", () => {
 		["bg-slate-950", "backgroundColor", "bg", "slate-950"],
 		["bg-[#fff]", "backgroundColor", "bg", "[#fff]"],
 		["bg-transparent", "backgroundColor", "bg", "transparent"],
-		["bg-cover", null],
-		["bg-[url(/a.png)]", null],
-		["bg-linear-to-r", null],
+		["bg-cover", "backgroundSize", "bg", "cover"],
+		["bg-center", null],
+		["bg-[url(/a.png)]", "backgroundImage", "bg", "[url(/a.png)]"],
+		["bg-linear-to-r", "backgroundImage", "bg", "linear-to-r"],
+		["bg-linear-45", "backgroundImage", "bg", "linear-45"],
+		["bg-gradient-to-br", "backgroundImage", "bg", "gradient-to-br"],
+		["bg-radial", "backgroundImage", "bg", "radial"],
+		["from-sky-500", "gradientFrom", "from", "sky-500"],
+		["via-primary/50", "gradientVia", "via", "primary/50"],
+		["to-transparent", "gradientTo", "to", "transparent"],
+		["from-10%", null],
+		["grid-rows-3", "gridRows", "grid-rows", "3"],
+		["grid-flow-col", "gridFlow", "grid-flow", "col"],
+		["col-span-2", "colSpan", "col-span", "2"],
+		["col-span-full", "colSpan", "col-span", "full"],
+		["row-span-3", "rowSpan", "row-span", "3"],
+		["col-start-2", null],
+		["blur", "blur", "blur", ""],
+		["blur-md", "blur", "blur", "md"],
+		["backdrop-blur-sm", "backdropBlur", "backdrop-blur", "sm"],
 		["rounded", "borderRadius", "rounded", ""],
 		["rounded-lg", "borderRadius", "rounded", "lg"],
 		["rounded-sm", "borderRadius", "rounded", "sm"],
@@ -466,6 +486,42 @@ describe("new properties", () => {
 		expect(parseScaleInput("16", GRID_COLUMNS_SCALE)).toBe("16");
 		expect(parseScaleInput("0", GRID_COLUMNS_SCALE)).toBeNull();
 		expect(parseScaleInput("subgrid", GRID_COLUMNS_SCALE)).toBe("subgrid");
+	});
+
+	test("grid rows, flow and spans write their classes", () => {
+		expect(setStyle("grid grid-cols-3", "gridRows", "2")).toBe("grid grid-cols-3 grid-rows-2");
+		expect(setStyle("grid grid-flow-row", "gridFlow", "col")).toBe("grid grid-flow-col");
+		expect(setStyle("p-4", "colSpan", "full")).toBe("p-4 col-span-full");
+		expect(setStyle("col-span-2 row-span-2", "rowSpan", null)).toBe("col-span-2");
+	});
+
+	test("a gradient and a background color live side by side", () => {
+		const classes = "bg-card bg-linear-to-r from-sky-500 to-indigo-500";
+
+		expect(getStyle(classes, "backgroundColor")).toBe("card");
+		expect(getStyle(classes, "backgroundImage")).toBe("linear-to-r");
+		expect(setStyle(classes, "backgroundImage", "linear-to-b")).toBe(
+			"bg-card bg-linear-to-b from-sky-500 to-indigo-500",
+		);
+		expect(setStyle(classes, "gradientVia", "white")).toBe(`${classes} via-white`);
+		expect(setStyle(classes, "backgroundColor", null)).toBe("bg-linear-to-r from-sky-500 to-indigo-500");
+	});
+
+	test("image fills are url values", () => {
+		expect(imageValue("/images/hero.jpg")).toBe("[url(/images/hero.jpg)]");
+		expect(imageValue("url('/a.png')")).toBe("[url(/a.png)]");
+		expect(imageValue("/a b.png")).toBeNull();
+		expect(imageUrl("[url(/a.png)]")).toBe("/a.png");
+		expect(imageUrl("linear-to-r")).toBeNull();
+		expect(setStyle("bg-cover", "backgroundImage", "[url(/a.png)]")).toBe("bg-cover bg-[url(/a.png)]");
+	});
+
+	test("blur and backdrop blur", () => {
+		expect(setStyle("p-4", "blur", "md")).toBe("p-4 blur-md");
+		expect(setStyle("blur-md backdrop-blur", "backdropBlur", "lg")).toBe("blur-md backdrop-blur-lg");
+		expect(parseScaleInput("8px", BLUR_SCALE)).toBe("sm");
+		expect(parseScaleInput("10", BLUR_SCALE)).toBe("[10px]");
+		expect(parseScaleInput("0", BLUR_SCALE)).toBe("none");
 	});
 });
 
