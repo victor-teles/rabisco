@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { History, Images, LayoutList, MessageSquare, PanelLeftClose, Sparkle, type LucideIcon } from "lucide-react";
+import { History, Images, LayoutList, MessageSquare, Sparkle, type LucideIcon } from "lucide-react";
 import { ResizeHandle, usePanelSize } from "@/components/app/resize-handle";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { isBoolean } from "../../../shared/guards";
-import { ASSETS_VIEW_KEYS, MOTION_VIEW_KEYS, SCREENS_VIEW_KEYS, SIDE_PANEL_KEYS } from "./shortcuts";
+import { ASSETS_VIEW_KEYS, MOTION_VIEW_KEYS, SCREENS_VIEW_KEYS } from "./shortcuts";
 
 export type SideTab = "chat" | "screens" | "assets" | "motion" | "history";
 
@@ -83,12 +83,12 @@ export function SidePanel({
 	history,
 	screenCount,
 	revealChat = 0,
-	chatActions,
+	chatHeader,
 }: {
 	state: SidePanelState;
 	chat: ReactNode;
-	/** In the header while the chat shows */
-	chatActions?: ReactNode;
+	/** Above the chat */
+	chatHeader?: ReactNode;
 	screens: ReactNode;
 	assets: ReactNode;
 	motion: ReactNode;
@@ -97,7 +97,7 @@ export function SidePanel({
 	/** Bumped to show the chat, e.g. when Ask AI puts the caret there */
 	revealChat?: number;
 }) {
-	const { tab, open, show, toggle } = state;
+	const { tab, open, show } = state;
 	const size = usePanelSize(WIDTH);
 
 	useEffect(() => {
@@ -153,25 +153,6 @@ export function SidePanel({
 					))}
 				</TabsList>
 			</Tabs>
-			<div className="ml-auto flex items-center">
-				{tab === "chat" ? chatActions : null}
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="text-muted-foreground"
-							aria-label="Hide panel"
-							onClick={toggle}
-						>
-							<PanelLeftClose />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">
-						Hide panel <Kbd>{SIDE_PANEL_KEYS}</Kbd>
-					</TooltipContent>
-				</Tooltip>
-			</div>
 		</div>
 	);
 
@@ -182,7 +163,10 @@ export function SidePanel({
 			style={open ? { width: size.width } : undefined}
 		>
 			{open ? header : rail}
-			<div className={cn("flex min-h-0 flex-1 flex-col", (!open || tab !== "chat") && "hidden")}>{chat}</div>
+			<div className={cn("flex min-h-0 flex-1 flex-col", (!open || tab !== "chat") && "hidden")}>
+				{chatHeader}
+				{chat}
+			</div>
 			{open && tab === "screens" ? screens : null}
 			{open && tab === "assets" ? assets : null}
 			{open && tab === "motion" ? motion : null}

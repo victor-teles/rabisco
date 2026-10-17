@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,8 @@ type Props = {
 	onDelete: (id: string) => void;
 };
 
+const DOUBLE_CLICK_MS = 250;
+
 /** Figma's page list, in a popover: click to open a page, double-click to rename, right-click for more */
 export function PagesMenu({
 	className,
@@ -40,6 +42,9 @@ export function PagesMenu({
 	onDelete,
 }: Props) {
 	const [open, setOpen] = useState(false);
+	const closing = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+	useEffect(() => () => clearTimeout(closing.current), []);
 
 	return (
 		<Popover open={open || renaming !== null} onOpenChange={setOpen}>
@@ -84,11 +89,16 @@ export function PagesMenu({
 										type="button"
 										aria-current={page.id === current.id ? "page" : undefined}
 										className="flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
-										onClick={() => {
+										onClick={(event) => {
+											if (event.detail > 1) return;
 											onGo(page.id);
-											setOpen(false);
+											clearTimeout(closing.current);
+											closing.current = setTimeout(() => setOpen(false), DOUBLE_CLICK_MS);
 										}}
-										onDoubleClick={() => onStartRename(page.id)}
+										onDoubleClick={() => {
+											clearTimeout(closing.current);
+											onStartRename(page.id);
+										}}
 									>
 										<Check className={cn("size-4 shrink-0", page.id !== current.id && "invisible")} />
 										<span className="truncate">{page.name}</span>

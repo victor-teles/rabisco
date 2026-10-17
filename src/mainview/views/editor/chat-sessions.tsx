@@ -30,7 +30,7 @@ type Props = {
 	onHistoryOpenChange: (open: boolean) => void;
 };
 
-/** New chat and the list of past chats, in the side panel's header while the Chat tab shows */
+/** The open chat's title, with new chat and the list of past chats, above the chat */
 export function ChatSessions({
 	chats,
 	chatId,
@@ -43,9 +43,11 @@ export function ChatSessions({
 	onHistoryOpenChange,
 }: Props) {
 	const close = () => onHistoryOpenChange(false);
+	const title = chats.find((chat) => chat.id === chatId)?.title ?? "New chat";
 
 	return (
-		<div className="flex items-center">
+		<div className="flex h-10 shrink-0 items-center gap-1 border-b pr-2 pl-4">
+			<span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{title}</span>
 			<ProjectUsage chats={chats} />
 			<Popover open={historyOpen} onOpenChange={onHistoryOpenChange}>
 				<Tooltip>
