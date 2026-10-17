@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { boundsOf, rectFromPoints, type Rect } from "@/lib/align";
 import { COMPONENT_MIME, componentDrag, dropTarget, hitStarts, slotOf } from "@/lib/component-drop";
+import { MOTION_MIME, motionDrag } from "@/lib/motion-drop";
 import { dropPlacement } from "@/lib/drop-placement";
 import { elementHover, type ElementHover } from "@/lib/element-hover";
 import { isElementLocked, lockedStarts, unlockedStarts } from "@/lib/element-locks";
@@ -228,6 +229,8 @@ type CanvasProps = {
 	onEditClasses?: (element: ElementRef, edit: (classes: string) => string) => void;
 	/** Dragging the selected element's link handle onto another screen links it there */
 	onLinkElement?: (element: ElementRef, file: string) => void;
+	/** A motion preset dropped from the catalog; `element` is `null` off every element */
+	onDropMotion?: (element: ElementRef | null, preset: string) => void;
 	/** The link whose connector was clicked; `linkEditor` shows in a popover there */
 	selectedLink?: ElementRef | null;
 	/** A click on a connector; `null` when its popover closes */
@@ -427,6 +430,7 @@ export function Canvas({
 	onMoveEntry,
 	onEditClasses,
 	onLinkElement,
+	onDropMotion,
 	selectedLink = null,
 	onSelectLink,
 	linkEditor,
@@ -501,6 +505,7 @@ export function Canvas({
 	const pick = useCallback((file: string) => pickRef.current?.(file), []);
 	const [dropFile, setDropFile] = useState<string | null>(null);
 	const draggingComponent = useSyncExternalStore(componentDrag.subscribe, () => componentDrag.current() !== null);
+	const draggingMotion = useSyncExternalStore(motionDrag.subscribe, () => motionDrag.current() !== null);
 	const layerHover = useSyncExternalStore(elementHover.subscribe, elementHover.current);
 	const suggestion = useSyncExternalStore(suggestionHover.subscribe, suggestionHover.current);
 	const [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
@@ -1193,8 +1198,20 @@ export function Canvas({
 	const isFileDrag = (event: React.DragEvent) =>
 		!!onDropFiles && !isComponentDrag(event) && event.dataTransfer.types.includes("Files");
 
+	const isMotionDrag = (event: React.DragEvent) =>
+		!!onDropMotion && (motionDrag.current() !== null || event.dataTransfer.types.includes(MOTION_MIME));
+
 	// WebKit accepts a drop only when both dragenter and dragover are cancelled
 	const onDragOver = (event: React.DragEvent) => {
+		if (isMotionDrag(event)) {
+			event.preventDefault();
+			event.dataTransfer.dropEffect = "copy";
+			// The element under the pointer outlines as on ⌘-hover, in any screen
+			updateHover(event.clientX, event.clientY, true);
+
+			return;
+		}
+
 		if (isFileDrag(event)) {
 			event.preventDefault();
 			event.dataTransfer.dropEffect = "copy";
@@ -1215,10 +1232,36 @@ export function Canvas({
 	const onDragLeave = (event: React.DragEvent) => {
 		const entered = event.relatedTarget instanceof Node ? event.relatedTarget : null;
 
-		if (!containerRef.current?.contains(entered)) clearDrop();
+		if (containerRef.current?.contains(entered)) return;
+		clearDrop();
+
+		if (motionDrag.current() !== null) clearHover();
+	};
+
+	const dropMotion = (event: React.DragEvent) => {
+		const preset = motionDrag.current() ?? event.dataTransfer.getData(MOTION_MIME);
+		const frame = frameAt(event.clientX, event.clientY);
+		motionDrag.end();
+		clearHover();
+
+		if (!preset) return;
+
+		if (!frame) return onDropMotion!(null, preset);
+
+		void elementsAt(frame, event.clientX, event.clientY).then((found) => {
+			const start = found?.starts[0];
+
+			onDropMotion!(start === undefined ? null : { file: frame.file, start }, preset);
+		});
 	};
 
 	const onDrop = (event: React.DragEvent) => {
+		if (isMotionDrag(event)) {
+			event.preventDefault();
+
+			return dropMotion(event);
+		}
+
 		if (isFileDrag(event)) {
 			event.preventDefault();
 
@@ -2157,7 +2200,9 @@ export function Canvas({
 				<div ref={chromeRef} data-chrome-layer className="absolute top-0 left-0" />
 				{/* WebKit sends drag events into iframes despite `pointer-events: none`, and a frame
 				    would swallow the drop: while a component drags, this layer takes them all */}
-				{draggingComponent && onDropItem ? <div className="absolute inset-0" /> : null}
+				{(draggingComponent && onDropItem) || (draggingMotion && onDropMotion) ? (
+					<div className="absolute inset-0" />
+				) : null}
 				{children}
 				<Minimap
 					frames={shown}

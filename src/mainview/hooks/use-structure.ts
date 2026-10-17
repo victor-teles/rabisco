@@ -517,6 +517,13 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		[restyleNodes],
 	);
 
+	/** Motion presets and timing (decision 0027), on the selection or on the element a preset dropped on */
+	const restyleMotion = useCallback(
+		(edit: (classes: string) => string, target?: StructureNode) =>
+			restyleNodes(() => edit, "Only elements with plain classes can have motion", target),
+		[restyleNodes],
+	);
+
 	const pastePropertiesNodes = useCallback(
 		(copied: string) =>
 			restyleNodes(
@@ -582,6 +589,7 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		pasteIntoNode,
 		toggleHiddenNodes,
 		restyleSelected,
+		restyleMotion,
 		pastePropertiesNodes,
 		toggleLockNodes,
 		editFile,

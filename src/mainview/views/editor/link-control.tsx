@@ -52,6 +52,8 @@ export type LinkControlProps = {
 	element: ElementRef | null;
 	onChange: (element: ElementRef, edit: LinkEdit) => void;
 	disabled?: boolean;
+	/** The project's `duration-default` token, when it sets one */
+	defaultDuration?: number;
 };
 
 const NONE = "";
@@ -139,7 +141,7 @@ export function LinkControl(props: LinkControlProps) {
 }
 
 /** The inspector's Prototype rows, also shown in the popover of a connector selected on the canvas */
-export function LinkFields({ files, frames, element, onChange, disabled }: LinkControlProps) {
+export function LinkFields({ files, frames, element, onChange, disabled, defaultDuration }: LinkControlProps) {
 	/** "Open URL…" shows the field before there is a URL to write */
 	const [urlDraft, setUrlDraft] = useState<{ element: ElementRef; value: string } | null>(null);
 	const source = element ? files[element.file] : undefined;
@@ -383,7 +385,7 @@ export function LinkFields({ files, frames, element, onChange, disabled }: LinkC
 					<OptionRow
 						label="Duration"
 						value={settings.duration === null ? DEFAULT : msKey(settings.duration)}
-						labels={msLabels(DURATIONS, settings.duration, `Default · ${ms(TRANSITION_MS)}`)}
+						labels={msLabels(DURATIONS, settings.duration, `Default · ${ms(defaultDuration ?? TRANSITION_MS)}`)}
 						disabled={disabled}
 						onChange={(next) => onChange(element, { duration: parseDuration(next) })}
 					/>

@@ -17,6 +17,7 @@ import { type MenuEntry, SEPARATOR } from "./action-menu";
 import type { ElementRef } from "./canvas";
 import type { ImageFormat } from "./export/image-export";
 import { LINK_MENU } from "./link-actions";
+import { MOTION_MENU } from "./motion-actions";
 
 /** Right-click on an element, on the canvas or in the structure tree */
 export const ELEMENT_MENU: MenuEntry[] = [
@@ -48,6 +49,7 @@ export const ELEMENT_MENU: MenuEntry[] = [
 	"toggle-locked",
 	SEPARATOR,
 	LINK_MENU,
+	MOTION_MENU,
 	SEPARATOR,
 	"wrap-element",
 	"wrap-element-in-stack",

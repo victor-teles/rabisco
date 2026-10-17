@@ -185,6 +185,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥2`                                                      | Components panel: project components, the shadcn library and suggestions           |
 | `⌥3`                                                      | Design system: tokens and their uses; rename, detach, delete, import; library      |
 | `⌥4`                                                      | Assets: images, fonts and icons with their uses; AI images for placeholders        |
+| `⌥5`                                                      | Motion: hover, press, appear, loop and exit presets with live previews             |
+| Drag from the Motion panel                                | Add the preset to the element under the pointer                                    |
 | `/` or `⌘F` (Components panel open)                       | Search components                                                                  |
 | Drag from the Components panel                            | Add the component to the screen under the pointer                                  |
 | `⇧D`                                                      | Code tab: the selected screen's or component's structure and editable source       |

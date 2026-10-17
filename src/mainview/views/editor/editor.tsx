@@ -138,6 +138,8 @@ import type { PropSpec } from "../../../shared/components/api";
 import type { Literal } from "@/lib/props";
 import { isString } from "../../../shared/guards";
 import { readClassName, setClassName } from "../../../shared/tailwind/classes";
+import { applyPreset, presetsIn, removePreset } from "../../../shared/motion/presets";
+import { motionDefaults } from "../../../shared/prototype/transitions";
 import { ChatPanel, type ComposerInsert, type HeldPrompt } from "./chat-panel";
 import { CommentsLayer } from "./comments-layer";
 import { CommentsList } from "./comments-list";
@@ -184,6 +186,8 @@ import { ScreensPanel } from "./screens-panel";
 import { fontToken, leadingFamily, type FontFamily } from "../../../shared/fonts";
 import { replacePlaceholders, type PlaceholderImage } from "../../../shared/placeholder-images";
 import { AssetsPanel } from "./assets-panel";
+import { MotionPanel } from "./motion-panel";
+import { motionActions } from "./motion-actions";
 import { MoodboardLayer } from "./moodboard-layer";
 import { SectionDraw, SectionsLayer } from "./sections-layer";
 import { FindPanel } from "./find-panel";
@@ -203,6 +207,7 @@ import {
 	PLAY_KEYS,
 	SCREENS_VIEW_CODE,
 	ASSETS_VIEW_CODE,
+	MOTION_VIEW_CODE,
 	SIDE_PANEL_CODE,
 } from "./shortcuts";
 
@@ -227,6 +232,8 @@ const NO_FILES: ProjectFiles = {};
 const NO_SELECTION: string[] = [];
 
 const NO_ELEMENTS: ElementRef[] = [];
+
+const NO_PRESETS: string[] = [];
 
 const NO_MESSAGES: ChatMessage[] = [];
 
@@ -733,7 +740,7 @@ export function EditorView({
 
 	const { startNaming, duplicateNode, wrapNode } = liveStructure;
 	const { wrapInStackNode, unwrapNode, moveNodeAmongSiblings, moveNodeTo, pasteIntoNode } = liveStructure;
-	const { moveNodeEntry, moveNodeAcross, moveNodeBy, arrangeNodes, restyleSelected } = liveStructure;
+	const { moveNodeEntry, moveNodeAcross, moveNodeBy, arrangeNodes, restyleSelected, restyleMotion } = liveStructure;
 	const { selectMany, toggleHiddenNodes, pastePropertiesNodes, toggleLockNodes } = liveStructure;
 	const structureBusy = liveStructure.busy;
 	const hasNode = node !== null;
@@ -777,6 +784,7 @@ export function EditorView({
 			pasteIntoNode,
 			toggleHiddenNodes,
 			restyleSelected,
+			restyleMotion,
 			pastePropertiesNodes,
 			toggleLockNodes,
 			editFile,
@@ -810,6 +818,7 @@ export function EditorView({
 			pasteIntoNode,
 			toggleHiddenNodes,
 			restyleSelected,
+			restyleMotion,
 			pastePropertiesNodes,
 			toggleLockNodes,
 			editFile,
@@ -1615,6 +1624,39 @@ export function EditorView({
 	/** The elements ⇧-click added to `element` */
 	const extraElements = element ? structure.nodes.slice(1) : NO_ELEMENTS;
 
+	const toggleMotion = useCallback(
+		(preset: string, on: boolean) =>
+			structure.restyleMotion((classes) => (on ? applyPreset(classes, preset) : removePreset(classes, preset))),
+		[structure],
+	);
+
+	/** One undo step; the element becomes the selection so its Motion section shows */
+	const dropMotion = useCallback(
+		(target: ElementRef | null, preset: string) => {
+			if (!target) {
+				toast("Drop it on an element in a screen");
+
+				return;
+			}
+
+			structure.restyleMotion((classes) => applyPreset(classes, preset), target);
+			selectElement(target.file, target);
+		},
+		[structure, selectElement],
+	);
+
+	const elementSource = element ? files[element.file] : undefined;
+	const elementClasses = element && elementSource !== undefined ? readClassName(elementSource, element.start) : null;
+	const canApplyMotion = !!elementClasses?.editable;
+
+	const appliedMotion = useMemo(
+		() =>
+			elementClasses?.editable && !extraElements.length
+				? presetsIn(elementClasses.classes).map((p) => p.id)
+				: NO_PRESETS,
+		[elementClasses?.editable, elementClasses?.classes, extraElements.length],
+	);
+
 	const instanceRoot = instance ? componentRoot(files[instance.component] ?? "", instance.exportName) : null;
 	const selectedUsage = element && !extraElements.length ? instanceAt(files, element.file, element.start) : null;
 
@@ -1700,8 +1742,6 @@ export function EditorView({
 			),
 		[arrangeMeasured, elementWidth],
 	);
-
-	const elementSource = element ? files[element.file] : undefined;
 
 	const arrangeRefusals = useMemo((): ArrangeRefusals | null => {
 		if (!element || elementSource === undefined) return null;
@@ -1875,6 +1915,7 @@ export function EditorView({
 			instance: instanceActions,
 		}),
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
+		...motionActions({ element, extras: extraElements, files, toggle: toggleMotion }),
 		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
 		{
 			id: "send-comments",
@@ -2142,6 +2183,14 @@ export function EditorView({
 			chords: [{ code: ASSETS_VIEW_CODE, alt: true }],
 			enabled: loaded,
 			run: () => sidePanel.toggleTab("assets"),
+		},
+		{
+			id: "toggle-motion",
+			label: "Motion",
+			group: "View",
+			chords: [{ code: MOTION_VIEW_CODE, alt: true }],
+			enabled: loaded,
+			run: () => sidePanel.toggleTab("motion"),
 		},
 		{
 			id: "toggle-history",
@@ -2580,6 +2629,7 @@ export function EditorView({
 					element={structure.nodes.length === 1 ? structure.node : null}
 					disabled={structure.busy}
 					onChange={changeLink}
+					defaultDuration={motionDefaults(appliedTokens).duration}
 				/>
 			</>
 		),
@@ -2800,6 +2850,9 @@ export function EditorView({
 								/>
 							) : null
 						}
+						motion={
+							project ? <MotionPanel applied={appliedMotion} canApply={canApplyMotion} onToggle={toggleMotion} /> : null
+						}
 						chat={
 							<ChatPanel
 								projectPath={projectPath}
@@ -2914,6 +2967,7 @@ export function EditorView({
 							onMoveEntry={moveEntryTo}
 							onEditClasses={editHandleClasses}
 							onLinkElement={linkElement}
+							onDropMotion={dropMotion}
 							selectedLink={selectedLink}
 							onSelectLink={selectLink}
 							linkEditor={
@@ -2926,6 +2980,7 @@ export function EditorView({
 											element={selectedLink}
 											disabled={structure.busy}
 											onChange={changeLink}
+											defaultDuration={motionDefaults(appliedTokens).duration}
 										/>
 										<Button
 											variant="ghost"
