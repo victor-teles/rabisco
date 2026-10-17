@@ -3,6 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-10-11
 - **Extends:** [0002](./0002-incremental-tailwind-in-the-host.md), [0022](./0022-link-transitions-and-overlays.md)
+- **Code:** [`src/shared/motion/presets.ts`](../../src/shared/motion/presets.ts), [`src/shared/motion/preview.ts`](../../src/shared/motion/preview.ts), [`src/shared/context/tokens.ts`](../../src/shared/context/tokens.ts), [`src/mainview/runtime/motion.ts`](../../src/mainview/runtime/motion.ts), [`src/mainview/views/editor/motion-panel.tsx`](../../src/mainview/views/editor/motion-panel.tsx)
 
 ## Context
 
@@ -25,6 +26,15 @@ Phase 26 adds micro-interactions and a motion catalog: hover, press, appear, loo
 - **Motion tokens** live in DESIGN.md and map to Tailwind's `--ease-*` and `--animate-*` theme namespaces, the way custom tokens work in [0013](./0013-custom-tokens-names-in-the-compiler.md). Link transitions read the same tokens for their duration and easing.
 - **Reduced motion** uses `motion-safe:` and `motion-reduce:` in the presets, so movement becomes a fade, as for link transitions.
 - **Snapshots and the canvas** render at the end state. Snapshots wait for, or skip, entry animations; Phase 18 found snapshots that caught them half-drawn.
+
+## Details settled in Phase 26
+
+- **The catalog.** Hover (Lift, Grow, Dim, Glow), press (Shrink, Sink, Dim), appear (Fade in, Rise, Drop, Slide in, Pop), loop (Pulse, Bounce, Spin) and exit (Fade out, Shrink out, Sink out). An element has at most one preset of each kind: applying one replaces the preset of the same kind. Several presets can match the same classes, since Rise holds Fade in's classes. The one with the most classes wins.
+- **Timing is shared.** A preset's own duration and easing go in only for the parts the element has no class for, so hover and appear on one element share one `duration-*`. Removing the last preset also removes the timing classes, unless a `transition*` or `animate-*` class still uses them. Appear presets carry `fill-mode-backwards`, so a delayed element stays hidden until it starts.
+- **Motion tokens** are custom tokens of two new kinds. `duration-<name>: 200ms` makes `duration-<name>`. Its theme name is `--transition-duration-<name>`, so it goes in an `@theme inline reference` block that reads the token's variable. `ease-<name>: cubic-bezier(…)` makes `ease-<name>`. Tailwind's own `ease-in`, `ease-out`, `ease-in-out`, `ease-linear` and `ease-initial` can't be redefined. `duration-default` and `ease-default` also set `--default-transition-duration` and `--default-transition-timing-function`, and they are the defaults for link transitions in play mode and the share viewer (decision 0046).
+- **Exit** uses `data-[state=closed]:`, so it plays on Radix content: dialogs, popovers, sheets and menus. Other elements don't unmount through a state, so exit on them stays an open question.
+- **Previews** are small modules in sandboxed frames. Pointer events never reach a preview frame, so `hover:` and `active:` become `data-[on]:`, and a timer in the module switches them. A preview plays only while the pointer is on its tile. At other times it shows a snapshot, rendered at twice the size so the snapshot stays sharp.
+- **Replay** in the inspector sends `replay-motion` to the canvas frame. Animations restart. For hover and press, the frame copies the declarations of the screen's `:hover` or `:active` rules that match the element into its inline style for 700 ms, so its `transition` plays there and back.
 
 ## Open questions
 

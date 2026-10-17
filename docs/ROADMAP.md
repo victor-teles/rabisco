@@ -81,12 +81,12 @@ A component can be edited only from the Components tab or the code view, a usage
 
 **Motion** ([0027](./decisions/0027-motion-in-source.md) 🧭)
 
-- ⬜ A motion catalog in the left panel: hover, press, appear, loop and exit presets, each with a live preview
-- ⬜ Drag a preset onto an element, or apply it from the element menu, as one undo step
-- ⬜ A Motion section in the inspector: the element's presets, with duration, delay and easing, and a replay button
-- ⬜ Motion tokens in DESIGN.md (durations and easings), shared by presets, link transitions and generations
-- ⬜ Generations use the presets and tokens, and point and prompt can add motion ("a subtle entrance for this list")
-- ⬜ Snapshots, exports and reduced motion: frames snapshot at the end state, the export keeps the classes, and reduced motion turns movement into a fade
+- ✅ A motion catalog in the left panel (⌥5): hover, press, appear, loop and exit presets, each with a live preview (`views/editor/motion-panel.tsx`)
+- ✅ Drag a preset onto an element, or apply it from the element menu (Motion) or by clicking it in the catalog, as one undo step
+- ✅ A Motion section in the inspector: the element's presets, with duration, delay and easing, and a replay button
+- ✅ Motion tokens in DESIGN.md (`duration-*` and `ease-*`), offered with the presets' timing, used by link transitions as `duration-default` and `ease-default`, and listed to generations
+- ✅ Generations use the presets and tokens, and point and prompt can add motion ("a subtle entrance for this list")
+- ✅ Snapshots, exports and reduced motion: frames snapshot at the end state, the export keeps the classes, and reduced motion turns movement into a fade (`motion-safe:` in every preset)
 
 **Done when** a user can change a button inside one card on the canvas and see every card update, override the label of one card, link three screens by dragging, and add a hover and an appear animation, with no prompt and no code view.
 
