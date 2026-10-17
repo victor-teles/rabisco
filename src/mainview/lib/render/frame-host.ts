@@ -2,6 +2,7 @@ import type { DesignFinding } from "../../../shared/design/findings";
 import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
 import { DEFAULT_MODE, modeKey, type ResolvedMode } from "../../../shared/modes";
+import type { MotionKind } from "../../../shared/motion/presets";
 import { linkStarts } from "../../../shared/prototype/links";
 import type { ProjectFiles } from "../../../shared/types";
 import { projectAssets } from "./assets";
@@ -297,6 +298,10 @@ export class FrameHost {
 	/** Inline styles on the element while a handle drags; `null` restores them. The next render restores them too */
 	previewStyle(starts: number[], version: string, style: Record<string, string> | null) {
 		if (this.#ready) this.#post({ type: "preview-style", starts, version, style });
+	}
+
+	replayMotion(starts: number[], version: string, kind: MotionKind) {
+		if (this.#ready) this.#post({ type: "replay-motion", starts, version, kind });
 	}
 
 	/** Shifts the instances of a dragged list item; `null` slides them back. The next render clears it too */

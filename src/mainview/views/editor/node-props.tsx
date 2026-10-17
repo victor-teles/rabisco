@@ -3,6 +3,8 @@ import { Component, CornerUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Structure } from "@/hooks/use-structure";
 import { componentRef, importedComponents } from "@/lib/outline";
+import { hostOf } from "@/lib/render/frame-host";
+import { sourceVersion } from "@/lib/render/protocol";
 import { styleState } from "@/lib/style-state";
 import { componentSpec, extraAttributes, isVoidElement, readChildrenText, readProp, type PropValue } from "@/lib/props";
 import { UI_SOURCES } from "@/lib/ui-sources";
@@ -15,6 +17,7 @@ import { usageOverrides } from "../../../shared/components/instances";
 import { isComponentFile, isScreenFile } from "../../../shared/project";
 import { linkHrefToScreen } from "../../../shared/prototype/links";
 import type { DesignTokens } from "../../../shared/context/tokens";
+import type { MotionKind } from "../../../shared/motion/presets";
 import type { Frame, ProjectFiles } from "../../../shared/types";
 import { ElementStyle } from "./element-style";
 import { IconPicker } from "./icon-picker";
@@ -318,6 +321,7 @@ function ElementProps({
 			{element.name === null ? null : (
 				<ElementStyle
 					key={`${file}:${start}`}
+					onReplayMotion={(kind) => replayMotion(file, source, [start], kind)}
 					source={source}
 					start={start}
 					disabled={structure.busy}
@@ -376,6 +380,7 @@ function SeveralElements({
 			{start === undefined ? null : (
 				<ElementStyle
 					key={file}
+					onReplayMotion={(kind) => replayMotion(file, source, [start, ...extras], kind)}
 					source={source}
 					start={start}
 					extras={extras}
@@ -389,6 +394,13 @@ function SeveralElements({
 			)}
 		</>
 	);
+}
+
+/** In the screen's canvas frame */
+function replayMotion(file: string, source: string, starts: number[], kind: MotionKind) {
+	const frame = document.querySelector<HTMLIFrameElement>(`[data-frame-file="${CSS.escape(file)}"] iframe`);
+
+	hostOf(frame)?.replayMotion(starts, sourceVersion(source), kind);
 }
 
 function ComponentApiView({ path, source }: { path: string; source: string }) {

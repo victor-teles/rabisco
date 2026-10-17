@@ -28,6 +28,7 @@ import {
 	spacingOf,
 } from "./inspect";
 import { createPickMode } from "./pick-mode";
+import { replayMotion } from "./motion";
 import { createPlay } from "./play";
 import { colorAt } from "./pick-color";
 import { clearOrder, previewOrder } from "./reorder";
@@ -467,6 +468,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 			clearPreview();
 			scheduleMeasure();
 		} else if (entry && message.version === renderedVersion) previewStyle(message.starts, message.style);
+	} else if (message?.type === "replay-motion") {
+		if (entry && message.version === renderedVersion) {
+			const instances = message.starts.flatMap((start) => instancesOf(rootElement, locationOf(entry!, start)));
+			replayMotion(instances.flat(), message.kind);
+		}
 	} else if (message?.type === "preview-order") {
 		if (message.preview === null) clearOrder(true);
 		else if (entry && message.version === renderedVersion)

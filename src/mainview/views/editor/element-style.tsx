@@ -12,6 +12,7 @@ import {
 	ChevronDown,
 	Lock,
 	Pipette,
+	Play,
 	Plus,
 	Scan,
 	Unlink,
@@ -25,6 +26,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
@@ -93,6 +95,22 @@ import {
 	type SimpleProp,
 } from "../../../shared/tailwind/classes";
 import { applyTextStyle, detachTextStyle } from "../../../shared/tailwind/text-style";
+import {
+	applyPreset,
+	DELAY_STEPS,
+	DURATION_STEPS,
+	EASING_STEPS,
+	MOTION_KIND_HINTS,
+	MOTION_KIND_LABELS,
+	MOTION_KINDS,
+	presetsIn,
+	presetsOfKind,
+	readTiming,
+	removePreset,
+	setTiming,
+	type MotionKind,
+	type TimingPart,
+} from "../../../shared/motion/presets";
 import { EYEDROPPER_KEYS, Eyedropper, EyedropperShortcut } from "./eyedropper";
 import { isTyping } from "./shortcuts";
 
@@ -113,6 +131,8 @@ export type ElementStyleProps = {
 	onVariantChange: (variant: string) => void;
 	/** The applied theme: its swatches color the pickers and its custom tokens join them */
 	tokens?: DesignTokens;
+	/** Plays the selected elements' motion of that kind again in the canvas */
+	onReplayMotion?: (kind: MotionKind) => void;
 };
 
 const REPLACED = new Set([
@@ -280,6 +300,7 @@ export function ElementStyle({
 	variant,
 	onVariantChange,
 	tokens = NO_TOKENS,
+	onReplayMotion,
 }: ElementStyleProps) {
 	const burst = useRef(0);
 	const [picking, setPicking] = useState<Picking | null>(null);
@@ -394,6 +415,7 @@ export function ElementStyle({
 			</Section>
 			<BorderSection classes={classes} edit={edit} />
 			<EffectsSection classes={classes} edit={edit} />
+			<MotionSection classes={classes} edit={edit} onReplay={onReplayMotion} />
 			<ClassesField
 				classes={classes}
 				edit={edit}
@@ -1225,6 +1247,119 @@ function EffectsSection({ classes, edit }: SectionProps) {
 					onChange={styleWriter(edit, "boxShadow")}
 				/>
 			</Row>
+		</Section>
+	);
+}
+
+const EASING_LABELS: Record<(typeof EASING_STEPS)[number], string> = {
+	linear: "Linear",
+	in: "Ease in",
+	out: "Ease out",
+	"in-out": "Ease in-out",
+};
+
+const TIMING_LABELS: Record<TimingPart, string> = { duration: "Duration", delay: "Delay", easing: "Easing" };
+
+/** Steps, then the project's motion tokens (decision 0027) */
+function timingOptions(part: TimingPart, tokens: DesignTokens): ScaleOption[] {
+	if (part === "easing")
+		return [...EASING_STEPS.map((value) => ({ value, label: EASING_LABELS[value] })), ...tokenOptions(tokens, "ease")];
+	const steps = part === "duration" ? DURATION_STEPS : DELAY_STEPS;
+	const options: ScaleOption[] = steps.map((value) => ({ value, label: `${value} ms` }));
+
+	return part === "duration" ? [...options, ...tokenOptions(tokens, "duration")] : options;
+}
+
+/** Presets by kind and their shared timing. Motion classes ignore the state switch: `hover:` is part of a preset */
+function MotionSection({ classes, edit, onReplay }: SectionProps & { onReplay?: (kind: MotionKind) => void }) {
+	const presets = presetsIn(classes);
+	const timing = readTiming(classes);
+	const missing = MOTION_KINDS.filter((kind) => !presets.some((preset) => preset.kind === kind));
+
+	const add = missing.length ? (
+		<DropdownMenu modal={false}>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon-xs"
+					className="-mr-1.5 size-5 text-subtle-foreground"
+					aria-label="Add motion"
+					title="Add motion"
+					disabled={edit.disabled}
+				>
+					<Plus />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="max-h-96 min-w-48 overflow-y-auto">
+				{missing.map((kind, index) => (
+					<div key={kind}>
+						{index ? <DropdownMenuSeparator /> : null}
+						<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground" title={MOTION_KIND_HINTS[kind]}>
+							{MOTION_KIND_LABELS[kind]}
+						</DropdownMenuLabel>
+						{presetsOfKind(kind).map((preset) => (
+							<DropdownMenuItem
+								key={preset.id}
+								className="text-[13px]"
+								onSelect={() => edit.apply((own) => applyPreset(own, preset.id))}
+							>
+								{preset.name}
+							</DropdownMenuItem>
+						))}
+					</div>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	) : null;
+
+	return (
+		<Section title="Motion" action={add}>
+			{presets.length ? null : (
+				<p className="text-xs text-subtle-foreground">None. Add one with +, or drag one from the Motion tab.</p>
+			)}
+			{presets.map((preset) => (
+				<Row key={preset.kind} label={MOTION_KIND_LABELS[preset.kind]}>
+					<div className="flex min-w-0 flex-1 items-center gap-1">
+						<div className="min-w-0 flex-1">
+							<SelectField
+								label={`${MOTION_KIND_LABELS[preset.kind]} motion`}
+								value={preset.id}
+								options={presetsOfKind(preset.kind).map(({ id, name }) => ({ value: id, label: name }))}
+								edit={edit}
+								onChange={(next) =>
+									edit.apply((own) => (next === null ? removePreset(own, preset.id) : applyPreset(own, next)))
+								}
+							/>
+						</div>
+						{onReplay ? (
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								className="shrink-0 text-muted-foreground"
+								aria-label={`Play the ${MOTION_KIND_LABELS[preset.kind].toLowerCase()} motion`}
+								title="Play it in the canvas"
+								onClick={() => onReplay(preset.kind)}
+							>
+								<Play className="size-3.5" />
+							</Button>
+						) : null}
+					</div>
+				</Row>
+			))}
+			{presets.length
+				? (["duration", "delay", "easing"] as const).map((part) => (
+						<Row key={part} label={TIMING_LABELS[part]}>
+							<SelectField
+								label={TIMING_LABELS[part]}
+								value={timing[part]}
+								options={timingOptions(part, edit.tokens)}
+								placeholder={part === "delay" ? "None" : "Default"}
+								edit={edit}
+								onChange={(next) => edit.apply((own) => setTiming(own, part, next))}
+							/>
+						</Row>
+					))
+				: null}
 		</Section>
 	);
 }

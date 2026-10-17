@@ -4,6 +4,7 @@ import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
 import type { ResolvedMode } from "../../../shared/modes";
+import type { MotionKind } from "../../../shared/motion/presets";
 import type { ElementLayout, Insets, Spacing } from "./spacing";
 
 /** Where an error points to in project source. Lines and columns are 1-based. */
@@ -51,6 +52,8 @@ export type HostMessage =
 	| { type: "links"; starts: number[]; version: string }
 	/** Inline styles on every instance of the elements at `starts` while a handle drags; `null` (or the next render) restores them */
 	| { type: "preview-style"; starts: number[]; version: string; style: Record<string, string> | null }
+	/** Plays the elements' motion of one kind again: animations restart, hover and press play there and back */
+	| { type: "replay-motion"; starts: number[]; version: string; kind: MotionKind }
 	/** Shifts the instances of a dragged list item until the next render; `null` slides them back */
 	| { type: "preview-order"; start: number; version: string; preview: OrderPreview | null }
 	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
