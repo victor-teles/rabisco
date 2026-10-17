@@ -167,8 +167,8 @@ import { copyImage, exportFlowPdf } from "./export/image-export";
 import { askImageExport, ImageExportDialog } from "./export/image-export-dialog";
 import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
-import { checkDesign, type ScreenCheck } from "./design-check";
-import { DesignCheckDialog } from "./design-check-dialog";
+import { checkAccessibility, checkConsistency, checkDesign, type ScreenCheck } from "./design-check";
+import { DesignCheckDialog, type CheckKind } from "./design-check-dialog";
 import { DesignSystemDialog } from "./design-system-dialog";
 import { ComponentPage } from "./component-page";
 import type { DesignNoteActions } from "./change-summary";
@@ -304,7 +304,7 @@ export function EditorView({
 	const [compareBase, setCompareBase] = useState<string | null>(null);
 	const [screenshotPair, setScreenshotPair] = useState<{ file: string; image: string } | null>(null);
 	const [playStart, setPlayStart] = useState<string | null>(null);
-	const [designChecks, setDesignChecks] = useState<ScreenCheck[] | null>(null);
+	const [designChecks, setDesignChecks] = useState<{ kind: CheckKind; results: ScreenCheck[] } | null>(null);
 	const [designSystemOpen, setDesignSystemOpen] = useState(false);
 	const [componentPage, setComponentPage] = useState<string | null>(null);
 	/** The screen whose name field in the inspector takes focus */
@@ -1782,23 +1782,34 @@ export function EditorView({
 	const singleGroup = single ? groups.find((group) => group.base === baseOf(single.file)) : undefined;
 	const scopedExport: ExportContext = { ...exportContext, selected, selectedComponent: null };
 
-	/** Renders the selected screens (else all) offstage, so it works at any zoom */
-	const runDesignCheck = async () => {
+	/** Renders the selected screens (else all) offstage, so it works at any zoom. Consistency compares, so it needs two */
+	const runDesignCheck = async (kind: CheckKind) => {
 		const id = toast.loading("Checking screens…");
+		const check = { design: checkDesign, accessibility: checkAccessibility, consistency: checkConsistency }[kind];
+		const scope = kind === "consistency" && selected.length < 2 ? [] : selected;
 
 		try {
-			const results = await checkDesign(
-				{ frames, sections: sections.sections, selected, files, theme: appliedTokens },
+			const results = await check(
+				{ frames, sections: sections.sections, selected: scope, files, theme: appliedTokens },
 				(done, total) => {
 					if (total > 1) toast.loading(`Checking screens… ${done} of ${total}`, { id });
 				},
 			);
 
 			toast.dismiss(id);
-			setDesignChecks(results);
+			setDesignChecks({ kind, results });
 		} catch (error) {
-			toast.error("Design check failed", { id, description: error instanceof Error ? error.message : String(error) });
+			toast.error("Check failed", { id, description: error instanceof Error ? error.message : String(error) });
 		}
+	};
+
+	/** The findings go to the composer for review, with their screens selected so the prompt edits them */
+	const fixInChat = (prompt: string, screens: string[]) => {
+		if (chatBlocked) return void toast(chatBlocked);
+		setSelection(screens);
+		selectNode(null);
+		setChatInsert((last) => ({ key: (last?.key ?? 0) + 1, text: prompt }));
+		setComposeKey((key) => key + 1);
 	};
 
 	const toggleTab = (next: InspectorTab) => setTab((current) => (current === next ? "design" : next));
@@ -1979,7 +1990,21 @@ export function EditorView({
 			label: "Check design",
 			group: "Screen",
 			enabled: frames.length > 0,
-			run: () => void runDesignCheck(),
+			run: () => void runDesignCheck("design"),
+		},
+		{
+			id: "check-accessibility",
+			label: "Check accessibility",
+			group: "Screen",
+			enabled: frames.length > 0,
+			run: () => void runDesignCheck("accessibility"),
+		},
+		{
+			id: "check-consistency",
+			label: "Check consistency across screens",
+			group: "Screen",
+			enabled: frames.length > 1,
+			run: () => void runDesignCheck("consistency"),
 		},
 		{
 			id: "start-style",
@@ -3230,7 +3255,13 @@ export function EditorView({
 				}}
 			/>
 			{designChecks && (
-				<DesignCheckDialog results={designChecks} onSelect={selectElement} onClose={() => setDesignChecks(null)} />
+				<DesignCheckDialog
+					kind={designChecks.kind}
+					results={designChecks.results}
+					onSelect={selectElement}
+					onFix={generating ? null : fixInChat}
+					onClose={() => setDesignChecks(null)}
+				/>
 			)}
 			<CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} actions={actions} />
 			<StyleDialog open={styleDialogOpen && canStartStyle} onOpenChange={setStyleDialogOpen} onPick={startFromStyle} />

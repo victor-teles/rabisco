@@ -111,13 +111,13 @@ const quote = (text: string) => (text.length > 40 ? `"${text.slice(0, 39)}…"` 
 const describe = (node: LayoutNode) => (node.ownText ? `<${node.tag}> ${quote(node.ownText)}` : `<${node.tag}>`);
 
 /** One finding per rule and location (a `.map` repeats its element), capped per rule. */
-class Findings {
+export class Findings {
 	readonly list: LayoutFinding[] = [];
 	#seen = new Set<string>();
 	#counts = new Map<DesignRule, number>();
 
 	add(
-		node: LayoutNode,
+		node: { loc: string | null },
 		rule: DesignRule,
 		severity: DesignFinding["severity"],
 		message: string,

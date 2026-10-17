@@ -105,8 +105,8 @@ _Principles: UX first (a bad generation costs one keystroke) · Variations, not 
 - ⬜ Show tokens and cost per generation in the chat, and a running total per project
 - ⬜ Queue a prompt while a generation runs, instead of disabling the composer
 - ⬜ Realistic content: copy and data from PRODUCT.md, with a "Shuffle content" action
-- ⬜ An accessibility check next to "Check design": labels, focus order, tap targets and landmarks
-- ⬜ Cross-screen consistency check: the same component, spacing and nav across screens
+- ✅ An accessibility check next to "Check design": labels, focus order, tap targets and landmarks. "Check accessibility" in the command palette renders the screens offstage and reads names, roles, Tab order and target sizes (44px on phones and tablets). "Fix in chat" puts the findings in the composer as one prompt, with their screens selected ([LIT-54](/LIT/issues/LIT-54), `src/shared/design/accessibility-checks.ts`)
+- ✅ Cross-screen consistency check: the same component, spacing and nav across screens. "Check consistency across screens" compares screens of the same width: buttons and fields that differ in height, corners or text size from most, hand-made ones where others use the component, page padding, and nav items, size or absence (`src/shared/design/consistency-checks.ts`)
 - ⬜ A prompt library: save and reuse prompts per project, and see past prompts per screen
 - ⬜ Model presets per task in Settings (create, edit, review), on top of the fast model
 

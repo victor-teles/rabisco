@@ -1,6 +1,6 @@
 // Reads the rendered screen into plain `LayoutNode`s; the checks themselves live in `shared/design/layout-checks`.
 import type { DesignFinding } from "../../shared/design/findings";
-import { layoutFindings, type LayoutNode } from "../../shared/design/layout-checks";
+import { layoutFindings, type LayoutFinding, type LayoutNode } from "../../shared/design/layout-checks";
 import { LOC_ATTRIBUTE } from "../lib/render/protocol";
 import { fiberOf, textProp } from "./inspect";
 import { color, isScreenReaderOnly, OVERLAY_ID, SKIPPED } from "./snapshot";
@@ -10,7 +10,7 @@ const SIDES = ["top", "right", "bottom", "left"];
 const SCROLL_X_CLASS = /(?:^|[\s:])overflow-(?:x-)?(?:auto|scroll)(?:\s|$)/;
 
 /** Components may not forward the attribute, so the fibers between the element and its parent are read too. */
-function ownLoc(element: Element): string | null {
+export function ownLoc(element: Element): string | null {
 	const own = fiberOf(element);
 
 	for (let fiber = own; fiber; fiber = fiber.return) {
@@ -112,7 +112,7 @@ function nodeOf(element: Element, inherited: string | null): LayoutNode | null {
 }
 
 /** `loc` is `path:start`, and a path may hold a colon */
-function located(loc: string | null): { path: string; start: number } | null {
+export function located(loc: string | null): { path: string; start: number } | null {
 	const colon = loc?.lastIndexOf(":") ?? -1;
 
 	if (!loc || colon < 1) return null;
@@ -121,16 +121,19 @@ function located(loc: string | null): { path: string; start: number } | null {
 	return Number.isInteger(start) && start >= 0 ? { path: loc.slice(0, colon), start } : null;
 }
 
-/** Call after `settle()`, so images and fonts have their final size. */
-export function lintScreen(container: Element): DesignFinding[] {
-	const root = nodeOf(container, null);
-
-	if (!root) return [];
-	const frame = { width: document.documentElement.clientWidth, height: window.innerHeight };
-
-	return layoutFindings(root, frame).map(({ loc, finding }) => {
+export function placed(findings: LayoutFinding[]): DesignFinding[] {
+	return findings.map(({ loc, finding }) => {
 		const at = located(loc);
 
 		return at ? { ...finding, path: at.path, start: at.start } : finding;
 	});
+}
+
+export const viewport = () => ({ width: document.documentElement.clientWidth, height: window.innerHeight });
+
+/** Call after `settle()`, so images and fonts have their final size. */
+export function lintScreen(container: Element): DesignFinding[] {
+	const root = nodeOf(container, null);
+
+	return root ? placed(layoutFindings(root, viewport())) : [];
 }

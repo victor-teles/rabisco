@@ -10,6 +10,8 @@ import {
 	type HostMessage,
 } from "../lib/render/protocol";
 import { frameAssets, resolveImageSources } from "./assets";
+import { lintAccessibility } from "./accessibility-lint";
+import { sampleScreen } from "./consistency-sample";
 import { lintScreen } from "./design-lint";
 import { applyMode } from "./mode";
 import { describeError, hideOverlay, showOverlay } from "./errors";
@@ -533,13 +535,27 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				post({ type: "figma-capture", id, error: error instanceof Error ? error.message : String(error) }),
 			);
 	} else if (message?.type === "lint") {
+		const { id, accessibility } = message;
+		void (async () => {
+			try {
+				await settle();
+
+				const lint = () =>
+					accessibility ? lintAccessibility(rootElement, accessibility.touch) : lintScreen(rootElement);
+
+				post({ type: "lint", id, findings: entry && renderedVersion ? lint() : [] });
+			} catch (error) {
+				post({ type: "lint", id, error: error instanceof Error ? error.message : String(error) });
+			}
+		})();
+	} else if (message?.type === "sample") {
 		const { id } = message;
 		void (async () => {
 			try {
 				await settle();
-				post({ type: "lint", id, findings: entry && renderedVersion ? lintScreen(rootElement) : [] });
+				post({ type: "sample", id, sample: sampleScreen(rootElement) });
 			} catch (error) {
-				post({ type: "lint", id, error: error instanceof Error ? error.message : String(error) });
+				post({ type: "sample", id, error: error instanceof Error ? error.message : String(error) });
 			}
 		})();
 	} else if (message?.type === "markup") {

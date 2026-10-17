@@ -1,4 +1,4 @@
-/** Design checks run on a rendered screen (layout) or its source (classes), with no AI. Phase 16. */
+/** Design checks run on a rendered screen (layout, accessibility) or its source (classes), or across screens (consistency), with no AI. Phases 16 and 27. */
 export const DESIGN_RULES = [
 	"frame-overflow",
 	"text-clipped",
@@ -7,6 +7,13 @@ export const DESIGN_RULES = [
 	"raw-color",
 	"empty-container",
 	"font-sizes",
+	"label",
+	"focus-order",
+	"tap-target",
+	"landmarks",
+	"component-drift",
+	"spacing-drift",
+	"nav-drift",
 ] as const;
 
 export type DesignRule = (typeof DESIGN_RULES)[number];
@@ -32,4 +39,11 @@ export const DESIGN_RULE_LABELS: Record<DesignRule, string> = {
 	"raw-color": "Color without a token",
 	"empty-container": "Empty container",
 	"font-sizes": "Too many font sizes",
+	label: "Missing label",
+	"focus-order": "Focus order",
+	"tap-target": "Small tap target",
+	landmarks: "Landmarks",
+	"component-drift": "Component differs",
+	"spacing-drift": "Spacing differs",
+	"nav-drift": "Navigation differs",
 };

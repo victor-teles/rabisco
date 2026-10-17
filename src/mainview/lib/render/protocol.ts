@@ -1,3 +1,4 @@
+import type { BarSample, ControlSample, ScreenSample } from "../../../shared/design/consistency-checks";
 import { DESIGN_RULES, type DesignFinding } from "../../../shared/design/findings";
 import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
@@ -70,8 +71,10 @@ export type HostMessage =
 	/** Answered by a `snapshot` with the same `id`; `starts` limits it to the first instance of those elements. */
 	| { type: "snapshot"; id: number; raster?: SnapshotRaster; starts?: number[] }
 	| { type: "figma-capture"; id: number; fonts: FontFile[] }
-	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen. */
-	| { type: "lint"; id: number }
+	/** Answered by a `lint` with the same `id`: the design checks on the rendered screen, or with `accessibility` those instead */
+	| { type: "lint"; id: number; accessibility?: { touch: boolean } }
+	/** Answered by a `sample` with the same `id`: what the consistency check compares across screens */
+	| { type: "sample"; id: number }
 	/** Answered by a `markup` with the same `id`: the rendered HTML, with project images at their own paths. */
 	| { type: "markup"; id: number }
 	| { type: "pick-color"; id: number; x: number; y: number }
@@ -158,6 +161,8 @@ export type FrameMessage =
 	| { type: "figma-capture"; id: number; error: string }
 	| { type: "lint"; id: number; findings: DesignFinding[] }
 	| { type: "lint"; id: number; error: string }
+	| { type: "sample"; id: number; sample: ScreenSample }
+	| { type: "sample"; id: number; error: string }
 	| { type: "markup"; id: number; html: string }
 	| { type: "markup"; id: number; error: string }
 	| { type: "picked-color"; id: number; color: string | null }
@@ -430,6 +435,69 @@ function isElementLayout(layout: unknown): layout is ElementLayout {
 	);
 }
 
+const FILLS: readonly string[] = ["filled", "outline", "plain"] satisfies ControlSample["fill"][];
+
+const PLACEMENTS: readonly string[] = ["top", "bottom", "left", "right", "inline"] satisfies BarSample["placement"][];
+
+const isSize = (value: unknown): value is number => isNumber(value) && Number.isFinite(value) && value >= 0;
+
+function isControlSample(control: unknown): control is ControlSample {
+	return (
+		isObject(control) &&
+		(!("path" in control) || isString(control.path)) &&
+		(!("start" in control) || isOffset(control.start)) &&
+		"kind" in control &&
+		(control.kind === "button" || control.kind === "input") &&
+		"fill" in control &&
+		isString(control.fill) &&
+		FILLS.includes(control.fill) &&
+		"text" in control &&
+		isString(control.text) &&
+		"height" in control &&
+		isSize(control.height) &&
+		"radius" in control &&
+		isSize(control.radius) &&
+		"fontSize" in control &&
+		isSize(control.fontSize) &&
+		"slot" in control &&
+		(control.slot === null || isString(control.slot))
+	);
+}
+
+function isBarSample(bar: unknown): bar is BarSample {
+	return (
+		isObject(bar) &&
+		(!("path" in bar) || isString(bar.path)) &&
+		(!("start" in bar) || isOffset(bar.start)) &&
+		"kind" in bar &&
+		(bar.kind === "nav" || bar.kind === "header") &&
+		"placement" in bar &&
+		isString(bar.placement) &&
+		PLACEMENTS.includes(bar.placement) &&
+		"size" in bar &&
+		isSize(bar.size) &&
+		"items" in bar &&
+		Array.isArray(bar.items) &&
+		bar.items.every(isString)
+	);
+}
+
+function isScreenSample(sample: unknown): sample is ScreenSample {
+	return (
+		isObject(sample) &&
+		"width" in sample &&
+		isSize(sample.width) &&
+		"inset" in sample &&
+		(sample.inset === null || isNumber(sample.inset)) &&
+		"controls" in sample &&
+		Array.isArray(sample.controls) &&
+		sample.controls.every(isControlSample) &&
+		"bars" in sample &&
+		Array.isArray(sample.bars) &&
+		sample.bars.every(isBarSample)
+	);
+}
+
 const RULES: readonly string[] = DESIGN_RULES;
 
 const SEVERITIES: readonly string[] = ["error", "warning"] satisfies DesignFinding["severity"][];
@@ -545,6 +613,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 			if ("error" in data) return isString(data.error);
 
 			return "findings" in data && Array.isArray(data.findings) && data.findings.every(isDesignFinding);
+		case "sample":
+			if (!hasId(data)) return false;
+
+			if ("error" in data) return isString(data.error);
+
+			return "sample" in data && isScreenSample(data.sample);
 		case "markup":
 			if (!hasId(data)) return false;
 

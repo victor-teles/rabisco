@@ -1,3 +1,4 @@
+import type { ScreenSample } from "../../../shared/design/consistency-checks";
 import type { DesignFinding } from "../../../shared/design/findings";
 import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
@@ -257,10 +258,10 @@ export class FrameHost {
 		return { tree: reply.tree, images: reply.images };
 	}
 
-	/** The layout and contrast checks on the rendered screen; findings have `path` and `start` but no `line` */
-	async lint(timeoutMs = 15_000): Promise<DesignFinding[]> {
+	/** The layout and contrast checks on the rendered screen, or with `accessibility` the accessibility checks; findings have `path` and `start` but no `line` */
+	async lint(timeoutMs = 15_000, accessibility?: { touch: boolean }): Promise<DesignFinding[]> {
 		if (!this.#ready) throw new Error("The frame isn't ready");
-		const reply = await this.#request({ type: "lint", id: ++requestId }, timeoutMs);
+		const reply = await this.#request({ type: "lint", id: ++requestId, accessibility }, timeoutMs);
 
 		if (reply?.type !== "lint")
 			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
@@ -268,6 +269,19 @@ export class FrameHost {
 		if ("error" in reply) throw new Error(reply.error);
 
 		return reply.findings;
+	}
+
+	/** What the consistency check compares across screens; places have `path` and `start` */
+	async sample(timeoutMs = 15_000): Promise<ScreenSample> {
+		if (!this.#ready) throw new Error("The frame isn't ready");
+		const reply = await this.#request({ type: "sample", id: ++requestId }, timeoutMs);
+
+		if (reply?.type !== "sample")
+			throw new Error(reply === null ? "The screen didn't answer in time" : "Unexpected reply");
+
+		if ("error" in reply) throw new Error(reply.error);
+
+		return reply.sample;
 	}
 
 	#request(message: HostMessage & { id: number }, timeoutMs: number): Promise<FrameMessage | null> {
@@ -520,6 +534,7 @@ export class FrameHost {
 			message?.type === "snapshot" ||
 			message?.type === "figma-capture" ||
 			message?.type === "lint" ||
+			message?.type === "sample" ||
 			message?.type === "markup" ||
 			message?.type === "drop-layout" ||
 			message?.type === "element-boxes" ||

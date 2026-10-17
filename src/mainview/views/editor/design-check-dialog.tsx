@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { CircleAlert, CircleCheck, Copy, TriangleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck, Copy, Sparkles, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -13,11 +13,38 @@ import {
 } from "@/components/ui/uai/empty-state";
 import { cn } from "@/lib/utils";
 import { DESIGN_RULE_LABELS, type DesignFinding } from "../../../shared/design/findings";
+import { fixPrompt } from "../../../shared/design/fix-prompt";
 import { screenNameFromPath } from "../../../shared/project";
 import type { ElementRef } from "../../../shared/prototype/links";
 import { designReport, type ScreenCheck } from "./design-check";
 
+export type CheckKind = "design" | "accessibility" | "consistency";
+
+const CHECKS: Record<CheckKind, { title: string; checked: string; copied: string; fix: string }> = {
+	design: {
+		title: "Design check",
+		checked: "Checked overflow, clipped text, overlap, contrast, tokens and type scale.",
+		copied: "Copied the design check as JSON",
+		fix: "Fix these design problems:",
+	},
+	accessibility: {
+		title: "Accessibility check",
+		checked: "Checked labels, alt text, focus order, tap targets and landmarks.",
+		copied: "Copied the accessibility check as JSON",
+		fix: "Fix these accessibility problems. Keep the look the same:",
+	},
+	consistency: {
+		title: "Consistency check",
+		checked: "Compared components, page spacing and navigation across the screens.",
+		copied: "Copied the consistency check as JSON",
+		fix: "Make these screens consistent. Match what most screens do:",
+	},
+};
+
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+const tally = (errors: number, warnings: number) =>
+	[errors ? count(errors, "error") : "", warnings ? count(warnings, "warning") : ""].filter(Boolean).join(", ");
 
 function summaryOf(results: ScreenCheck[]) {
 	const all = results.flatMap((result) => result.findings);
@@ -55,16 +82,22 @@ function FindingRow({ finding, onSelect }: { finding: DesignFinding; onSelect: (
 	);
 }
 
-/** Findings by screen; a click selects the element (or the screen) and closes the dialog */
+/** Findings by screen; a click selects the element (or the screen) and closes the dialog. "Fix in chat" puts them in the composer as one prompt */
 export function DesignCheckDialog({
+	kind = "design",
 	results,
 	onSelect,
+	onFix,
 	onClose,
 }: {
+	kind?: CheckKind;
 	results: ScreenCheck[];
 	onSelect: (screen: string, element: ElementRef | null) => void;
+	/** `screens` hold findings; `null` hides the button, as while a generation runs */
+	onFix?: ((prompt: string, screens: string[]) => void) | null;
 	onClose: () => void;
 }) {
+	const check = CHECKS[kind];
 	const { total, errors, warnings } = summaryOf(results);
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +112,19 @@ export function DesignCheckDialog({
 
 	const copy = async () => {
 		await navigator.clipboard.writeText(JSON.stringify(designReport(results), null, "\t"));
-		toast.success("Copied the design check as JSON");
+		toast.success(check.copied);
+	};
+
+	const fix = () => {
+		const named = results.map(({ frame, findings }) => ({
+			name: frame.name || screenNameFromPath(frame.file),
+			findings,
+		}));
+
+		const screens = results.flatMap(({ frame, findings }) => (findings.length ? [frame.file] : []));
+
+		onFix?.(fixPrompt(check.fix, named), screens);
+		onClose();
 	};
 
 	return (
@@ -93,14 +138,22 @@ export function DesignCheckDialog({
 				className="flex max-h-[80vh] flex-col gap-0 p-0 sm:max-w-xl"
 			>
 				<div className="flex items-center gap-3 border-b py-3 pr-12 pl-4">
-					<DialogTitle className="text-sm font-medium">Design check</DialogTitle>
+					<DialogTitle className="text-sm font-medium">{check.title}</DialogTitle>
 					<DialogDescription className="text-xs text-muted-foreground">
-						{total ? `${count(errors, "error")}, ${count(warnings, "warning")}` : count(results.length, "screen")}
+						{total ? tally(errors, warnings) : count(results.length, "screen")}
 					</DialogDescription>
-					<Button variant="ghost" size="xs" className="ml-auto" onClick={() => void copy()}>
-						<Copy />
-						Copy JSON
-					</Button>
+					<div className="ml-auto flex items-center gap-1">
+						{onFix && total > 0 ? (
+							<Button variant="ghost" size="xs" onClick={fix}>
+								<Sparkles />
+								Fix in chat
+							</Button>
+						) : null}
+						<Button variant="ghost" size="xs" onClick={() => void copy()}>
+							<Copy />
+							Copy JSON
+						</Button>
+					</div>
 				</div>
 				<div ref={listRef} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-2 outline-none">
 					{total === 0 && results.every((result) => !result.error) ? (
@@ -111,9 +164,7 @@ export function DesignCheckDialog({
 							<EmptyStateContent>
 								<EmptyStateHeader>
 									<EmptyStateTitle>No problems found</EmptyStateTitle>
-									<EmptyStateDescription>
-										Checked overflow, clipped text, overlap, contrast, tokens and type scale.
-									</EmptyStateDescription>
+									<EmptyStateDescription>{check.checked}</EmptyStateDescription>
 								</EmptyStateHeader>
 							</EmptyStateContent>
 						</EmptyState>

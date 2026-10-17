@@ -31,6 +31,7 @@ type FiberProps = {
 	[LINK_DURATION_ATTRIBUTE]?: unknown;
 	[LINK_EASING_ATTRIBUTE]?: unknown;
 	[LINK_TRIGGER_ATTRIBUTE]?: unknown;
+	onClick?: unknown;
 };
 
 export type FiberType = { name?: unknown; displayName?: unknown; render?: FiberType; type?: FiberType };
@@ -101,6 +102,8 @@ export function textProp(fiber: Fiber, name: keyof FiberProps): string | null {
 
 	return isText(value) ? value : null;
 }
+
+export const handlesClicks = (fiber: Fiber) => fiber.memoizedProps?.onClick instanceof Function;
 
 const locOf = (fiber: Fiber) => textProp(fiber, LOC_ATTRIBUTE);
 

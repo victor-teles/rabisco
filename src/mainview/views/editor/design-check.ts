@@ -4,9 +4,11 @@ import type { SnapshotRaster } from "@/lib/render/protocol";
 import type { DesignTokens } from "../../../shared/context/tokens";
 import type { DesignFinding } from "../../../shared/design/findings";
 import { withLines } from "../../../shared/design/locate";
+import { consistencyFindings, type ScreenSample } from "../../../shared/design/consistency-checks";
 import { sourceFindings } from "../../../shared/design/source-checks";
 import { imageTargets } from "../../../shared/export/targets";
 import { resolveModes } from "../../../shared/modes";
+import { screenNameFromPath } from "../../../shared/project";
 import type { CanvasSection, Frame, ProjectFiles } from "../../../shared/types";
 
 const PARALLEL = 3;
@@ -66,17 +68,39 @@ async function checkScreen(frame: Frame, input: DesignCheckInput): Promise<Scree
 	}
 }
 
+async function checkAccessibilityOf(frame: Frame, input: DesignCheckInput): Promise<ScreenCheck> {
+	try {
+		const findings = await renderOffstage(
+			frame,
+			input.files,
+			input.theme,
+			resolveModes(frame, input.sections, input.theme),
+			(host) => host.lint(undefined, { touch: frame.device !== "desktop" }),
+		);
+
+		return { frame, findings: withLines(findings, input.files).sort(byPlace) };
+	} catch (error) {
+		return { frame, findings: [], error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+export type CheckProgress = (done: number, total: number) => void;
+
 /** Without a selection, every screen except alternates. Results keep the canvas order */
-export async function checkDesign(input: DesignCheckInput, onProgress: (done: number, total: number) => void) {
+export async function eachTarget<T>(
+	input: Pick<DesignCheckInput, "frames" | "selected" | "files">,
+	check: (frame: Frame) => Promise<T>,
+	onProgress: CheckProgress,
+) {
 	const targets = imageTargets(input.frames, input.selected, input.files);
-	const results: ScreenCheck[] = [];
+	const results: T[] = [];
 	let next = 0;
 	let done = 0;
 
 	const worker = async () => {
 		while (next < targets.length) {
 			const index = next++;
-			results[index] = await checkScreen(targets[index]!, input);
+			results[index] = await check(targets[index]!);
 			onProgress(++done, targets.length);
 		}
 	};
@@ -84,6 +108,48 @@ export async function checkDesign(input: DesignCheckInput, onProgress: (done: nu
 	await Promise.all(Array.from({ length: Math.min(PARALLEL, targets.length) }, worker));
 
 	return results;
+}
+
+export const checkDesign = (input: DesignCheckInput, onProgress: CheckProgress) =>
+	eachTarget(input, (frame) => checkScreen(frame, input), onProgress);
+
+/** Labels, focus order, tap targets and landmarks; phones and tablets get the 44px touch size */
+export const checkAccessibility = (input: DesignCheckInput, onProgress: CheckProgress) =>
+	eachTarget(input, (frame) => checkAccessibilityOf(frame, input), onProgress);
+
+type Sampled = { frame: Frame; sample?: ScreenSample; error?: string };
+
+async function sampleOf(frame: Frame, input: DesignCheckInput): Promise<Sampled> {
+	try {
+		const sample = await renderOffstage(
+			frame,
+			input.files,
+			input.theme,
+			resolveModes(frame, input.sections, input.theme),
+			(host) => host.sample(),
+		);
+
+		return { frame, sample };
+	} catch (error) {
+		return { frame, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+/** Compares the screens of each width with each other: components, page padding and navigation */
+export async function checkConsistency(input: DesignCheckInput, onProgress: CheckProgress): Promise<ScreenCheck[]> {
+	const sampled = await eachTarget(input, (frame) => sampleOf(frame, input), onProgress);
+
+	const found = consistencyFindings(
+		sampled.flatMap(({ frame, sample }) =>
+			sample ? [{ file: frame.file, name: frame.name || screenNameFromPath(frame.file), sample }] : [],
+		),
+	);
+
+	return sampled.map(({ frame, error }) => {
+		const findings = withLines(found.get(frame.file) ?? [], input.files).sort(byPlace);
+
+		return error ? { frame, findings, error } : { frame, findings };
+	});
 }
 
 /** What `bench/gen` reads back: findings per screen file, without canvas state */
