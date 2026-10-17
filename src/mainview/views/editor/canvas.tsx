@@ -55,7 +55,9 @@ import type { GenerationDrafts, WritingFile } from "@/hooks/use-generation";
 import { cn } from "@/lib/utils";
 import { ChromeLayer, ChromePortal, chromeBox, snapToPixel, zoomed } from "./chrome-layer";
 import { ElementHandles } from "./element-handles";
+import { addGuide } from "../../../shared/guides";
 import { LayoutGrids } from "./layout-grids";
+import { FrameGuides, Rulers, useRulersShown } from "./rulers-layer";
 import { LinkHandle } from "./link-handle";
 import { LinksLayer } from "./links-layer";
 import { MeasureLayer, useAltHeld } from "./measure-layer";
@@ -129,7 +131,7 @@ const isSelectedElement = (hover: ElementRef, element: ElementRef | null, extras
 export type FrameMove = { file: string; x: number; y: number };
 
 /** What the canvas edits on a frame by itself: its place, size and name */
-export type FrameEdit = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height">>;
+export type FrameEdit = Partial<Pick<Frame, "name" | "x" | "y" | "width" | "height" | "guides">>;
 
 export const withMoves = (frames: Frame[], moves: FrameMove[]) => {
 	const byFile = new Map(moves.map((move) => [move.file, move]));
@@ -502,6 +504,7 @@ export function Canvas({
 	const framesRef = useRef(shown);
 	const [spaceHeld, setSpaceHeld] = useState(false);
 	const altHeld = useAltHeld();
+	const rulersShown = useRulersShown();
 	// Stable for the memoized frames, whatever the parent passes
 	const pickRef = useRef(onPick);
 	const pick = useCallback((file: string) => pickRef.current?.(file), []);
@@ -2075,6 +2078,14 @@ export function Canvas({
 						/>
 					))}
 					<LayoutGrids frames={shown} />
+					{rulersShown ? (
+						<FrameGuides
+							frames={shown}
+							interactive={tool === "move" && !drafts && !editing && !!onPatchFrame}
+							toCanvas={toCanvas}
+							onChange={(frame, guides) => onPatchFrame?.(frame.file, { guides })}
+						/>
+					) : null}
 					<LinksLayer
 						frames={shown}
 						files={rendered}
@@ -2213,6 +2224,15 @@ export function Canvas({
 					<div className="absolute inset-0" />
 				) : null}
 				{children}
+				{rulersShown ? (
+					<Rulers
+						view={view}
+						origin={measured}
+						frameAt={frameAt}
+						toCanvas={toCanvas}
+						onAddGuide={(frame, guide) => onPatchFrame?.(frame.file, { guides: addGuide(frame, guide) })}
+					/>
+				) : null}
 				<Minimap
 					frames={shown}
 					selected={selected}

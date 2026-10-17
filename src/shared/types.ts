@@ -31,6 +31,8 @@ export type Frame = {
 	width: number;
 	height: number;
 	layoutGrid?: LayoutGrid;
+	/** Dragged from the rulers; `at` is in pixels from the frame's left (`x`) or top (`y`) */
+	guides?: FrameGuide[];
 	reference?: string;
 	modes?: ModeChoices;
 };
@@ -38,6 +40,8 @@ export type Frame = {
 export type ModeChoices = Record<string, string>;
 
 export type LayoutGrid = { columns: number; gutter: number; margin: number };
+
+export type FrameGuide = { axis: "x" | "y"; at: number };
 
 export type SectionColor = "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink";
 

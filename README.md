@@ -123,6 +123,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧0` or `⌘0`, `⌘+`, `⌘-`                                  | Zoom to 100%, zoom in, zoom out                                                    |
 | `⌥` + hover                                               | Measure: distances from the selection to the hovered element or its parent         |
 | `⌃G`                                                      | Show or hide layout grids (add one to a screen in the inspector)                   |
+| `⇧R`                                                      | Show or hide rulers; drag from a ruler onto a screen for a guide, off it to remove |
 | `I` (element selected)                                    | Eyedropper: pick a fill from any screen, or for the open color field               |
 | `⌘D`, `⌫`                                                 | Duplicate, delete the selected screen                                              |
 | `⌘R`                                                      | Rename the selected screen                                                         |

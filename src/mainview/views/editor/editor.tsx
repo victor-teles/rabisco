@@ -177,6 +177,7 @@ import { ComponentPage } from "./component-page";
 import type { DesignNoteActions } from "./change-summary";
 import { ShareButton } from "./export/share-button";
 import { layoutGrids } from "./layout-grids";
+import { rulers } from "./rulers-layer";
 import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
@@ -2277,6 +2278,14 @@ export function EditorView({
 			chords: [{ code: "KeyG", ctrl: true }],
 			enabled: true,
 			run: layoutGrids.toggle,
+		},
+		{
+			id: "toggle-rulers",
+			label: "Show or hide rulers and guides",
+			group: "View",
+			chords: [{ code: "KeyR", shift: true }],
+			enabled: true,
+			run: rulers.toggle,
 		},
 		{
 			id: "toggle-code",

@@ -22,6 +22,7 @@ import { normalizeComments } from "../shared/comments";
 import { normalizeLocks } from "../shared/locks";
 import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
+import { normalizeGuides, parseGuides } from "../shared/guides";
 import { parseLayoutGrid } from "../shared/layout-grid";
 import { normalizeImages } from "../shared/moodboard";
 import { normalizeModes, normalizeTokenModes } from "../shared/modes";
@@ -156,6 +157,9 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	};
 
 	if (layoutGrid) parsed.layoutGrid = layoutGrid;
+	const guides = parseGuides(frame.guides);
+
+	if (guides) parsed.guides = normalizeGuides(guides, parsed);
 
 	if (reference) parsed.reference = reference;
 	const modes = normalizeModes(frame.modes);

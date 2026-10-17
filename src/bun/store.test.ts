@@ -221,6 +221,35 @@ describe("project files", () => {
 		expect("layoutGrid" in canvas.frames[2]!).toBe(false);
 	});
 
+	test("guides load inside their frame and stay missing in older files", () => {
+		const frame = { file: "screens/home.tsx", x: 0, y: 0, device: "mobile" };
+
+		const canvas = normalizeCanvas(
+			{
+				version: 1,
+				name: "Guides",
+				frames: [
+					frame,
+					{
+						...frame,
+						guides: [
+							{ axis: "y", at: 120.2 },
+							{ axis: "x", at: 9999 },
+							{ axis: "x", at: 16 },
+						],
+					},
+				],
+			},
+			"x",
+		);
+
+		expect("guides" in canvas.frames[0]!).toBe(false);
+		expect(canvas.frames[1]!.guides).toEqual([
+			{ axis: "x", at: 16 },
+			{ axis: "y", at: 120 },
+		]);
+	});
+
 	test("a screen keeps the image it was recreated from", () => {
 		const frame = { file: "screens/home.tsx", x: 0, y: 0 };
 		const canvas = normalizeCanvas({ version: 1, name: "Shot", frames: [frame, { ...frame, reference: "shot" }] }, "x");

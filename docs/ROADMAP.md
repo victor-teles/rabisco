@@ -121,7 +121,7 @@ _Principles: Direct manipulation over prompts · Keyboard first (Figma conventio
 - ✅ A grid layout panel: columns, rows, gaps and spans, written as `grid-*` classes
 - ✅ Fill editor with gradients, image fills and opacity; shadow and blur editors with presets
 - ✅ Rich text: bold, italic and links inside a text block, written as `<strong>`, `<em>` and `<a>`
-- ⬜ Rulers and guides on frames (⇧R)
+- ✅ Rulers and guides on frames (⇧R)
 - ⬜ Sticky notes and arrows on the canvas, for annotations that aren't screens
 - ⬜ Flow view: screens laid out by their prototype links, with one click
 - ⬜ Tidy up: arrange selected screens in a grid

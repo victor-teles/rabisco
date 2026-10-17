@@ -63,7 +63,7 @@ function isInspectorTab(value: string): value is InspectorTab {
 }
 
 export type FramePatch = Partial<
-	Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device" | "layoutGrid" | "modes">
+	Pick<Frame, "name" | "x" | "y" | "width" | "height" | "device" | "layoutGrid" | "guides" | "modes">
 >;
 
 type InspectorProps = {
