@@ -149,8 +149,11 @@ export const MAX_CONTEXT_FILE_BYTES = 200 * 1024;
 /** The shared library the project copies from (decision 0045) */
 export const LIBRARY_FILE = "library.json";
 
+/** The prompt library; see `shared/prompts` */
+export const PROMPTS_FILE = "PROMPTS.md";
+
 export const isProjectFile = (path: string) =>
-	isScreenFile(path) || isComponentFile(path) || isContextFile(path) || path === LIBRARY_FILE;
+	isScreenFile(path) || isComponentFile(path) || isContextFile(path) || path === LIBRARY_FILE || path === PROMPTS_FILE;
 
 /** `~/Documents/Rabisco/my-app.rabisco` → `my-app` */
 export function projectNameFromPath(path: string) {

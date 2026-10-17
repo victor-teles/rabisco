@@ -89,6 +89,7 @@ import type {
 	UnfinishedPart,
 } from "../../../shared/types";
 import { ChangeSummaryCard, type DesignNoteActions } from "./change-summary";
+import { PromptsButton } from "./prompt-library";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
 function WrittenFile({ path, file }: { path: string; file: WritingFile }) {
@@ -178,6 +179,8 @@ type ChatPanelProps = {
 	moodboard?: CanvasImage[];
 	attachedCount?: number;
 	onAttachedCountChange?: (count: number) => void;
+	/** Opens the prompt library */
+	onOpenPrompts?: () => void;
 };
 
 const NO_IMAGES: CanvasImage[] = [];
@@ -243,6 +246,7 @@ export const ChatPanel = memo(function ChatPanel({
 	moodboard = NO_IMAGES,
 	attachedCount = 0,
 	onAttachedCountChange,
+	onOpenPrompts,
 }: ChatPanelProps) {
 	const { rootRef: scrollRef, pin } = useStickToBottom<HTMLDivElement>();
 	const [planMode, setPlanMode] = usePlanMode();
@@ -530,6 +534,7 @@ export const ChatPanel = memo(function ChatPanel({
 						/>
 					)}
 					{interview ? null : <PlanModeToggle on={planMode} onChange={setPlanMode} hint={planHint} />}
+					{interview || !onOpenPrompts ? null : <PromptsButton onOpen={onOpenPrompts} />}
 					<ModelPicker className="min-w-0 shrink" />
 					{selectedScreenName && !(focusLabel && !interview) ? (
 						<span className="ml-auto min-w-0 truncate text-xs text-subtle-foreground">

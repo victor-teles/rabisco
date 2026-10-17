@@ -138,6 +138,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥↑` / `⌥↓` (Screens list)                                | Move the focused screen up / down                                                  |
 | `⇧⌘\`                                                     | Show or hide the chat and screens panel                                            |
 | `⇧⌘O`                                                     | New chat                                                                           |
+| `⌥⌘P`                                                     | Prompts: saved prompts and the past prompts of the selected screen, to reuse       |
 | `/` in the chat                                           | Chat commands: Rabisco's own and your CLI's commands                               |
 | `/all`, `/states`, `/responsive`, `/shuffle`, `/dark`     | Every screen, states, another size, new content, dark mode pass                    |
 | `⌘I` in a prompt (Home or chat)                           | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back        |

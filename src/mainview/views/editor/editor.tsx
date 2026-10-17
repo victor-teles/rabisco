@@ -102,7 +102,7 @@ import {
 } from "../../../shared/context/tokens";
 import { editLink, readLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
-import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
+import { FRAME_GAP, FRAME_SIZE, isScreenFile, PROMPTS_FILE, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
 import { chooseMode, optionLabel, resolveModes, targetModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
@@ -167,8 +167,10 @@ import { copyImage, exportFlowPdf } from "./export/image-export";
 import { askImageExport, ImageExportDialog } from "./export/image-export-dialog";
 import { askRepoSync, RepoSyncDialog } from "./export/repo-sync-dialog";
 import { noteSelection } from "../../../shared/design/polish";
+import { parsePrompts, withoutPrompt, withPrompt } from "../../../shared/prompts";
 import { checkAccessibility, checkConsistency, checkDesign, type ScreenCheck } from "./design-check";
 import { DesignCheckDialog, type CheckKind } from "./design-check-dialog";
+import { PromptLibrary } from "./prompt-library";
 import { DesignSystemDialog } from "./design-system-dialog";
 import { ComponentPage } from "./component-page";
 import type { DesignNoteActions } from "./change-summary";
@@ -1817,6 +1819,31 @@ export function EditorView({
 		}
 	};
 
+	const [promptsOpen, setPromptsOpen] = useState(false);
+	const savedPrompts = useMemo(() => parsePrompts(files[PROMPTS_FILE]), [files]);
+
+	/** Saving and removing are undo steps: the library is `PROMPTS.md` in the project */
+	const savePrompt = (text: string) => {
+		change((snapshot) => ({
+			...snapshot,
+			files: { ...snapshot.files, [PROMPTS_FILE]: withPrompt(snapshot.files[PROMPTS_FILE], text) },
+		}));
+		toast.success("Saved to prompts");
+	};
+
+	const removePrompt = (text: string) =>
+		change((snapshot) => ({
+			...snapshot,
+			files: { ...snapshot.files, [PROMPTS_FILE]: withoutPrompt(snapshot.files[PROMPTS_FILE], text) },
+		}));
+
+	const insertPrompt = (text: string) => {
+		if (chatBlocked) return void toast(chatBlocked);
+		sidePanel.show("chat");
+		setChatInsert((last) => ({ key: (last?.key ?? 0) + 1, text }));
+		setComposeKey((key) => key + 1);
+	};
+
 	/** The findings go to the composer for review, with their screens selected so the prompt edits them */
 	const fixInChat = (prompt: string, screens: string[]) => {
 		if (chatBlocked) return void toast(chatBlocked);
@@ -2324,6 +2351,15 @@ export function EditorView({
 			enabled: messages.length > 0 && !busy,
 			global: true,
 			run: startNewChat,
+		},
+		{
+			id: "prompt-library",
+			label: "Prompts…",
+			group: "Chat",
+			chords: [{ code: "KeyP", mod: true, alt: true }],
+			enabled: project !== null,
+			global: true,
+			run: () => setPromptsOpen(true),
 		},
 		{
 			id: "chat-history",
@@ -3004,6 +3040,7 @@ export function EditorView({
 								moodboard={interview ? undefined : moodboard.referenced}
 								attachedCount={attachedCount}
 								onAttachedCountChange={setAttachedCount}
+								onOpenPrompts={() => setPromptsOpen(true)}
 								heldPrompt={heldPrompt}
 								onHeldPromptSent={clearHeldPrompt}
 								onStop={stop}
@@ -3381,6 +3418,21 @@ export function EditorView({
 					onClose={() => setDesignChecks(null)}
 				/>
 			)}
+			{project ? (
+				<PromptLibrary
+					open={promptsOpen}
+					onOpenChange={setPromptsOpen}
+					saved={savedPrompts}
+					projectPath={projectPath}
+					chats={project.chats}
+					chatId={project.chatId}
+					messages={messages}
+					screen={selected.length === 1 ? selected[0]! : null}
+					onInsert={insertPrompt}
+					onSave={savePrompt}
+					onRemove={removePrompt}
+				/>
+			) : null}
 			<CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} actions={actions} />
 			<StyleDialog open={styleDialogOpen && canStartStyle} onOpenChange={setStyleDialogOpen} onPick={startFromStyle} />
 			<ShortcutSheet open={sheetOpen} onOpenChange={setSheetOpen} actions={actions} />
