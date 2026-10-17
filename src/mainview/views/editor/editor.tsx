@@ -8,6 +8,7 @@ import {
 	MessageCircle,
 	Minus,
 	MousePointer2,
+	PenTool,
 	Play,
 	Plus,
 	Redo2,
@@ -2452,6 +2453,14 @@ export function EditorView({
 			run: () => setTool("text"),
 		},
 		{
+			id: "tool-pen",
+			label: "Pen tool",
+			group: "Tools",
+			chords: [{ key: "p" }],
+			enabled: true,
+			run: () => setTool("pen"),
+		},
+		{
 			id: "place-image",
 			label: "Place image…",
 			group: "Tools",
@@ -3205,6 +3214,7 @@ export function EditorView({
 							onEnterInstance={enterInstance}
 							onPlaceComment={comments.startDraft}
 							onInsert={insertTools.insert}
+							onInsertPath={insertTools.insertPath}
 							screenMenu={screenMenu}
 							elementMenu={elementMenu}
 							canvasMenu={canvasMenu}
@@ -3565,6 +3575,7 @@ function Toolbar({
 		{ id: "rectangle" as const, label: "Rectangle", shortcut: "R", icon: Square },
 		{ id: "ellipse" as const, label: "Ellipse", shortcut: "O", icon: Circle },
 		{ id: "text" as const, label: "Text", shortcut: "T", icon: Type },
+		{ id: "pen" as const, label: "Pen", shortcut: "P", icon: PenTool },
 		{ id: "hand" as const, label: "Hand", shortcut: "H", icon: Hand },
 		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
 	];

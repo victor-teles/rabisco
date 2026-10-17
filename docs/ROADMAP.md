@@ -126,7 +126,7 @@ _Principles: Direct manipulation over prompts · Keyboard first (Figma conventio
 - ⬜ Flow view: screens laid out by their prototype links, with one click
 - ⬜ Tidy up: arrange selected screens in a grid
 - ⬜ Pages in a project, each with its own canvas
-- ⬜ A vector pen tool, written as inline SVG
+- ✅ A vector pen tool, written as inline SVG
 - ✅ Constraints for absolutely positioned elements, as `inset-*` classes
 
 **Done when** a Figma user can lay out a dashboard with grids, gradients and annotations, with no prompt.

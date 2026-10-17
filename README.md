@@ -114,6 +114,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `V` / `H` / `C`                                           | Move / hand / comment tool                                                         |
 | `R`, `O`, `T`                                             | Rectangle, ellipse, text tool: click or drag inside a screen to add                |
+| `P`                                                       | Pen tool: click inside a screen to add points, drag to curve, `↵` to finish        |
 | `⇧⌘K`                                                     | Place an image from a file at the pointer (copied into `public/images/`)           |
 | `Esc` (insert tool on)                                    | Back to the move tool                                                              |
 | `Space` + drag                                            | Pan                                                                                |

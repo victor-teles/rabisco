@@ -102,6 +102,15 @@ export function useInsertTools({
 		[done, addToScreen, editText],
 	);
 
+	const insertPath = useCallback(
+		(path: { file: string; snippet: string; target: InsertTarget | null } | null) => {
+			done();
+
+			if (path) addToScreen(path.file, path.target, path.snippet, "the path");
+		},
+		[done, addToScreen],
+	);
+
 	const placeImage = useCallback(async () => {
 		if (!isDesktop) return void toast("Images need the desktop app");
 		const point = pointer();
@@ -130,5 +139,5 @@ export function useInsertTools({
 		return pending && pending.file === element.file && pending.start === element.start ? pending.step : undefined;
 	}, []);
 
-	return { insert, placeImage, textStep };
+	return { insert, insertPath, placeImage, textStep };
 }

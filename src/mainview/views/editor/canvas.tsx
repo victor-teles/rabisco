@@ -57,6 +57,7 @@ import { ChromeLayer, ChromePortal, chromeBox, snapToPixel, zoomed } from "./chr
 import { ElementHandles } from "./element-handles";
 import { addGuide } from "../../../shared/guides";
 import { LayoutGrids } from "./layout-grids";
+import { PenLayer, type PenPath } from "./pen-layer";
 import { FrameGuides, Rulers, useRulersShown } from "./rulers-layer";
 import { LinkHandle } from "./link-handle";
 import { LinksLayer } from "./links-layer";
@@ -75,7 +76,7 @@ import type { CanvasSection, ElementLock, Frame, ProjectFiles } from "../../../s
 import { FRAME_GAP } from "../../../shared/project";
 import { isAlternate, variationGroups, type VariationGroup } from "../../../shared/variations";
 
-export type Tool = "move" | "hand" | "comment" | InsertTool;
+export type Tool = "move" | "hand" | "comment" | "pen" | InsertTool;
 
 export type CanvasHandle = {
 	zoomBy: (factor: number) => void;
@@ -247,6 +248,8 @@ type CanvasProps = {
 	onEnterInstance?: (usage: ElementRef, inner: ElementRef | null) => boolean;
 	onPlaceComment?: (point: Point) => void;
 	onInsert?: (insert: CanvasInsert) => void;
+	/** A finished pen path; `null` when it was cancelled */
+	onInsertPath?: (path: { file: string; snippet: string; target: InsertTarget | null } | null) => void;
 	/** Items of the right-click menu on screens; `files` is the selection it acts on */
 	screenMenu?: (files: string[]) => React.ReactNode;
 	/** Items of the right-click menu on the canvas background; `point` is where it opened, in canvas coordinates */
@@ -444,6 +447,7 @@ export function Canvas({
 	onEnterInstance,
 	onPlaceComment,
 	onInsert,
+	onInsertPath,
 	screenMenu,
 	canvasMenu,
 	elementMenu,
@@ -1872,6 +1876,20 @@ export function Canvas({
 		setDrag(null);
 	};
 
+	/** Placed where the path started, like a drawn rectangle */
+	const finishPen = (path: PenPath) => {
+		const state = dropping.current;
+		state.next = null;
+		state.generation++;
+
+		void probeDrop(path.clientX, path.clientY).then((preview) => {
+			clearDrop();
+			const spot = preview?.file === path.file ? preview.spot : null;
+			const target = spot && { parent: spot.parent, index: spot.index, version: spot.version };
+			onInsertPath?.({ file: path.file, snippet: path.snippet, target });
+		});
+	};
+
 	const finishInsert = (drag: Extract<Drag, { kind: "insert" }>, clientX: number, clientY: number) => {
 		const end = toCanvas(clientX, clientY);
 		const dragged = drag.moved || Math.hypot(clientX - drag.startX, clientY - drag.startY) >= DRAG_THRESHOLD;
@@ -2224,6 +2242,16 @@ export function Canvas({
 					<div className="absolute inset-0" />
 				) : null}
 				{children}
+				{tool === "pen" && !panning && onInsertPath ? (
+					<PenLayer
+						view={view}
+						frames={shown}
+						frameAt={frameAt}
+						toCanvas={toCanvas}
+						onFinish={finishPen}
+						onCancel={() => onInsertPath(null)}
+					/>
+				) : null}
 				{rulersShown ? (
 					<Rulers
 						view={view}
