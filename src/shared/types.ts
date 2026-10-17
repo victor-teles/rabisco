@@ -195,6 +195,9 @@ export type GenerateParams = {
 	task?: "create" | "edit" | "repair" | "context" | "vary" | "theme" | "plan";
 	/** 1 to `MAX_VARIATIONS`, for `create` and `vary`; run as parallel generations */
 	variations?: number;
+	prompts?: string[];
+	names?: string[];
+	each?: boolean;
 	/** Read but must not change, e.g. the variation a "Mix" takes a section from */
 	references?: string[];
 	/** Dropped by the main process when the element is gone from the file on disk */

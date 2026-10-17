@@ -10,7 +10,7 @@ import { imageLabel, stagedAttachments } from "./attachments";
 import { modesText, themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 23;
+export const PROMPT_VERSION = 24;
 
 export type PromptMode = "text" | "agent";
 
@@ -58,7 +58,7 @@ const DESIGN_RULES = `# Design
 - Hierarchy through size, weight and color, not boxes: group with spacing and a heading first, a divider second, a card last. Never nest cards.
 - Type scale: text-xs captions, text-sm UI and body text, text-base reading text, text-lg–xl section titles, text-2xl–3xl page titles, larger only for the focal number. At most 4 sizes a screen. font-medium and font-semibold for emphasis; tracking-tight from text-2xl up; tabular-nums on numbers in columns or that change.
 - Spacing on the 4px grid, in a rhythm: gap-1–2 inside a control, gap-3–4 between items, gap-6–8 between sections; the same page padding on every screen. Align to a few edges.
-- Realistic, specific content, as dense as the real app: plausible names, numbers, dates and copy; 5–8 rows in a list, not 2. Never lorem ipsum, never "Item 1".
+- Realistic, specific content, as dense as the real app: plausible names, numbers, dates and copy; 5–8 rows in a list, not 2. Never lorem ipsum, never "Item 1". When PRODUCT.md is given, take the content from it: its product's own entities, its audience's names and situations, and copy in its voice.
 - Text contrast at least 4.5:1 (3:1 from 24px): text-muted-foreground is the lightest text; text on a photo needs a scrim.
 - States only when the request names them: empty (a title, one line of help, the action), loading (bg-muted animate-pulse skeletons in the shape of the content), error (what happened and how to fix it: StatusBanner, FormFieldError).
 - No network images. Draw images with Placeholder: <Placeholder kind="photo" subject="food" seed="brunch" className="aspect-[4/3] w-full rounded-lg" />. kind photo (subject landscape, food, interior, product, people, abstract), avatar, map (pin), chart (subject area, line, bar) or illustration (subject tiles, empty, success, error); size it with className, and a different seed gives a different image. Icons come from lucide-react.

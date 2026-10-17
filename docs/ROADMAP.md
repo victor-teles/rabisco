@@ -34,7 +34,7 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 - ✅ "Duplicate with mode": copy a section and its screens with another mode, to compare them side by side. The copies are files, and links inside the copy point at the copy. The copy sits one gap to the right, takes nested sections and the draft along, and is one undo step ([LIT-157](/LIT/issues/LIT-157), `src/shared/duplicate-section.ts`)
 - ✅ Play mode, the share viewer, image export, Copy to Figma, visual review, snapshots, HTML and the code export use each screen's resolved mode. The code export wraps each route in a `ScreenMode` component, so a screen exports the way it looks on the canvas ([LIT-154](/LIT/issues/LIT-154))
 - ✅ Generations and point and prompt see the screen's mode and its dark token values. Copy for agent and the MCP `get_project` name each screen's mode ([LIT-154](/LIT/issues/LIT-154))
-- ⬜ The dark mode pass in Phase 27 checks screens in a Dark section
+- ✅ The dark mode pass in Phase 27 checks screens in dark mode, as a Dark section would show them ([LIT-52](/LIT/issues/LIT-52))
 
 **Components**
 
@@ -92,19 +92,19 @@ A component can be edited only from the Components tab or the code view, a usage
 
 ---
 
-## Phase 27: Generation, next steps ⬜
+## Phase 27: Generation, next steps 🚧
 
 _Principles: UX first (a bad generation costs one keystroke) · Variations, not verdicts_
 
-- ⬜ Next screen from an element: click a button, describe where it goes, and get the linked screen in the same style (Banani's favorite flow)
-- ⬜ Project-wide edits: "make every heading bolder" across screens, as one undo step with a summary by screen
-- ⬜ Responsive variants: generate the tablet or desktop version of a mobile screen, or the other way, linked as one screen
-- ⬜ States on request: empty, loading, error and filled versions of a screen, as alternates
-- ⬜ A dark mode pass that checks every screen against the dark tokens
+- ✅ Next screen from an element: click a button, describe where it goes, and get the linked screen in the same style (Banani's favorite flow). "Next screen…" (⌥⌘N) in the element menu makes one screen from the source screen as a reference, and writes the link on the element in the same undo step (`src/shared/ai/follow-ups.ts`)
+- ✅ Project-wide edits: "make every heading bolder" across screens, as one undo step with a summary by screen. `/all <change>` or "Edit every screen…" runs one edit per screen, four at a time, each allowed to write only its own screen (`src/bun/ai/screen-runs.ts`)
+- ✅ Responsive variants: generate the tablet or desktop version of a mobile screen, or the other way, linked as one screen. Generate → "Desktop version" (or `/responsive desktop`) adds an alternate at that size, named "Home · Desktop"
+- ✅ States on request: empty, loading, error and filled versions of a screen, as alternates. Generate → "Screen states" (or `/states`) sends one prompt per state and names each alternate
+- ✅ A dark mode pass that checks every screen against the dark tokens. Generate → "Dark mode pass" (or `/dark`) renders the selected screens, else all, in dark mode, and repairs the ones with low contrast or colors without a token, one run per screen (`src/shared/design/dark-pass.ts`)
 - ⬜ Stop one screen in a parallel run without stopping the others; retry one failed screen
 - ⬜ Show tokens and cost per generation in the chat, and a running total per project
 - ⬜ Queue a prompt while a generation runs, instead of disabling the composer
-- ⬜ Realistic content: copy and data from PRODUCT.md, with a "Shuffle content" action
+- ✅ Realistic content: copy and data from PRODUCT.md, with a "Shuffle content" action. The prompt (v24) takes content from PRODUCT.md; Generate → "Shuffle content" (or `/shuffle`) rewrites the selected screens' text and data, keeping layout and classes
 - ✅ An accessibility check next to "Check design": labels, focus order, tap targets and landmarks. "Check accessibility" in the command palette renders the screens offstage and reads names, roles, Tab order and target sizes (44px on phones and tablets). "Fix in chat" puts the findings in the composer as one prompt, with their screens selected ([LIT-54](/LIT/issues/LIT-54), `src/shared/design/accessibility-checks.ts`)
 - ✅ Cross-screen consistency check: the same component, spacing and nav across screens. "Check consistency across screens" compares screens of the same width: buttons and fields that differ in height, corners or text size from most, hand-made ones where others use the component, page padding, and nav items, size or absence (`src/shared/design/consistency-checks.ts`)
 - ⬜ A prompt library: save and reuse prompts per project, and see past prompts per screen

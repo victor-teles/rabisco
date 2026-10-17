@@ -719,3 +719,115 @@ describe("generateImage", () => {
 		await expect(ai.generateImage({ prompt: "x", aspect: "square" })).rejects.toThrow("No image model is set up");
 	});
 });
+
+describe("follow-ups", () => {
+	test("vary with prompts: one alternate per prompt, sent as is, named", async () => {
+		const { ai, requests, projectPath } = setupFake((request) =>
+			events(...write(request.targets![0]!, screenSource(request.prompt.split(" ")[0]!)), { type: "done" }),
+		);
+
+		put(projectPath, "screens/home.tsx", screenSource("Home"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "vary",
+			targets: ["screens/home.tsx"],
+			prompts: ["Empty state", "Loading state"],
+			names: ["Home · Empty", "Home · Loading"],
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(requests.map((r) => [r.prompt, r.variation])).toEqual([
+			["Empty state", undefined],
+			["Loading state", undefined],
+		]);
+		expect(result.changes.map((c) => c.path)).toEqual(["screens/home.alt-1.tsx", "screens/home.alt-2.tsx"]);
+		expect(result.frames.map((f) => [f.file, f.name])).toEqual([
+			["screens/home.alt-1.tsx", "Home · Empty"],
+			["screens/home.alt-2.tsx", "Home · Loading"],
+		]);
+	});
+
+	test("each: one run per screen, writes only to its own screen, one result", async () => {
+		const { ai, requests, projectPath } = setupFake((request) => {
+			const target = request.targets![0]!;
+
+			return target === "screens/b.tsx"
+				? events({ type: "done" })
+				: events(...write(target, screenSource("Bold")), ...write("components/card.tsx", "export {}\n"), {
+						type: "done",
+					});
+		});
+
+		put(projectPath, "screens/a.tsx", screenSource("A"));
+		put(projectPath, "screens/b.tsx", screenSource("B"));
+		put(projectPath, "screens/c.tsx", screenSource("C"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "edit",
+			prompt: "Make every heading bolder",
+			targets: ["screens/a.tsx", "screens/b.tsx", "screens/c.tsx"],
+			each: true,
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(requests.map((r) => r.targets)).toEqual([["screens/a.tsx"], ["screens/b.tsx"], ["screens/c.tsx"]]);
+		expect(requests[0]!.prompt).toContain("Make every heading bolder");
+		expect(requests[0]!.prompt).toContain("This run changes screens/a.tsx only");
+		expect(result.changes).toEqual([
+			{ path: "screens/a.tsx", content: screenSource("Bold") },
+			{ path: "screens/c.tsx", content: screenSource("Bold") },
+		]);
+		expect(result.frames).toEqual([]);
+		expect(result.reply).toBe("Changed 2 screens: A, C. 1 screen had nothing to change.");
+	});
+
+	test("each repair: every screen gets only its own problems", async () => {
+		const { ai, requests, projectPath } = setupFake((request) =>
+			events(...write(request.targets![0]!, screenSource("Fixed")), { type: "done" }),
+		);
+
+		put(projectPath, "screens/a.tsx", screenSource("A"));
+		put(projectPath, "screens/b.tsx", screenSource("B"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "repair",
+			prompt: "Fix dark mode",
+			targets: ["screens/a.tsx", "screens/b.tsx"],
+			problems: [
+				{ path: "screens/a.tsx", message: "Low contrast: a" },
+				{ path: "screens/b.tsx", message: "Low contrast: b" },
+			],
+			each: true,
+		});
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(requests.map((r) => [r.task, r.prompt, r.problems?.map((p) => p.message)])).toEqual([
+			["repair", "Fix dark mode", ["Low contrast: a"]],
+			["repair", "Fix dark mode", ["Low contrast: b"]],
+		]);
+		expect(result.changes.map((c) => c.path)).toEqual(["screens/a.tsx", "screens/b.tsx"]);
+	});
+
+	test("each: when every screen fails, the first error", async () => {
+		const { ai, projectPath } = setupFake(() =>
+			events({ type: "error", code: "rate_limited", message: "Slow down", retryable: true }),
+		);
+
+		put(projectPath, "screens/a.tsx", screenSource("A"));
+		put(projectPath, "screens/b.tsx", screenSource("B"));
+
+		const result = await ai.generate({
+			...params(projectPath),
+			task: "edit",
+			targets: ["screens/a.tsx", "screens/b.tsx"],
+			each: true,
+		});
+
+		expect(result.ok).toBe(false);
+
+		if (!result.ok) expect(result.error.code).toBe("rate_limited");
+	});
+});

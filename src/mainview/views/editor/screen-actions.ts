@@ -16,6 +16,7 @@ import {
 	writeScreens,
 	type ScreenCopy,
 } from "@/lib/new-screens";
+import { DEVICE_LABELS, DEVICES } from "../../../shared/ai/follow-ups";
 import type { DesignTokens } from "../../../shared/context/tokens";
 import { hasFigmaData } from "../../../shared/import/figma/clipboard";
 import { treeToTsx } from "../../../shared/import/to-tsx";
@@ -46,6 +47,11 @@ export type ScreenActionsContext = {
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
 	rename: (file: string) => void;
 	vary: (target: string, direction: string, count: number) => void;
+	responsive: (target: string, to: Device) => void;
+	states: (target: string) => void;
+	shuffle: (targets: string[]) => void;
+	darkPass: () => void;
+	editEveryScreen: () => void;
 	pick: (file: string) => void;
 	play: (file: string) => void;
 	startComment: (point: Point) => void;
@@ -64,6 +70,7 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 	const { selected, busy, device } = context;
 	const single = selected.length === 1 ? selected[0]! : null;
 	const screen = single && isScreenFile(single.file) ? single : null;
+	const pickedScreens = selected.filter((frame) => isScreenFile(frame.file));
 
 	/** One undo step that selects the new screens; their top-left goes at `at` */
 	const add = (copies: ScreenCopy[], at = point) => {
@@ -195,6 +202,41 @@ export function screenActions(context: ScreenActionsContext, point?: Point): Act
 			group: "Screen",
 			enabled: screen !== null && !busy,
 			run: () => screen && context.vary(screen.file, "", context.variations > 1 ? context.variations : 2),
+		},
+		...DEVICES.map((to): Action => ({
+			id: `responsive-${to}`,
+			label: `${DEVICE_LABELS[to]} version`,
+			group: "Generate",
+			enabled: screen !== null && screen.device !== to && !busy,
+			run: () => screen && context.responsive(screen.file, to),
+		})),
+		{
+			id: "screen-states",
+			label: "Screen states",
+			group: "Generate",
+			enabled: screen !== null && !busy,
+			run: () => screen && context.states(screen.file),
+		},
+		{
+			id: "shuffle-content",
+			label: "Shuffle content",
+			group: "Generate",
+			enabled: pickedScreens.length > 0 && !busy,
+			run: () => context.shuffle(pickedScreens.map((frame) => frame.file)),
+		},
+		{
+			id: "dark-pass",
+			label: "Dark mode pass",
+			group: "Generate",
+			enabled: !busy,
+			run: context.darkPass,
+		},
+		{
+			id: "edit-every-screen",
+			label: "Edit every screen…",
+			group: "Generate",
+			enabled: !busy,
+			run: context.editEveryScreen,
 		},
 		{
 			id: "pick-variation",

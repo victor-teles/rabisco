@@ -5,9 +5,11 @@ import {
 	clampVariations,
 	combineVariations,
 	createVariantRenamer,
+	namedFrames,
 	variationsNote,
 	type VariantOutput,
 } from "../../shared/ai/variants";
+import { MAX_VARIATIONS } from "../../shared/variations";
 import type { RabiscoRPC } from "../../shared/rpc";
 import { contextBody } from "../../shared/context/body";
 import { designSourceOf, hasTokens, parseThemeReply, type AppliedTheme } from "../../shared/context/theme";
@@ -371,7 +373,8 @@ export function createBrowserGenerator(
 				params.task === "vary" ? "edit" : (params.task ?? (params.targets?.length ? "edit" : "create"));
 
 			const isCreate = requestTask === "create";
-			const count = vary || isCreate ? clampVariations(params.variations) : 1;
+			const prompts = vary ? params.prompts?.slice(0, MAX_VARIATIONS) : undefined;
+			const count = prompts?.length || (vary || isCreate ? clampVariations(params.variations) : 1);
 			const variants = Array.from({ length: count }, (_, i) => (vary ? i + 1 : i));
 			const multi = vary || count > 1;
 			const references = (params.references ?? []).filter((path) => path in files);
@@ -409,7 +412,8 @@ export function createBrowserGenerator(
 
 				const request: GenerationRequest = multi ? { ...base, id: `${base.id}-v${variant}` } : base;
 
-				if (multi && count > 1) request.variation = { index, count };
+				if (prompts) request.prompt = prompts[index]!;
+				else if (multi && count > 1) request.variation = { index, count };
 
 				const written = new Map<string, string>();
 				const screens: Record<string, ScreenMeta | undefined> = {};
@@ -483,8 +487,9 @@ export function createBrowserGenerator(
 				const lead = done.find((d) => d.variant === combined.primary) ?? done[0]!;
 				const note = variationsNote(done.length, settled.length - done.length, combined.dropped.length);
 				const reply = [lead.reply, note].filter(Boolean).join("\n\n");
+				const frames = vary ? namedFrames(combined.frames, done, params.names) : combined.frames;
 
-				return { ok: true, changes: combined.changes, frames: combined.frames, reply, problems: [], context };
+				return { ok: true, changes: combined.changes, frames, reply, problems: [], context };
 			} finally {
 				running.delete(params.generationId);
 			}

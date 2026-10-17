@@ -398,3 +398,24 @@ export function variationsNote(made: number, failed: number, dropped: number) {
 
 	return parts.join(" ");
 }
+
+export function namedFrames(
+	frames: Frame[],
+	outputs: readonly { variant: number; changes: FileChange[] }[],
+	names: readonly string[] | undefined,
+): Frame[] {
+	if (!names?.length) return frames;
+	const named = new Map<string, string>();
+
+	for (const { variant, changes } of outputs) {
+		const name = names[variant - 1]?.trim();
+
+		if (name) for (const change of changes) named.set(change.path, name);
+	}
+
+	return frames.map((frame) => {
+		const name = named.get(frame.file);
+
+		return name ? { ...frame, name } : frame;
+	});
+}

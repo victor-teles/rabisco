@@ -104,7 +104,7 @@ import { editLink, readLink, type LinkEdit } from "../../../shared/prototype/lin
 import { findElement, parseJsx } from "../../../shared/jsx";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
-import { chooseMode, optionLabel, resolveModes } from "../../../shared/modes";
+import { chooseMode, optionLabel, resolveModes, targetModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
 import type { CanvasSection, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
@@ -178,6 +178,9 @@ import { PlayView } from "./play-view";
 import { screenActions, type ScreenActionsContext } from "./screen-actions";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { CustomSizeDialog } from "./custom-size-dialog";
+import { askPrompt, PromptDialog } from "./prompt-dialog";
+import { darkChoices, darkPassProblems } from "../../../shared/design/dark-pass";
+import { DEVICES } from "../../../shared/ai/follow-ups";
 import { ImportPageDialog } from "./import-page-dialog";
 import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
@@ -429,6 +432,12 @@ export function EditorView({
 		vary,
 		fix,
 		fixNote,
+		nextScreen,
+		editEveryScreen,
+		responsive,
+		states,
+		shuffle,
+		fixDark,
 		mix,
 		writeContext,
 		readTheme,
@@ -1812,6 +1821,62 @@ export function EditorView({
 		setComposeKey((key) => key + 1);
 	};
 
+	const runDarkPass = async () => {
+		const id = toast.loading("Checking screens in dark mode…");
+
+		const dark = frames.map((frame) =>
+			isScreenFile(frame.file) ? { ...frame, modes: darkChoices(frame.modes) } : frame,
+		);
+
+		const picked = new Set(selected.map((frame) => frame.file));
+
+		try {
+			const results = await checkDesign(
+				{
+					frames: dark,
+					sections: sections.sections,
+					selected: dark.filter((frame) => picked.has(frame.file)),
+					files,
+					theme: appliedTokens,
+				},
+				(done, total) => {
+					if (total > 1) toast.loading(`Checking screens in dark mode… ${done} of ${total}`, { id });
+				},
+			);
+
+			toast.dismiss(id);
+
+			const checks = results.flatMap((result) =>
+				result.error ? [] : [{ screen: result.frame.file, findings: result.findings }],
+			);
+
+			const problems = darkPassProblems(checks);
+			const targets = [...new Set(problems.map((problem) => problem.path))];
+			fixDark(results.length, problems, targetModes(targets, dark, sections.sections, appliedTokens));
+		} catch (error) {
+			toast.error("Dark mode pass failed", { id, description: error instanceof Error ? error.message : String(error) });
+		}
+	};
+
+	const askNextScreen = (target: ElementRef) =>
+		askPrompt({
+			title: "Next screen",
+			description: "Describe where this goes. The new screen matches this one and the element links to it.",
+			placeholder: "The order summary, with a pay button",
+			submit: "Make screen",
+			optional: true,
+			run: (text) => nextScreen(target, text),
+		});
+
+	const askEveryScreen = () =>
+		askPrompt({
+			title: "Edit every screen",
+			description: "Describe one change. Each screen is changed on its own, and the result is one undo step.",
+			placeholder: "Make every heading bolder",
+			submit: "Change screens",
+			run: (text) => void editEveryScreen(text),
+		});
+
 	const toggleTab = (next: InspectorTab) => setTab((current) => (current === next ? "design" : next));
 
 	const screenContext: ScreenActionsContext = {
@@ -1826,6 +1891,11 @@ export function EditorView({
 			setRenaming(file);
 		},
 		vary,
+		responsive,
+		states,
+		shuffle,
+		darkPass: () => void runDarkPass(),
+		editEveryScreen: askEveryScreen,
 		pick,
 		play: setPlayStart,
 		startComment: comments.startDraft,
@@ -1928,6 +1998,14 @@ export function EditorView({
 		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
 		...motionActions({ element, extras: extraElements, files, toggle: toggleMotion }),
 		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
+		{
+			id: "next-screen",
+			label: "Next screen…",
+			group: "Element",
+			chords: [{ code: "KeyN", mod: true, alt: true }],
+			enabled: element !== null && !extraElements.length && isScreenFile(element.file) && !busy,
+			run: () => element && askNextScreen(element),
+		},
 		{
 			id: "send-comments",
 			label: "Send comments to chat",
@@ -2474,10 +2552,40 @@ export function EditorView({
 		if (command.name === "new") startNewChat();
 		else if (command.name === "product-md") startInterview();
 		else if (command.name === "design-md") void writeDesign();
-		else if (!single) {
-			toast("Select one screen to vary");
+		else if (command.name === "all") {
+			if (!args) {
+				toast("Say what to change after /all");
+
+				return false;
+			}
+
+			return editEveryScreen(args);
+		} else if (command.name === "dark") void runDarkPass();
+		else if (command.name === "shuffle") {
+			const targets = selected.flatMap((frame) => (isScreenFile(frame.file) ? [frame.file] : []));
+
+			if (!targets.length) {
+				toast("Select the screens to shuffle");
+
+				return false;
+			}
+
+			shuffle(targets);
+		} else if (!single || !isScreenFile(single.file)) {
+			toast(`Select one screen for /${command.name}`);
 
 			return false;
+		} else if (command.name === "states") states(single.file);
+		else if (command.name === "responsive") {
+			const to = DEVICES.find((name) => name === args.toLowerCase());
+
+			if (!to || to === single.device) {
+				toast("Say the size after /responsive", { description: "mobile, tablet or desktop, other than its own" });
+
+				return false;
+			}
+
+			responsive(single.file, to);
 		} else vary(single.file, args, variations > 1 ? variations : 2);
 
 		return true;
@@ -3267,6 +3375,7 @@ export function EditorView({
 			<StyleDialog open={styleDialogOpen && canStartStyle} onOpenChange={setStyleDialogOpen} onPick={startFromStyle} />
 			<ShortcutSheet open={sheetOpen} onOpenChange={setSheetOpen} actions={actions} />
 			<CustomSizeDialog />
+			<PromptDialog />
 			<ImportPageDialog />
 			<RepoSyncDialog />
 			<ImageExportDialog />
@@ -3278,6 +3387,20 @@ export function EditorView({
 const SCREEN_MENU: MenuEntry[] = [
 	"rename-screen",
 	"vary-screen",
+	{
+		label: "Generate",
+		items: [
+			"responsive-mobile",
+			"responsive-tablet",
+			"responsive-desktop",
+			SEPARATOR,
+			"screen-states",
+			"shuffle-content",
+			SEPARATOR,
+			"dark-pass",
+			"edit-every-screen",
+		],
+	},
 	"send-comments",
 	"compare",
 	"pick-variation",
@@ -3313,6 +3436,9 @@ const CANVAS_MENU: MenuEntry[] = [
 	NEW_SCREEN_SUBMENU,
 	"add-comment",
 	"add-section",
+	SEPARATOR,
+	"edit-every-screen",
+	"dark-pass",
 	SEPARATOR,
 	"zoom-fit",
 	"select-all",

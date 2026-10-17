@@ -18,6 +18,7 @@ import type {
 } from "../../shared/ai/contract";
 import { resolveFocused } from "../../shared/ai/focus";
 import { focusNotes } from "../../shared/ai/focus-guard";
+import { nextScreenLink } from "../../shared/ai/follow-ups";
 import { planRevisionPrompt, plansFirst, revisedPrompt } from "../../shared/ai/plan";
 import { changeSummaryOf } from "../../shared/change-summary";
 import { setResolved } from "../../shared/comments";
@@ -41,8 +42,9 @@ import {
 	type PolishRequest,
 	type ScreenFindings,
 } from "../../shared/design/polish";
-import { targetModes } from "../../shared/modes";
+import { targetModes, type ResolvedMode } from "../../shared/modes";
 import { isContextFile, isScreenFile } from "../../shared/project";
+import type { ElementRef } from "../../shared/prototype/links";
 import { besideImage } from "../../shared/recreate";
 import type {
 	CanvasDoc,
@@ -97,6 +99,12 @@ export type RunOptions = {
 	plan?: GenerationPlan;
 	autoDesign?: boolean;
 	recreate?: { image: CanvasImage; device: Device; reference: Attachment };
+	prompts?: string[];
+	names?: string[];
+	each?: boolean;
+	modes?: Record<string, ResolvedMode>;
+	link?: ElementRef;
+	device?: Device;
 };
 
 /** Sent with a reply to a plan under review */
@@ -269,7 +277,8 @@ export function createGenerationController(session: ProjectSession, env: Control
 			const canvas = session.state()?.canvas;
 
 			const modes =
-				canvas && targetModes(params.targets ?? [], canvas.frames, canvas.sections ?? [], canvas.theme ?? NO_THEME);
+				params.modes ??
+				(canvas && targetModes(params.targets ?? [], canvas.frames, canvas.sections ?? [], canvas.theme ?? NO_THEME));
 
 			return await env.api.generate(modes ? { ...params, modes } : params);
 		} finally {
@@ -550,7 +559,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			documents: options.documents?.length,
 		};
 
-		if (!options.recreate && plansFirst(planning)) {
+		if (!options.recreate && !options.link && plansFirst(planning)) {
 			const plan = await readPlan(prompt, options, model, chatId);
 
 			if ("stopped" in plan) {
@@ -578,11 +587,15 @@ export function createGenerationController(session: ProjectSession, env: Control
 				generationId,
 				projectPath: session.path,
 				prompt,
-				device: options.recreate?.device ?? current.canvas.device,
+				device: options.device ?? options.recreate?.device ?? current.canvas.device,
 				model,
 				targets: options.targets,
 				task,
 				variations: variations > 1 || task === "vary" ? variations : undefined,
+				prompts: options.prompts,
+				names: options.names,
+				each: options.each,
+				modes: options.modes,
 				references: options.references,
 				focus: options.focus,
 				problems: options.repair?.problems,
@@ -623,6 +636,16 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			let step: Snapshot | null = null;
 			const screens = POLISHED_TASKS.has(task) ? writtenScreens(result.changes) : [];
+
+			const linked =
+				options.link &&
+				nextScreenLink(
+					latest.files,
+					options.link,
+					placed.map((frame) => frame.file),
+				);
+
+			if (linked) result.changes = [...result.changes, linked];
 			const key = `generation:${generationId}`;
 			const changeOptions: ChangeOptions = {};
 

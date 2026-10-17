@@ -6,9 +6,26 @@ import { projectSessions } from "@/lib/sessions";
 import type { Attachment, GenerationPlan, Problem, PromptDocument } from "../../shared/ai/contract";
 import { DOCUMENT_LIMITS, isDocumentFile, promptDocument } from "../../shared/ai/documents";
 import { focusLabel, focusNote, focusOf } from "../../shared/ai/focus";
+import {
+	DARK_PASS_PROMPT,
+	DEVICE_LABELS,
+	everyScreen,
+	everyScreenNote,
+	nextScreenNote,
+	nextScreenPrompt,
+	responsivePrompt,
+	SCREEN_STATES,
+	SHUFFLE_PROMPT,
+	STATE_LABELS,
+	statePrompt,
+	type ScreenState,
+} from "../../shared/ai/follow-ups";
 import type { DesignNote } from "../../shared/change-summary";
+import { darkPassNote } from "../../shared/design/dark-pass";
 import { DESIGN_RULE_LABELS } from "../../shared/design/findings";
 import { isFreshNote, noteProblem, POLISH_PROMPT } from "../../shared/design/polish";
+import type { ResolvedMode } from "../../shared/modes";
+import type { ElementRef } from "../../shared/prototype/links";
 import { recreateNote, recreatePrompt } from "../../shared/recreate";
 import type { CanvasImage, ContextFileName, Device, Frame, ProjectFiles } from "../../shared/types";
 import { mixNote, mixPrompt, variationName, VARY_PROMPT, varyNote } from "@/lib/variations";
@@ -309,6 +326,111 @@ export function useGeneration({
 		[ready, session, run],
 	);
 
+	const nextScreen = useCallback(
+		(element: ElementRef, description: string) => {
+			if (!ready()) return;
+			const current = session.state()!;
+			const label = focusOf(current.files, element)?.label ?? "the element";
+			const from = variationName(element.file, current.canvas.frames);
+			const device = current.canvas.frames.find((frame) => frame.file === element.file)?.device;
+			session.addMessages([message("user", nextScreenNote(label, from, description))]);
+
+			void run(nextScreenPrompt({ element: label, from, fromPath: element.file, description }), {
+				references: [element.file],
+				link: element,
+				device,
+			});
+		},
+		[ready, session, run],
+	);
+
+	const editEveryScreen = useCallback(
+		(prompt: string): boolean => {
+			if (!ready() || !prompt.trim()) return false;
+			const current = session.state()!;
+			const targets = everyScreen(current.canvas.frames, current.files);
+
+			if (!targets.length) {
+				toast("There are no screens to change yet");
+
+				return false;
+			}
+
+			session.addMessages([message("user", everyScreenNote(prompt))]);
+			void run(prompt, { targets, each: targets.length > 1 });
+
+			return true;
+		},
+		[ready, session, run],
+	);
+
+	const alternates = useCallback(
+		(target: string, note: string, variants: { prompt: string; label: string }[], device?: Device) => {
+			if (!ready()) return;
+			const frames = session.state()!.canvas.frames;
+			const name = variationName(target, frames);
+			session.addMessages([message("user", `${note} for ${name}`)]);
+
+			void run(note, {
+				task: "vary",
+				targets: [target],
+				prompts: variants.map((variant) => variant.prompt),
+				names: variants.map((variant) => `${name} · ${variant.label}`),
+				device: device ?? frames.find((frame) => frame.file === target)?.device,
+			});
+		},
+		[ready, session, run],
+	);
+
+	const responsive = useCallback(
+		(target: string, to: Device) => {
+			const from = session.state()?.canvas.frames.find((frame) => frame.file === target)?.device ?? device;
+			alternates(
+				target,
+				`${DEVICE_LABELS[to]} version`,
+				[{ prompt: responsivePrompt(from, to), label: DEVICE_LABELS[to] }],
+				to,
+			);
+		},
+		[session, device, alternates],
+	);
+
+	const states = useCallback(
+		(target: string, picked: readonly ScreenState[] = SCREEN_STATES) =>
+			alternates(
+				target,
+				`${picked.map((state) => STATE_LABELS[state]).join(", ")} states`,
+				picked.map((state) => ({ prompt: statePrompt(state), label: STATE_LABELS[state] })),
+			),
+		[alternates],
+	);
+
+	const shuffle = useCallback(
+		(targets: string[]) => {
+			if (!ready() || !targets.length) return;
+			const frames = session.state()!.canvas.frames;
+			session.addMessages([
+				message("user", `Shuffle content in ${targets.map((t) => variationName(t, frames)).join(", ")}`),
+			]);
+			void run(SHUFFLE_PROMPT, { targets, each: targets.length > 1 });
+		},
+		[ready, session, run],
+	);
+
+	const fixDark = useCallback(
+		(checked: number, problems: Problem[], modes: Record<string, ResolvedMode> | undefined) => {
+			if (!ready()) return;
+			const frames = session.state()!.canvas.frames;
+			const targets = [...new Set(problems.map((problem) => problem.path))];
+			const failing = targets.map((target) => variationName(target, frames));
+			session.addMessages([message("user", "Dark mode pass"), message("assistant", darkPassNote(checked, failing))]);
+
+			if (targets.length)
+				void run(DARK_PASS_PROMPT, { targets, repair: { problems }, each: targets.length > 1, modes });
+		},
+		[ready, session, run],
+	);
+
 	const mix = useCallback(
 		(receiver: string, source: string, section: string) => {
 			if (!ready() || !section.trim()) return;
@@ -368,6 +490,12 @@ export function useGeneration({
 		vary,
 		fix,
 		fixNote,
+		nextScreen,
+		editEveryScreen,
+		responsive,
+		states,
+		shuffle,
+		fixDark,
 		mix,
 		writeContext,
 		readTheme,

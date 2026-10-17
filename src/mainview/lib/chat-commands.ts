@@ -1,6 +1,17 @@
 import type { ProviderCommand } from "../../shared/ai/contract";
 
-export type BuiltinCommandName = "new" | "product-md" | "design-md" | "vary" | "compare" | "play";
+export type BuiltinCommandName =
+	| "new"
+	| "product-md"
+	| "design-md"
+	| "vary"
+	| "all"
+	| "states"
+	| "responsive"
+	| "shuffle"
+	| "dark"
+	| "compare"
+	| "play";
 
 export type ChatCommand = {
 	name: string;
@@ -25,6 +36,28 @@ export const BUILTIN_COMMANDS: (ChatCommand & { name: BuiltinCommandName })[] = 
 		kind: "builtin",
 		group: "Rabisco",
 	},
+	{
+		name: "all",
+		description: "Make one change on every screen",
+		argumentHint: "<change>",
+		kind: "builtin",
+		group: "Rabisco",
+	},
+	{
+		name: "states",
+		description: "Empty, loading, error and filled states of the selected screen",
+		kind: "builtin",
+		group: "Rabisco",
+	},
+	{
+		name: "responsive",
+		description: "Another size of the selected screen",
+		argumentHint: "mobile | tablet | desktop",
+		kind: "builtin",
+		group: "Rabisco",
+	},
+	{ name: "shuffle", description: "New realistic content in the selected screens", kind: "builtin", group: "Rabisco" },
+	{ name: "dark", description: "Check the screens in dark mode and fix them", kind: "builtin", group: "Rabisco" },
 	{ name: "compare", description: "Compare the selected screen's variations", kind: "builtin", group: "Rabisco" },
 	{ name: "play", description: "Play the prototype", kind: "builtin", group: "Rabisco" },
 ];

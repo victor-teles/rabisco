@@ -139,6 +139,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧⌘\`                                                     | Show or hide the chat and screens panel                                            |
 | `⇧⌘O`                                                     | New chat                                                                           |
 | `/` in the chat                                           | Chat commands: Rabisco's own and your CLI's commands                               |
+| `/all`, `/states`, `/responsive`, `/shuffle`, `/dark`     | Every screen, states, another size, new content, dark mode pass                    |
 | `⌘I` in a prompt (Home or chat)                           | Improve prompt: expand it into a brief to edit; `⌘Z` puts the original back        |
 | `⇧⌘P` in a prompt (Home or chat)                          | Plan first: new screens wait as a plan you approve; a reply revises the plan       |
 | `↵` / `Esc` (plan card focused)                           | Generate the plan's screens / cancel the plan                                      |
@@ -181,6 +182,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⌥⌘A` (element selected)                                  | Select matching: the same component, or the same classes, in the screen            |
 | Double-click or `Enter` on a component usage              | Edit the component in place: every usage updates; `Esc` steps out                  |
 | `⌥⌘B` (component usage selected)                          | Detach: inline the usage as plain JSX with its props filled in                     |
+| `⌥⌘N` (element selected)                                  | Next screen: describe where it goes; the new screen matches and is linked          |
 | Prompt with elements selected                             | Change only those elements (point and prompt)                                      |
 | `⌥2`                                                      | Components panel: project components, the shadcn library and suggestions           |
 | `⌥3`                                                      | Design system: tokens and their uses; rename, detach, delete, import; library      |

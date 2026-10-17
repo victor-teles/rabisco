@@ -16,8 +16,14 @@ import type {
 	ScreenMeta,
 	Usage,
 } from "../../shared/ai/contract";
-import { isAlternate } from "../../shared/variations";
-import { clampVariations, combineVariations, createVariantRenamer, variationsNote } from "../../shared/ai/variants";
+import { isAlternate, MAX_VARIATIONS } from "../../shared/variations";
+import {
+	clampVariations,
+	combineVariations,
+	createVariantRenamer,
+	namedFrames,
+	variationsNote,
+} from "../../shared/ai/variants";
 import { chatPath, parseChat, readCanvas, readFileIfExists, readProjectFiles } from "../project-folder";
 import type { SecretStore } from "./keychain";
 import { ProviderRegistry, type ProviderDeps, type RegistryOptions } from "./providers";
@@ -36,6 +42,7 @@ import {
 import { buildPlanRequest, runPlannedCreate, runPlanReading } from "./plan-run";
 import { buildBriefRequest, runBrief } from "./brief";
 import { variantProvider } from "./variant-provider";
+import { runScreens } from "./screen-runs";
 import { createSettingsStore, type NewProvider, type ProviderPatch, type Detected } from "./settings-store";
 
 export type AiServiceOptions = {
@@ -458,8 +465,26 @@ export function createAiService(options: AiServiceOptions) {
 					if (params.focus?.length) request.focus = params.focus;
 				}
 
+				const eachTargets = request.targets ?? [];
+
+				if (params.each && task === "edit" && eachTargets.length > 1) {
+					const result = await runScreens({
+						provider: resolved.provider,
+						build: { ...buildParams, focus: undefined },
+						targets: eachTargets,
+						projectFiles,
+						signal: controller.signal,
+						repair: params.task === "repair" ? { problems: params.problems ?? [] } : undefined,
+						onEvent: (event, attempt) => options.send({ generationId: params.generationId, attempt, event }),
+					});
+
+					return { ok: true, ...result, frames: [], context: contextFilesOf(request) };
+				}
+
+				const prompts = vary ? params.prompts?.slice(0, MAX_VARIATIONS) : undefined;
+
 				// `create` runs variant 0 (the primary) to N-1; `vary` runs 1 to N, all alternates
-				const count = vary || task === "create" ? clampVariations(params.variations) : 1;
+				const count = prompts?.length || (vary || task === "create" ? clampVariations(params.variations) : 1);
 				const variants = Array.from({ length: count }, (_, i) => (vary ? i + 1 : i));
 				const multi = vary || count > 1;
 
@@ -476,7 +501,8 @@ export function createAiService(options: AiServiceOptions) {
 					if (multi) {
 						runRequest = { ...request, id: `${request.id}-v${variant}` };
 
-						if (count > 1) runRequest.variation = { index, count };
+						if (prompts) runRequest.prompt = prompts[index]!;
+						else if (count > 1) runRequest.variation = { index, count };
 					}
 
 					const result = await runGeneration({
@@ -546,7 +572,13 @@ export function createAiService(options: AiServiceOptions) {
 				return {
 					ok: true,
 					changes: combined.changes,
-					frames: combined.frames,
+					frames: vary
+						? namedFrames(
+								combined.frames,
+								done.map(({ variant, result }) => ({ variant, changes: result.changes })),
+								params.names,
+							)
+						: combined.frames,
 					reply: [lead.result.reply, note].filter(Boolean).join("\n\n"),
 					problems: dedupeProblems(done.flatMap((run) => run.result.problems)),
 					usage: done.reduce<Usage | undefined>((sum, run) => addUsage(sum, run.result.usage), undefined),

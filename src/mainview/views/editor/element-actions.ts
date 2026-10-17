@@ -23,6 +23,7 @@ import { MOTION_MENU } from "./motion-actions";
 export const ELEMENT_MENU: MenuEntry[] = [
 	"edit-text",
 	"ask-ai",
+	"next-screen",
 	SEPARATOR,
 	"select-parent",
 	"select-children",

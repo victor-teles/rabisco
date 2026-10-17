@@ -777,3 +777,68 @@ describe("project sessions", () => {
 		expect(again.session.state()!.canvas.frames).toEqual([]);
 	});
 });
+
+describe("follow-ups", () => {
+	test("a next screen skips the plan, links its element and is one undo step", async () => {
+		const { open, nextCall, finish } = setup({ plan: true });
+		const { session, controller } = await open("/p/next");
+
+		const frame = {
+			file: "screens/home.tsx",
+			name: "Home",
+			device: "tablet" as const,
+			x: 0,
+			y: 0,
+			width: 834,
+			height: 1194,
+		};
+
+		session.change((snapshot) => ({
+			...snapshot,
+			files: { ...snapshot.files, "screens/home.tsx": SCREEN },
+			frames: [frame],
+		}));
+
+		const steps = session.state()!.history.past.length;
+		const start = SCREEN.indexOf("<main>");
+
+		const running = controller.run(
+			"Make the next screen",
+			{ references: ["screens/home.tsx"], link: { file: "screens/home.tsx", start }, device: "tablet" },
+			MODEL,
+		);
+
+		const params = await nextCall(1);
+
+		expect([params.task, params.device, params.references]).toEqual(["create", "tablet", ["screens/home.tsx"]]);
+		finish(params, created("screens/summary.tsx"));
+		await running;
+
+		expect(session.state()!.files["screens/home.tsx"]).toContain('<main data-link-to="screens/summary.tsx">');
+		expect(session.state()!.canvas.frames.map((f) => f.file)).toEqual(["screens/home.tsx", "screens/summary.tsx"]);
+		expect(session.state()!.history.past.length).toBe(steps + 1);
+	});
+
+	test("a dark mode pass sends its modes, and every screen runs on its own", async () => {
+		const { open, nextCall, finish } = setup();
+		const { controller } = await open("/p/dark");
+		const modes = { "screens/home.tsx": { scheme: "dark" } };
+
+		const running = controller.run(
+			"Fix dark mode",
+			{
+				targets: ["screens/home.tsx", "screens/b.tsx"],
+				repair: { problems: [{ path: "screens/home.tsx", message: "Low contrast" }] },
+				each: true,
+				modes,
+			},
+			MODEL,
+		);
+
+		const params = await nextCall(1);
+
+		expect([params.task, params.each, params.modes]).toEqual(["repair", true, modes]);
+		finish(params, { ok: true, changes: [], frames: [], reply: "", problems: [], context: [] });
+		await running;
+	});
+});
