@@ -97,6 +97,17 @@ describe("systemPrompt", () => {
 		expect(prompt).not.toContain("current directory");
 	});
 
+	test("motion comes from the preset catalog, so the inspector can read it (decision 0027)", () => {
+		const prompt = systemPrompt(request(), "text");
+
+		expect(prompt).toContain("# Motion");
+		expect(prompt).toContain(
+			"Lift `transition motion-safe:hover:-translate-y-0.5 hover:shadow-md duration-200 ease-out`",
+		);
+		expect(prompt).toContain("Rise `animate-in fade-in fill-mode-backwards motion-safe:slide-in-from-bottom-4");
+		expect(prompt).toContain("motion-safe:");
+	});
+
 	test("agent mode tells the agent to write files with its tools", () => {
 		const prompt = systemPrompt(request({ device: "desktop" }), "agent");
 		expect(prompt).toContain("current directory");

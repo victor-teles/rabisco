@@ -44,6 +44,8 @@ export type ShareSnapshot = {
 	theme: string;
 	/** The project's `public/` images as `data:` URLs, by the `src` screens write (decision 0010) */
 	assets?: Record<string, string>;
+	/** The default motion tokens, which link transitions use without their own timing (decision 0046) */
+	motion?: { duration?: number; easing?: string };
 };
 
 /** The same prebuilt runtime the canvas uses */
@@ -102,6 +104,15 @@ function assertAssets(assets: Json): asserts assets is Record<string, string> {
 			throw new Error(`Snapshot asset ${src} isn't an image or a font`);
 }
 
+function assertMotion(motion: Json): asserts motion is { duration?: number; easing?: string } {
+	if (
+		!isJsonObject(motion) ||
+		(motion.duration !== undefined && !isFiniteNumber(motion.duration)) ||
+		(motion.easing !== undefined && !isString(motion.easing))
+	)
+		throw new Error("Snapshot motion isn't a duration and an easing");
+}
+
 function assertShareSnapshot(value: Json | undefined): asserts value is ShareSnapshot {
 	if (!isJsonObject(value) || value.version !== 1) throw new Error("Not a share snapshot");
 	const { name, createdAt, start, screens, modules, css, theme } = value;
@@ -117,6 +128,8 @@ function assertShareSnapshot(value: Json | undefined): asserts value is ShareSna
 	for (const [path, module] of Object.entries(modules)) assertModule(path, module);
 
 	if (value.assets !== undefined) assertAssets(value.assets);
+
+	if (value.motion !== undefined) assertMotion(value.motion);
 
 	if (!screens.some((screen) => screen.file === start))
 		throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);

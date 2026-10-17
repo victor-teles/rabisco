@@ -5,11 +5,12 @@ import { contextBody } from "../../shared/context/body";
 import { FRAME_SIZE } from "../../shared/project";
 import { UI_MODULES } from "../../shared/components/ui-modules";
 import { componentSignatures } from "../../shared/components/usages";
+import { MOTION_KIND_LABELS, MOTION_KINDS, presetClasses, presetsOfKind } from "../../shared/motion/presets";
 import { imageLabel, stagedAttachments } from "./attachments";
 import { modesText, themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 22;
+export const PROMPT_VERSION = 23;
 
 export type PromptMode = "text" | "agent";
 
@@ -124,6 +125,25 @@ const AGENT_RULES = `# How to work
 - Don't install packages, run builds, start servers or create any other file. Rabisco compiles and renders the files itself.
 - End with one or two short sentences for the user about what you made.`;
 
+const MOTION_NOTES: Record<(typeof MOTION_KINDS)[number], string> = {
+	hover: "",
+	press: "",
+	appear: " Plays once when the screen shows. Stagger a list with delay-75, delay-150… on its items.",
+	loop: " For loading and live states only.",
+	exit: ' Only on dialog, popover, sheet or menu content (it plays on data-state="closed").',
+};
+
+/** The preset catalog (decision 0027), so generated motion is what the inspector reads and edits */
+const MOTION_RULES = `# Motion
+- Motion is Tailwind classes from Rabisco's presets. Add it only where the request asks for motion, or a hover and press preset on cards and buttons that do something. Copy a preset's classes as written, at most one preset per kind on an element:
+${MOTION_KINDS.map(
+	(kind) =>
+		`- ${MOTION_KIND_LABELS[kind]}: ${presetsOfKind(kind)
+			.map((preset) => `${preset.name} \`${presetClasses(preset)}\``)
+			.join("; ")}.${MOTION_NOTES[kind]}`,
+).join("\n")}
+- Tune timing with duration-*, delay-* and ease-* classes, or the project's duration-* and ease-* tokens under "# Theme tokens". Keep movement behind motion-safe: so reduced motion only fades. No @keyframes, no animation in style, no motion library.`;
+
 const DESIGN_MD_FORMAT = `# DESIGN.md format
 Sections, in this order: Tokens, Visual direction, Typography, Layout & spacing, Components, Do / Don't. Short and concrete: rules a designer could check a screen against, not adjectives.
 
@@ -142,8 +162,8 @@ The Tokens section is read by Rabisco and becomes the theme every screen renders
 
 Rules for the Tokens section:
 - One \`- name: value\` per line. Names: background, foreground, card, card-foreground, popover, popover-foreground, primary, primary-foreground, secondary, secondary-foreground, muted, muted-foreground, accent, accent-foreground, destructive, success, warning, border, input, ring, chart-1 to chart-5, radius, spacing, font-sans, font-serif, font-mono.
-- Custom tokens name their Tailwind class: color-brand (bg-brand), radius-card (rounded-card), font-display, text-display: 3rem/1.1 (font size and line height), spacing-gutter (p-gutter). Add one only for a value the design repeats and the built-in names don't cover. No other names.
-- Colors are hex, rgb(), hsl() or oklch(). radius and spacing are lengths. Fonts are font stacks.
+- Custom tokens name their Tailwind class: color-brand (bg-brand), radius-card (rounded-card), font-display, text-display: 3rem/1.1 (font size and line height), spacing-gutter (p-gutter), duration-fast: 150ms (duration-fast), ease-snappy: cubic-bezier(0.2, 0, 0, 1) (ease-snappy). duration-default and ease-default also set the timing of every transition and link transition. Add one only for a value the design repeats and the built-in names don't cover. No other names.
+- Colors are hex, rgb(), hsl() or oklch(). radius and spacing are lengths. Fonts are font stacks. Durations are 200ms or 0.2s; easings are ease-out, linear or cubic-bezier().
 - Only list tokens the design actually sets; the rest keep their defaults. The "### Dark" sub-section holds dark-theme values and may be left out.`;
 
 const PRODUCT_MD_FORMAT = `# PRODUCT.md format
@@ -246,7 +266,7 @@ export function systemPrompt(request: GenerationRequest, mode: PromptMode): stri
 	const target = contextFileOf(request);
 	const format = target === "DESIGN.md" ? [DESIGN_MD_FORMAT] : target === "PRODUCT.md" ? [PRODUCT_MD_FORMAT] : [];
 
-	return [ROLE, DESIGN_RULES, FILE_RULES_TEXT(request), TASKS, ...format, output].join("\n\n");
+	return [ROLE, DESIGN_RULES, MOTION_RULES, FILE_RULES_TEXT(request), TASKS, ...format, output].join("\n\n");
 }
 
 const section = (tag: string, body: string) => `<${tag}>\n${body.trim()}\n</${tag}>`;

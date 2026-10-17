@@ -3,6 +3,7 @@ import { compileCache } from "@/lib/render/compile";
 import { collectGraph } from "@/lib/render/graph";
 import { screenStyles, themeCss } from "@/lib/render/styles";
 import type { DesignTokens } from "../../shared/context/tokens";
+import { motionDefaults } from "../../shared/prototype/transitions";
 import { elementSpans } from "../../shared/share/spans";
 import { shareScreens, type ShareModule, type ShareSnapshot } from "../../shared/share/snapshot";
 import type { CanvasSection, Frame, ProjectFiles } from "../../shared/types";
@@ -52,6 +53,9 @@ export async function buildShareSnapshot(input: {
 	};
 
 	if (Object.keys(assets).length) snapshot.assets = assets;
+	const motion = motionDefaults(input.theme);
+
+	if (Object.keys(motion).length) snapshot.motion = motion;
 
 	return snapshot;
 }

@@ -47,10 +47,13 @@ function parseEasing(value) {
 	var name = String(value || "").trim().toLowerCase();
 	return Object.prototype.hasOwnProperty.call(EASINGS, name) ? name : null;
 }
-function timed(plan, timing) {
-	if (!plan || !timing) return plan;
+function timed(plan, timing, defaults) {
+	if (!plan || (!timing && !defaults)) return plan;
 	var next = {};
 	for (var key in plan) next[key] = plan[key];
+	if (defaults && defaults.duration !== undefined) next.duration = defaults.duration;
+	if (defaults && defaults.easing) next.easing = defaults.easing;
+	if (!timing) return next;
 	if (timing.duration !== null && timing.duration !== undefined) next.duration = timing.duration;
 	if (timing.easing) next.easing = EASINGS[timing.easing];
 	return next;
@@ -740,7 +743,7 @@ const viewerJs = () => `(function () {
 	}
 
 	function overlayMotion(overlay, opening) {
-		return timed(MOTIONS.overlays[overlay.mode + ":" + (overlay.transition || "") + ":" + (opening ? "open" : "close") + ":" + (reducedMotion() ? 1 : 0)] || null, overlay.timing);
+		return timed(MOTIONS.overlays[overlay.mode + ":" + (overlay.transition || "") + ":" + (opening ? "open" : "close") + ":" + (reducedMotion() ? 1 : 0)] || null, overlay.timing, data.motion);
 	}
 
 	function removeOverlay(overlay) {
@@ -812,7 +815,7 @@ const viewerJs = () => `(function () {
 		arrivedTiming = timing || null;
 		try { history.pushState({ depth: depth, transition: arrivedWith, timing: arrivedTiming }, "", "#" + encodeURIComponent(file)); }
 		catch (error) { /* some file:// pages refuse pushState: the screen still changes */ }
-		show(file, timed(screenMotion(arrivedWith, "forward"), arrivedTiming));
+		show(file, timed(screenMotion(arrivedWith, "forward"), arrivedTiming, data.motion));
 	}
 
 	function back() {
@@ -853,7 +856,7 @@ const viewerJs = () => `(function () {
 		var next = (event.state && event.state.depth) || 0;
 		var transition = (event.state && event.state.transition) || "instant";
 		var timing = (event.state && event.state.timing) || null;
-		var plan = next < depth ? timed(screenMotion(arrivedWith, "back"), arrivedTiming) : next > depth ? timed(screenMotion(transition, "forward"), timing) : null;
+		var plan = next < depth ? timed(screenMotion(arrivedWith, "back"), arrivedTiming, data.motion) : next > depth ? timed(screenMotion(transition, "forward"), timing, data.motion) : null;
 		depth = next;
 		arrivedWith = transition;
 		arrivedTiming = timing;
