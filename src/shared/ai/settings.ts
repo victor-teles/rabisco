@@ -36,6 +36,8 @@ export type ProviderSettings = {
 	providers: ProviderConfig[];
 	defaultModel?: string;
 	fastModel?: string;
+	/** Before the fast model: the model each kind of task runs on */
+	taskModels?: Partial<Record<PresetTask, string>>;
 };
 
 export type KeyStorage = { ok: true; name: string } | { ok: false; message: string };
@@ -168,6 +170,30 @@ export type FastTask = (typeof FAST_TASKS)[number];
 
 const isFastTask = (task: string): task is FastTask => FAST_TASKS.some((fast) => fast === task);
 
-export function modelForTask(task: string, picked: ModelRef, fastModel: ModelRef | undefined): ModelRef {
-	return fastModel && isFastTask(task) ? fastModel : picked;
+export const PRESET_TASKS = ["create", "edit", "review"] as const;
+
+export type PresetTask = (typeof PRESET_TASKS)[number];
+
+export const isPresetTask = (task: string): task is PresetTask => PRESET_TASKS.some((preset) => preset === task);
+
+/** `review` is the visual review after a generation; repairs and fixes count as edits */
+const PRESET_OF = new Map<string, PresetTask>([
+	["create", "create"],
+	["vary", "create"],
+	["edit", "edit"],
+	["repair", "edit"],
+	["review", "review"],
+]);
+
+export function modelForTask(
+	task: string,
+	picked: ModelRef,
+	settings: Pick<ProviderSettings, "fastModel" | "taskModels">,
+): ModelRef {
+	const kind = PRESET_OF.get(task);
+	const preset = kind && settings.taskModels?.[kind];
+
+	if (preset) return preset;
+
+	return settings.fastModel && isFastTask(task) ? settings.fastModel : picked;
 }

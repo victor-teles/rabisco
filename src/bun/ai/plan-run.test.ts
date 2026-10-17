@@ -10,8 +10,11 @@ import { buildPlanRequest, scopedProvider } from "./plan-run";
 import { createMockProvider } from "./providers/mock";
 import { createAiService } from "./service";
 
-/** The mock provider, recording every request it gets; `fail` makes the runs for those paths end in an error */
-function setup(fail: string[] = []) {
+/**
+ * The mock provider, recording every request it gets; `fail` makes the runs for those paths end in an error,
+ * and `hang` makes them wait until they are stopped
+ */
+function setup(fail: string[] = [], hang: string[] = []) {
 	const root = tempDir();
 	const sent: GenerationEventMessage[] = [];
 	const requests: GenerationRequest[] = [];
@@ -25,6 +28,14 @@ function setup(fail: string[] = []) {
 			if (request.writes?.some((path) => fail.includes(path))) {
 				return (async function* (): AsyncGenerator<GenerationEvent> {
 					yield { type: "error", code: "rate_limited", message: "Slow down.", retryable: true };
+				})();
+			}
+
+			if (request.writes?.some((path) => hang.includes(path))) {
+				return (async function* (): AsyncGenerator<GenerationEvent> {
+					yield { type: "status", label: "Thinking" };
+					await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+					yield { type: "error", code: "aborted", message: "Generation stopped.", retryable: true };
 				})();
 			}
 
@@ -190,6 +201,25 @@ describe("create from a plan", () => {
 		if (!result.ok) throw new Error(result.error.message);
 		expect(result.frames.map((f) => f.name)).toEqual(["Welcome", "Home"]);
 		expect(result.reply).toContain("Details failed");
+		expect(result.unfinished).toEqual([{ part: "screens/details.tsx", name: "Details", stopped: false }]);
+	});
+
+	test("stopping one screen leaves the others, and the result names it as stopped", async () => {
+		const { ai, sent, projectPath } = setup([], ["screens/details.tsx"]);
+		const { plan } = await planOf(ai, projectPath);
+		const running = ai.generate({ ...params(projectPath), plan });
+
+		while (!sent.some((message) => message.generationId === "g1" && message.part?.id === "screens/details.tsx"))
+			await Bun.sleep(1);
+		expect(sent.find((message) => message.part?.id === "screens/details.tsx")?.part?.name).toBe("Details");
+		ai.stopGenerationPart("g1", "screens/details.tsx");
+		const result = await running;
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.frames.map((f) => f.name)).toEqual(["Welcome", "Home"]);
+		expect(result.reply).toContain("You stopped Details.");
+		expect(result.reply).not.toContain("failed");
+		expect(result.unfinished).toEqual([{ part: "screens/details.tsx", name: "Details", stopped: true }]);
 	});
 
 	test("a failed shell fails the whole run, writing nothing", async () => {

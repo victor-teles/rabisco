@@ -442,7 +442,12 @@ export function EditorView({
 		writeContext,
 		readTheme,
 		stop,
+		stopPart,
 		retry,
+		unfinished,
+		retryPart,
+		queue,
+		dequeue,
 		regenerate,
 		lastRun,
 		undoRun,
@@ -3002,7 +3007,12 @@ export function EditorView({
 								heldPrompt={heldPrompt}
 								onHeldPromptSent={clearHeldPrompt}
 								onStop={stop}
+								onStopPart={stopPart}
 								onRetry={retry}
+								unfinished={unfinished}
+								onRetryPart={retryPart}
+								queue={queue}
+								onDequeue={dequeue}
 								onRegenerate={regenerate}
 								undoableRun={undoableRun}
 								onDismissFailure={onDismissFailure}

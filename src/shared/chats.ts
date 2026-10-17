@@ -1,3 +1,5 @@
+import type { Usage } from "./ai/contract";
+import { totalUsage } from "./ai/usage";
 import type { ChatMessage } from "./types";
 
 /** One `<id>.jsonl` per chat session. Projects saved before sessions had a single `chat.jsonl` */
@@ -14,6 +16,8 @@ export type ChatSummary = {
 	/** The last message's time */
 	updatedAt: string;
 	messageCount: number;
+	/** Its replies' usage, summed */
+	usage?: Usage;
 };
 
 /** Also a file name, so nothing that could leave `chats/` */
@@ -42,13 +46,22 @@ export function chatTitle(messages: ChatMessage[]) {
 }
 
 export function summarizeChat(id: string, messages: ChatMessage[]): ChatSummary {
-	return {
+	const summary: ChatSummary = {
 		id,
 		title: chatTitle(messages),
 		updatedAt: messages.at(-1)?.createdAt ?? "",
 		messageCount: messages.length,
 	};
+
+	const usage = totalUsage(messages.map((message) => message.usage));
+
+	if (usage) summary.usage = usage;
+
+	return summary;
 }
+
+/** Every chat of the project, so deleting a chat takes its share out */
+export const projectUsage = (chats: ChatSummary[]) => totalUsage(chats.map((chat) => chat.usage));
 
 /** Newest first; empty chats aren't listed */
 export function sortChats(chats: ChatSummary[]) {
@@ -72,6 +85,10 @@ export function withMoreMessages(chats: ChatSummary[], id: string, messages: Cha
 		updatedAt: messages.at(-1)?.createdAt ?? summary.updatedAt,
 		messageCount: summary.messageCount + messages.length,
 	};
+
+	const usage = totalUsage([summary.usage, ...messages.map((message) => message.usage)]);
+
+	if (usage) updated.usage = usage;
 
 	return sortChats([updated, ...chats.filter((chat) => chat.id !== id)]);
 }

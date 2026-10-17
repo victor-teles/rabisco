@@ -7,6 +7,7 @@ import type {
 	ImageRequest,
 	PlannedScreen,
 	Provider,
+	Usage,
 } from "../../../shared/ai/contract";
 import { hashString } from "../../../shared/jsx/hash";
 import { pascalName, PLAN_LIMITS, planBlock } from "../../../shared/ai/plan";
@@ -56,6 +57,18 @@ const THEME_STEPS = ["Reading DESIGN.md", "Mapping colors to theme tokens"];
 const PLAN_STEPS = ["Reading your brief", "Planning screens and shared parts"];
 
 const BRIEF_STEPS = ["Reading your prompt"];
+
+/** About four characters a token, and free, so the chat shows a usage line in development */
+function mockUsage(request: GenerationRequest, changes: FileChange[]): Usage {
+	let read = request.prompt.length;
+	let written = 0;
+
+	for (const file of request.files) read += file.content.length;
+
+	for (const change of changes) written += change.content?.length ?? 0;
+
+	return { inputTokens: Math.ceil(read / 4), outputTokens: Math.ceil(written / 4), costUsd: 0 };
+}
 
 /** Development only. */
 export function createMockProvider(options: MockProviderOptions = {}): Provider {
@@ -180,7 +193,7 @@ export function createMockProvider(options: MockProviderOptions = {}): Provider 
 			yield { type: "file.end", path, content };
 		}
 
-		yield { type: "done", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+		yield { type: "done", usage: mockUsage(request, result.changes) };
 	}
 
 	return {

@@ -125,6 +125,30 @@ describe("settings store", () => {
 		expect((await store.get()).fastModel).toBeUndefined();
 	});
 
+	test("task models: saved per task, cleared, and dropped with their provider", async () => {
+		const { store } = setup();
+		const ollama = await store.add({ type: "ollama" });
+		const codex = await store.add({ type: "codex" });
+		await expect(store.setTaskModel("create", "nocolon")).rejects.toThrow("Invalid model");
+		await store.setTaskModel("create", `${ollama.id}:qwen3`);
+		await store.setTaskModel("review", `${codex.id}:gpt-5`);
+		expect((await store.get()).taskModels).toEqual({ create: `${ollama.id}:qwen3`, review: `${codex.id}:gpt-5` });
+		await store.setTaskModel("review", null);
+		expect((await store.get()).taskModels).toEqual({ create: `${ollama.id}:qwen3` });
+		await store.remove(ollama.id);
+		expect((await store.get()).taskModels).toBeUndefined();
+	});
+
+	test("normalize keeps valid task models only", () => {
+		const settings = normalizeSettings({
+			providers: [],
+			taskModels: { create: "ollama:qwen3:4b", edit: "nocolon", review: 3, other: "ollama:x" },
+		});
+
+		expect(settings.taskModels).toEqual({ create: "ollama:qwen3:4b" });
+		expect(normalizeSettings({ providers: [], taskModels: "x" }).taskModels).toBeUndefined();
+	});
+
 	test("a Gemini CLI provider becomes Antigravity CLI and loses its Gemini models", () => {
 		const settings = normalizeSettings({
 			providers: [

@@ -1,5 +1,7 @@
-import type { GenerationEvent, GenerationRequest, ScreenMeta } from "../../shared/ai/contract";
-import type { ProviderStatus } from "../../shared/ai/settings";
+import type { GenerationEvent, GenerationRequest, ScreenMeta, Usage } from "../../shared/ai/contract";
+import { totalUsage } from "../../shared/ai/usage";
+import { createRunParts, variationPart, variationPartName, type RunParts } from "../../shared/ai/run-parts";
+import type { ProviderSettings, ProviderStatus } from "../../shared/ai/settings";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
 import {
 	clampVariations,
@@ -22,6 +24,7 @@ import type {
 	GenerationEventMessage,
 	GenerationFailure,
 	ProjectFiles,
+	UnfinishedPart,
 } from "../../shared/types";
 import { INTERVIEW_QUESTIONS, productFromAnswers } from "./interview";
 
@@ -34,6 +37,7 @@ type BrowserGenerator = {
 		K in
 			| "generate"
 			| "stopGeneration"
+			| "stopGenerationPart"
 			| "listProviders"
 			| "addProvider"
 			| "updateProvider"
@@ -41,6 +45,7 @@ type BrowserGenerator = {
 			| "testProvider"
 			| "setDefaultModel"
 			| "setFastModel"
+			| "setTaskModel"
 			| "improvePrompt"
 	]: Handler<K>;
 };
@@ -56,7 +61,7 @@ const MOCK_STATUS: ProviderStatus = {
 	models: [{ id: "mock", label: "Mock (dev)" }],
 };
 
-type VariantRun = VariantOutput & { reply: string };
+type VariantRun = VariantOutput & { reply: string; usage?: Usage };
 
 class MockGenerationError extends Error {
 	readonly failure: GenerationFailure;
@@ -122,6 +127,7 @@ async function planned(
 	files: ProjectFiles,
 	context: ContextFileName[],
 	signal: AbortSignal,
+	parts: RunParts,
 	emit: (message: GenerationEventMessage) => void,
 ): Promise<GenerateResult> {
 	if (!import.meta.env.DEV) throw new Error("The mock provider is only available in development.");
@@ -132,7 +138,9 @@ async function planned(
 	]);
 
 	const provider = createMockProvider();
-	const send = (event: GenerationEvent, attempt = 1) => emit({ generationId: params.generationId, attempt, event });
+
+	const send = (event: GenerationEvent, attempt = 1, part?: { id: string; name: string }) =>
+		emit({ generationId: params.generationId, attempt, part, event });
 
 	try {
 		if (params.task === "plan") {
@@ -166,6 +174,7 @@ async function planned(
 			plan: params.plan ?? { screens: [], components: [], links: [] },
 			projectFiles: files,
 			signal,
+			parts,
 			onEvent: send,
 		});
 
@@ -243,12 +252,14 @@ export function createBrowserGenerator(
 	readFiles: (path: string) => ProjectFiles,
 ): BrowserGenerator {
 	const running = new Map<string, AbortController>();
+	const parallel = new Map<string, RunParts>();
 	let fastModel: string | undefined;
+	let taskModels: ProviderSettings["taskModels"];
 
 	return {
 		async listProviders() {
 			return {
-				settings: { version: 1, providers: [], defaultModel: "mock:mock", fastModel },
+				settings: { version: 1, providers: [], defaultModel: "mock:mock", fastModel, taskModels },
 				statuses: import.meta.env.DEV ? [MOCK_STATUS] : [],
 				keyStorage: { ok: false, message: "API keys need the Rabisco desktop app." },
 			};
@@ -266,6 +277,15 @@ export function createBrowserGenerator(
 		},
 		async setFastModel({ model }) {
 			fastModel = model ?? undefined;
+
+			return { ok: true };
+		},
+		async setTaskModel({ task, model }) {
+			const next = { ...taskModels };
+
+			if (model) next[task] = model;
+			else delete next[task];
+			taskModels = next;
 
 			return { ok: true };
 		},
@@ -316,6 +336,11 @@ export function createBrowserGenerator(
 
 			return { ok: true };
 		},
+		async stopGenerationPart({ generationId, part }) {
+			parallel.get(generationId)?.stop(part);
+
+			return { ok: true };
+		},
 		async generate(params) {
 			const task = params.task ?? "create";
 
@@ -359,13 +384,16 @@ export function createBrowserGenerator(
 			);
 
 			const controller = new AbortController();
+			const parts = createRunParts(controller.signal);
 			running.set(params.generationId, controller);
+			parallel.set(params.generationId, parts);
 
 			if (task === "plan" || (task === "create" && params.plan && clampVariations(params.variations) === 1)) {
 				try {
-					return await planned(params, files, context, controller.signal, emit);
+					return await planned(params, files, context, controller.signal, parts, emit);
 				} finally {
 					running.delete(params.generationId);
+					parallel.delete(params.generationId);
 				}
 			}
 
@@ -417,23 +445,27 @@ export function createBrowserGenerator(
 
 				const written = new Map<string, string>();
 				const screens: Record<string, ScreenMeta | undefined> = {};
+				let usage: Usage | undefined;
+				const part = { id: variationPart(variant), name: variationPartName(variant) };
+				const signal = multi ? parts.signal(part.id) : controller.signal;
 				let reply = "";
 
 				const events =
 					task === "context" && !(import.meta.env.DEV && params.targets?.[0] === "DESIGN.md")
 						? contextEvents(params)
-						: await mockEvents(request, controller.signal);
+						: await mockEvents(request, signal);
 
 				for await (const raw of events) {
 					for (const event of renamer.transform(raw)) {
 						const message: GenerationEventMessage = { generationId: params.generationId, attempt: 1, event };
 
-						if (multi) message.variant = variant;
+						if (multi) Object.assign(message, { variant, part });
 						emit(message);
 
 						if (event.type === "file.start" && event.kind === "screen") screens[event.path] = event.screen;
 						else if (event.type === "file.end") written.set(event.path, event.content);
 						else if (event.type === "message.delta") reply += event.text;
+						else if (event.type === "done") usage = event.usage;
 						else if (event.type === "error")
 							throw new MockGenerationError({
 								code: event.code,
@@ -446,6 +478,7 @@ export function createBrowserGenerator(
 				return {
 					variant,
 					reply,
+					usage,
 					screens,
 					renames: renamer.renames,
 					changes: [...written].map(([path, content]) => ({ path, content })),
@@ -464,7 +497,7 @@ export function createBrowserGenerator(
 				if (!done.length && first?.status === "rejected") return { ok: false, error: failureOf(first.reason) };
 
 				if (!multi) {
-					const { changes, screens, reply } = done[0]!;
+					const { changes, screens, reply, usage } = done[0]!;
 					const created = changes.filter((c) => !(c.path in files)).map((c) => c.path);
 
 					return {
@@ -473,6 +506,7 @@ export function createBrowserGenerator(
 						frames: framesForNewScreens(created, screens, params.device),
 						reply,
 						problems: [],
+						usage,
 						context,
 					};
 				}
@@ -485,13 +519,42 @@ export function createBrowserGenerator(
 				});
 
 				const lead = done.find((d) => d.variant === combined.primary) ?? done[0]!;
-				const note = variationsNote(done.length, settled.length - done.length, combined.dropped.length);
-				const reply = [lead.reply, note].filter(Boolean).join("\n\n");
-				const frames = vary ? namedFrames(combined.frames, done, params.names) : combined.frames;
 
-				return { ok: true, changes: combined.changes, frames, reply, problems: [], context };
+				const unfinished = variants.flatMap((variant, index): UnfinishedPart[] =>
+					settled[index]?.status === "rejected"
+						? [
+								{
+									part: variationPart(variant),
+									name: variationPartName(variant),
+									stopped: parts.stopped(variationPart(variant)),
+								},
+							]
+						: [],
+				);
+
+				const stopped = unfinished.filter((part) => part.stopped).length;
+				const note = variationsNote(done.length, unfinished.length - stopped, combined.dropped.length, stopped);
+				const reply = [lead.reply, note].filter(Boolean).join("\n\n");
+
+				const frames = vary ? namedFrames(combined.frames, done, params.names) : combined.frames;
+				const usage = totalUsage(done.map((run) => run.usage));
+
+				const result: GenerateResult = {
+					ok: true,
+					changes: combined.changes,
+					frames,
+					reply,
+					problems: [],
+					usage,
+					context,
+				};
+
+				if (unfinished.length) result.unfinished = unfinished;
+
+				return result;
 			} finally {
 				running.delete(params.generationId);
+				parallel.delete(params.generationId);
 			}
 		},
 	};

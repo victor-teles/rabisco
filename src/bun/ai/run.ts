@@ -23,6 +23,9 @@ import { isComponentFile, isScreenFile } from "../../shared/project";
 import type { ContextFileName, Device, FileChange, ProjectFiles } from "../../shared/types";
 import { DENIED_STATUS, EDIT_MISMATCH_STATUS } from "./protocol";
 import { validateFiles, type ValidateOptions } from "./validate";
+import { addUsage } from "../../shared/ai/usage";
+
+export { addUsage };
 
 /** The first attempt failed, or the run was aborted. */
 export class GenerationError extends Error {
@@ -156,19 +159,6 @@ async function collect(
 	if (signal.aborted || attempt.error?.code === "aborted") throw abortedError();
 
 	return attempt;
-}
-
-export function addUsage(a: Usage | undefined, b: Usage | undefined): Usage | undefined {
-	if (!a) return b;
-
-	if (!b) return a;
-	const sum = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0));
-
-	return {
-		inputTokens: sum(a.inputTokens, b.inputTokens),
-		outputTokens: sum(a.outputTokens, b.outputTokens),
-		costUsd: sum(a.costUsd, b.costUsd),
-	};
 }
 
 const toFiles = (written: Map<string, string>): ProjectFile[] =>

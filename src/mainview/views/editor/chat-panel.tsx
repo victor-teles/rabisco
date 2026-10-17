@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Crosshair, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, X } from "lucide-react";
+import { Crosshair, ListPlus, MessageSquareText, Pencil, RotateCcw, RotateCw, Sparkles, Square, X } from "lucide-react";
 import {
 	DesignComposer,
 	DeviceToggle,
@@ -64,11 +64,12 @@ import {
 	ToolCallTrigger,
 } from "@/components/ui/uai/tool-call";
 import { readStoredDraft, useComposerDraft } from "@/hooks/use-composer-draft";
+import { retryLabel } from "@/lib/generation-session";
 import { planModeHint, usePlanMode } from "@/hooks/use-plan-mode";
 import { openSettings, useProviders } from "@/hooks/use-providers";
 import { useAssetImage } from "@/hooks/use-asset-image";
 import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
-import type { Generation, WritingFile } from "@/hooks/use-generation";
+import type { Generation, QueuedPrompt, RunPart, WritingFile } from "@/hooks/use-generation";
 import type { Interview } from "@/hooks/use-interview";
 import { type ChatCommand, parseCommand } from "@/lib/chat-commands";
 import { draftIdOf } from "@/lib/composer-drafts";
@@ -77,8 +78,16 @@ import { cn } from "@/lib/utils";
 import type { Attachment, PromptDocument } from "../../../shared/ai/contract";
 import { isDocumentFile } from "../../../shared/ai/documents";
 import { PROVIDER_TYPES } from "../../../shared/ai/settings";
+import { usageLabel } from "../../../shared/ai/usage";
 import type { StyleId } from "../../../shared/context/styles";
-import type { CanvasImage, ChatMessage, ContextFileName, Device, GenerationFailure } from "../../../shared/types";
+import type {
+	CanvasImage,
+	ChatMessage,
+	ContextFileName,
+	Device,
+	GenerationFailure,
+	UnfinishedPart,
+} from "../../../shared/types";
 import { ChangeSummaryCard, type DesignNoteActions } from "./change-summary";
 
 /** One file the generation writes, as it streams; open it to read the code so far */
@@ -127,7 +136,15 @@ type ChatPanelProps = {
 	heldPrompt?: HeldPrompt | null;
 	onHeldPromptSent?: () => void;
 	onStop: () => void;
+	/** Stops one screen or variation of a parallel run */
+	onStopPart?: (part: string) => void;
 	onRetry: () => void;
+	/** Stopped or failed parts of reply `messageId`, each offered again */
+	unfinished?: { messageId: string; parts: UnfinishedPart[] } | null;
+	onRetryPart?: (part: string) => void;
+	/** Prompts sent while a generation runs, in the order they go out */
+	queue?: QueuedPrompt[];
+	onDequeue?: (id: string) => void;
 	/** Runs the last request again; `null` when there is none */
 	onRegenerate?: (() => void) | null;
 	onDismissFailure: () => void;
@@ -165,6 +182,8 @@ type ChatPanelProps = {
 
 const NO_IMAGES: CanvasImage[] = [];
 
+const NO_QUEUE: QueuedPrompt[] = [];
+
 const TASK_TITLE = {
 	create: "Designing",
 	edit: "Editing",
@@ -192,7 +211,12 @@ export const ChatPanel = memo(function ChatPanel({
 	heldPrompt,
 	onHeldPromptSent,
 	onStop,
+	onStopPart,
 	onRetry,
+	unfinished = null,
+	onRetryPart,
+	queue = NO_QUEUE,
+	onDequeue,
 	onRegenerate,
 	undoableRun = null,
 	onDismissFailure,
@@ -384,6 +408,8 @@ export const ChatPanel = memo(function ChatPanel({
 						lastReply={lastReply}
 						undoableRun={undoableRun}
 						noteActions={noteActions}
+						unfinished={generation ? null : unfinished}
+						onRetryPart={onRetryPart}
 					/>
 
 					{planCard}
@@ -404,6 +430,9 @@ export const ChatPanel = memo(function ChatPanel({
 									))}
 								</ThinkingContent>
 							</Thinking>
+							{generation.parts && Object.keys(generation.parts).length > 1 ? (
+								<RunParts parts={generation.parts} onStop={onStopPart} />
+							) : null}
 							{files.length ? (
 								<div className="grid gap-1.5">
 									{files.map(([path, file]) => (
@@ -453,6 +482,7 @@ export const ChatPanel = memo(function ChatPanel({
 						Set up a model and this prompt will be sent.
 					</p>
 				) : null}
+				{queue.length && !interview ? <QueuedPrompts queue={queue} onRemove={onDequeue} /> : null}
 				{moodboard.length && !interview ? <MoodboardStrip images={moodboard} first={attachedCount + 1} /> : null}
 				<DesignComposer
 					// Remount so the held or edited prompt's images fill the composer
@@ -463,6 +493,7 @@ export const ChatPanel = memo(function ChatPanel({
 					onFilesChange={onFilesChange}
 					busy={generation !== null}
 					onStop={onStop}
+					queue={!interview}
 					device={device}
 					onDeviceChange={onDeviceChange}
 					onSubmit={submit}
@@ -519,6 +550,87 @@ function attachmentFile(image: Attachment) {
 
 function documentFile(document: PromptDocument) {
 	return new File([document.content], document.name, { type: "text/markdown" });
+}
+
+const PART_STATE: Record<RunPart["state"], string> = { running: "Writing…", done: "Done", stopped: "Stopped" };
+
+/** Each screen or variation of a parallel run, stoppable on its own */
+function RunParts({ parts, onStop }: { parts: Record<string, RunPart>; onStop?: (part: string) => void }) {
+	return (
+		<ul className="grid gap-1" aria-label="Parallel runs">
+			{Object.entries(parts).map(([id, part]) => (
+				<li key={id} className="flex h-7 items-center gap-2 rounded-md border bg-muted/40 pr-0.5 pl-2.5 text-xs">
+					<span className="min-w-0 flex-1 truncate">{part.name}</span>
+					<span className="shrink-0 text-subtle-foreground" aria-live="polite">
+						{PART_STATE[part.state]}
+					</span>
+					{onStop && part.state === "running" ? (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							className="text-muted-foreground"
+							aria-label={`Stop ${part.name}`}
+							title="Stop this one; the others go on"
+							onClick={() => onStop(id)}
+						>
+							<Square className="size-2.5 fill-current" />
+						</Button>
+					) : (
+						<span className="size-6 shrink-0" aria-hidden />
+					)}
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function QueuedPrompts({ queue, onRemove }: { queue: QueuedPrompt[]; onRemove?: (id: string) => void }) {
+	return (
+		<ul className="mb-1.5 grid gap-1" aria-label="Queued prompts">
+			{queue.map((queued, index) => (
+				<li
+					key={queued.id}
+					className="flex h-7 items-center gap-1.5 rounded-md border bg-muted/40 pr-0.5 pl-2 text-xs text-muted-foreground"
+				>
+					<ListPlus className="size-3.5 shrink-0 text-subtle-foreground" strokeWidth={1.8} aria-hidden />
+					<span className="shrink-0 text-subtle-foreground">{index === 0 ? "Next" : "Then"}</span>
+					<span className="min-w-0 flex-1 truncate text-foreground" title={queued.prompt}>
+						{queued.prompt}
+					</span>
+					{onRemove ? (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label={`Remove “${queued.prompt}” from the queue`}
+							onClick={() => onRemove(queued.id)}
+						>
+							<X />
+						</Button>
+					) : null}
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function UnfinishedParts({ parts, onRetry }: { parts: UnfinishedPart[]; onRetry?: (part: string) => void }) {
+	return (
+		<div className="flex flex-wrap items-center gap-1.5 pl-9">
+			{parts.map((part) => (
+				<Button
+					key={part.part}
+					size="sm"
+					variant="secondary"
+					className="h-7 rounded-full px-3 text-[12.5px]"
+					onClick={() => onRetry?.(part.part)}
+					disabled={!onRetry}
+				>
+					<RotateCw className="size-3" aria-hidden="true" />
+					{retryLabel(part)}
+				</Button>
+			))}
+		</div>
+	);
 }
 
 function DraftBar({ onCancel }: { onCancel: () => void }) {
@@ -797,6 +909,8 @@ const MessageList = memo(function MessageList({
 	lastReply,
 	undoableRun,
 	noteActions,
+	unfinished,
+	onRetryPart,
 }: {
 	messages: ChatMessage[];
 	onOpenContext: ChatPanelProps["onOpenContext"];
@@ -808,10 +922,13 @@ const MessageList = memo(function MessageList({
 	lastReply: string | undefined;
 	undoableRun: { id: string; run: () => void } | null;
 	noteActions: DesignNoteActions | null;
+	unfinished: ChatPanelProps["unfinished"];
+	onRetryPart: ChatPanelProps["onRetryPart"];
 }) {
 	return messages.map((message) => {
 		const assistant = message.role === "assistant";
 		const summary = message.id === lastReply ? message.summary : undefined;
+		const usage = assistant ? usageLabel(message.usage) : "";
 
 		return (
 			<Fragment key={message.id}>
@@ -826,6 +943,7 @@ const MessageList = memo(function MessageList({
 						{assistant && message.context?.length ? (
 							<ContextLine files={message.context} onOpen={onOpenContext} />
 						) : null}
+						{usage ? <p className="text-xs text-subtle-foreground tabular-nums">{usage}</p> : null}
 						<MessageActions className="opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
 							<MessageCopy text={message.content} />
 							{!assistant && onEdit ? (
@@ -848,6 +966,9 @@ const MessageList = memo(function MessageList({
 						onUndo={undoableRun?.id === message.id ? undoableRun.run : undefined}
 						noteActions={noteActions}
 					/>
+				) : null}
+				{unfinished?.messageId === message.id ? (
+					<UnfinishedParts parts={unfinished.parts} onRetry={onRetryPart} />
 				) : null}
 			</Fragment>
 		);

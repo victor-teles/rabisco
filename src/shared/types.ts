@@ -128,6 +128,8 @@ export type ChatMessage = {
 	documents?: PromptDocument[];
 	/** Assistant replies to a generation that changed files or left problems. Missing in older chats */
 	summary?: ChangeSummary;
+	/** Assistant replies: what every model call of the request used, summed */
+	usage?: Usage;
 };
 
 /** A folder; its absolute path is its id. */
@@ -245,8 +247,13 @@ export type GenerateResult =
 			/** `plan` task: the plan, fitted to the project; nothing was written */
 			plan?: GenerationPlan;
 			withoutImages?: true;
+			/** Runs of a parallel generation that were stopped or failed, so each can run again on its own */
+			unfinished?: UnfinishedPart[];
 	  }
 	| { ok: false; error: GenerationFailure };
+
+/** `part` is a planned screen's path or `variation-<n>` (`src/shared/ai/run-parts.ts`) */
+export type UnfinishedPart = { part: string; name: string; stopped: boolean };
 
 export type ImprovePromptParams = {
 	generationId: string;
@@ -264,5 +271,7 @@ export type GenerationEventMessage = {
 	attempt: number;
 	/** 0-based; paths are already final names. Missing for single generations. */
 	variant?: number;
+	/** The run of a parallel generation this comes from; `stopGenerationPart` stops it alone */
+	part?: { id: string; name: string };
 	event: GenerationEvent;
 };

@@ -15,11 +15,13 @@ import type {
 	Problem,
 	PromptDocument,
 	ScreenMeta,
+	Usage,
 } from "../../shared/ai/contract";
 import { resolveFocused } from "../../shared/ai/focus";
 import { focusNotes } from "../../shared/ai/focus-guard";
 import { nextScreenLink } from "../../shared/ai/follow-ups";
 import { planRevisionPrompt, plansFirst, revisedPrompt } from "../../shared/ai/plan";
+import { addUsage } from "../../shared/ai/usage";
 import { changeSummaryOf } from "../../shared/change-summary";
 import { setResolved } from "../../shared/comments";
 import type { AppliedTheme } from "../../shared/context/theme";
@@ -58,10 +60,14 @@ import type {
 	GenerationEventMessage,
 	GenerationFailure,
 	ProjectFiles,
+	UnfinishedPart,
 } from "../../shared/types";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
 
 export type WritingFile = { kind: FileKind; screen?: ScreenMeta; text: string; done: boolean };
+
+/** One screen or variation of a parallel run */
+export type RunPart = { name: string; state: "running" | "done" | "stopped" };
 
 export type Generation = {
 	id: string;
@@ -73,6 +79,8 @@ export type Generation = {
 	attempt: number;
 	writing: Record<string, WritingFile>;
 	polishing?: boolean;
+	/** By part id, in the order they started */
+	parts?: Record<string, RunPart>;
 };
 
 export type GenerationDrafts = {
@@ -99,6 +107,10 @@ export type RunOptions = {
 	plan?: GenerationPlan;
 	autoDesign?: boolean;
 	recreate?: { image: CanvasImage; device: Device; reference: Attachment };
+	/** Already spent on this request (reading its plan), added to its reply's usage */
+	spent?: Usage;
+	/** Runs one unfinished part of the latest reply again; the others stay offered */
+	part?: string;
 	prompts?: string[];
 	names?: string[];
 	each?: boolean;
@@ -111,7 +123,10 @@ export type RunOptions = {
 export type PlanAdditions = { attachments: Attachment[]; documents: PromptDocument[] };
 
 /** A plan waiting in the chat for the user to review it; its request runs when they accept it */
-export type PendingPlan = { id: string; plan: GenerationPlan; prompt: string; options: RunOptions };
+export type PendingPlan = { id: string; plan: GenerationPlan; prompt: string; options: RunOptions; usage?: Usage };
+
+/** A prompt sent while a generation runs; it goes out when the run settles */
+export type QueuedPrompt = { id: string; prompt: string; start: () => void };
 
 export type ThemeReading =
 	| { ok: true; theme: AppliedTheme }
@@ -126,6 +141,9 @@ export type GenerationView = {
 	/** The reply whose result is an undo step, so its summary can offer Undo while that step is still the latest */
 	lastRun: { messageId: string; step: Snapshot } | null;
 	regenerable: boolean;
+	/** The latest reply's screens or variations that were stopped or failed, each offered again on its own */
+	unfinished: { messageId: string; parts: UnfinishedPart[] } | null;
+	queue: QueuedPrompt[];
 };
 
 export type Outcome = "ready" | "failed" | "plan";
@@ -134,7 +152,7 @@ export type RenderFailure = { entry: string; problem: Problem };
 
 export type AttachCallbacks = { onPlaced: (frames: Frame[]) => void; onResolved: (ids: string[]) => void };
 
-export type GenerationApi = Pick<RabiscoApi, "generate" | "stopGeneration">;
+export type GenerationApi = Pick<RabiscoApi, "generate" | "stopGeneration" | "stopGenerationPart">;
 
 export type ControllerEnv = {
 	api: GenerationApi;
@@ -166,7 +184,13 @@ type Polishing = {
 	focus?: ElementFocus[];
 };
 
-type PolishOutcome = { writes: FileChange[]; reply: string; withoutImages: boolean; failed: string | null };
+type PolishOutcome = {
+	writes: FileChange[];
+	reply: string;
+	withoutImages: boolean;
+	failed: string | null;
+	usage?: Usage;
+};
 
 type RunResult = { applied: boolean; outcome: Outcome | null };
 
@@ -186,11 +210,22 @@ export const polishFailedNote = (why: string) =>
 export const planFailedNote = (why: string) =>
 	`Couldn't plan this first (${why.replace(/\.$/, "")}), so it ran in one go.`;
 
-type PlanReading = { plan: GenerationPlan } | { stopped: true } | { failed: string };
+type PlanReading = { plan: GenerationPlan; usage?: Usage } | { stopped: true } | { failed: string };
+
+/** The request behind the latest reply's unfinished parts, to run one of them again */
+export type UnfinishedRun = { prompt: string; options: RunOptions; changes: FileChange[] };
 
 const NO_THEME: AppliedTheme = { light: {}, dark: {} };
 
-const IDLE: GenerationView = { generation: null, failure: null, pendingPlan: null, lastRun: null, regenerable: false };
+const IDLE: GenerationView = {
+	generation: null,
+	failure: null,
+	pendingPlan: null,
+	lastRun: null,
+	regenerable: false,
+	unfinished: null,
+	queue: [],
+};
 
 const SAVE_FAILED: GenerationFailure = {
 	code: "unknown",
@@ -229,6 +264,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 	let stopped: string | null = null;
 	let active = 0;
 	let callbacks: AttachCallbacks | null = null;
+	let unfinishedRun: UnfinishedRun | null = null;
 	let disposed = false;
 	const listeners = new Set<() => void>();
 
@@ -259,9 +295,11 @@ export function createGenerationController(session: ProjectSession, env: Control
 		if (view.generation?.id === generationId) set({ generation: null });
 	};
 
-	const receive = ({ generationId, attempt, variant, event }: GenerationEventMessage) => {
+	const receive = ({ generationId, attempt, variant, part, event }: GenerationEventMessage) => {
 		if (!live || live.id !== generationId) return;
 		live = applyEvent(live, attempt, event, variant);
+
+		if (part) live = withPart(live, part, event);
 
 		cancelFlush ??= env.schedule(() => {
 			cancelFlush = null;
@@ -286,17 +324,22 @@ export function createGenerationController(session: ProjectSession, env: Control
 		}
 	}
 
-	const say = (chatId: string, content: string) => session.addMessages([message("assistant", content)], chatId);
+	const say = (chatId: string, content: string, usage?: Usage) => {
+		const reply = message("assistant", content);
+
+		if (usage) reply.usage = usage;
+		session.addMessages([reply], chatId);
+	};
 
 	async function writeAutoDesign(
 		prompt: string,
 		options: RunOptions,
 		model: string,
 		chatId: string,
-	): Promise<"stopped" | null> {
+	): Promise<{ stopped: boolean; usage?: Usage }> {
 		const current = session.state();
 
-		if (!current) return null;
+		if (!current) return { stopped: false };
 		const generationId = crypto.randomUUID();
 
 		show({
@@ -311,6 +354,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 		let design: string | null = null;
 		let why = "";
+		let usage: Usage | undefined;
 
 		try {
 			const result = await generate({
@@ -325,7 +369,8 @@ export function createGenerationController(session: ProjectSession, env: Control
 				documents: options.documents,
 			});
 
-			if (!result.ok && result.error.code === "aborted") return "stopped";
+			if (!result.ok && result.error.code === "aborted") return { stopped: true };
+			usage = result.ok ? result.usage : undefined;
 			design = result.ok ? autoDesignOf(result.changes.find((c) => c.path === "DESIGN.md")?.content) : null;
 
 			if (!design) why = result.ok ? "it came back without tokens" : result.error.message;
@@ -345,7 +390,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				: `Couldn't write DESIGN.md from your prompt (${why.replace(/\.$/, "")}), so the project starts from the ${fallback} style.`,
 		);
 
-		return null;
+		return { stopped: false, usage };
 	}
 
 	/** The plan step of a create; when it fails, the request runs in one go instead (no dead end) */
@@ -370,7 +415,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				command: options.command,
 			});
 
-			if (result.ok) return result.plan ? { plan: result.plan } : { failed: "no plan came back" };
+			if (result.ok) return result.plan ? { plan: result.plan, usage: result.usage } : { failed: "no plan came back" };
 
 			return result.error.code === "aborted" ? { stopped: true } : { failed: result.error.message };
 		} catch (reason) {
@@ -433,6 +478,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			reply: result.ok ? result.reply : "",
 			withoutImages: result.ok && result.withoutImages === true,
 			failed,
+			usage: result.ok ? result.usage : undefined,
 		};
 
 		if (!latest || !writes.length) return outcome;
@@ -450,6 +496,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 		let checks: ScreenFindings[] = [];
 		let polished: FileChange[] = [];
 		let note = "";
+		let usage = polishing.done.usage;
 
 		try {
 			const mode = env.polishMode();
@@ -463,9 +510,12 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			if ((request.problems.length || request.review) && stopped !== polishing.id) {
 				let outcome = await polishRun(polishing, request);
+				usage = addUsage(usage, outcome.usage);
 
-				if (outcome.failed && request.review && request.problems.length && stopped !== polishing.id)
+				if (outcome.failed && request.review && request.problems.length && stopped !== polishing.id) {
 					outcome = { ...(await polishRun(polishing, polishRequest(request.problems))), withoutImages: true };
+					usage = addUsage(usage, outcome.usage);
+				}
 
 				polished = outcome.writes;
 				const reviewed = request.review && !outcome.withoutImages;
@@ -504,6 +554,8 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			const done: ChatMessage = { ...polishing.done, content: [content, note].filter(Boolean).join("\n\n") };
 
+			if (usage) done.usage = usage;
+
 			if (summary) done.summary = notes.length ? { ...summary, design: notes } : summary;
 
 			session.addMessages([done], polishing.chatId);
@@ -521,7 +573,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 	}
 
 	async function runSteps(prompt: string, request: RunOptions, model: string): Promise<RunResult> {
-		let options = request;
+		let { spent, ...options } = request;
 		const current = session.state();
 		const nothing: RunResult = { applied: false, outcome: null };
 
@@ -537,16 +589,24 @@ export function createGenerationController(session: ProjectSession, env: Control
 		}
 
 		// A new request replaces a plan still waiting for review
-		set({ failure: null, pendingPlan: null, regenerable: view.regenerable || !options.repair });
+		set({
+			failure: null,
+			pendingPlan: null,
+			unfinished: options.part ? view.unfinished : null,
+			regenerable: view.regenerable || !options.repair,
+		});
 
 		if (options.autoDesign) {
 			options = { ...options, autoDesign: undefined };
+			const design = await writeAutoDesign(prompt, options, model, chatId);
 
-			if ((await writeAutoDesign(prompt, options, model, chatId)) === "stopped") {
+			if (design.stopped) {
 				set({ failure: STOPPED });
 
 				return nothing;
 			}
+
+			spent = addUsage(spent, design.usage);
 
 			last = { prompt, options };
 		}
@@ -570,7 +630,9 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			if ("failed" in plan) say(chatId, planFailedNote(plan.failed));
 			else if (!disposed) {
-				set({ pendingPlan: { id: generationId, plan: plan.plan, prompt, options } });
+				set({
+					pendingPlan: { id: generationId, plan: plan.plan, prompt, options, usage: addUsage(spent, plan.usage) },
+				});
 
 				return { applied: false, outcome: "plan" };
 			}
@@ -676,6 +738,14 @@ export function createGenerationController(session: ProjectSession, env: Control
 
 			const done: ChatMessage = { ...message("assistant", reply + leftOut), context: result.context ?? [] };
 			const summary = changeSummaryOf(latest.files, result.changes, result.problems);
+			const usage = addUsage(spent, result.usage);
+
+			if (usage) done.usage = usage;
+
+			if (result.unfinished?.length) {
+				unfinishedRun = { prompt, options, changes: result.changes };
+				set({ unfinished: { messageId: done.id, parts: result.unfinished } });
+			}
 
 			if (step && screens.length) {
 				polishing = {
@@ -767,7 +837,25 @@ export function createGenerationController(session: ProjectSession, env: Control
 			await settle(result?.outcome ?? null);
 			active--;
 			emit();
+			drain();
 		}
+	}
+
+	function enqueue(prompt: string, start: () => void) {
+		set({ queue: [...view.queue, { id: crypto.randomUUID(), prompt, start }] });
+	}
+
+	function dequeue(id: string) {
+		set({ queue: view.queue.filter((queued) => queued.id !== id) });
+	}
+
+	/** The next queued prompt, once nothing runs and no plan waits for review */
+	function drain() {
+		const [next, ...rest] = view.queue;
+
+		if (!next || live || active > 0 || view.pendingPlan || disposed) return;
+		set({ queue: rest });
+		next.start();
 	}
 
 	async function run(prompt: string, options: RunOptions, model: string): Promise<boolean> {
@@ -785,9 +873,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 		if (!pending || live || !chatId) return;
 		set({ pendingPlan: null });
 
-		if (!plan.screens.length) return say(chatId, "No screens were left in the plan, so nothing was made.");
+		if (!plan.screens.length)
+			return say(chatId, "No screens were left in the plan, so nothing was made.", pending.usage);
 
-		void run(pending.prompt, { ...pending.options, plan }, model);
+		void run(pending.prompt, { ...pending.options, plan, spent: pending.usage }, model);
 	}
 
 	async function revise(pending: PendingPlan, feedback: string, added: PlanAdditions, model: string) {
@@ -824,6 +913,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 				plan: plan.plan,
 				prompt: revisedPrompt(pending.prompt, feedback),
 				options,
+				usage: addUsage(pending.usage, plan.usage),
 			},
 		});
 
@@ -839,9 +929,12 @@ export function createGenerationController(session: ProjectSession, env: Control
 	function cancelPlan() {
 		const chatId = session.state()?.chatId;
 
-		if (!view.pendingPlan || !chatId) return;
+		const pending = view.pendingPlan;
+
+		if (!pending || !chatId) return;
 		set({ pendingPlan: null, failure: null });
-		say(chatId, "Cancelled the plan. Nothing was changed.");
+		say(chatId, "Cancelled the plan. Nothing was changed.", pending.usage);
+		drain();
 	}
 
 	/** Reads DESIGN.md's theme with AI; changes nothing, the caller applies the result. */
@@ -880,6 +973,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 			return { ok: false, reason: "failed", error: { code: "unknown", message: String(reason), retryable: true } };
 		} finally {
 			clearLive(generationId);
+			drain();
 		}
 	}
 
@@ -889,6 +983,28 @@ export function createGenerationController(session: ProjectSession, env: Control
 		if (!id) return;
 		stopped = id;
 		void env.api.stopGeneration({ generationId: id });
+	}
+
+	/** Stops one screen or variation; the run goes on with the others */
+	function stopPart(part: string) {
+		const current = live;
+		const shown = current?.parts?.[part];
+
+		if (!current || shown?.state !== "running") return;
+		show({ ...current, parts: { ...current.parts, [part]: { ...shown, state: "stopped" } } });
+		void env.api.stopGenerationPart({ generationId: current.id, part });
+	}
+
+	function retryPart(part: string, model: string) {
+		const shown = view.unfinished;
+		const missed = shown?.parts.find((each) => each.part === part);
+		const options = unfinishedRun && retryOptions(unfinishedRun, part);
+
+		if (!shown || !missed || !options || !unfinishedRun || live) return;
+		const rest = shown.parts.filter((each) => each !== missed);
+		set({ unfinished: rest.length ? { ...shown, parts: rest } : null });
+		session.addMessages([message("user", retryLabel(missed))]);
+		void run(unfinishedRun.prompt, options, model);
 	}
 
 	function retry(model: string) {
@@ -922,6 +1038,7 @@ export function createGenerationController(session: ProjectSession, env: Control
 		stop();
 		disposed = true;
 		cancelScheduled();
+		set({ queue: [] });
 	}
 
 	return {
@@ -942,6 +1059,10 @@ export function createGenerationController(session: ProjectSession, env: Control
 		revisePlan,
 		cancelPlan,
 		stop,
+		stopPart,
+		retryPart,
+		enqueue,
+		dequeue,
 		retry,
 		regenerate,
 		undoRun,
@@ -1010,6 +1131,47 @@ export function applyEvent(
 		default:
 			return generation;
 	}
+}
+
+function withPart(generation: Generation, part: { id: string; name: string }, event: GenerationEvent): Generation {
+	const known = generation.parts?.[part.id];
+	const state = event.type === "done" || event.type === "error" ? "done" : "running";
+
+	if (known?.state === "stopped" || known?.state === state) return generation;
+
+	return { ...generation, parts: { ...generation.parts, [part.id]: { name: part.name, state } } };
+}
+
+export const retryLabel = (part: UnfinishedPart) => `${part.stopped ? "Write" : "Try"} ${part.name} again`;
+
+/** A planned screen runs from the same plan alone; a variation is one more of the screen the run made */
+export function retryOptions(run: UnfinishedRun, part: string): RunOptions | null {
+	const { options } = run;
+
+	if (options.plan) {
+		const screen = options.plan.screens.find((each) => each.path === part);
+
+		return screen ? { ...options, plan: { ...options.plan, screens: [screen] }, part } : null;
+	}
+
+	const variant = Number(/^variation-(\d+)$/.exec(part)?.[1]);
+
+	const target =
+		options.task === "vary"
+			? options.targets?.[0]
+			: run.changes.find((change) => change.content !== null && isScreenFile(change.path) && !isAlternate(change.path))
+					?.path;
+
+	if (!target || !Number.isInteger(variant)) return null;
+	const retried: RunOptions = { task: "vary", targets: [target], variations: 1, part };
+	const prompt = options.prompts?.[variant - 1];
+	const name = options.names?.[variant - 1];
+
+	if (prompt) retried.prompts = [prompt];
+
+	if (name) retried.names = [name];
+
+	return retried;
 }
 
 export function draftsOf(writing: Record<string, WritingFile>, files: ProjectFiles, frames: Frame[], device: Device) {

@@ -259,6 +259,21 @@ describe("project files", () => {
 		expect(parseChat('\n{"id":"a","role":"assistant","content":"x","createdAt":"t"}\n{"id":1}\n[')).toHaveLength(1);
 	});
 
+	test("a reply's usage loads back, without fields that aren't counts", () => {
+		const line = JSON.stringify({
+			id: "a",
+			role: "assistant",
+			content: "x",
+			createdAt: "t",
+			usage: { inputTokens: 1200, outputTokens: "lots", costUsd: 0.02 },
+		});
+
+		expect(parseChat(line)[0]!.usage).toEqual({ inputTokens: 1200, costUsd: 0.02 });
+		expect(
+			parseChat(JSON.stringify({ id: "b", role: "user", content: "y", createdAt: "t", usage: 4 }))[0]!.usage,
+		).toBeUndefined();
+	});
+
 	test("attached images are kept in attachments/ and load back with the chat", () => {
 		const dir = createProjectFolder(tempDir(), "Pics", "mobile");
 

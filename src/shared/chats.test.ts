@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chatTitle, isChatId, newChatId, withAppended } from "./chats";
+import { chatTitle, isChatId, newChatId, projectUsage, summarizeChat, withAppended, withMoreMessages } from "./chats";
 import type { ChatMessage } from "./types";
 
 const message = (role: ChatMessage["role"], content: string, createdAt = "2026-10-07T10:00:00.000Z"): ChatMessage => ({
@@ -10,6 +10,23 @@ const message = (role: ChatMessage["role"], content: string, createdAt = "2026-1
 });
 
 describe("chats", () => {
+	test("a chat's usage is its replies', and the project's is every chat's", () => {
+		const reply = { ...message("assistant", "Done"), usage: { inputTokens: 100, outputTokens: 20, costUsd: 0.01 } };
+		const first = summarizeChat("a", [message("user", "Make a login"), reply]);
+		expect(first.usage).toEqual({ inputTokens: 100, outputTokens: 20, costUsd: 0.01 });
+		expect(summarizeChat("b", [message("user", "Hi")]).usage).toBeUndefined();
+
+		const [updated] = withMoreMessages([first], "a", [
+			{ ...message("assistant", "Again"), usage: { inputTokens: 50 } },
+		]);
+
+		expect(updated!.usage).toEqual({ inputTokens: 150, outputTokens: 20, costUsd: 0.01 });
+
+		const other = summarizeChat("c", [{ ...message("assistant", "Hey"), usage: { costUsd: 0.04 } }]);
+		expect(projectUsage([updated!, other])?.costUsd).toBeCloseTo(0.05);
+		expect(projectUsage([])).toBeUndefined();
+	});
+
 	test("ids sort by creation time and are safe file names", () => {
 		const id = newChatId(new Date("2026-10-07T14:30:12.000Z"));
 		expect(id).toMatch(/^20261007-143012-[0-9a-f]{4}$/);

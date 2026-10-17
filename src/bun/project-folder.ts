@@ -11,6 +11,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { parseDocuments } from "../shared/ai/documents";
+import { parseUsage } from "../shared/ai/usage";
 import { parseChangeSummary } from "../shared/change-summary";
 import { CHATS_DIR, isChatId, LEGACY_CHAT_FILE, newChatId, sortChats, summarizeChat } from "../shared/chats";
 import { kitFiles, type KitId } from "../shared/components/starter-kits";
@@ -258,6 +259,10 @@ export function parseChat(text: string, readAttachment?: (path: string) => strin
 			delete message.attachments;
 			delete message.documents;
 			delete message.summary;
+			delete message.usage;
+			const usage = parseUsage(objectOr(value).usage);
+
+			if (usage) message.usage = usage;
 			const summary = parseChangeSummary(objectOr(value).summary);
 
 			if (summary) message.summary = summary;

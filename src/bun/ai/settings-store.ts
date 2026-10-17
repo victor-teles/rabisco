@@ -1,8 +1,10 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import {
+	PRESET_TASKS,
 	PROVIDER_TYPES,
 	parseModelRef,
+	type PresetTask,
 	type ProviderConfig,
 	type ProviderSettings,
 	type ProviderType,
@@ -120,6 +122,16 @@ export function normalizeSettings(raw: Json): ProviderSettings {
 	const fastModel = usable(nonBlank(data.fastModel));
 
 	if (fastModel) settings.fastModel = fastModel;
+	const stored = objectOr(data.taskModels);
+	const taskModels: Partial<Record<PresetTask, string>> = {};
+
+	for (const task of PRESET_TASKS) {
+		const ref = usable(nonBlank(stored[task]));
+
+		if (ref) taskModels[task] = ref;
+	}
+
+	if (Object.keys(taskModels).length) settings.taskModels = taskModels;
 
 	return settings;
 }
@@ -264,7 +276,7 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 			});
 		},
 
-		/** Also deletes its key and clears the default and fast models when they pointed to it. */
+		/** Also deletes its key and clears the default, fast and task models that pointed to it. */
 		remove(id: string): Promise<void> {
 			return mutate(async (settings) => {
 				find(settings, id);
@@ -275,6 +287,17 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 					delete settings.defaultModel;
 
 				if (settings.fastModel && parseModelRef(settings.fastModel)?.providerId === id) delete settings.fastModel;
+
+				const taskModels = { ...settings.taskModels };
+
+				for (const task of PRESET_TASKS) {
+					const ref = taskModels[task];
+
+					if (ref && parseModelRef(ref)?.providerId === id) delete taskModels[task];
+				}
+
+				if (Object.keys(taskModels).length) settings.taskModels = taskModels;
+				else delete settings.taskModels;
 			});
 		},
 
@@ -313,6 +336,19 @@ export function createSettingsStore(options: SettingsStoreOptions) {
 				if (ref === null) delete settings.fastModel;
 				else if (!parseModelRef(ref)) throw new Error(`Invalid model: ${ref}`);
 				else settings.fastModel = ref;
+			});
+		},
+
+		setTaskModel(task: PresetTask, ref: string | null): Promise<void> {
+			return mutate((settings) => {
+				const taskModels = { ...settings.taskModels };
+
+				if (ref === null) delete taskModels[task];
+				else if (!parseModelRef(ref)) throw new Error(`Invalid model: ${ref}`);
+				else taskModels[task] = ref;
+
+				if (Object.keys(taskModels).length) settings.taskModels = taskModels;
+				else delete settings.taskModels;
 			});
 		},
 	};

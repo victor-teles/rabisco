@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/uai/command-menu";
 import { formatWhen } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { ChatSummary } from "../../../shared/chats";
+import { costLabel, tokensLabel, usageTokens } from "../../../shared/ai/usage";
+import { projectUsage, type ChatSummary } from "../../../shared/chats";
 import { NEW_CHAT_KEYS } from "./shortcuts";
 
 type Props = {
@@ -45,6 +46,7 @@ export function ChatSessions({
 
 	return (
 		<div className="flex items-center">
+			<ProjectUsage chats={chats} />
 			<Popover open={historyOpen} onOpenChange={onHistoryOpenChange}>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -128,5 +130,29 @@ export function ChatSessions({
 				</TooltipContent>
 			</Tooltip>
 		</div>
+	);
+}
+
+/** What every chat of the project used so far: the cost when the providers report it, else the tokens */
+function ProjectUsage({ chats }: { chats: ChatSummary[] }) {
+	const usage = projectUsage(chats);
+	const tokens = usageTokens(usage);
+	const cost = usage?.costUsd ?? 0;
+
+	if (!tokens && !cost) return null;
+	const detail = [tokens ? tokensLabel(tokens) : "", cost ? costLabel(cost) : ""].filter(Boolean).join(", ");
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span
+					tabIndex={0}
+					className="mr-1 rounded-sm px-1 text-[11px] whitespace-nowrap text-subtle-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-ring"
+				>
+					{cost ? costLabel(cost) : tokensLabel(tokens)}
+				</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">This project so far: {detail}</TooltipContent>
+		</Tooltip>
 	);
 }

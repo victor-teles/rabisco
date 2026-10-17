@@ -5,6 +5,7 @@ import {
 	toModelRef,
 	type KeyStorage,
 	type ModelRef,
+	type PresetTask,
 	type ProviderSettings,
 	type ProviderStatus,
 } from "../../shared/ai/settings";
@@ -121,6 +122,18 @@ export function selectFastModel(model: ModelRef | null) {
 	else delete settings.fastModel;
 	set({ settings });
 	void api.setFastModel({ model }).catch((error) => console.warn("Could not save the fast model:", error));
+}
+
+export function selectTaskModel(task: PresetTask, model: ModelRef | null) {
+	const taskModels = { ...state.settings.taskModels };
+
+	if (model) taskModels[task] = model;
+	else delete taskModels[task];
+	const settings: ProviderSettings = { ...state.settings, taskModels };
+
+	if (!Object.keys(taskModels).length) delete settings.taskModels;
+	set({ settings });
+	void api.setTaskModel({ task, model }).catch((error) => console.warn("Could not save the task model:", error));
 }
 
 export function openSettings(focusProvider: string | null = null) {

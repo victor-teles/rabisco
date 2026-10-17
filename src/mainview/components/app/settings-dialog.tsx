@@ -38,6 +38,7 @@ import {
 	modelLabel,
 	removeStatus,
 	selectFastModel,
+	selectTaskModel,
 	upsertStatus,
 	useProviders,
 	type ModelOption,
@@ -46,6 +47,7 @@ import { api } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import {
 	PROVIDER_TYPES,
+	type PresetTask,
 	type ProviderConfig,
 	type ProviderStatus,
 	type ProviderTypeInfo,
@@ -121,6 +123,7 @@ export function SettingsDialog() {
 							))
 						)}
 					</div>
+					<TaskModelSettings />
 					<FastModelSettings />
 					<CommentSettings />
 					<AgentSettings />
@@ -174,13 +177,118 @@ export function SettingsDialog() {
 
 const SAME_MODEL = "same";
 
+/** A model from any provider, or `null` for the fallback that `empty` names */
+function ModelChoice({
+	value,
+	onChange,
+	empty,
+	label,
+}: {
+	value: string | null;
+	onChange: (model: string | null) => void;
+	empty: string;
+	label: string;
+}) {
+	const { models } = useProviders();
+	const groups = new Map<string, ModelOption[]>();
+
+	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
+
+	return (
+		<DropdownMenu modal={false}>
+			<DropdownMenuTrigger asChild>
+				<Button variant="outline" size="sm" className="max-w-52 shrink-0 font-normal" aria-label={label}>
+					<span className="truncate">{value ? modelLabel(value) : empty}</span>
+					<ChevronDown className="text-muted-foreground" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="max-h-80 min-w-56">
+				<DropdownMenuRadioGroup
+					value={value ?? SAME_MODEL}
+					onValueChange={(next) => onChange(next === SAME_MODEL ? null : next)}
+				>
+					<DropdownMenuRadioItem value={SAME_MODEL} className="text-[13px]">
+						{empty}
+					</DropdownMenuRadioItem>
+					{[...groups].map(([provider, options]) => (
+						<div key={provider}>
+							<DropdownMenuSeparator />
+							<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">{provider}</DropdownMenuLabel>
+							{options.map((option) => (
+								<DropdownMenuRadioItem key={option.id} value={option.id} className="text-[13px]">
+									{option.label}
+								</DropdownMenuRadioItem>
+							))}
+						</div>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+const TASK_PRESETS: { task: PresetTask; label: string; description: string; empty: string }[] = [
+	{
+		task: "create",
+		label: "Create",
+		description: "New screens, planned screens and variations",
+		empty: "Picked model",
+	},
+	{ task: "edit", label: "Edit", description: "Edits, fixes and polish", empty: "Fast or picked model" },
+	{
+		task: "review",
+		label: "Review",
+		description: "The visual review after a generation",
+		empty: "Fast or picked model",
+	},
+];
+
+function TaskModelSettings() {
+	const { models, settings } = useProviders();
+
+	const missing = TASK_PRESETS.flatMap(({ task, label }) => {
+		const ref = settings.taskModels?.[task];
+
+		return ref && !models.some((option) => option.id === ref) ? [`${label} (${modelLabel(ref)})`] : [];
+	});
+
+	return (
+		<div className="border-t px-6 py-4">
+			<span className="flex flex-col gap-0.5">
+				<span className="text-sm font-medium">Models by task</span>
+				<span className="text-[13px] text-muted-foreground">
+					Each task runs on its model, whatever the composer picks. Unset tasks use the fast model, then the picked one.
+				</span>
+				{missing.length ? (
+					<span className="text-[13px] text-muted-foreground">
+						{missing.join(", ")} isn’t available, so {missing.length === 1 ? "it uses" : "they use"} the fallback.
+					</span>
+				) : null}
+			</span>
+			<div className="mt-3 grid gap-2">
+				{TASK_PRESETS.map(({ task, label, description, empty }) => (
+					<div key={task} className="flex items-center justify-between gap-6">
+						<span className="flex min-w-0 flex-col">
+							<span className="text-[13px]">{label}</span>
+							<span className="text-xs text-subtle-foreground">{description}</span>
+						</span>
+						<ModelChoice
+							value={settings.taskModels?.[task] ?? null}
+							onChange={(model) => selectTaskModel(task, model)}
+							empty={empty}
+							label={`${label} model`}
+						/>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 function FastModelSettings() {
 	const { models, settings } = useProviders();
 	const fast = settings.fastModel ?? null;
 	const available = fast !== null && models.some((option) => option.id === fast);
-	const groups = new Map<string, ModelOption[]>();
-
-	for (const option of models) groups.set(option.providerLabel, [...(groups.get(option.providerLabel) ?? []), option]);
 
 	return (
 		<div className="border-t px-6 py-4">
@@ -189,7 +297,7 @@ function FastModelSettings() {
 					<span className="text-sm font-medium">Fast model</span>
 					<span className="text-[13px] text-muted-foreground">
 						Runs edits, fixes, plans, DESIGN.md and theme reads, and Improve prompt. New screens and variations use the
-						model picked in the composer.
+						model picked in the composer. A model by task above comes first.
 					</span>
 					{fast && !available ? (
 						<span className="text-[13px] text-muted-foreground">
@@ -197,37 +305,7 @@ function FastModelSettings() {
 						</span>
 					) : null}
 				</span>
-				<DropdownMenu modal={false}>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="max-w-52 shrink-0 font-normal" aria-label="Fast model">
-							<span className="truncate">{fast ? modelLabel(fast) : "Same as picked"}</span>
-							<ChevronDown className="text-muted-foreground" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="max-h-80 min-w-56">
-						<DropdownMenuRadioGroup
-							value={fast ?? SAME_MODEL}
-							onValueChange={(next) => selectFastModel(next === SAME_MODEL ? null : next)}
-						>
-							<DropdownMenuRadioItem value={SAME_MODEL} className="text-[13px]">
-								Same as picked
-							</DropdownMenuRadioItem>
-							{[...groups].map(([provider, options]) => (
-								<div key={provider}>
-									<DropdownMenuSeparator />
-									<DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-										{provider}
-									</DropdownMenuLabel>
-									{options.map((option) => (
-										<DropdownMenuRadioItem key={option.id} value={option.id} className="text-[13px]">
-											{option.label}
-										</DropdownMenuRadioItem>
-									))}
-								</div>
-							))}
-						</DropdownMenuRadioGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
+				<ModelChoice value={fast} onChange={selectFastModel} empty="Same as picked" label="Fast model" />
 			</div>
 		</div>
 	);

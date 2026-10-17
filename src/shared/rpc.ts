@@ -4,7 +4,14 @@ import type { UrlCapture } from "./import/url-capture";
 import type { StyleId } from "./context/styles";
 import type { KitId } from "./components/starter-kits";
 import type { Attachment, ImageAspect, ProviderCommand } from "./ai/contract";
-import type { KeyStorage, ProviderConfig, ProviderSettings, ProviderStatus, ProviderType } from "./ai/settings";
+import type {
+	KeyStorage,
+	PresetTask,
+	ProviderConfig,
+	ProviderSettings,
+	ProviderStatus,
+	ProviderType,
+} from "./ai/settings";
 import type { CheckpointVersion, GitCheckpoint, GitStatus, GitSyncResult } from "./git";
 import type { RepoInfo } from "./export/repo-sync";
 import type { LibraryContents, LibrarySummary } from "./libraries";
@@ -90,6 +97,8 @@ export type RabiscoRPC = {
 			generate: { params: GenerateParams; response: GenerateResult };
 			/** `generate` then resolves with `aborted`. */
 			stopGeneration: { params: { generationId: string }; response: { ok: true } };
+			/** Stops one screen or variation of a parallel run; the others go on */
+			stopGenerationPart: { params: { generationId: string; part: string }; response: { ok: true } };
 
 			listProviders: {
 				params: { refresh?: boolean };
@@ -113,6 +122,7 @@ export type RabiscoRPC = {
 			testProvider: { params: { id: string }; response: ProviderStatus };
 			setDefaultModel: { params: { model: string }; response: { ok: true } };
 			setFastModel: { params: { model: string | null }; response: { ok: true } };
+			setTaskModel: { params: { task: PresetTask; model: string | null }; response: { ok: true } };
 			improvePrompt: { params: ImprovePromptParams; response: ImprovePromptResult };
 			/** The model's provider commands, for the chat's `/` menu */
 			listCommands: { params: { model: string; projectPath: string }; response: ProviderCommand[] };

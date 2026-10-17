@@ -383,6 +383,38 @@ describe("variations", () => {
 
 		if (!result.ok) expect(result.error.code).toBe("aborted");
 	});
+
+	test("stopping one variant leaves the others, and the result offers it again", async () => {
+		const { ai, sent, projectPath } = setupFake(async function* (request, signal) {
+			const index = request.variation!.index;
+
+			if (index === 1) {
+				yield { type: "status", label: "Thinking" };
+				await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+				yield { type: "error", code: "aborted", message: "Stopped", retryable: true };
+
+				return;
+			}
+
+			yield* events(
+				{ type: "message.delta", text: `V${index}` },
+				...write("screens/home.tsx", screenSource(`V${index}`)),
+				{ type: "done" },
+			);
+		});
+
+		const running = ai.generate({ ...params(projectPath, "g10"), variations: 3 });
+
+		while (!sent.some((message) => message.part?.id === "variation-1")) await Bun.sleep(1);
+		expect(sent.find((message) => message.part?.id === "variation-1")?.part?.name).toBe("Variation 2");
+		ai.stopGenerationPart("g10", "variation-1");
+		const result = await running;
+
+		if (!result.ok) throw new Error(result.error.message);
+		expect(result.changes.map((change) => change.path)).toEqual(["screens/home.tsx", "screens/home.alt-2.tsx"]);
+		expect(result.reply).toBe("V0\n\nMade 2 variations. You stopped 1 variation.");
+		expect(result.unfinished).toEqual([{ part: "variation-1", name: "Variation 2", stopped: true }]);
+	});
 });
 
 describe("point and prompt", () => {
@@ -559,6 +591,37 @@ describe("model per task", () => {
 		expect(setup.models.theme).toEqual(["fast"]);
 		expect(setup.models.brief).toEqual(["fast"]);
 		expect((await setup.ai.listProviders()).settings.fastModel).toBe("mock:fast");
+	});
+
+	test("task models come before the fast model: create, edit and the visual review", async () => {
+		const setup = routed();
+		await setup.ai.setFastModel("mock:fast");
+		await setup.ai.setTaskModel("create", "mock:big");
+		await setup.ai.setTaskModel("edit", "mock:editor");
+		await setup.ai.setTaskModel("review", "mock:reviewer");
+		await runAll(setup);
+
+		await setup.ai.generate({
+			...params(setup.projectPath, "r"),
+			task: "repair",
+			targets: ["screens/home.tsx"],
+			problems: [{ path: "screens/home.tsx", message: "Low contrast" }],
+			review: { prompt: "Review the screen", attachments: [] },
+		});
+
+		expect(new Set(setup.models.create)).toEqual(new Set(["big"]));
+		expect(setup.models.edit).toEqual(["editor", "big"]);
+		expect(setup.models.repair).toEqual(["reviewer"]);
+		expect(setup.models.plan).toEqual(["fast"]);
+		expect((await setup.ai.listProviders()).settings.taskModels).toEqual({
+			create: "mock:big",
+			edit: "mock:editor",
+			review: "mock:reviewer",
+		});
+
+		await setup.ai.setTaskModel("edit", null);
+		await setup.ai.generate({ ...params(setup.projectPath, "e2"), targets: ["screens/home.tsx"] });
+		expect(setup.models.edit?.at(-1)).toBe("fast");
 	});
 
 	test("an unavailable fast model falls back to the picked one", async () => {

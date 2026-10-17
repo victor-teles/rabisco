@@ -69,6 +69,8 @@ export type DesignComposerProps = {
 	onSubmit: (prompt: string, files: File[]) => void | boolean;
 	busy?: boolean;
 	onStop?: () => void;
+	/** While busy, the prompt stays editable and sending queues it */
+	queue?: boolean;
 	placeholder?: string;
 	variant?: PromptComposerVariant;
 	/** The picker shows only when `onVariationsChange` is set. */
@@ -109,6 +111,7 @@ export function DesignComposer({
 	onSubmit,
 	busy,
 	onStop,
+	queue = false,
 	placeholder = "Describe a screen, flow or change…",
 	variant = "rounded",
 	variations = 1,
@@ -161,7 +164,7 @@ export function DesignComposer({
 		<PromptComposer
 			ref={formRef}
 			variant={variant}
-			busy={busy || improver.improving}
+			busy={(busy && !queue) || improver.improving}
 			value={value}
 			onValueChange={onValueChange}
 			defaultValue={defaultValue}
@@ -239,6 +242,9 @@ export function DesignComposer({
 							focusPrompt();
 						}}
 					/>
+				) : null}
+				{busy && queue && !improver.improving && value?.trim() ? (
+					<PromptComposerSubmit aria-label="Queue prompt" title="Queue prompt (runs when this one is done)" />
 				) : null}
 				{stoppable ? (
 					<Button

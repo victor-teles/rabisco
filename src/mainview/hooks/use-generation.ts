@@ -32,7 +32,15 @@ import { mixNote, mixPrompt, variationName, VARY_PROMPT, varyNote } from "@/lib/
 import { openSettings, useProviders } from "./use-providers";
 import type { StructureNode } from "./use-structure";
 
-export type { Generation, GenerationDrafts, PendingPlan, ThemeReading, WritingFile } from "@/lib/generation-session";
+export type {
+	Generation,
+	GenerationDrafts,
+	PendingPlan,
+	QueuedPrompt,
+	RunPart,
+	ThemeReading,
+	WritingFile,
+} from "@/lib/generation-session";
 
 const IMAGE_TYPES: ReadonlySet<string> = new Set<Attachment["mediaType"]>([
 	"image/png",
@@ -72,6 +80,17 @@ async function toDocuments(files: File[] = []): Promise<PromptDocument[]> {
 	return documents.flatMap((document) => (document ? [document] : []));
 }
 
+type SendRequest = {
+	targets?: string[];
+	files?: File[];
+	references?: Promise<Attachment[]>;
+	variations?: number;
+	focus?: StructureNode[];
+	command?: { name: string; args: string };
+	resolves?: string[];
+	autoDesign?: boolean;
+};
+
 export function useGeneration({
 	projectPath,
 	files,
@@ -91,7 +110,7 @@ export function useGeneration({
 	const { model } = useProviders();
 	const { session, controller } = useMemo(() => projectSessions.open(projectPath), [projectPath]);
 	const view = useSyncExternalStore(controller.subscribe, controller.get);
-	const { generation, failure, pendingPlan, lastRun, regenerable } = view;
+	const { generation, failure, pendingPlan, lastRun, regenerable, unfinished, queue } = view;
 	const attached = useRef<AttachCallbacks>({ onPlaced, onResolved });
 
 	useLayoutEffect(() => {
@@ -155,25 +174,16 @@ export function useGeneration({
 	 * `false` when nothing was sent (no model, or a generation is running), so the caller can keep the prompt.
 	 */
 	const send = useCallback(
-		(
-			prompt: string,
-			{
-				focus: nodes = [],
-				files,
-				references = Promise.resolve([]),
-				...options
-			}: {
-				targets?: string[];
-				files?: File[];
-				references?: Promise<Attachment[]>;
-				variations?: number;
-				focus?: StructureNode[];
-				command?: { name: string; args: string };
-				resolves?: string[];
-				autoDesign?: boolean;
-			} = {},
-		): boolean => {
+		function send(prompt: string, request: SendRequest = {}): boolean {
+			// The prompt goes out once the run settles, aimed at the selection it was written for
+			if (controller.busy() && model) {
+				controller.enqueue(prompt, () => void send(prompt, request));
+
+				return true;
+			}
+
 			if (!ready() || !model) return false;
+			const { focus: nodes = [], files, references = Promise.resolve([]), ...options } = request;
 
 			void Promise.all([toAttachments(files), references, toDocuments(files)]).then(
 				([attached, referenced, documents]) => {
@@ -459,6 +469,13 @@ export function useGeneration({
 		if (model) controller.retry(model);
 	}, [controller, model]);
 
+	const retryPart = useCallback(
+		(part: string) => {
+			if (ready() && model) controller.retryPart(part, model);
+		},
+		[ready, controller, model],
+	);
+
 	const regenerate = useCallback(() => {
 		if (ready() && model) controller.regenerate(model);
 	}, [ready, controller, model]);
@@ -500,7 +517,12 @@ export function useGeneration({
 		writeContext,
 		readTheme,
 		stop: controller.stop,
+		stopPart: controller.stopPart,
 		retry,
+		unfinished,
+		retryPart,
+		queue,
+		dequeue: controller.dequeue,
 		regenerate: regenerable ? regenerate : null,
 		lastRun,
 		undoRun: controller.undoRun,

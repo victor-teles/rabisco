@@ -384,12 +384,14 @@ export function combineVariations({ mode, outputs, projectFiles, device }: Combi
 	return { changes, frames, primary: first.variant, dropped };
 }
 
-export function variationsNote(made: number, failed: number, dropped: number) {
+export function variationsNote(made: number, failed: number, dropped: number, stopped = 0) {
 	const parts: string[] = [];
 
 	if (made > 1) parts.push(`Made ${made} variations.`);
 
 	if (failed) parts.push(`${failed} ${failed === 1 ? "variation" : "variations"} failed.`);
+
+	if (stopped) parts.push(`You stopped ${stopped === 1 ? "1 variation" : `${stopped} variations`}.`);
 
 	if (dropped)
 		parts.push(

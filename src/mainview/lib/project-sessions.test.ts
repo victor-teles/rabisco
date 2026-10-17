@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AttachCallbacks } from "./generation-session";
+import { retryOptions, type AttachCallbacks } from "./generation-session";
 import { createProjectSessions, type Landed, type SessionsApi } from "./project-sessions";
 import type { ViewerCommented } from "./rpc";
 import type { GenerationPlan } from "../../shared/ai/contract";
@@ -26,6 +26,8 @@ const POLISHED = "export default function Home() {\n\treturn <main className='te
 const ok = { ok: true } as const;
 
 type Stored = { canvas: CanvasDoc; files: ProjectFiles; chats: Map<string, ChatMessage[]> };
+
+type Made = Extract<GenerateResult, { ok: true }>;
 
 type Gate = { params: GenerateParams; resolve: (result: GenerateResult) => void };
 
@@ -127,6 +129,11 @@ function memoryApi() {
 		async stopGeneration({ generationId }) {
 			log.push("stop");
 			gates.get(generationId)?.resolve(aborted);
+
+			return ok;
+		},
+		async stopGenerationPart({ part }) {
+			log.push(`stop ${part}`);
 
 			return ok;
 		},
@@ -840,5 +847,147 @@ describe("follow-ups", () => {
 		expect([params.task, params.each, params.modes]).toEqual(["repair", true, modes]);
 		finish(params, { ok: true, changes: [], frames: [], reply: "", problems: [], context: [] });
 		await running;
+	});
+});
+
+describe("run control", () => {
+	const TWO: GenerationPlan = {
+		screens: [
+			{ path: "screens/home.tsx", name: "Home", purpose: "Start", content: "Habits" },
+			{ path: "screens/stats.tsx", name: "Stats", purpose: "Progress", content: "Charts" },
+		],
+		components: [],
+		links: [],
+	};
+
+	const made = (patch: Partial<Made>): GenerateResult => {
+		const home = "screens/home.tsx";
+
+		return {
+			ok: true,
+			changes: [{ path: home, content: SCREEN }],
+			frames: [{ file: home, name: "Home", device: "mobile", x: 0, y: 0, width: 390, height: 844 }],
+			reply: "Made the home screen.",
+			problems: [],
+			context: [],
+			...patch,
+		};
+	};
+
+	test("a prompt sent while a run works waits in the queue, then goes out when it settles", async () => {
+		const { open, nextCall, finish, calls } = setup();
+		const { controller } = await open("/p/a");
+		const running = controller.run("Habits", {}, MODEL);
+		const first = await nextCall(1);
+
+		controller.enqueue("Make it blue", () => void controller.run("Make it blue", {}, MODEL));
+		controller.enqueue("Add a footer", () => void controller.run("Add a footer", {}, MODEL));
+		const [, footer] = controller.get().queue;
+		controller.dequeue(footer!.id);
+
+		expect(controller.get().queue.map((queued) => queued.prompt)).toEqual(["Make it blue"]);
+		expect(calls).toHaveLength(1);
+
+		finish(first, created());
+		await running;
+		const second = await nextCall(2);
+
+		expect(second.prompt).toBe("Make it blue");
+		expect(controller.get().queue).toEqual([]);
+		finish(second, created());
+		await waitFor(() => !controller.busy());
+		expect(calls).toHaveLength(2);
+	});
+
+	test("the reply carries what the plan and the run used", async () => {
+		const { open, nextCall, finish } = setup({ plan: true });
+		const { session, controller } = await open("/p/a");
+		const running = controller.run("A habit tracker", {}, MODEL);
+		const usage = { inputTokens: 10, outputTokens: 5, costUsd: 0.01 };
+
+		finish(await nextCall(1), made({ changes: [], frames: [], reply: "", plan: PLAN, usage }));
+		await running;
+		controller.acceptPlan(PLAN, MODEL);
+		finish(await nextCall(2), made({ usage: { inputTokens: 100, outputTokens: 50, costUsd: 0.02 } }));
+		await waitFor(() => session.state()!.messages.length > 0);
+
+		const reply = session.state()!.messages.at(-1)!;
+		expect(reply.usage?.inputTokens).toBe(110);
+		expect(reply.usage?.costUsd).toBeCloseTo(0.03);
+		expect(session.state()!.chats[0]!.usage?.outputTokens).toBe(55);
+	});
+
+	test("one screen stops alone, and runs again from the same plan", async () => {
+		const { open, nextCall, finish, emit, log } = setup();
+		const { session, controller } = await open("/p/a");
+		const running = controller.run("Habits", { plan: TWO }, MODEL);
+		const params = await nextCall(1);
+		const status = { type: "status", label: "Writing" } as const;
+
+		emit({
+			generationId: params.generationId,
+			attempt: 1,
+			part: { id: "screens/home.tsx", name: "Home" },
+			event: status,
+		});
+		emit({
+			generationId: params.generationId,
+			attempt: 1,
+			part: { id: "screens/stats.tsx", name: "Stats" },
+			event: status,
+		});
+		await waitFor(() => Object.keys(controller.get().generation?.parts ?? {}).length === 2);
+
+		controller.stopPart("screens/stats.tsx");
+		expect(log).toContain("stop screens/stats.tsx");
+		expect(controller.get().generation?.parts?.["screens/stats.tsx"]?.state).toBe("stopped");
+
+		finish(params, made({ unfinished: [{ part: "screens/stats.tsx", name: "Stats", stopped: true }] }));
+		await running;
+
+		const reply = session.state()!.messages.at(-1)!;
+		expect(controller.get().unfinished).toEqual({
+			messageId: reply.id,
+			parts: [{ part: "screens/stats.tsx", name: "Stats", stopped: true }],
+		});
+
+		controller.retryPart("screens/stats.tsx", MODEL);
+		const again = await nextCall(2);
+
+		expect(again.plan?.screens.map((screen) => screen.path)).toEqual(["screens/stats.tsx"]);
+		expect(session.state()!.messages.at(-1)!.content).toBe("Write Stats again");
+		expect(controller.get().unfinished).toBe(null);
+	});
+
+	test("a variation runs again as one more of the screen the run made", () => {
+		const changes = [
+			{ path: "screens/home.tsx", content: SCREEN },
+			{ path: "screens/home.alt-1.tsx", content: SCREEN },
+		];
+
+		expect(retryOptions({ prompt: "Habits", options: { variations: 3 }, changes }, "variation-2")).toEqual({
+			task: "vary",
+			targets: ["screens/home.tsx"],
+			variations: 1,
+			part: "variation-2",
+		});
+		expect(
+			retryOptions(
+				{
+					prompt: "States",
+					options: { task: "vary", targets: ["screens/home.tsx"], prompts: ["Empty", "Error"], names: ["E", "R"] },
+					changes,
+				},
+				"variation-2",
+			),
+		).toEqual({
+			task: "vary",
+			targets: ["screens/home.tsx"],
+			variations: 1,
+			part: "variation-2",
+			prompts: ["Error"],
+			names: ["R"],
+		});
+		expect(retryOptions({ prompt: "x", options: { plan: TWO }, changes }, "screens/gone.tsx")).toBe(null);
 	});
 });

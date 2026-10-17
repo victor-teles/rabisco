@@ -13,7 +13,8 @@ import { fitPlan, parsePlanReply } from "../../shared/ai/plan";
 import { componentSignatures } from "../../shared/components/usages";
 import { contextBody } from "../../shared/context/body";
 import { framesForNewScreens, isComponentFile, isScreenFile } from "../../shared/project";
-import type { FileChange, Frame, ProjectFiles } from "../../shared/types";
+import type { RunParts } from "../../shared/ai/run-parts";
+import type { FileChange, Frame, ProjectFiles, UnfinishedPart } from "../../shared/types";
 import { isAlternate } from "../../shared/variations";
 import {
 	addUsage,
@@ -147,6 +148,7 @@ export type PlannedResult = {
 	reply: string;
 	problems: Problem[];
 	usage?: Usage;
+	unfinished?: UnfinishedPart[];
 };
 
 export type PlannedRunOptions = {
@@ -156,8 +158,10 @@ export type PlannedRunOptions = {
 	plan: GenerationPlan;
 	projectFiles: ProjectFiles;
 	signal: AbortSignal;
-	/** `attempt` is per run; screen events carry the screen's planned name in their status */
-	onEvent: (event: GenerationEvent, attempt: number) => void;
+	/** Stops one screen's run alone */
+	parts?: RunParts;
+	/** `attempt` is per run; screen events carry the screen's planned name in their status, and its `part` */
+	onEvent: (event: GenerationEvent, attempt: number, part?: { id: string; name: string }) => void;
 };
 
 /** Status lines name the run they come from; the runs' own chat replies are dropped, Rabisco writes one reply */
@@ -185,7 +189,7 @@ const list = (names: string[]) =>
 
 /** Components in one run, then one run per screen in parallel; one combined result, so one undo step */
 export async function runPlannedCreate(options: PlannedRunOptions): Promise<PlannedResult> {
-	const { provider, build, projectFiles, signal, onEvent } = options;
+	const { provider, build, projectFiles, signal, parts, onEvent } = options;
 	const plan = fitPlan(options.plan, projectFiles);
 
 	if (!plan.screens.length) throw new GenerationError("invalid_output", "The plan has no screens to write.", false);
@@ -246,11 +250,11 @@ export async function runPlannedCreate(options: PlannedRunOptions): Promise<Plan
 			provider: scopedProvider(provider, new Set([screen.path])),
 			request,
 			projectFiles: files,
-			signal,
+			signal: parts?.signal(screen.path) ?? signal,
 			onEvent: (event, attempt) => {
 				const next = relabel(event, `Writing ${screen.name}`);
 
-				if (next) onEvent(next, attempt);
+				if (next) onEvent(next, attempt, { id: screen.path, name: screen.name });
 			},
 		});
 	});
@@ -261,13 +265,17 @@ export async function runPlannedCreate(options: PlannedRunOptions): Promise<Plan
 	const changes = [...shellChanges];
 	const made: string[] = [];
 	const failed: string[] = [];
+	const stopped: string[] = [];
+	const unfinished: UnfinishedPart[] = [];
 	const meta: Record<string, ScreenMeta> = {};
 
 	settled.forEach((outcome, index) => {
 		const screen = plan.screens[index]!;
 
 		if (outcome.status === "rejected") {
-			failed.push(screen.name);
+			const own = parts?.stopped(screen.path) ?? false;
+			(own ? stopped : failed).push(screen.name);
+			unfinished.push({ part: screen.path, name: screen.name, stopped: own });
 
 			return;
 		}
@@ -278,6 +286,7 @@ export async function runPlannedCreate(options: PlannedRunOptions): Promise<Plan
 
 		if (!own.length) {
 			failed.push(screen.name);
+			unfinished.push({ part: screen.path, name: screen.name, stopped: false });
 
 			return;
 		}
@@ -306,15 +315,20 @@ export async function runPlannedCreate(options: PlannedRunOptions): Promise<Plan
 		failed.length
 			? `${list(failed)} failed, so ${failed.length === 1 ? "it isn't" : "they aren't"} on the canvas. Try again to write ${failed.length === 1 ? "it" : "them"}.`
 			: "",
+		stopped.length ? `You stopped ${list(stopped)}.` : "",
 	]
 		.filter(Boolean)
 		.join(" ");
 
-	return {
+	const result: PlannedResult = {
 		changes,
 		frames: framesForNewScreens(screens, meta, build.device),
 		reply,
 		problems: dedupeProblems(problems),
 		usage,
 	};
+
+	if (unfinished.length) result.unfinished = unfinished;
+
+	return result;
 }

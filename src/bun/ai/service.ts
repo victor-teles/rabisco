@@ -1,4 +1,5 @@
-import { modelForTask, type KeyStorage, type ProviderStatus } from "../../shared/ai/settings";
+import { modelForTask, type KeyStorage, type PresetTask, type ProviderStatus } from "../../shared/ai/settings";
+import { createRunParts, variationPart, variationPartName, type RunParts } from "../../shared/ai/run-parts";
 import { framesForNewScreens, isScreenFile } from "../../shared/project";
 import type {
 	GenerateParams,
@@ -7,6 +8,7 @@ import type {
 	ImprovePromptParams,
 	ImprovePromptResult,
 	ProjectFiles,
+	UnfinishedPart,
 } from "../../shared/types";
 import type {
 	GeneratedImage,
@@ -79,6 +81,7 @@ export function createAiService(options: AiServiceOptions) {
 	});
 
 	const running = new Map<string, AbortController>();
+	const parallel = new Map<string, RunParts>();
 	let statuses: ProviderStatus[] | null = null;
 	let keyStorage: KeyStorage | null = null;
 
@@ -106,9 +109,7 @@ export function createAiService(options: AiServiceOptions) {
 	}
 
 	async function resolveFor(task: string, picked: string) {
-		const { fastModel } = await store.get();
-
-		return registry.resolve(modelForTask(task, picked, fastModel)) ?? registry.resolve(picked);
+		return registry.resolve(modelForTask(task, picked, await store.get())) ?? registry.resolve(picked);
 	}
 
 	return {
@@ -157,6 +158,8 @@ export function createAiService(options: AiServiceOptions) {
 		setDefaultModel: (model: string) => store.setDefaultModel(model),
 
 		setFastModel: (model: string | null) => store.setFastModel(model),
+
+		setTaskModel: (task: PresetTask, model: string | null) => store.setTaskModel(task, model),
 
 		async improvePrompt(params: ImprovePromptParams): Promise<ImprovePromptResult> {
 			await sync();
@@ -252,7 +255,7 @@ export function createAiService(options: AiServiceOptions) {
 			}
 
 			await sync();
-			const resolved = await resolveFor(params.task ?? taskOf(params), params.model);
+			const resolved = await resolveFor(params.review ? "review" : (params.task ?? taskOf(params)), params.model);
 
 			if (!resolved) {
 				return {
@@ -282,7 +285,9 @@ export function createAiService(options: AiServiceOptions) {
 				});
 
 			const controller = new AbortController();
+			const parts = createRunParts(controller.signal);
 			running.set(params.generationId, controller);
+			parallel.set(params.generationId, parts);
 
 			const failure = (cause: unknown): GenerateResult => {
 				if (cause instanceof GenerationError) {
@@ -453,7 +458,9 @@ export function createAiService(options: AiServiceOptions) {
 						plan: params.plan,
 						projectFiles,
 						signal: controller.signal,
-						onEvent: (event, attempt) => options.send({ generationId: params.generationId, attempt, event }),
+						parts,
+						onEvent: (event, attempt, part) =>
+							options.send({ generationId: params.generationId, attempt, part, event }),
 					});
 
 					return { ok: true, ...planned, context: contextFilesOf(request) };
@@ -496,6 +503,7 @@ export function createAiService(options: AiServiceOptions) {
 					});
 
 					const screens: Record<string, ScreenMeta | undefined> = {};
+					const part = { id: variationPart(variant), name: variationPartName(variant) };
 					let runRequest = request;
 
 					if (multi) {
@@ -509,14 +517,14 @@ export function createAiService(options: AiServiceOptions) {
 						provider: variant || request.references ? variantProvider(resolved.provider, renamer) : resolved.provider,
 						request: runRequest,
 						projectFiles,
-						signal: controller.signal,
+						signal: multi ? parts.signal(part.id) : controller.signal,
 						// Variations accept the alternates Rabisco assigns; an edit or repair of an alternate keeps its path
 						alternates: variant ? renamer.assigned : new Set(request.targets?.filter(isAlternate)),
 						onEvent: (event, attempt) => {
 							if (event.type === "file.start" && event.kind === "screen") screens[event.path] = event.screen;
 							const message: GenerationEventMessage = { generationId: params.generationId, attempt, event };
 
-							if (multi) message.variant = variant;
+							if (multi) Object.assign(message, { variant, part });
 							options.send(message);
 						},
 					});
@@ -567,9 +575,24 @@ export function createAiService(options: AiServiceOptions) {
 				});
 
 				const lead = done.find((run) => run.variant === combined.primary) ?? done[0]!;
-				const note = variationsNote(done.length, settled.length - done.length, combined.dropped.length);
 
-				return {
+				const unfinished = variants.flatMap((variant, index): UnfinishedPart[] =>
+					settled[index]?.status === "rejected"
+						? [
+								{
+									part: variationPart(variant),
+									name: variationPartName(variant),
+									stopped: parts.stopped(variationPart(variant)),
+								},
+							]
+						: [],
+				);
+
+				const stopped = unfinished.filter((part) => part.stopped).length;
+
+				const note = variationsNote(done.length, unfinished.length - stopped, combined.dropped.length, stopped);
+
+				const varied: GenerateResult = {
 					ok: true,
 					changes: combined.changes,
 					frames: vary
@@ -584,15 +607,24 @@ export function createAiService(options: AiServiceOptions) {
 					usage: done.reduce<Usage | undefined>((sum, run) => addUsage(sum, run.result.usage), undefined),
 					context: contextFilesOf(request),
 				};
+
+				if (unfinished.length) varied.unfinished = unfinished;
+
+				return varied;
 			} catch (error) {
 				return failure(error);
 			} finally {
 				running.delete(params.generationId);
+				parallel.delete(params.generationId);
 			}
 		},
 
 		stopGeneration(generationId: string) {
 			running.get(generationId)?.abort();
+		},
+
+		stopGenerationPart(generationId: string, part: string) {
+			parallel.get(generationId)?.stop(part);
 		},
 
 		stopAll() {
