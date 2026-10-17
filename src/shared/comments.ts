@@ -35,6 +35,7 @@ export function normalizeComments(raw: Json | undefined): CanvasComment[] {
 		};
 
 		if (isString(c.file) && c.file) comment.file = c.file;
+		else if (isString(c.page)) comment.page = c.page;
 
 		if (c.resolved === true) comment.resolved = true;
 
@@ -90,8 +91,11 @@ export function detachComments(comments: CanvasComment[], before: Frame[], after
 		if (!frame) return comment;
 		changed = true;
 		const { file: _file, ...rest } = comment;
+		const detached: CanvasComment = { ...rest, x: frame.x + comment.x, y: frame.y + comment.y };
 
-		return { ...rest, x: frame.x + comment.x, y: frame.y + comment.y };
+		if (frame.page) detached.page = frame.page;
+
+		return detached;
 	});
 
 	return changed ? next : comments;

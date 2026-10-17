@@ -143,9 +143,7 @@ export function useMoodboard({
 			const row = placed.reduce((width, image) => width + image.width + GAP, -GAP);
 			const tallest = Math.max(0, ...placed.map((image) => image.height));
 
-			const start = at
-				? { x: at.x - row / 2, y: at.y - tallest / 2 }
-				: besideEverything(state.canvas.frames, state.canvas.images ?? NO_IMAGES);
+			const start = at ? { x: at.x - row / 2, y: at.y - tallest / 2 } : besideEverything(frames, images);
 
 			let x = Math.round(start.x);
 
@@ -164,7 +162,7 @@ export function useMoodboard({
 
 			return true;
 		},
-		[stateRef, projectPath, change, reveal],
+		[stateRef, projectPath, change, reveal, frames, images],
 	);
 
 	const paste = useCallback(

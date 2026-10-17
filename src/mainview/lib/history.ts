@@ -2,8 +2,10 @@ import type { AssetDigests, AssetWrite } from "../../shared/assets";
 import { detachComments } from "../../shared/comments";
 import type { AppliedTheme } from "../../shared/context/theme";
 import type {
+	Annotation,
 	CanvasComment,
 	CanvasImage,
+	CanvasPage,
 	CanvasSection,
 	Device,
 	ElementLock,
@@ -26,6 +28,8 @@ export type Snapshot = {
 	locks?: ElementLock[];
 	sections?: CanvasSection[];
 	images?: CanvasImage[];
+	annotations?: Annotation[];
+	pages?: CanvasPage[];
 	assets?: AssetDigests;
 };
 
@@ -38,6 +42,8 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 	const device = update.device ?? present.device;
 	const sections = update.sections ?? present.sections;
 	const images = update.images ?? present.images;
+	const annotations = update.annotations ?? present.annotations;
+	const pages = update.pages ?? present.pages;
 	const assets = update.assets ?? present.assets;
 
 	const locks =
@@ -53,11 +59,13 @@ export function nextSnapshot(present: Snapshot, update: Snapshot): Snapshot {
 		locks === update.locks &&
 		sections === update.sections &&
 		images === update.images &&
+		annotations === update.annotations &&
+		pages === update.pages &&
 		assets === update.assets
 	)
 		return update;
 
-	return { ...update, comments, theme, name, device, locks, sections, images, assets };
+	return { ...update, comments, theme, name, device, locks, sections, images, annotations, pages, assets };
 }
 
 export type History = {

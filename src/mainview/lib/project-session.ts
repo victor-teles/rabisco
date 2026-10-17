@@ -19,11 +19,13 @@ import {
 import { rebaseCanvas } from "@/lib/canvas-rebase";
 import type { RabiscoApi } from "@/lib/rpc";
 import { packHistory, resumeHistory, unpackHistory } from "@/lib/saved-history";
+import { onOpenPage } from "@/lib/pages";
 import { sameSelection } from "@/lib/selection";
 import { type SessionVersion, withVersion } from "@/lib/versions";
 import type { AssetChange, AssetDigests, AssetWrite, ProjectAssets } from "../../shared/assets";
 import { type ChatSummary, newChatId, withAppended, withMoreMessages } from "../../shared/chats";
 import { detachComments } from "../../shared/comments";
+import { openPage } from "../../shared/pages";
 import { appliedTheme, isComponentFile, reconcileFrames } from "../../shared/project";
 import { alternatesOf } from "../../shared/variations";
 import type { CanvasDoc, ChatMessage, Device, FileChange, Project, ProjectFiles } from "../../shared/types";
@@ -376,7 +378,8 @@ export function createProjectSession({
 		const current = view.state;
 
 		if (!current) return;
-		const next = nextSnapshot(current.history.present, recipe(current.history.present));
+		const present = current.history.present;
+		const next = nextSnapshot(present, onOpenPage(present, recipe(present), openPage(current.canvas)));
 		const history = commit(current.history, next, { coalesce: options.coalesce });
 
 		if (history === current.history && !options.select) return;
@@ -407,6 +410,14 @@ export function createProjectSession({
 
 		if (!current || sameSelection(selection, current.canvas.selection)) return;
 		apply(withHistory(current, current.history, selection));
+	}
+
+	/** Not an undo step, as in Figma */
+	function setPage(page: string) {
+		const current = view.state;
+
+		if (!current || openPage(current.canvas) === page) return;
+		apply({ ...current, canvas: { ...current.canvas, page } });
 	}
 
 	/** One undo step; pass a `coalesce` key to make a typing burst one step. */
@@ -517,6 +528,7 @@ export function createProjectSession({
 		undo: undoStep,
 		redo: redoStep,
 		setSelection,
+		setPage,
 		setMeta,
 		addVersion,
 		addMessages,
@@ -550,8 +562,8 @@ function reconcileWith(current: CanvasDoc) {
 }
 
 function canvasFields(snapshot: Snapshot) {
-	const { frames, comments, theme, name, device, locks, sections, images } = snapshot;
-	const fields: Partial<CanvasDoc> = { frames, comments, theme, locks, sections, images };
+	const { frames, comments, theme, name, device, locks, sections, images, annotations, pages } = snapshot;
+	const fields: Partial<CanvasDoc> = { frames, comments, theme, locks, sections, images, annotations, pages };
 
 	if (name !== undefined) fields.name = name;
 
@@ -580,6 +592,8 @@ function snapshotOf(canvas: CanvasDoc, files: ProjectFiles, assets?: AssetDigest
 		locks: canvas.locks,
 		sections: canvas.sections,
 		images: canvas.images,
+		annotations: canvas.annotations,
+		pages: canvas.pages,
 	};
 }
 
@@ -587,6 +601,7 @@ function withHistory(current: ProjectState, history: History, selection?: string
 	const { frames, files, comments = current.canvas.comments, theme = current.canvas.theme } = history.present;
 	const { name = current.canvas.name, device = current.canvas.device } = history.present;
 	const { locks, sections = current.canvas.sections, images = current.canvas.images } = history.present;
+	const { annotations, pages } = history.present;
 
 	// Selection may also hold component files picked in the components panel
 	const nextSelection = (selection ?? current.canvas.selection).filter(
@@ -602,9 +617,24 @@ function withHistory(current: ProjectState, history: History, selection?: string
 		locks === current.canvas.locks &&
 		sections === current.canvas.sections &&
 		images === current.canvas.images &&
+		annotations === current.canvas.annotations &&
+		pages === current.canvas.pages &&
 		sameSelection(nextSelection, current.canvas.selection)
 			? current.canvas
-			: { ...current.canvas, frames, comments, theme, name, device, locks, sections, images, selection: nextSelection };
+			: {
+					...current.canvas,
+					frames,
+					comments,
+					theme,
+					name,
+					device,
+					locks,
+					sections,
+					images,
+					annotations,
+					pages,
+					selection: nextSelection,
+				};
 
 	return { ...current, history, files, canvas };
 }

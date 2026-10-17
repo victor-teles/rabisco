@@ -36,7 +36,7 @@ export const SECTION_COLOR: Record<SectionColor, string> = {
 	pink: "var(--color-pink-500)",
 };
 
-const COLOR_NAMES: Record<SectionColor, string> = {
+export const COLOR_NAMES: Record<SectionColor, string> = {
 	gray: "Gray",
 	red: "Red",
 	orange: "Orange",

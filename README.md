@@ -132,6 +132,11 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | `⇧S`, or Section in the toolbar                           | Section around the selected screens, or drag on the canvas to draw one             |
 | Drag a section's name / double-click it                   | Move it with its screens / rename it; right-click for color and delete             |
 | `⌫`, `⌘R` (section selected)                              | Delete the section (keeps its screens), rename it                                  |
+| `S`, `⇧L`                                                 | Sticky note, arrow: click to place, or drag to size (`⇧` snaps arrows to 45°)      |
+| Double-click or `Enter` (note selected), `Esc`            | Edit the note's text, then keep it; right-click for color                          |
+| `⌫`, `⌘D` (note or arrow selected)                        | Delete, duplicate; drag an arrow's ends to move them                               |
+| `PgUp` / `PgDn`                                           | Previous / next page; the page name in the title bar lists, adds and renames pages |
+| "Move to page" (right-click a screen)                     | Move the selected screens and their alternates to another page, or to a new one    |
 | Click a section's empty area, then drag an edge or corner | Select it, then resize it; screens whose center ends up inside join it             |
 | `⌘F` (canvas)                                             | Find and replace text across screens; `↵` steps through the results                |
 | Double-click a screen's label                             | Rename it in place                                                                 |
@@ -171,6 +176,8 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | Arrow keys (element selected)                             | Move it earlier / later along the parent's direction (by row in a grid)            |
 | `⌥A` `⌥H` `⌥D`, `⌥W` `⌥V` `⌥S`                            | Align the selected elements, or screens, left, center, right, top, middle, bottom  |
 | `⌃⌥H`, `⌃⌥V`                                              | Distribute the selected elements, or screens, horizontally, vertically             |
+| `⌃⌥T`                                                     | Tidy up: line the selected screens up in a grid, keeping their rows                |
+| `⌃⌥F`                                                     | Flow view: lay out the selected screens, or all of them, by their prototype links  |
 | Drag an element in the selected screen                    | Move it within its parent, into another container or into another screen           |
 | Drag an item of a list (`.map`) in the selected screen    | Reorder it among the list's items                                                  |
 | Drag an edge or corner handle                             | Resize (`w-*`/`h-*`, snapped); double-click a handle to hug                        |

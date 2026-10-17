@@ -62,6 +62,7 @@ import type {
 	ProjectFiles,
 	UnfinishedPart,
 } from "../../shared/types";
+import { onPage, openPage, openPageFrames } from "../../shared/pages";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
 
 export type WritingFile = { kind: FileKind; screen?: ScreenMeta; text: string; done: boolean };
@@ -245,12 +246,17 @@ export const message = (role: ChatMessage["role"], content: string): ChatMessage
 function placeFrames(canvas: CanvasDoc, created: Frame[], recreated?: string): Frame[] {
 	const image = canvas.images?.find((each) => each.id === recreated);
 	const [first, ...rest] = created;
+	const frames = openPageFrames(canvas);
 
-	if (!image || !first) return placeNewFrames(canvas.frames, created);
-	const others = (canvas.images ?? []).filter((each) => each.id !== image.id);
-	const beside = besideImage(first, image, [...canvas.frames, ...others]);
+	if (!image || !first) return placeNewFrames(frames, created);
 
-	return [beside, ...placeNewFrames([...canvas.frames, beside], rest)];
+	const others = onPage(canvas.images ?? [], canvas.pages ?? [], openPage(canvas)).filter(
+		(each) => each.id !== image.id,
+	);
+
+	const beside = besideImage(first, image, [...frames, ...others]);
+
+	return [beside, ...placeNewFrames([...frames, beside], rest)];
 }
 
 export type GenerationController = ReturnType<typeof createGenerationController>;

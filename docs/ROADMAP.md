@@ -122,10 +122,10 @@ _Principles: Direct manipulation over prompts · Keyboard first (Figma conventio
 - ✅ Fill editor with gradients, image fills and opacity; shadow and blur editors with presets
 - ✅ Rich text: bold, italic and links inside a text block, written as `<strong>`, `<em>` and `<a>`
 - ✅ Rulers and guides on frames (⇧R)
-- ⬜ Sticky notes and arrows on the canvas, for annotations that aren't screens
-- ⬜ Flow view: screens laid out by their prototype links, with one click
-- ⬜ Tidy up: arrange selected screens in a grid
-- ⬜ Pages in a project, each with its own canvas
+- ✅ Sticky notes and arrows on the canvas, for annotations that aren't screens
+- ✅ Flow view: screens laid out by their prototype links, with one click
+- ✅ Tidy up: arrange selected screens in a grid
+- ✅ Pages in a project, each with its own canvas
 - ✅ A vector pen tool, written as inline SVG
 - ✅ Constraints for absolutely positioned elements, as `inset-*` classes
 

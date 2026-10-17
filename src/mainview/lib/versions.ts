@@ -94,6 +94,8 @@ export function versionSnapshot(canvas: CanvasDoc, files: ProjectFiles): Snapsho
 		locks: canvas.locks ?? [],
 		sections: canvas.sections ?? [],
 		images: canvas.images ?? [],
+		annotations: canvas.annotations ?? [],
+		pages: canvas.pages ?? [],
 	};
 }
 
@@ -106,6 +108,8 @@ export function restoredSnapshot(present: Snapshot, version: Snapshot): Snapshot
 		locks: version.locks ?? [],
 		sections: version.sections ?? [],
 		images: version.images ?? [],
+		annotations: version.annotations ?? [],
+		pages: version.pages ?? [],
 		assets: present.assets && version.assets ? { ...present.assets, ...version.assets } : present.assets,
 	};
 }

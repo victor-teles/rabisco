@@ -4,6 +4,7 @@ import type { AppliedTheme } from "./context/theme";
 import { designTokensOf } from "./context/tokens";
 import type { Json } from "./json";
 import { resolveDraft, resolveModes } from "./modes";
+import { onPage, openPage, pageOf } from "./pages";
 import type { CanvasDoc, Device, Frame, ProjectFiles, ProjectSummary, ScreenCover, ScreenSource } from "./types";
 
 export const FRAME_SIZE = {
@@ -104,6 +105,8 @@ export function reconcileFrames(canvas: CanvasDoc, files: ProjectFiles): CanvasD
 	const kept = canvas.frames.filter((frame) => frame.file in files);
 	const placed = new Set(kept.map((frame) => frame.file));
 	const frames = [...kept];
+	const pages = canvas.pages ?? [];
+	const open = openPage(canvas);
 
 	for (const path of Object.keys(files).sort()) {
 		if (!isScreenFile(path) || placed.has(path)) continue;
@@ -111,9 +114,14 @@ export function reconcileFrames(canvas: CanvasDoc, files: ProjectFiles): CanvasD
 		// An alternate goes below the other frames of its screen (decision 0004)
 		const base = path.replace(/\.alt-\d+\.tsx$/, ".tsx");
 		const group = frames.filter((frame) => frame.file.replace(/\.alt-\d+\.tsx$/, ".tsx") === base);
-		const x = group.length ? (group.find((frame) => frame.file === base) ?? group[0]!).x : nextFrameX(frames);
+		const first = group.find((frame) => frame.file === base) ?? group[0];
+		const page = first ? pageOf(first, pages) : open;
+		const x = first ? first.x : nextFrameX(onPage(frames, pages, open));
 		const y = group.length ? Math.max(...group.map((frame) => frame.y + frame.height)) + FRAME_GAP : 0;
-		frames.push({ file: path, name: screenNameFromPath(path), device: canvas.device, x, y, ...size });
+		const frame: Frame = { file: path, name: screenNameFromPath(path), device: canvas.device, x, y, ...size };
+
+		if (page) frame.page = page;
+		frames.push(frame);
 	}
 
 	if (frames.length === canvas.frames.length && kept.length === canvas.frames.length) return canvas;

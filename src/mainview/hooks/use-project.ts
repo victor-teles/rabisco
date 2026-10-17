@@ -79,6 +79,7 @@ export function useProject(path: string) {
 		undo: session.undo,
 		redo: session.redo,
 		setSelection: session.setSelection,
+		setPage: session.setPage,
 		setMeta: session.setMeta,
 		addVersion: session.addVersion,
 		addMessages,

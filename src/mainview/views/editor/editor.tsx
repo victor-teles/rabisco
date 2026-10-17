@@ -14,6 +14,8 @@ import {
 	Redo2,
 	Square,
 	SquareDashedTopSolid,
+	StickyNote,
+	MoveUpRight,
 	Type,
 	Undo2,
 } from "lucide-react";
@@ -45,6 +47,8 @@ import { useProject } from "@/hooks/use-project";
 import { useShowFps } from "@/hooks/use-show-fps";
 import { referenceAttachments, useMoodboard } from "@/hooks/use-moodboard";
 import { useSections } from "@/hooks/use-sections";
+import { useAnnotations, type AnnotationKind } from "@/hooks/use-annotations";
+import { usePages } from "@/hooks/use-pages";
 import { useStructure } from "@/hooks/use-structure";
 import { useAgentTools } from "@/hooks/use-agent-tools";
 import type { Theme } from "@/hooks/use-theme";
@@ -58,6 +62,7 @@ import { setResolved } from "../../../shared/comments";
 import { useChatCommands } from "@/hooks/use-chat-commands";
 import { isDevelopment } from "@/lib/dev";
 import { align, boundsOf, distribute, type Alignment, type Axis, type Rect } from "@/lib/align";
+import { flowFrames, screenEdges, tidyUp } from "@/lib/arrange";
 import { alignElements, distributeElements, needsPlacements, type Arranged } from "@/lib/element-align";
 import { outermost } from "@/lib/element-selection";
 import { isMac } from "@/lib/platform";
@@ -69,7 +74,7 @@ import { reorderFrames } from "@/lib/screen-list";
 import { styleState } from "@/lib/style-state";
 import { contextSelection, sameSelection, selectedFrames, toggleInSelection } from "@/lib/selection";
 import { cn } from "@/lib/utils";
-import { useZoomPercent, viewportStore, type ViewportStore } from "@/lib/viewport";
+import { useZoomPercent, viewportStore, type Viewport, type ViewportStore } from "@/lib/viewport";
 import { persistViewport, rememberProject, savedViewport } from "@/lib/workspace";
 import { focusLabel, focusOf } from "../../../shared/ai/focus";
 import {
@@ -108,7 +113,18 @@ import { FRAME_GAP, FRAME_SIZE, isScreenFile, PROMPTS_FILE, uniqueScreenPath } f
 import { sectionAt } from "../../../shared/sections";
 import { chooseMode, optionLabel, resolveModes, targetModes } from "../../../shared/modes";
 import { referenceOf, screenOf } from "../../../shared/recreate";
-import type { CanvasSection, ChatMessage, ContextFileName, Device, Frame, ProjectFiles } from "../../../shared/types";
+import type {
+	Annotation,
+	CanvasComment,
+	CanvasPage,
+	CanvasSection,
+	ChatMessage,
+	ContextFileName,
+	Device,
+	Frame,
+	ProjectFiles,
+} from "../../../shared/types";
+import { onPage, openPage, pageOf } from "../../../shared/pages";
 import { baseOf, pickVariation, selectionAfterPick, variationGroups } from "../../../shared/variations";
 import {
 	Canvas,
@@ -197,6 +213,8 @@ import { AssetsPanel } from "./assets-panel";
 import { MotionPanel } from "./motion-panel";
 import { motionActions } from "./motion-actions";
 import { MoodboardLayer } from "./moodboard-layer";
+import { AnnotationDraw, AnnotationsLayer } from "./annotations-layer";
+import { PagesMenu } from "./pages-menu";
 import { SectionDraw, SectionsLayer } from "./sections-layer";
 import { FindPanel } from "./find-panel";
 import { ChatSessions } from "./chat-sessions";
@@ -232,6 +250,14 @@ type EditorProps = {
 };
 
 const NO_FRAMES: Frame[] = [];
+
+const NO_PAGES: CanvasPage[] = [];
+
+const NO_SECTIONS: CanvasSection[] = [];
+
+const NO_ANNOTATIONS: Annotation[] = [];
+
+const NO_COMMENTS: CanvasComment[] = [];
 
 const PASTE_KEY: KeyInput = { code: "KeyV", key: "v", metaKey: isMac, ctrlKey: !isMac, altKey: false, shiftKey: false };
 
@@ -289,6 +315,7 @@ export function EditorView({
 		undo,
 		redo,
 		setSelection,
+		setPage,
 		setMeta,
 		addVersion,
 		addMessages,
@@ -332,20 +359,51 @@ export function EditorView({
 	const restoredChat = useRef(false);
 	const nudge = useRef({ key: "", at: 0 });
 
-	const frames = project?.canvas.frames ?? NO_FRAMES;
+	const allFrames = project?.canvas.frames ?? NO_FRAMES;
+	const pageList = project?.canvas.pages ?? NO_PAGES;
+	const openPageId = project ? openPage(project.canvas) : undefined;
+	const frames = useMemo(() => onPage(allFrames, pageList, openPageId), [allFrames, pageList, openPageId]);
+	const allSections = project?.canvas.sections ?? NO_SECTIONS;
+	const pageSections = useMemo(() => onPage(allSections, pageList, openPageId), [allSections, pageList, openPageId]);
+	const allImages = project?.canvas.images;
+
+	const pageImages = useMemo(
+		() => allImages && onPage(allImages, pageList, openPageId),
+		[allImages, pageList, openPageId],
+	);
+
+	const allAnnotations = project?.canvas.annotations ?? NO_ANNOTATIONS;
+
+	const pageAnnotations = useMemo(
+		() => onPage(allAnnotations, pageList, openPageId),
+		[allAnnotations, pageList, openPageId],
+	);
+
+	const allComments = project?.canvas.comments ?? NO_COMMENTS;
+
+	const pageComments = useMemo(() => {
+		if (!pageList.length) return allComments;
+		const here = new Set(frames.map((frame) => frame.file));
+		const anywhere = new Set(allFrames.map((frame) => frame.file));
+
+		return allComments.filter((comment) =>
+			comment.file ? here.has(comment.file) || !anywhere.has(comment.file) : pageOf(comment, pageList) === openPageId,
+		);
+	}, [allComments, frames, allFrames, pageList, openPageId]);
+
 	const files = project?.files ?? NO_FILES;
 	const selection = project?.canvas.selection ?? NO_SELECTION;
 	const device = project?.canvas.device ?? "mobile";
 	const locks = project?.canvas.locks;
 	const messages = project?.messages ?? NO_MESSAGES;
 	const selected = useMemo(() => selectedFrames(frames, selection), [frames, selection]);
-	const sections = useSections({ stateRef, sections: project?.canvas.sections, change, selected, setSelection });
+	const sections = useSections({ stateRef, sections: pageSections, change, selected, setSelection });
 	const selectSection = sections.select;
 
 	const moodboard = useMoodboard({
 		projectPath,
 		stateRef,
-		images: project?.canvas.images,
+		images: pageImages,
 		frames,
 		targets: selection,
 		change,
@@ -354,6 +412,61 @@ export function EditorView({
 		setSelection,
 		reveal: (rects) => canvasRef.current?.fitTo(rects),
 	});
+
+	const annotations = useAnnotations({
+		annotations: pageAnnotations,
+		change,
+		screensSelected: selected.length > 0,
+		othersSelected: sections.selectedId !== null || moodboard.selectedId !== null,
+		setSelection,
+		onDraw: () => {
+			sections.cancelDrawing();
+			setTool("move");
+		},
+	});
+
+	const cancelAnnotationDrawing = annotations.cancelDrawing;
+
+	useEffect(() => {
+		if (sections.drawing || tool !== "move") cancelAnnotationDrawing();
+	}, [sections.drawing, tool, cancelAnnotationDrawing]);
+
+	/** Like Figma, each page keeps its own view; a page seen for the first time is zoomed to fit */
+	const pageViews = useRef(new Map<string, Viewport>());
+
+	const showPage = useCallback(
+		(id: string) => {
+			const state = stateRef.current;
+
+			if (!state || openPage(state.canvas) === id) return;
+			pageViews.current.set(openPage(state.canvas) ?? "", viewport.get());
+			setSelection([]);
+			setPage(id);
+			const saved = pageViews.current.get(id);
+
+			requestAnimationFrame(() => {
+				const canvas = stateRef.current?.canvas;
+				const shown = canvas ? onPage(canvas.frames, canvas.pages ?? [], id) : [];
+
+				if (saved) viewport.set(saved);
+				else if (shown.length) canvasRef.current?.fitTo(shown);
+			});
+		},
+		[stateRef, viewport, setSelection, setPage],
+	);
+
+	const pages = usePages({ stateRef, pages: pageList, page: openPageId, change, setPage: showPage, undo, selected });
+
+	// A screen picked from somewhere else (the chat, a link, Find) opens its page
+	useEffect(() => {
+		if (!pageList.length || !selection.length || selected.length) return;
+		const target = allFrames.find((frame) => selection.includes(frame.file));
+		const page = target && pageOf(target, pageList);
+
+		if (!page || page === openPageId) return;
+		setPage(page);
+		requestAnimationFrame(() => canvasRef.current?.fitTo(selectedFrames(allFrames, selection)));
+	}, [pageList, selection, selected.length, allFrames, openPageId, setPage]);
 
 	const [attachedCount, setAttachedCount] = useState(0);
 
@@ -407,10 +520,10 @@ export function EditorView({
 	useLayoutEffect(() => {
 		if (!project || fittedOnLoad.current) return;
 		fittedOnLoad.current = true;
-		const initial = selected.length ? selected : project.canvas.frames;
+		const initial = selected.length ? selected : frames;
 
 		if (initial.length) canvasRef.current?.fitTo(initial);
-	}, [project, selected]);
+	}, [project, selected, frames]);
 
 	const onPlaced = useCallback((placed: Frame[]) => requestAnimationFrame(() => canvasRef.current?.fitTo(placed)), []);
 
@@ -586,8 +699,8 @@ export function EditorView({
 		() => ({
 			projectPath,
 			projectName,
-			frames,
-			sections: sections.sections,
+			frames: allFrames,
+			sections: allSections,
 			files,
 			theme: appliedTokens,
 			selected,
@@ -599,8 +712,8 @@ export function EditorView({
 		[
 			projectPath,
 			projectName,
-			frames,
-			sections.sections,
+			allFrames,
+			allSections,
 			files,
 			appliedTokens,
 			selected,
@@ -1044,7 +1157,7 @@ export function EditorView({
 		[frames, setSelection],
 	);
 
-	const comments = useComments({ comments: project?.canvas.comments, frames, change, endStep });
+	const comments = useComments({ comments: pageComments, frames, page: openPageId, change, endStep });
 	const revealRects = useCallback((rects: Rect[]) => canvasRef.current?.fitTo(rects), []);
 
 	/** New text for the chat composer */
@@ -1078,11 +1191,11 @@ export function EditorView({
 			setSelection(file ? [file] : []);
 
 			if (file) selectNode(threads.length === 1 ? (elements[0] ?? null) : null);
-			const screen = file ? frames.find((frame) => frame.file === file)?.name : undefined;
+			const screen = file ? allFrames.find((frame) => frame.file === file)?.name : undefined;
 			setChatInsert((last) => ({ key: (last?.key ?? 0) + 1, text: commentsPrompt(named, screen) }));
 			setComposeKey((key) => key + 1);
 		},
-		[chatBlocked, stateRef, setSelection, selectNode, frames],
+		[chatBlocked, stateRef, setSelection, selectNode, allFrames],
 	);
 
 	const groups = useMemo(() => variationGroups(Object.keys(files)), [files]);
@@ -1518,6 +1631,35 @@ export function EditorView({
 			}),
 		[change, selection],
 	);
+
+	const tidySelection = useCallback(
+		() =>
+			change((snapshot) => {
+				const targets = selectedFrames(snapshot.frames, selection);
+
+				return targets.length < 2
+					? snapshot
+					: { ...snapshot, frames: withMoves(snapshot.frames, tidyUp(targets, FRAME_GAP)) };
+			}),
+		[change, selection],
+	);
+
+	/** The selected screens, or every screen when one or none is selected */
+	const flowView = useCallback(() => {
+		const scope = selected.length > 1 ? selected : frames;
+		const flow = flowFrames(scope, screenEdges(files), FRAME_GAP, baseOf);
+
+		if (flow.unlinked.length === scope.length) {
+			toast("No links between these screens", {
+				description: "Drag an element's + handle onto a screen to link them, then try Flow view again.",
+			});
+
+			return;
+		}
+
+		change((snapshot) => ({ ...snapshot, frames: withMoves(snapshot.frames, flow.placed) }));
+		requestAnimationFrame(() => canvasRef.current?.fitTo(flow.placed));
+	}, [change, selected, frames, files]);
 
 	/** Undo brings the files back. A selected component file is never deleted this way. */
 	const deleteSelection = useCallback(() => {
@@ -2044,7 +2186,7 @@ export function EditorView({
 				single && void copyImage(format, single, files, appliedTokens, sections.sections, starts),
 			instance: instanceActions,
 		}),
-		...linkActions({ element: extraElements.length ? null : element, files, frames, changeLink }),
+		...linkActions({ element: extraElements.length ? null : element, files, frames: allFrames, changeLink }),
 		...motionActions({ element, extras: extraElements, files, toggle: toggleMotion }),
 		...screenThemeActions({ selected, sections: sections.sections, theme: appliedTokens, setTheme: setScreenTheme }),
 		{
@@ -2226,6 +2368,22 @@ export function EditorView({
 			enabled: element ? extraElements.length > 0 : selected.length > 2,
 			run: () => (element ? distributeElementSelection(item.axis) : distributeSelection(item.axis)),
 		})),
+		{
+			id: "tidy-up",
+			label: "Tidy up",
+			group: "Arrange",
+			chords: [{ code: "KeyT", ctrl: true, alt: true }],
+			enabled: selected.length > 1,
+			run: tidySelection,
+		},
+		{
+			id: "flow-view",
+			label: "Flow view",
+			group: "Arrange",
+			chords: [{ code: "KeyF", ctrl: true, alt: true }],
+			enabled: frames.length > 1,
+			run: flowView,
+		},
 		{
 			id: "zoom-in",
 			label: "Zoom in",
@@ -2489,6 +2647,8 @@ export function EditorView({
 		},
 		...sections.actions,
 		...moodboard.actions,
+		...annotations.actions,
+		...pages.actions,
 		{
 			id: "find-text",
 			label: "Find and replace text…",
@@ -2701,17 +2861,56 @@ export function EditorView({
 	const getZoom = useCallback(() => viewport.get().zoom, [viewport]);
 	const sendComment = useCallback((thread: ChatComment) => void commentsToChat([thread]), [commentsToChat]);
 
+	const selectSectionOnly = sections.select;
+	const selectImageOnly = moodboard.select;
+	const selectAnnotation = annotations.select;
+
 	const overlay = useCallback(
 		(shown: Frame[]) => (
-			<CommentsLayer
-				controller={comments}
-				frames={shown}
-				getZoom={getZoom}
-				onSendToChat={sendComment}
-				sendBlocked={chatBlocked}
-			/>
+			<>
+				<AnnotationsLayer
+					annotations={annotations.annotations}
+					viewport={viewport}
+					selectedId={annotations.selectedId}
+					editing={annotations.editing}
+					interactive={tool === "move" && annotations.drawing === null}
+					onSelect={(id) => {
+						selectSectionOnly(null);
+						selectImageOnly(null);
+						selectAnnotation(id);
+					}}
+					onStartEditing={annotations.startEditing}
+					onText={annotations.setText}
+					onMove={annotations.move}
+					onMoveEnd={endStep}
+					onResize={annotations.resize}
+					onMoveEnds={annotations.moveEnds}
+					onRecolor={annotations.recolor}
+					onDuplicate={annotations.duplicate}
+					onDelete={annotations.remove}
+				/>
+				<CommentsLayer
+					controller={comments}
+					frames={shown}
+					getZoom={getZoom}
+					onSendToChat={sendComment}
+					sendBlocked={chatBlocked}
+				/>
+			</>
 		),
-		[comments, getZoom, sendComment, chatBlocked],
+		[
+			annotations,
+			viewport,
+			tool,
+			selectSectionOnly,
+			selectImageOnly,
+			selectAnnotation,
+			endStep,
+			comments,
+			getZoom,
+			sendComment,
+			chatBlocked,
+		],
 	);
 
 	// Right-click selects first, so the actions already target the screens under the pointer
@@ -2805,7 +3004,7 @@ export function EditorView({
 						file={codeFile}
 						source={codeSource}
 						start={structure.node.start}
-						screenName={frames.find((frame) => frame.file === codeFile)?.name ?? codeFile}
+						screenName={allFrames.find((frame) => frame.file === codeFile)?.name ?? codeFile}
 						onSelect={selectAncestor}
 					/>
 				) : null}
@@ -2816,7 +3015,7 @@ export function EditorView({
 					onEndStep={endStep}
 					onOpenComponent={goToComponent}
 					onEditInstance={editInstance}
-					frames={frames}
+					frames={allFrames}
 					projectPath={projectPath}
 					tokens={appliedTokens}
 					arrange={
@@ -2832,7 +3031,7 @@ export function EditorView({
 				/>
 				<LinkControl
 					files={files}
-					frames={frames}
+					frames={allFrames}
 					element={structure.nodes.length === 1 ? structure.node : null}
 					disabled={structure.busy}
 					onChange={changeLink}
@@ -2848,7 +3047,7 @@ export function EditorView({
 			endStep,
 			goToComponent,
 			editInstance,
-			frames,
+			allFrames,
 			projectPath,
 			appliedTokens,
 			changeLink,
@@ -2863,7 +3062,7 @@ export function EditorView({
 		() => (
 			<ComponentsPanel
 				files={files}
-				frames={frames}
+				frames={allFrames}
 				components={components}
 				selectedComponent={selectedComponentPath}
 				suggestions={suggestions}
@@ -2877,7 +3076,7 @@ export function EditorView({
 		),
 		[
 			files,
-			frames,
+			allFrames,
 			components,
 			selectedComponentPath,
 			suggestions,
@@ -2981,7 +3180,21 @@ export function EditorView({
 							onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
 							aria-label="Project name"
 							title={projectPath}
-							className="h-7 w-56 rounded-md bg-transparent px-2 text-[13px] font-medium outline-none hover:bg-accent focus:bg-accent"
+							size={Math.max(8, (project?.canvas.name ?? "").length)}
+							className="field-sizing-content h-7 max-w-72 min-w-16 rounded-md bg-transparent px-2 text-[13px] font-medium outline-none hover:bg-accent focus:bg-accent"
+						/>
+						<span aria-hidden className="text-[13px] text-subtle-foreground">
+							/
+						</span>
+						<PagesMenu
+							pages={pages.pages}
+							current={pages.current}
+							renaming={pages.renaming}
+							onGo={pages.go}
+							onAdd={() => void pages.add()}
+							onStartRename={pages.startRename}
+							onRename={pages.rename}
+							onDelete={pages.remove}
 						/>
 					</NoDrag>
 					<div className="flex-1" />
@@ -3048,7 +3261,7 @@ export function EditorView({
 								<AssetsPanel
 									projectPath={projectPath}
 									files={files}
-									frames={frames}
+									frames={allFrames}
 									theme={appliedTokens}
 									onOpenFile={openAssetUse}
 									onAddFontTokens={addFontTokens}
@@ -3160,6 +3373,7 @@ export function EditorView({
 							onSelectionChange={setSelection}
 							onClickEmpty={(point) => {
 								moodboard.select(null);
+								annotations.select(null);
 								sections.select(sectionAt(point.x, point.y, sections.sections)?.id ?? null);
 							}}
 							onMoveFrames={moveFrames}
@@ -3189,7 +3403,7 @@ export function EditorView({
 										<h3 className="pb-1 text-xs font-medium text-subtle-foreground">Prototype link</h3>
 										<LinkFields
 											files={files}
-											frames={frames}
+											frames={allFrames}
 											element={selectedLink}
 											disabled={structure.busy}
 											onChange={changeLink}
@@ -3268,12 +3482,23 @@ export function EditorView({
 							{sections.drawing ? (
 								<SectionDraw viewport={viewport} onDraw={sections.draw} onCancel={sections.cancelDrawing} />
 							) : null}
-							{project && frames.length === 0 && !generation ? (
+							{annotations.drawing ? (
+								<AnnotationDraw
+									kind={annotations.drawing}
+									viewport={viewport}
+									onNote={annotations.drawNote}
+									onArrow={annotations.drawArrow}
+									onCancel={annotations.cancelDrawing}
+								/>
+							) : null}
+							{project && frames.length === 0 && !annotations.annotations.length && !generation ? (
 								<div className="pointer-events-none absolute inset-0 grid place-items-center">
 									<EmptyState variant="plain" className="max-w-xs">
 										<EmptyStateContent>
 											<EmptyStateHeader>
-												<EmptyStateTitle>Your canvas is empty</EmptyStateTitle>
+												<EmptyStateTitle>
+													{pageList.length > 1 ? `${pages.current.name} is empty` : "Your canvas is empty"}
+												</EmptyStateTitle>
 												<EmptyStateDescription>
 													Describe what you want in the chat and Rabisco will draft the first screens here.
 												</EmptyStateDescription>
@@ -3306,8 +3531,11 @@ export function EditorView({
 							onSection={() => {
 								if (sections.drawing) return sections.cancelDrawing();
 								setTool("move");
+								annotations.cancelDrawing();
 								sections.create();
 							}}
+							drawingAnnotation={annotations.drawing}
+							onAnnotation={annotations.startDrawing}
 							onPlaceImage={() => void insertTools.placeImage()}
 							canUndo={canUndo}
 							canRedo={canRedo}
@@ -3351,8 +3579,8 @@ export function EditorView({
 						{playStart ? (
 							<PlayView
 								start={playStart}
-								frames={frames}
-								sections={sections.sections}
+								frames={allFrames}
+								sections={allSections}
 								theme={appliedTokens}
 								files={files}
 								projectName={projectName}
@@ -3433,7 +3661,7 @@ export function EditorView({
 			<ComponentPage
 				component={components.find((c) => c.path === componentPage) ?? null}
 				files={files}
-				frames={frames}
+				frames={allFrames}
 				onClose={() => setComponentPage(null)}
 				onChangeFile={changeComponentFile}
 				onShowScreens={showScreens}
@@ -3509,7 +3737,10 @@ const SCREEN_MENU: MenuEntry[] = [
 		items: ["align-left", "align-h-center", "align-right", SEPARATOR, "align-top", "align-v-middle", "align-bottom"],
 	},
 	{ label: "Distribute", items: ["distribute-horizontal", "distribute-vertical"] },
+	"tidy-up",
+	"flow-view",
 	"add-section",
+	{ label: "Move to page", items: ["move-to-page:*", SEPARATOR, "move-to-new-page"] },
 	THEME_MENU,
 	SEPARATOR,
 	"copy-screens",
@@ -3532,10 +3763,15 @@ const CANVAS_MENU: MenuEntry[] = [
 	NEW_SCREEN_SUBMENU,
 	"add-comment",
 	"add-section",
+	"sticky-note",
+	"arrow",
+	SEPARATOR,
+	"add-page",
 	SEPARATOR,
 	"edit-every-screen",
 	"dark-pass",
 	SEPARATOR,
+	"flow-view",
 	"zoom-fit",
 	"select-all",
 ];
@@ -3548,6 +3784,8 @@ function Toolbar({
 	onToolChange,
 	drawingSection,
 	onSection,
+	drawingAnnotation,
+	onAnnotation,
 	onPlaceImage,
 	canUndo,
 	canRedo,
@@ -3560,6 +3798,8 @@ function Toolbar({
 	onToolChange: (tool: Tool) => void;
 	drawingSection: boolean;
 	onSection: () => void;
+	drawingAnnotation: AnnotationKind | null;
+	onAnnotation: (kind: AnnotationKind) => void;
 	onPlaceImage: () => void;
 	canUndo: boolean;
 	canRedo: boolean;
@@ -3580,6 +3820,11 @@ function Toolbar({
 		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
 	];
 
+	const annotationTools = [
+		{ kind: "note" as const, label: "Sticky note", shortcut: "S", icon: StickyNote },
+		{ kind: "arrow" as const, label: "Arrow", shortcut: "⇧L", icon: MoveUpRight },
+	];
+
 	const history = [
 		{ label: "Undo", shortcut: "⌘Z", icon: Undo2, enabled: canUndo, onClick: onUndo },
 		{ label: "Redo", shortcut: "⇧⌘Z", icon: Redo2, enabled: canRedo, onClick: onRedo },
@@ -3594,11 +3839,12 @@ function Toolbar({
 							variant="ghost"
 							size="icon-sm"
 							aria-label={t.label}
-							aria-pressed={tool === t.id && !drawingSection}
+							aria-pressed={tool === t.id && !drawingSection && !drawingAnnotation}
 							onClick={() => onToolChange(t.id)}
 							className={cn(
 								tool === t.id &&
 									!drawingSection &&
+									!drawingAnnotation &&
 									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
 							)}
 						>
@@ -3640,6 +3886,28 @@ function Toolbar({
 					Section <Kbd>⇧S</Kbd>
 				</TooltipContent>
 			</Tooltip>
+			{annotationTools.map((t) => (
+				<Tooltip key={t.kind}>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							aria-label={t.label}
+							aria-pressed={drawingAnnotation === t.kind}
+							onClick={() => onAnnotation(t.kind)}
+							className={cn(
+								drawingAnnotation === t.kind &&
+									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+							)}
+						>
+							<t.icon />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="top">
+						{t.label} <Kbd>{t.shortcut}</Kbd>
+					</TooltipContent>
+				</Tooltip>
+			))}
 			{comments}
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />
 			{history.map((h) => (

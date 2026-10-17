@@ -1,6 +1,15 @@
 import type { AssetDigests } from "./assets";
 import type { AppliedTheme } from "./context/theme";
-import type { CanvasComment, CanvasImage, CanvasSection, Device, ElementLock, Frame } from "./types";
+import type {
+	Annotation,
+	CanvasComment,
+	CanvasImage,
+	CanvasPage,
+	CanvasSection,
+	Device,
+	ElementLock,
+	Frame,
+} from "./types";
 
 export type SavedSnapshot = {
 	frames: Frame[];
@@ -12,6 +21,8 @@ export type SavedSnapshot = {
 	locks: ElementLock[];
 	sections: CanvasSection[];
 	images?: CanvasImage[];
+	annotations?: Annotation[];
+	pages?: CanvasPage[];
 	assets?: AssetDigests;
 };
 

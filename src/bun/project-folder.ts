@@ -24,7 +24,9 @@ import { isString } from "../shared/guards";
 import { isJsonObject, type Json, type JsonObject } from "../shared/json";
 import { normalizeGuides, parseGuides } from "../shared/guides";
 import { parseLayoutGrid } from "../shared/layout-grid";
+import { normalizeAnnotations } from "../shared/annotations";
 import { normalizeImages } from "../shared/moodboard";
+import { normalizePages } from "../shared/pages";
 import { normalizeModes, normalizeTokenModes } from "../shared/modes";
 import { normalizeSections } from "../shared/sections";
 import {
@@ -165,6 +167,9 @@ function parseFrame(value: Json, canvasDevice: Device): Frame[] {
 	const modes = normalizeModes(frame.modes);
 
 	if (modes) parsed.modes = modes;
+	const page = optionalString(frame.page);
+
+	if (page) parsed.page = page;
 
 	return [parsed];
 }
@@ -205,6 +210,15 @@ export function normalizeCanvas(raw: Json | undefined, fallbackName: string): Ca
 	const images = normalizeImages(raw.images);
 
 	if (images.length) canvas.images = images;
+	const annotations = normalizeAnnotations(raw.annotations);
+
+	if (annotations.length) canvas.annotations = annotations;
+	const pages = normalizePages(raw.pages);
+
+	if (pages.length) canvas.pages = pages;
+	const page = optionalString(raw.page);
+
+	if (page && pages.some((each) => each.id === page)) canvas.page = page;
 
 	return canvas;
 }

@@ -35,6 +35,8 @@ export type Frame = {
 	guides?: FrameGuide[];
 	reference?: string;
 	modes?: ModeChoices;
+	/** Missing, or a page that's gone: the first page */
+	page?: string;
 };
 
 export type ModeChoices = Record<string, string>;
@@ -55,6 +57,7 @@ export type CanvasSection = {
 	height: number;
 	modes?: ModeChoices;
 	tokens?: TokenValues;
+	page?: string;
 };
 
 export type CanvasImage = {
@@ -66,7 +69,29 @@ export type CanvasImage = {
 	y: number;
 	width: number;
 	height: number;
+	page?: string;
 };
+
+/** A sticky note: canvas only, never sent or exported */
+export type CanvasNote = {
+	kind: "note";
+	id: string;
+	text: string;
+	color: SectionColor;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	page?: string;
+};
+
+/** From (`x1`, `y1`) to the head at (`x2`, `y2`) */
+export type CanvasArrow = { kind: "arrow"; id: string; x1: number; y1: number; x2: number; y2: number; page?: string };
+
+export type Annotation = CanvasNote | CanvasArrow;
+
+/** Each page has its own canvas; screens, sections, images, notes and loose comments say which with `page` */
+export type CanvasPage = { id: string; name: string };
 
 /** Derived from file names (decision 0004) */
 export type AlternateGroup = {
@@ -92,6 +117,11 @@ export type CanvasDoc = {
 	locks?: ElementLock[];
 	sections?: CanvasSection[];
 	images?: CanvasImage[];
+	annotations?: Annotation[];
+	/** Missing: one page */
+	pages?: CanvasPage[];
+	/** The open page; not part of history */
+	page?: string;
 };
 
 export type ElementLock = { file: string; path: number[]; name: string };
@@ -108,6 +138,8 @@ export type CanvasComment = {
 	createdAt: string;
 	resolved?: boolean;
 	replies?: CommentReply[];
+	/** Without `file` only */
+	page?: string;
 };
 
 /** Keyed by project-relative path with forward slashes */

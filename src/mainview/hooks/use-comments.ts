@@ -11,7 +11,10 @@ export type CommentDraft = PinPlacement & { id: string };
 
 type Options = {
 	comments: CanvasComment[] | undefined;
+	/** The open page's */
 	frames: Frame[];
+	/** The open page, for a pin dragged off its screen */
+	page?: string;
 	change: (recipe: (snapshot: Snapshot) => Snapshot, options?: ChangeOptions) => void;
 	endStep: () => void;
 };
@@ -20,7 +23,7 @@ const NO_COMMENTS: CanvasComment[] = [];
 
 const commentsOf = (snapshot: Snapshot) => snapshot.comments ?? NO_COMMENTS;
 
-export function useComments({ comments = NO_COMMENTS, frames, change, endStep }: Options) {
+export function useComments({ comments = NO_COMMENTS, frames, page, change, endStep }: Options) {
 	const [draft, setDraft] = useState<CommentDraft | null>(null);
 	const [openId, setOpenId] = useState<string | null>(null);
 	const [showResolved, setShowResolved] = useState(false);
@@ -82,8 +85,10 @@ export function useComments({ comments = NO_COMMENTS, frames, change, endStep }:
 					const target = commentsOf(snapshot).find((c) => c.id === id);
 
 					if (!target) return snapshot;
-					const { file: _file, ...rest } = target;
-					const moved = { ...rest, ...pinAt(point, snapshot.frames) };
+					const { file: _file, page: _page, ...rest } = target;
+					const moved: CanvasComment = { ...rest, ...pinAt(point, frames) };
+
+					if (!moved.file && page) moved.page = page;
 
 					if (moved.file === target.file && moved.x === target.x && moved.y === target.y) return snapshot;
 
@@ -91,7 +96,7 @@ export function useComments({ comments = NO_COMMENTS, frames, change, endStep }:
 				},
 				{ coalesce: `comment-move:${dragId}` },
 			),
-		[change],
+		[change, frames, page],
 	);
 
 	const resolve = useCallback(

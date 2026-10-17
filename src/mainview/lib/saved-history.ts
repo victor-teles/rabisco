@@ -43,6 +43,8 @@ function packSnapshot(packer: Packer, snapshot: Snapshot): SavedSnapshot {
 		locks: snapshot.locks ?? [],
 		sections: snapshot.sections ?? [],
 		images: snapshot.images ?? [],
+		annotations: snapshot.annotations ?? [],
+		pages: snapshot.pages ?? [],
 	};
 
 	if (snapshot.theme) saved.theme = snapshot.theme;
@@ -130,6 +132,8 @@ function unpackSnapshot(contents: string[], saved: SavedSnapshot): Snapshot {
 		locks: saved.locks,
 		sections: saved.sections,
 		images: saved.images ?? [],
+		annotations: saved.annotations ?? [],
+		pages: saved.pages ?? [],
 		assets: saved.assets,
 	};
 }
@@ -170,6 +174,8 @@ const canvasKey = (snapshot: Snapshot) =>
 			locks: snapshot.locks ?? [],
 			sections: snapshot.sections ?? [],
 			images: snapshot.images ?? [],
+			annotations: snapshot.annotations ?? [],
+			pages: snapshot.pages ?? [],
 		},
 		sortKeys,
 	);

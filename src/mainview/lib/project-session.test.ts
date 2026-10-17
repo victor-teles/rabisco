@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { canUndo } from "./history";
 import { removeImage } from "./moodboard";
+import { addPage } from "./pages";
 import { createProjectSession, type ProjectApi } from "./project-session";
 import type { AssetDigests } from "../../shared/assets";
 import { emptyCanvas } from "../../shared/project";
@@ -307,5 +308,43 @@ describe("images in history", () => {
 		expect(errors).toEqual([`Error: Couldn't bring back ${IMAGE.src}: no saved copy is left.`]);
 		expect(session.state()!.history.present.assets).toEqual({});
 		expect(disk.canvas.images).toEqual([IMAGE]);
+	});
+});
+
+describe("pages", () => {
+	const NOTE = { kind: "note", id: "n1", text: "", color: "yellow", x: 0, y: 0, width: 80, height: 80 } as const;
+
+	test("undo takes adding a page and a note back out", async () => {
+		const { api } = diskApi();
+		const session = await opened(api);
+
+		session.change((snapshot) => addPage(snapshot, { id: "p2", name: "Page 2" }, "p1"));
+		session.setPage("p2");
+		session.change((snapshot) => ({ ...snapshot, annotations: [NOTE] }));
+		expect(session.state()!.canvas.annotations).toEqual([{ ...NOTE, page: "p2" }]);
+
+		session.undo();
+		expect(session.state()!.canvas.annotations).toBeUndefined();
+		session.undo();
+		expect(session.state()!.canvas.pages).toBeUndefined();
+	});
+
+	test("a new screen goes on the open page, and the open page isn't an undo step", async () => {
+		const { api } = diskApi();
+		const session = await opened(api);
+
+		session.change((snapshot) => addPage(snapshot, { id: "p2", name: "Page 2" }, "p1"));
+		const steps = session.state()!.history.past.length;
+		session.setPage("p2");
+		expect(session.state()!.history.past.length).toBe(steps);
+
+		session.change((snapshot) => ({
+			...snapshot,
+			files: { ...snapshot.files, "screens/new.tsx": "export default () => null;\n" },
+			frames: [{ file: "screens/new.tsx", name: "New", device: "mobile", x: 0, y: 0, width: 390, height: 844 }],
+		}));
+
+		expect(session.state()!.canvas.frames[0]!.page).toBe("p2");
+		expect(session.state()!.canvas.page).toBe("p2");
 	});
 });

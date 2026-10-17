@@ -36,7 +36,8 @@ export function normalizeImages(raw: Json | undefined): CanvasImage[] {
 
 		if (width <= 0 || height <= 0 || !isMoodboardSrc(entry.src)) continue;
 		seen.add(entry.id);
-		images.push({
+
+		const image: CanvasImage = {
 			id: entry.id,
 			src: entry.src,
 			name: isString(entry.name) ? entry.name : "image",
@@ -44,7 +45,10 @@ export function normalizeImages(raw: Json | undefined): CanvasImage[] {
 			y,
 			width,
 			height,
-		});
+		};
+
+		if (isString(entry.page)) image.page = entry.page;
+		images.push(image);
 	}
 
 	return images;

@@ -57,6 +57,8 @@ export function normalizeSections(raw: Json | undefined): CanvasSection[] {
 		if (modes) section.modes = modes;
 
 		if (tokens) section.tokens = tokens;
+
+		if (isString(entry.page)) section.page = entry.page;
 	}
 
 	return sections;
@@ -89,13 +91,19 @@ export function sectionAround(frames: Frame[], id: string, name: string): Canvas
 	};
 }
 
+type Paged = { page?: string };
+
+/** Sections hold screens and sections on their own page only */
+const samePage = (a: Paged, b: Paged) => (a.page ?? "") === (b.page ?? "");
+
 const holdsPoint = (section: Rect, x: number, y: number) =>
 	x >= section.x && x <= section.x + section.width && y >= section.y && y <= section.y + section.height;
 
-export const holdsFrame = (section: Rect, frame: Rect) =>
-	holdsPoint(section, frame.x + frame.width / 2, frame.y + frame.height / 2);
+export const holdsFrame = (section: Rect & Paged, frame: Rect & Paged) =>
+	samePage(section, frame) && holdsPoint(section, frame.x + frame.width / 2, frame.y + frame.height / 2);
 
-const holdsRect = (outer: Rect, inner: Rect) =>
+const holdsRect = (outer: Rect & Paged, inner: Rect & Paged) =>
+	samePage(outer, inner) &&
 	inner.x >= outer.x &&
 	inner.y >= outer.y &&
 	inner.x + inner.width <= outer.x + outer.width &&
@@ -113,11 +121,15 @@ export function sectionAt(x: number, y: number, sections: CanvasSection[]): Canv
 	return found;
 }
 
-export const sectionsAround = (frame: Rect, sections: readonly CanvasSection[]) =>
+export const sectionsAround = (frame: Rect & Paged, sections: readonly CanvasSection[]) =>
 	sections.filter((section) => holdsFrame(section, frame)).sort((a, b) => a.width * a.height - b.width * b.height);
 
 export const sectionOf = (frame: Frame, sections: CanvasSection[]) =>
-	sectionAt(frame.x + frame.width / 2, frame.y + frame.height / 2, sections);
+	sectionAt(
+		frame.x + frame.width / 2,
+		frame.y + frame.height / 2,
+		sections.filter((section) => samePage(section, frame)),
+	);
 
 export function moveSection(
 	sections: CanvasSection[],

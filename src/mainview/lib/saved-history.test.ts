@@ -26,6 +26,8 @@ const base: Snapshot = {
 	locks: [],
 	sections: [],
 	images: [],
+	annotations: [],
+	pages: [],
 };
 
 const edit = (snapshot: Snapshot, content: string): Snapshot => ({

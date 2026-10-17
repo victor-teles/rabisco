@@ -105,6 +105,8 @@ function parseSnapshot(value: Json | undefined, count: number, fallbackName: str
 		locks: canvas.locks ?? [],
 		sections: canvas.sections ?? [],
 		images: canvas.images ?? [],
+		annotations: canvas.annotations ?? [],
+		pages: canvas.pages ?? [],
 	};
 
 	if (canvas.theme) snapshot.theme = canvas.theme;

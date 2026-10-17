@@ -33,6 +33,7 @@ import {
 import { modeGroups, resolveModes } from "../../shared/modes";
 import { sectionOf } from "../../shared/sections";
 import type { CanvasComment, CanvasDoc, Device, ElementLock, Frame, ProjectFiles } from "../../shared/types";
+import { onPage, openPageFrames, pageOf } from "../../shared/pages";
 import { isAlternate, placeNewFrames } from "../../shared/variations";
 import type { Snapshot } from "./history";
 import { atPath, buildOutline, findNode, pathOf, remapStart, type OutlineNode } from "./outline";
@@ -438,9 +439,17 @@ function createScreen(context: AgentContext, args: JsonObject): Json {
 	const file = uniqueScreenPath(name, Object.keys(files));
 	checkCompiles(file, code);
 
-	const top = canvas.frames.length ? Math.min(...canvas.frames.map((each) => each.y)) : 0;
+	const shown = openPageFrames(canvas);
+	const top = shown.length ? Math.min(...shown.map((each) => each.y)) : 0;
 	const frame: Frame = { file, name, device, x: 0, y: top, ...FRAME_SIZE[device] };
-	const placed = anchor ? rightOf(canvas.frames, anchor, frame) : placeNewFrames(canvas.frames, [frame])[0]!;
+	const pages = canvas.pages ?? [];
+	const anchorPage = anchor ? pageOf(anchor, pages) : undefined;
+
+	const placed = anchor
+		? rightOf(onPage(canvas.frames, pages, anchorPage), anchor, frame)
+		: placeNewFrames(shown, [frame])[0]!;
+
+	if (anchorPage) placed.page = anchorPage;
 
 	context.change(
 		(snapshot) => ({ ...snapshot, files: { ...snapshot.files, [file]: code }, frames: [...snapshot.frames, placed] }),
