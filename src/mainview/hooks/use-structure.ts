@@ -9,7 +9,8 @@ import { adjacentRange, editEach, outermost, restyle, toggleStart, wrapRange } f
 import { toggleLocks } from "@/lib/element-locks";
 import { applyFileChanges, type Snapshot } from "@/lib/history";
 import { atPath, pathOf, remapStart } from "@/lib/outline";
-import { setChildrenText, writeProp, type Literal } from "@/lib/props";
+import { setChildrenText, setRichText, writeProp, type Literal } from "@/lib/props";
+import type { RichRun } from "../../shared/jsx/rich-text";
 import {
 	duplicateElement,
 	extractComponent,
@@ -171,6 +172,12 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 	const setChildren = useCallback(
 		(target: StructureNode, text: string, step?: string) =>
 			editFile(target.file, (source) => setChildrenText(source, target.start, text), step),
+		[editFile],
+	);
+
+	const setRichChildren = useCallback(
+		(target: StructureNode, runs: readonly RichRun[], step?: string) =>
+			editFile(target.file, (source) => setRichText(source, target.start, runs), step),
 		[editFile],
 	);
 
@@ -596,6 +603,7 @@ export function useStructure({ files, file, stateRef, change, onShowCode, busy =
 		editCode,
 		setProp,
 		setChildren,
+		setRichChildren,
 		editClasses,
 	};
 }

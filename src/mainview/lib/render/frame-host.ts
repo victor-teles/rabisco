@@ -30,6 +30,7 @@ import {
 } from "./protocol";
 import type { ElementLayout, Spacing } from "./spacing";
 import { screenStyles } from "./styles";
+import type { RichRun } from "../../../shared/jsx/rich-text";
 
 export type FrameStatus = {
 	frame: HTMLIFrameElement;
@@ -109,6 +110,9 @@ function payloadOf(module: CompiledModule): ModulePayload {
 }
 
 /** Posts only the modules and CSS the frame doesn't have yet; unchanged graphs post nothing. */
+/** `runs` only for a rich edit */
+export type EditedText = { text: string; runs: RichRun[] | null };
+
 export class FrameHost {
 	readonly frame: HTMLIFrameElement;
 	status: FrameStatus["status"] = "loading";
@@ -138,7 +142,7 @@ export class FrameHost {
 	#tracked: TrackedElement = { start: null, version: "" };
 	onBoxes: ((boxes: TrackedBoxes) => void) | null = null;
 	#links: LinkedElements = { entry: "", source: "", starts: [], version: "" };
-	#textEdit: { start: number; version: string; resolve: (text: string | null | undefined) => void } | null = null;
+	#textEdit: { start: number; version: string; resolve: (edited: EditedText | null | undefined) => void } | null = null;
 	/** Re-sent when the frame reloads. */
 	#play = false;
 	/** Re-sent when the frame reloads. */
@@ -325,9 +329,9 @@ export class FrameHost {
 
 	/** Resolves with the new text, `null` if cancelled, or `undefined` if the frame refused. */
 	editText(
-		edit: { start: number; version: string; text: string; x?: number; y?: number; path?: string },
+		edit: { start: number; version: string; text: string; rich?: boolean; x?: number; y?: number; path?: string },
 		onStart?: () => void,
-	): Promise<string | null | undefined> {
+	): Promise<EditedText | null | undefined> {
 		this.#textEdit?.resolve(null);
 
 		if (!this.#ready) return Promise.resolve(undefined);
@@ -520,7 +524,8 @@ export class FrameHost {
 
 			if (message.state === "editing") this.#onTextEditStart?.();
 			else if (message.state === "refused") edit.resolve(undefined);
-			else if (message.state === "done") edit.resolve(message.text);
+			else if (message.state === "done")
+				edit.resolve(message.text === null ? null : { text: message.text, runs: message.runs ?? null });
 		} else if (message?.type === "navigate") {
 			if (this.#play && message.to.trim())
 				this.onNavigate?.(message.to, {

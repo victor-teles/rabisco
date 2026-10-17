@@ -502,7 +502,11 @@ describe("hit testing", () => {
 		expect(posted.at(-1)).toEqual({ type: "end-edit", commit: true });
 		host.receive({ type: "text-edit", start: 6, version: "v", state: "done", text: "Other" });
 		host.receive({ type: "text-edit", start: 5, version: "v", state: "done", text: "Hello" });
-		expect(await kept).toBe("Hello");
+		expect(await kept).toEqual({ text: "Hello", runs: null });
+		const formatted = host.editText({ start: 5, version: "v", text: "Hello", rich: true });
+		const runs = [{ text: "Hel" }, { text: "lo", bold: true }];
+		host.receive({ type: "text-edit", start: 5, version: "v", state: "done", text: "Hello", runs });
+		expect(await formatted).toEqual({ text: "Hello", runs });
 		const cancelled = host.editText({ start: 5, version: "v", text: "Hello" });
 		host.receive({ type: "text-edit", start: 5, version: "v", state: "done", text: null });
 		expect(await cancelled).toBeNull();

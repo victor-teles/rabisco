@@ -9,6 +9,7 @@ import {
 	readChildrenText,
 	readProp,
 	setChildrenText,
+	setRichText,
 	writeProp,
 	writeSlotText,
 } from "./props";
@@ -122,6 +123,25 @@ describe("writeProp", () => {
 	test("null removes, a gone element is null", () => {
 		expect(card(writeProp(SOURCE, start, "className", null)!)).not.toContain("className");
 		expect(writeProp(SOURCE, start + 1, "title", "x")).toBeNull();
+	});
+});
+
+describe("setRichText", () => {
+	const source = `export default function A() {\n\treturn (\n\t\t<p>\n\t\t\tSave <strong>40%</strong>\n\t\t</p>\n\t);\n}\n`;
+
+	test("writes formatting tags and keeps the line layout", () => {
+		const { start } = at(source, "<p");
+
+		expect(setRichText(source, start, [{ text: "Save " }, { text: "half", italic: true }])).toContain(
+			"<p>\n\t\t\tSave <em>half</em>\n\t\t</p>",
+		);
+		expect(setRichText(SOURCE, at(SOURCE, "<Badge").start, [{ text: "New", bold: true }])).toContain(
+			"<Badge><strong>New</strong></Badge>",
+		);
+	});
+
+	test("refuses children it can't read as text", () => {
+		expect(setRichText(SOURCE, at(SOURCE, "<Row").start, [{ text: "x", bold: true }])).toBeNull();
 	});
 });
 

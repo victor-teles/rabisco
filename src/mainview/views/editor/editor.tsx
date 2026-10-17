@@ -102,6 +102,7 @@ import {
 } from "../../../shared/context/tokens";
 import { editLink, readLink, type LinkEdit } from "../../../shared/prototype/links";
 import { findElement, parseJsx } from "../../../shared/jsx";
+import type { RichRun } from "../../../shared/jsx/rich-text";
 import { FRAME_GAP, FRAME_SIZE, isScreenFile, PROMPTS_FILE, uniqueScreenPath } from "../../../shared/project";
 import { sectionAt } from "../../../shared/sections";
 import { chooseMode, optionLabel, resolveModes, targetModes } from "../../../shared/modes";
@@ -650,6 +651,7 @@ export function EditorView({
 	const {
 		setProp: setComponentProp,
 		setChildren: setComponentChildren,
+		setRichChildren,
 		editClasses: editComponentClasses,
 	} = liveStructure;
 
@@ -807,6 +809,7 @@ export function EditorView({
 			editCode,
 			setProp,
 			setChildren,
+			setRichChildren,
 			editClasses,
 		}),
 		[
@@ -841,6 +844,7 @@ export function EditorView({
 			editCode,
 			setProp,
 			setChildren,
+			setRichChildren,
 			editClasses,
 		],
 	);
@@ -968,8 +972,19 @@ export function EditorView({
 	const { textStep } = insertTools;
 
 	const editElementText = useCallback(
-		(element: ElementRef, text: string) => setChildren(element, text, textStep(element)),
-		[setChildren, textStep],
+		(element: ElementRef, text: string, runs?: RichRun[]) => {
+			if (!runs) return setChildren(element, text, textStep(element));
+
+			if (
+				overridden(element, () => ({
+					ok: false,
+					reason: "A usage overrides plain text. Edit the component to format it.",
+				}))
+			)
+				return;
+			setRichChildren(element, runs, textStep(element));
+		},
+		[setChildren, setRichChildren, overridden, textStep],
 	);
 
 	const editTextElsewhere = useCallback(() => setTab("design"), []);

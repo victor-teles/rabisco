@@ -41,6 +41,7 @@ import {
 import { isInsertTool, type CanvasInsert, type InsertTarget, type InsertTool } from "@/lib/insert-tools";
 import { isControlClick, isDeepModifier } from "@/lib/platform";
 import { isVoidElement, readChildrenText } from "@/lib/props";
+import { hasMarks, readRichText, richChildren, richPlainText, type RichRun } from "../../../shared/jsx/rich-text";
 import { hostOf, onFrameStatus, type FrameHost } from "@/lib/render/frame-host";
 import { styleState } from "@/lib/style-state";
 import { suggestionHover, type SuggestionHover } from "@/lib/suggestion-hover";
@@ -217,7 +218,8 @@ type CanvasProps = {
 	elements?: ElementRef[];
 	/** ⇧-click in the selected screen once it has a selected element: adds or removes the element under the pointer */
 	onToggleElement?: (element: ElementRef) => void;
-	onEditText?: (element: ElementRef, text: string) => void;
+	/** `runs` when the text has (or had) bold, italic or links */
+	onEditText?: (element: ElementRef, text: string, runs?: RichRun[]) => void;
 	/** Dragging the selected element drops it here; `parent` and `index` are offsets in the source at `version` */
 	onMoveElement?: (
 		element: ElementRef,
@@ -788,7 +790,10 @@ export function Canvas({
 		(target: ElementRef, point?: Point) => {
 			const source = filesRef.current[target.file];
 			const node = source === undefined ? null : findElement(parseJsx(source), target.start);
-			const text = node && node.name !== null && !isVoidElement(node) ? readChildrenText(node) : null;
+			const editable = node !== null && node.name !== null && !isVoidElement(node);
+			const plain = editable ? readChildrenText(node) : null;
+			const before = editable && plain === null ? readRichText(node) : null;
+			const text = plain ?? (before ? richPlainText(before).replace(/\s+/g, " ").trim() : null);
 			const scope = instanceRef.current;
 			const inside = scope?.component === target.file;
 			const host = hostFor(inside ? scope.file : target.file);
@@ -799,7 +804,7 @@ export function Canvas({
 			const path = inside ? target.file : undefined;
 			// The frame takes pointer input and focus while editing, so the caret can be placed with the mouse
 			void host
-				.editText({ start: target.start, version: sourceVersion(source), text, ...point, path }, () => {
+				.editText({ start: target.start, version: sourceVersion(source), text, rich: true, ...point, path }, () => {
 					setEditing(target);
 					host.frame.focus();
 				})
@@ -810,7 +815,11 @@ export function Canvas({
 					if (document.activeElement === host.frame) host.frame.blur();
 
 					if (result === undefined) callbacks.current.onEditTextElsewhere?.(target);
-					else if (result !== null && result !== text) callbacks.current.onEditText?.(target, result);
+					else if (result === null) return;
+					else if (result.runs && (before !== null || hasMarks(result.runs))) {
+						if (richChildren(result.runs) !== richChildren(before ?? [{ text }]))
+							callbacks.current.onEditText?.(target, result.text, result.runs);
+					} else if (result.text !== text) callbacks.current.onEditText?.(target, result.text);
 				});
 			setEditing(target);
 			host.frame.focus();

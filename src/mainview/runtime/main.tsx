@@ -493,9 +493,16 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 				: locatedAt(message.x, message.y).find((item) => item.loc === loc);
 
 		const elements = under?.elements ?? instancesOf(rootElement, loc)[0] ?? [];
-		textEdit = startTextEdit(elements, message.text, (text) => {
+		textEdit = startTextEdit(elements, message.text, message.rich === true, (edited) => {
 			textEdit = null;
-			post({ type: "text-edit", start, version: editVersion, state: "done", text });
+			post({
+				type: "text-edit",
+				start,
+				version: editVersion,
+				state: "done",
+				text: edited?.text ?? null,
+				runs: edited?.runs ?? null,
+			});
 		});
 
 		if (textEdit) post({ type: "text-edit", start, version: editVersion, state: "editing" });

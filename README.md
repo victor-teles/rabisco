@@ -163,6 +163,7 @@ The CLI sometimes writes `from "cn"` instead of `@/lib/utils`; fix the import if
 | Click inside the selected screen, or `⌘`-click            | Select the element under the pointer (hover shows its name and size)               |
 | `⇧`-click (element selected), `⇧`/`⌘`-click (Layers)      | Add or remove an element from the selection; style edits apply to all              |
 | Double-click, or `Enter` on an element without children   | Edit its text in place (`Enter` keeps it, `Esc` cancels)                           |
+| `⌘B`, `⌘I`, `⌘K` (editing text)                           | Bold, italic, or link the selected words, as `<strong>`, `<em>` and `<a>`          |
 | `Enter` / `⇧↵` or `Esc`                                   | Select the first child / the parent (`Esc` first goes back to one element)         |
 | `⇥` / `⇧⇥`                                                | Select the next / previous sibling                                                 |
 | Arrow keys (element selected)                             | Move it earlier / later along the parent's direction (by row in a grid)            |

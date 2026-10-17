@@ -1,4 +1,5 @@
 import { findElement, parseJsx, setAttribute, type JsxElement } from "../../shared/jsx";
+import { readRichText, richChildren, type RichRun } from "../../shared/jsx/rich-text";
 import { childText } from "../../shared/jsx/text";
 import type { ComponentExport, PropSpec, PropType } from "../../shared/components/api";
 import { cachedComponentApi } from "../../shared/components/usages";
@@ -177,8 +178,22 @@ export function setChildrenText(source: string, start: number, text: string): st
 	if (!element || element.name === null || isVoidElement(element)) return null;
 
 	if (readChildrenText(element) === null) return null;
-	const content = text ? childText(text) : "";
 
+	return replaceChildren(source, element, text ? childText(text) : "");
+}
+
+/** Text with `<strong>`, `<em>` and `<a>`; refused when the children hold anything else */
+export function setRichText(source: string, start: number, runs: readonly RichRun[]): string | null {
+	const element = findElement(parseJsx(source), start);
+
+	if (!element || element.name === null || isVoidElement(element)) return null;
+
+	if (readChildrenText(element) === null && readRichText(element) === null) return null;
+
+	return replaceChildren(source, element, richChildren(runs));
+}
+
+function replaceChildren(source: string, element: JsxElement, content: string): string {
 	if (element.selfClosing) {
 		if (!content) return source;
 		let from = source.lastIndexOf("/", element.end - 1);

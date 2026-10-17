@@ -4,6 +4,7 @@ import type { FontFile } from "../../../shared/export/figma/font";
 import type { Scene } from "../../../shared/export/scene";
 import { isNumber, isString } from "../../../shared/guards";
 import { hashString } from "../../../shared/jsx/hash";
+import type { RichRun } from "../../../shared/jsx/rich-text";
 import type { ResolvedMode } from "../../../shared/modes";
 import type { MotionKind } from "../../../shared/motion/presets";
 import type { ElementLayout, Insets, Spacing } from "./spacing";
@@ -57,8 +58,17 @@ export type HostMessage =
 	| { type: "replay-motion"; starts: number[]; version: string; kind: MotionKind }
 	/** Shifts the instances of a dragged list item until the next render; `null` slides them back */
 	| { type: "preview-order"; start: number; version: string; preview: OrderPreview | null }
-	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. */
-	| { type: "edit-text"; start: number; version: string; text: string; x?: number; y?: number; path?: string }
+	/** Inline-edit the instance under `x`, `y` (or the first) if its text is `text`; answered by `text-edit`. `rich` takes formatting tags. */
+	| {
+			type: "edit-text";
+			start: number;
+			version: string;
+			text: string;
+			rich?: boolean;
+			x?: number;
+			y?: number;
+			path?: string;
+	  }
 	| { type: "end-edit"; commit: boolean }
 	/** Play mode (decision 0007): `data-link-to` clicks post `navigate` instead of their default. */
 	| { type: "play"; on: boolean }
@@ -149,7 +159,7 @@ export type FrameMessage =
 	| { type: "link-boxes"; version: string; width: number; links: LinkBox[] }
 	/** `refused` when the element's DOM doesn't hold just its text; `done` with `text: null` means cancelled. */
 	| { type: "text-edit"; start: number; version: string; state: "editing" | "refused" }
-	| { type: "text-edit"; start: number; version: string; state: "done"; text: string | null }
+	| { type: "text-edit"; start: number; version: string; state: "done"; text: string | null; runs?: RichRun[] | null }
 	| ({ type: "navigate"; to: string } & LinkOptions)
 	/** Escape pressed in play mode and not handled by the screen. */
 	| { type: "escape" }
@@ -393,6 +403,16 @@ const isPlacement = (placement: unknown): placement is Placement =>
 	isNumber(placement.container.width) &&
 	isNumber(placement.container.height);
 
+const isRichRun = (run: unknown): run is RichRun =>
+	isObject(run) &&
+	"text" in run &&
+	isString(run.text) &&
+	(!("bold" in run) || run.bold === undefined || run.bold === true) &&
+	(!("italic" in run) || run.italic === undefined || run.italic === true) &&
+	(!("href" in run) || run.href === undefined || isString(run.href));
+
+const isRichRuns = (runs: unknown): runs is RichRun[] => Array.isArray(runs) && runs.every(isRichRun);
+
 const isLinkBox = (link: unknown): link is LinkBox =>
 	isObject(link) && "start" in link && "box" in link && isOffset(link.start) && isBox(link.box);
 
@@ -568,7 +588,12 @@ export function isFrameMessage(data: unknown): data is FrameMessage {
 		case "text-edit":
 			if (!isTracked(data) || !("state" in data)) return false;
 
-			if (data.state === "done") return "text" in data && (data.text === null || isString(data.text));
+			if (data.state === "done")
+				return (
+					"text" in data &&
+					(data.text === null || isString(data.text)) &&
+					(!("runs" in data) || data.runs === null || data.runs === undefined || isRichRuns(data.runs))
+				);
 
 			return data.state === "editing" || data.state === "refused";
 		case "navigate":
