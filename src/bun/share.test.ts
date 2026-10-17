@@ -68,7 +68,11 @@ describe("viewerFiles", () => {
 	test("ships the icon scripts the screens import, which the frame loads from runtime/icons", () => {
 		const withIcons = snapshot();
 		withIcons.modules["screens/welcome.tsx"] = { source: "", code: "", icons: ["Sun", "CalendarDaysIcon", "Nope"] };
-		withIcons.modules["components/tab.tsx"] = { source: "", code: "", icons: ["LucideSun"] };
+		withIcons.modules["components/tab.tsx"] = {
+			source: "",
+			code: "",
+			icons: ["LucideSun", "@tabler/icons-react:IconSunFilled", "@phosphor-icons/react:SunIcon"],
+		};
 		const icon = (file: string) => (file === "nope" ? null : `/* ${file} */`);
 
 		const files = Object.fromEntries(
@@ -78,6 +82,8 @@ describe("viewerFiles", () => {
 		expect(Object.keys(files).filter((path) => path.startsWith("runtime/icons/"))).toEqual([
 			"runtime/icons/sun.js",
 			"runtime/icons/calendar-days.js",
+			"runtime/icons/tabler/sun.js",
+			"runtime/icons/phosphor/sun.js",
 		]);
 		expect(files["runtime/icons/sun.js"]).toBe("/* sun */");
 	});
@@ -207,6 +213,21 @@ describe("viewerFiles", () => {
 			"isn't an image",
 		);
 		expect(() => assertSnapshot({ ...snapshot(), assets: { "../a.png": "data:image/png;base64,AA==" } })).toThrow();
+	});
+
+	test("the shipped Inter travels in the snapshot and reaches the frame before the images", () => {
+		const font = { weight: 400, unicodeRange: "U+0000-00FF", file: "data:font/woff;base64,Zm9udA==" };
+		const withInter = { ...snapshot(), fonts: [font] };
+		const files = Object.fromEntries(viewerFiles(withInter, runtime).map((file) => [file.path, file.content]));
+		const viewer = files["viewer.js"]!;
+		expect(viewer.indexOf('post(record, { type: "fonts", fonts: data.fonts })')).toBeLessThan(
+			viewer.indexOf('post(record, { type: "assets"'),
+		);
+		expect(assertSnapshot(withInter)).toEqual(withInter);
+		expect(() => assertSnapshot({ ...snapshot(), fonts: [{ ...font, file: "https://x.test/inter.woff" }] })).toThrow(
+			"aren't font files",
+		);
+		expect(() => assertSnapshot({ ...snapshot(), fonts: [{ ...font, weight: "bold" }] })).toThrow();
 	});
 
 	test("each screen's mode reaches its frame; a snapshot without modes renders the defaults", () => {

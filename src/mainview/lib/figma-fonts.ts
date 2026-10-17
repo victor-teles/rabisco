@@ -8,6 +8,7 @@ import latin500 from "@fontsource/inter/files/inter-latin-500-normal.woff?url";
 import latin600 from "@fontsource/inter/files/inter-latin-600-normal.woff?url";
 import latin700 from "@fontsource/inter/files/inter-latin-700-normal.woff?url";
 import type { FontFile } from "../../shared/export/figma/font";
+import { shippedFonts, type ShippedFont } from "./render/shipped-fonts";
 import symbols400 from "./fonts/inter-symbols-400-normal.woff?url";
 import symbols500 from "./fonts/inter-symbols-500-normal.woff?url";
 import symbols600 from "./fonts/inter-symbols-600-normal.woff?url";
@@ -36,25 +37,45 @@ const FILES = [
 	{ weight: 700, unicodeRange: SYMBOLS, url: symbols700 },
 ];
 
-let loading: Promise<FontFile[]> | null = null;
+let loading: Promise<ShippedFont[]> | null = null;
 
-async function load(): Promise<FontFile[]> {
+async function load(): Promise<ShippedFont[]> {
 	return Promise.all(
 		FILES.map(async ({ weight, unicodeRange, url }) => {
 			const response = await fetch(url);
 
-			if (!response.ok) throw new Error("Couldn't load the fonts for Figma");
+			if (!response.ok) throw new Error("Couldn't load the shipped Inter");
 
-			return { weight, unicodeRange, bytes: new Uint8Array(await response.arrayBuffer()) };
+			return { weight, unicodeRange, file: new Blob([await response.arrayBuffer()], { type: "font/woff" }) };
 		}),
 	);
 }
 
-export function figmaFonts(): Promise<FontFile[]> {
+function shippedInter(): Promise<ShippedFont[]> {
 	loading ??= load().catch((error) => {
 		loading = null;
 		throw error;
 	});
 
 	return loading;
+}
+
+/** Screen frames render in the shipped Inter too, so the canvas matches Copy to Figma (decision 0049) */
+export function loadShippedFonts() {
+	shippedInter().then(
+		(fonts) => shippedFonts.set(fonts),
+		(error) => console.warn(error),
+	);
+}
+
+export async function figmaFonts(): Promise<FontFile[]> {
+	const fonts = await shippedInter();
+
+	return Promise.all(
+		fonts.map(async ({ weight, unicodeRange, file }) => ({
+			weight,
+			unicodeRange,
+			bytes: new Uint8Array(await file.arrayBuffer()),
+		})),
+	);
 }

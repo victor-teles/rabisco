@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { iconAt, iconBase, swapIcon } from "./icons";
+import { iconAt, swapIcon } from "./icons";
 import { parseFile } from "./tree";
 
 const at = (source: string, needle: string) => {
@@ -16,8 +16,26 @@ const screen = (imports: string, jsx: string) =>
 describe("iconAt", () => {
 	test("a named lucide import used as an element", () => {
 		const source = screen(`import { Star, Home as House } from "lucide-react";`, `<div><Star /><House /></div>`);
-		expect(iconAt(source, at(source, "<Star"))).toEqual({ local: "Star", imported: "Star" });
-		expect(iconAt(source, at(source, "<House"))).toEqual({ local: "House", imported: "Home" });
+		expect(iconAt(source, at(source, "<Star"))).toEqual({ pack: "lucide", local: "Star", imported: "Star" });
+		expect(iconAt(source, at(source, "<House"))).toEqual({ pack: "lucide", local: "House", imported: "Home" });
+	});
+
+	test("Tabler and Phosphor icons", () => {
+		const source = screen(
+			`import { IconStar } from "@tabler/icons-react";\nimport { HouseIcon } from "@phosphor-icons/react";`,
+			`<div><IconStar /><HouseIcon /></div>`,
+		);
+
+		expect(iconAt(source, at(source, "<IconStar"))).toEqual({
+			pack: "tabler",
+			local: "IconStar",
+			imported: "IconStar",
+		});
+		expect(iconAt(source, at(source, "<HouseIcon"))).toEqual({
+			pack: "phosphor",
+			local: "HouseIcon",
+			imported: "HouseIcon",
+		});
 	});
 
 	test("other elements are not icons", () => {
@@ -29,13 +47,6 @@ describe("iconAt", () => {
 		expect(iconAt(source, at(source, "<Button"))).toBeNull();
 		expect(iconAt(source, at(source, "<span"))).toBeNull();
 		expect(iconAt(source, at(source, "<div"))).toBeNull();
-	});
-
-	test("iconBase", () => {
-		expect(iconBase("Star")).toBe("Star");
-		expect(iconBase("StarIcon")).toBe("Star");
-		expect(iconBase("LucideStar")).toBe("Star");
-		expect(iconBase("Icon")).toBe("Icon");
 	});
 });
 
@@ -98,5 +109,30 @@ describe("swapIcon", () => {
 		expect(swapIcon(source, at(source, "<Star"), "StarIcon")).toBe(source);
 		expect(swapIcon(source, at(source, "<div"), "Heart")).toBeNull();
 		expect(swapIcon(source, at(source, "<Star"), "heart")).toBeNull();
+	});
+
+	test("swaps within Tabler and Phosphor, keeping their names", () => {
+		const tabler = screen(`import { IconStar } from "@tabler/icons-react";`, `<IconStar stroke={1.5} />`);
+		expect(swapIcon(tabler, at(tabler, "<IconStar"), "IconHeartFilled")).toBe(
+			screen(`import { IconHeartFilled } from "@tabler/icons-react";`, `<IconHeartFilled stroke={1.5} />`),
+		);
+
+		const phosphor = screen(`import { Star } from "@phosphor-icons/react";`, `<Star weight="bold" />`);
+		expect(swapIcon(phosphor, at(phosphor, "<Star"), "Heart")).toBe(
+			screen(`import { Heart } from "@phosphor-icons/react";`, `<Heart weight="bold" />`),
+		);
+	});
+
+	test("moves an icon to another pack", () => {
+		const source = screen(`import { Star, Search } from "lucide-react";`, `<div><Star /><Search /></div>`);
+		const next = swapIcon(source, at(source, "<Star"), "IconStar", "tabler");
+		expect(next).toBe(
+			screen(
+				`import { Search } from "lucide-react";\nimport { IconStar } from "@tabler/icons-react";`,
+				`<div><IconStar /><Search /></div>`,
+			),
+		);
+		expect(parseFile(next!).ok).toBe(true);
+		expect(swapIcon(source, at(source, "<Search"), "Search", "lucide")).toBe(source);
 	});
 });

@@ -46,7 +46,11 @@ export type ShareSnapshot = {
 	assets?: Record<string, string>;
 	/** The default motion tokens, which link transitions use without their own timing (decision 0046) */
 	motion?: { duration?: number; easing?: string };
+	/** The shipped Inter as `data:` URLs, when the screens use Inter (decision 0049) */
+	fonts?: ShareFont[];
 };
+
+export type ShareFont = { weight: number; unicodeRange: string; file: string };
 
 /** The same prebuilt runtime the canvas uses */
 export type ScreenRuntime = { html: string; js: string; icon?: (file: string) => string | null };
@@ -113,6 +117,21 @@ function assertMotion(motion: Json): asserts motion is { duration?: number; easi
 		throw new Error("Snapshot motion isn't a duration and an easing");
 }
 
+function assertFonts(fonts: Json): asserts fonts is ShareFont[] {
+	if (
+		!isJsonArray(fonts) ||
+		!fonts.every(
+			(font) =>
+				isJsonObject(font) &&
+				isFiniteNumber(font.weight) &&
+				isString(font.unicodeRange) &&
+				isString(font.file) &&
+				font.file.startsWith("data:font/"),
+		)
+	)
+		throw new Error("Snapshot fonts aren't font files");
+}
+
 function assertShareSnapshot(value: Json | undefined): asserts value is ShareSnapshot {
 	if (!isJsonObject(value) || value.version !== 1) throw new Error("Not a share snapshot");
 	const { name, createdAt, start, screens, modules, css, theme } = value;
@@ -130,6 +149,8 @@ function assertShareSnapshot(value: Json | undefined): asserts value is ShareSna
 	if (value.assets !== undefined) assertAssets(value.assets);
 
 	if (value.motion !== undefined) assertMotion(value.motion);
+
+	if (value.fonts !== undefined) assertFonts(value.fonts);
 
 	if (!screens.some((screen) => screen.file === start))
 		throw new Error(`Snapshot starts on ${start}, which isn't one of its screens`);

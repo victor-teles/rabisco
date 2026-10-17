@@ -39,6 +39,8 @@ export type HostMessage =
 	| { type: "css-patch"; css: string }
 	/** Project images by `src` (decision 0010); only what changed unless `reset`. `null` deletes. */
 	| { type: "assets"; assets: Record<string, AssetPayload | null>; reset?: boolean }
+	/** The Inter the app ships (decision 0049), before `assets` so a project's own Inter wins */
+	| { type: "fonts"; fonts: FrameFont[] }
 	| { type: "theme"; css: string }
 	| { type: "mode"; mode: ResolvedMode }
 	/** Answered by a `hit` with the same `id`; `x`, `y` are frame-local CSS pixels. */
@@ -113,6 +115,11 @@ export type InspectedElement = {
 
 /** The canvas posts Blobs, which share their bytes with the frame; the share viewer posts `data:` URLs. */
 export type AssetPayload = Blob | string;
+
+export const SHIPPED_FONT_FAMILY = "Inter";
+
+/** One file of the shipped Inter, for the `unicodeRange` it covers */
+export type FrameFont = { weight: number; unicodeRange: string; file: AssetPayload };
 
 export type FrameImage = { bytes: Uint8Array; width: number; height: number };
 

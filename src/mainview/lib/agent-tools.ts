@@ -330,7 +330,12 @@ function listComponents(context: AgentContext): Json {
 		exports: [...names],
 	}));
 
-	return { project, library, icons: "Any icon from lucide-react" };
+	return {
+		project,
+		library,
+		icons:
+			"Any icon from lucide-react, @tabler/icons-react or @phosphor-icons/react; keep to the pack the project uses",
+	};
 }
 
 async function listComments(context: AgentContext): Promise<Json> {

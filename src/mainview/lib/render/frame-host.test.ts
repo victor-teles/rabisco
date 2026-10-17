@@ -852,3 +852,41 @@ describe("FrameHost: mode", () => {
 		host.dispose();
 	});
 });
+
+const { shippedFonts } = await import("./shipped-fonts");
+
+describe("FrameHost: shipped fonts", () => {
+	const font = { weight: 400, unicodeRange: "U+0000-00FF", file: new Blob(["woff"], { type: "font/woff" }) };
+
+	test("posts the shipped Inter before the images, once per frame load", () => {
+		shippedFonts.set([font]);
+		projectAssets.reset({ "/images/a.png": btoa("a") });
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.update("screens/a.tsx", PROJECT, "");
+		host.receive({ type: "ready" });
+		expect(posted.map((message) => message.type)).toEqual(["fonts", "assets", "modules"]);
+		expect(lastPosted(posted, "fonts").fonts[0]!.file).toBe(font.file);
+
+		host.update("screens/a.tsx", { ...PROJECT }, "");
+		expect(posted.filter((message) => message.type === "fonts")).toHaveLength(1);
+
+		host.receive({ type: "ready" });
+		expect(posted.filter((message) => message.type === "fonts")).toHaveLength(2);
+		host.dispose();
+		projectAssets.reset({});
+		shippedFonts.set(null);
+	});
+
+	test("posts them to a ready frame when they finish loading", () => {
+		const { frame, posted } = fakeFrame();
+		const host = new FrameHost(frame);
+		host.receive({ type: "ready" });
+		expect(posted).toEqual([]);
+
+		shippedFonts.set([font]);
+		expect(posted.map((message) => message.type)).toEqual(["fonts"]);
+		host.dispose();
+		shippedFonts.set(null);
+	});
+});

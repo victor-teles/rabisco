@@ -626,6 +626,7 @@ _Principle: Screens are React (what you see is what you ship)_
 - ✅ Copy an element as code, as PNG and as SVG from its menu ([LIT-44](/LIT/issues/LIT-44))
 - ✅ Batch export at 1x, 2x and 3x, with names from the screens ([LIT-44](/LIT/issues/LIT-44))
 - ✅ Dev handoff page in the export: every screen, its components and tokens
+- ✅ Screen frames load the Inter the app ships, so text on the canvas matches Copy to Figma for users without Inter installed. The editor posts the files to each frame, which loads a weight only when text uses it. Share links, publish and the website export carry the files when the theme names Inter ([0049](./decisions/0049-frames-load-the-shipped-inter.md), [LIT-146](/LIT/issues/LIT-146), `src/mainview/lib/render/shipped-fonts.ts`)
 
 **Done when** a developer can take a project into their app, and a designer can take it into Figma, with no manual fixes.
 
@@ -670,8 +671,10 @@ Figma sets a variable mode on a section, and every frame inside follows it. Rabi
 
 **Assets**
 
-- ✅ An assets panel (`⌥4`, a tab of the left panel): project images, fonts and lucide icons, each with its use count and the screens that use it. Unused images and fonts can be deleted as an undo step ([0047](./decisions/0047-fonts-in-public-and-images-from-providers.md), [LIT-48](/LIT/issues/LIT-48), `views/editor/assets-panel.tsx`, `src/shared/asset-usage.ts`)
+- ✅ An assets panel (`⌥4`, a tab of the left panel): project images, fonts and icons, each with its use count and the screens that use it. Unused images and fonts can be deleted as an undo step ([0047](./decisions/0047-fonts-in-public-and-images-from-providers.md), [LIT-48](/LIT/issues/LIT-48), `views/editor/assets-panel.tsx`, `src/shared/asset-usage.ts`)
 - ✅ Upload and use custom fonts: "Add font" copies woff2, woff, ttf or otf files to `public/fonts/`, named for their family, weight and style, and adds a `font-<family>` token to DESIGN.md. Frames load them with `FontFace`. The code, HTML and website exports, share links and publish embed them (`src/shared/fonts.ts`)
+- ✅ More uai blocks in screens: app sidebar, app header, page tabs, filter bar, description list, activity timeline, task list, file upload, sign-in card, order status, pricing toggle, testimonial card, trust panel, empty state, tool call, citation and response status, in the prompt and the component library. The screen theme derives the blocks' `*-ink` text colors from DESIGN.md's colors ([0014](./decisions/0014-uai-blocks-in-screens.md), `src/shared/components/ui-modules.ts`)
+- ✅ Tabler and Phosphor icons next to lucide: screens import `@tabler/icons-react` and `@phosphor-icons/react`, the frame loads one script per icon, the icon picker switches packs, the assets panel counts icons by pack, and the code export adds the packages ([0050](./decisions/0050-tabler-and-phosphor-icon-packs.md), `src/shared/icons.ts`)
 - ✅ AI image generation for real photos and illustrations, through the provider layer, replacing placeholders on request: the Assets panel lists the photo, avatar, illustration and map placeholders, and "Replace all" or one placeholder's button makes an image for each. The images go to `public/images/`, and all the replacements are one undo step. Providers may implement `generateImage` (OpenAI and OpenRouter do), and nothing outside `src/bun/ai/providers/` knows which one runs (`src/shared/placeholder-images.ts`)
 
 **Done when** a team can keep one design system across projects, and every new screen uses it.

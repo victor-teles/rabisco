@@ -24,6 +24,10 @@ export const SCREEN_THEME_CSS = `
 	--color-destructive: var(--destructive);
 	--color-success: var(--success);
 	--color-warning: var(--warning);
+	--color-primary-ink: var(--primary-ink);
+	--color-success-ink: var(--success-ink);
+	--color-warning-ink: var(--warning-ink);
+	--color-destructive-ink: var(--destructive-ink);
 	--color-border: var(--border);
 	--color-border-strong: var(--border-strong);
 	--color-input: var(--input);
@@ -150,6 +154,10 @@ export const SCREEN_THEME_CSS = `
 	/* DESIGN.md has no tokens for these, so they follow the ones it has */
 	--subtle-foreground: color-mix(in oklab, var(--muted-foreground) 75%, var(--background));
 	--border-strong: color-mix(in oklab, var(--border), var(--foreground) 14%);
+	--primary-ink: color-mix(in oklab, var(--primary) 80%, var(--foreground));
+	--success-ink: color-mix(in oklab, var(--success) 80%, var(--foreground));
+	--warning-ink: color-mix(in oklab, var(--warning) 80%, var(--foreground));
+	--destructive-ink: color-mix(in oklab, var(--destructive) 80%, var(--foreground));
 }
 
 .dark {
@@ -181,6 +189,10 @@ export const SCREEN_THEME_CSS = `
 	/* DESIGN.md has no tokens for these, so they follow the ones it has */
 	--subtle-foreground: color-mix(in oklab, var(--muted-foreground) 75%, var(--background));
 	--border-strong: color-mix(in oklab, var(--border), var(--foreground) 14%);
+	--primary-ink: color-mix(in oklab, var(--primary) 80%, var(--foreground));
+	--success-ink: color-mix(in oklab, var(--success) 80%, var(--foreground));
+	--warning-ink: color-mix(in oklab, var(--warning) 80%, var(--foreground));
+	--destructive-ink: color-mix(in oklab, var(--destructive) 80%, var(--foreground));
 }
 
 @layer base {

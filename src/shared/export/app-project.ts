@@ -74,6 +74,8 @@ const VERSIONS = new Map(
 		"class-variance-authority": "^0.7.1",
 		clsx: "^2.1.1",
 		"lucide-react": "^1.52.0",
+		"@tabler/icons-react": "^3.49.0",
+		"@phosphor-icons/react": "^2.1.10",
 		"radix-ui": "^1.6.7",
 		"tailwind-merge": "^3.7.0",
 		"tw-animate-css": "^1.4.0",

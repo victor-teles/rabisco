@@ -182,6 +182,22 @@ export default function Gallery() {
 		expect(pkg.scripts.build).toBe("vite build");
 	});
 
+	test("Tabler and Phosphor icons add their packages", () => {
+		const icons = `import { IconHome } from "@tabler/icons-react";
+import { House } from "@phosphor-icons/react";
+
+export default function Icons() {
+	return <p><IconHome /><House weight="bold" /></p>;
+}
+`;
+
+		const project = viteProject({ ...input, files: { "screens/icons.tsx": icons }, frames: [] });
+		const pkg = JSON.parse(byPath(project)["package.json"]!);
+		expect(pkg.dependencies["@tabler/icons-react"]).toBe("^3.49.0");
+		expect(pkg.dependencies["@phosphor-icons/react"]).toBe("^2.1.10");
+		expect(project.warnings).toEqual([]);
+	});
+
 	test("the theme is the canvas theme, with the applied tokens after it", () => {
 		const css = out["src/index.css"]!;
 		expect(css.startsWith('@import "tailwindcss";\n@import "tw-animate-css";')).toBe(true);

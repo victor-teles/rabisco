@@ -7,9 +7,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useAssetImage } from "@/hooks/use-asset-image";
 import { api, isDesktop } from "@/lib/rpc";
 import { encodeBase64, projectAssets } from "@/lib/render/assets";
+import type { CatalogIcon } from "@/lib/icon-catalog";
+import { loadCatalog } from "./icon-picker";
 import { cn } from "@/lib/utils";
 import { assetUsages, fontUsages, iconUsages } from "../../../shared/asset-usage";
 import { assetType } from "../../../shared/assets";
+import { ICON_PACKS, type IconPack } from "../../../shared/icons";
 import type { TokenUsage } from "../../../shared/context/token-usage";
 import type { DesignTokens } from "../../../shared/context/tokens";
 import { faceLabel, fontFamilies, fontToken, isFontSrc, type FontFamily } from "../../../shared/fonts";
@@ -225,22 +228,27 @@ function usePreviewFonts(families: FontFamily[]) {
 	}, [families]);
 }
 
-function useIconCatalog() {
-	const [icons, setIcons] = useState<Record<string, LucideIcon> | null>(null);
+/** Previews for the packs the project uses, by `<pack>:<base name>` */
+function useIconPreviews(packs: readonly IconPack[]) {
+	const [previews, setPreviews] = useState<ReadonlyMap<string, CatalogIcon["Icon"]>>(new Map());
 
 	useEffect(() => {
 		let live = true;
 
-		void import("@/lib/icon-catalog").then(({ icons: catalog }) => {
-			if (live) setIcons(catalog);
+		void Promise.all(
+			packs.map(async (pack) =>
+				(await loadCatalog(pack)).map((icon): [string, CatalogIcon["Icon"]] => [`${pack}:${icon.base}`, icon.Icon]),
+			),
+		).then((entries) => {
+			if (live) setPreviews(new Map(entries.flat()));
 		});
 
 		return () => {
 			live = false;
 		};
-	}, []);
+	}, [packs]);
 
-	return icons;
+	return previews;
 }
 
 export const AssetsPanel = memo(function AssetsPanel({
@@ -261,7 +269,6 @@ export const AssetsPanel = memo(function AssetsPanel({
 	const [generating, setGenerating] = useState<{ done: number; total: number } | null>(null);
 	const [direction, setDirection] = useState("");
 	const stopRef = useRef(false);
-	const icons = useIconCatalog();
 
 	useEffect(() => {
 		let live = true;
@@ -282,6 +289,8 @@ export const AssetsPanel = memo(function AssetsPanel({
 	const imageUses = useMemo(() => assetUsages(files, images), [files, images]);
 	const fontUses = useMemo(() => fontUsages(files, theme, families), [files, theme, families]);
 	const iconUses = useMemo(() => iconUsages(files), [files]);
+	const iconPacks = useMemo(() => [...new Set(iconUses.map((icon) => icon.pack))].sort(), [iconUses]);
+	const icons = useIconPreviews(iconPacks);
 
 	const placeholders = useMemo(
 		() =>
@@ -539,17 +548,17 @@ export const AssetsPanel = memo(function AssetsPanel({
 				{iconUses.length ? (
 					<div className="flex flex-col px-1">
 						{iconUses.map((icon) => {
-							const Icon = icons?.[icon.name] ?? Type;
+							const Icon = icons.get(`${icon.pack}:${icon.name}`) ?? Type;
 
 							return (
 								<UsageRow
-									key={icon.name}
+									key={`${icon.pack}:${icon.name}`}
 									preview={
 										<span className="grid size-7 shrink-0 place-items-center rounded-sm border text-muted-foreground">
 											<Icon className="size-4" />
 										</span>
 									}
-									name={icon.name}
+									name={icon.pack === "lucide" ? icon.name : `${icon.name} · ${ICON_PACKS[icon.pack].label}`}
 									usage={icon}
 									frames={frames}
 									onOpenFile={onOpenFile}
@@ -558,7 +567,7 @@ export const AssetsPanel = memo(function AssetsPanel({
 						})}
 					</div>
 				) : (
-					<p className="px-3 text-[12px] text-subtle-foreground">No lucide icons yet.</p>
+					<p className="px-3 text-[12px] text-subtle-foreground">No icons yet.</p>
 				)}
 			</Section>
 		</div>

@@ -163,7 +163,7 @@ export class ModuleRegistry<External> {
 		if (Object.hasOwn(this.#externals, bare)) return this.#externals[bare];
 		throw new RenderError(
 			"missing-module",
-			`Cannot find module "${specifier}" imported from ${from}. Screens can import react, lucide-react, @/lib/utils, @/components/ui/* and project files.`,
+			`Cannot find module "${specifier}" imported from ${from}. Screens can import react, lucide-react, @tabler/icons-react, @phosphor-icons/react, @/lib/utils, @/components/ui/* and project files.`,
 			from,
 			lineOf(this.source(from), specifier),
 		);

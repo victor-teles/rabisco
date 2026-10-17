@@ -1,3 +1,4 @@
+import { iconPackOf } from "../icons";
 import { isComponentFile, isScreenFile } from "../project";
 import { extractComponent, extractionSignature, type ExtractResult } from "./extract";
 import { hashString } from "./hash";
@@ -174,8 +175,7 @@ export function extractSuggestion(
 function iconsOf(source: string) {
 	const icons = new Set<string>();
 
-	for (const decl of readImports(source))
-		if (decl.module === "lucide-react") for (const s of decl.named) icons.add(s.local);
+	for (const decl of readImports(source)) if (iconPackOf(decl.module)) for (const s of decl.named) icons.add(s.local);
 
 	return icons;
 }

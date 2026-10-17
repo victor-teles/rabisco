@@ -15,6 +15,23 @@ const root = join(import.meta.dir, "../../..");
 const blocks = Object.keys(UI_MODULES).filter((name) => name.startsWith("uai/"));
 
 const SCREEN = `import { useState } from "react";
+import { ActivityTimeline, ActivityTimelineContent, ActivityTimelineDate, ActivityTimelineEvent, ActivityTimelineEvents, ActivityTimelineGroup, ActivityTimelineTitle } from "@/components/ui/uai/activity-timeline";
+import { AppHeader, AppHeaderAction, AppHeaderActions, AppHeaderBrand, AppHeaderNav, AppHeaderNavItem } from "@/components/ui/uai/app-header";
+import { AppSidebar, AppSidebarItem, AppSidebarItemLabel, AppSidebarList, AppSidebarNav } from "@/components/ui/uai/app-sidebar";
+import { Citation, CitationClaim, CitationPopover, CitationTitle, CitationTrigger } from "@/components/ui/uai/citation";
+import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/uai/description-list";
+import { EmptyState, EmptyStateAction, EmptyStateActions, EmptyStateContent, EmptyStateDescription, EmptyStateHeader, EmptyStateTitle } from "@/components/ui/uai/empty-state";
+import { FileUpload, FileUploadDropzone, FileUploadInput, FileUploadItem, FileUploadList, FileUploadTrigger } from "@/components/ui/uai/file-upload";
+import { FilterBar, FilterBarChip, FilterBarChips, FilterBarReset } from "@/components/ui/uai/filter-bar";
+import { OrderStatus, OrderStatusBadge, OrderStatusHeader, OrderStatusProgress, OrderStatusStep, OrderStatusStepTitle, OrderStatusTitle } from "@/components/ui/uai/order-status";
+import { PageTabs, PageTabsBar, PageTabsList, PageTabsPanel, PageTabsTab } from "@/components/ui/uai/page-tabs";
+import { PricingToggle, PricingToggleList, PricingToggleOption, PricingTogglePrice } from "@/components/ui/uai/pricing-toggle";
+import { ResponseStatus, ResponseStatusIndicator, ResponseStatusLabel } from "@/components/ui/uai/response-status";
+import { SignInCard, SignInCardBody, SignInCardField, SignInCardFields, SignInCardHeader, SignInCardInput, SignInCardLabel, SignInCardSubmit, SignInCardTitle } from "@/components/ui/uai/sign-in-card";
+import { TaskList, TaskListItem, TaskListTitle } from "@/components/ui/uai/task-list";
+import { TestimonialCard, TestimonialCardAuthor, TestimonialCardName, TestimonialCardQuote } from "@/components/ui/uai/testimonial-card";
+import { ToolCall, ToolCallHeader, ToolCallName, ToolCallTrigger } from "@/components/ui/uai/tool-call";
+import { TrustPanel, TrustPanelLogo, TrustPanelLogos, TrustPanelRating } from "@/components/ui/uai/trust-panel";
 import { FormErrorSummary, FormErrorSummaryLink, FormErrorSummaryList, FormErrorSummaryTitle } from "@/components/ui/uai/form-error-summary";
 import { FormField, FormFieldCount, FormFieldDescription, FormFieldInput, FormFieldLabel } from "@/components/ui/uai/form-field";
 import { Message, MessageActions, MessageBody, MessageContent, MessageCopy } from "@/components/ui/uai/message";
@@ -38,6 +55,23 @@ export default function Dashboard() {
 			<Message from="assistant"><MessageBody><MessageContent>42 tickets this week</MessageContent><MessageActions><MessageCopy /></MessageActions></MessageBody></Message>
 			<PromptComposer><PromptComposerInput placeholder="Ask anything" /><PromptComposerActions><PromptComposerSubmit /></PromptComposerActions></PromptComposer>
 			<Thinking status="complete"><ThinkingTrigger duration="12s" /><ThinkingContent><ThinkingActivity type="search" query="refunds">Searched</ThinkingActivity></ThinkingContent></Thinking>
+			<AppHeader><AppHeaderBrand>Northwind</AppHeaderBrand><AppHeaderNav><AppHeaderNavItem href="#" active>Overview</AppHeaderNavItem></AppHeaderNav><AppHeaderActions><AppHeaderAction emphasis="primary">Invite</AppHeaderAction></AppHeaderActions></AppHeader>
+			<AppSidebar defaultValue="inbox"><AppSidebarNav><AppSidebarList><AppSidebarItem value="inbox"><AppSidebarItemLabel>Inbox</AppSidebarItemLabel></AppSidebarItem></AppSidebarList></AppSidebarNav></AppSidebar>
+			<PageTabs defaultValue="open"><PageTabsBar><PageTabsList><PageTabsTab value="open">Open</PageTabsTab><PageTabsTab value="closed">Closed</PageTabsTab></PageTabsList></PageTabsBar><PageTabsPanel value="open">Open tickets</PageTabsPanel></PageTabs>
+			<FilterBar activeCount={1}><FilterBarChips><FilterBarChip onRemove={() => {}}>Status: open</FilterBarChip></FilterBarChips><FilterBarReset /></FilterBar>
+			<DescriptionList><DescriptionListItem><DescriptionListTerm>Plan</DescriptionListTerm><DescriptionListDetails>Team</DescriptionListDetails></DescriptionListItem></DescriptionList>
+			<ActivityTimeline><ActivityTimelineGroup><ActivityTimelineDate>Today</ActivityTimelineDate><ActivityTimelineEvents><ActivityTimelineEvent><ActivityTimelineContent><ActivityTimelineTitle>Invoice paid</ActivityTimelineTitle></ActivityTimelineContent></ActivityTimelineEvent></ActivityTimelineEvents></ActivityTimelineGroup></ActivityTimeline>
+			<TaskList><TaskListItem status="active"><TaskListTitle>Connect your bank</TaskListTitle></TaskListItem></TaskList>
+			<FileUpload><FileUploadDropzone><FileUploadInput /><FileUploadTrigger /></FileUploadDropzone><FileUploadList><FileUploadItem status="uploading" progress={64}>q3-report.pdf</FileUploadItem></FileUploadList></FileUpload>
+			<SignInCard><SignInCardHeader><SignInCardTitle>Welcome back</SignInCardTitle></SignInCardHeader><SignInCardBody><SignInCardFields><SignInCardField><SignInCardLabel>Email</SignInCardLabel><SignInCardInput type="email" /></SignInCardField></SignInCardFields><SignInCardSubmit /></SignInCardBody></SignInCard>
+			<OrderStatus><OrderStatusHeader><OrderStatusTitle>Order #4821</OrderStatusTitle><OrderStatusBadge tone="progress">Shipped</OrderStatusBadge></OrderStatusHeader><OrderStatusProgress><OrderStatusStep status="current"><OrderStatusStepTitle>In transit</OrderStatusStepTitle></OrderStatusStep></OrderStatusProgress></OrderStatus>
+			<PricingToggle defaultValue="yearly"><PricingToggleList><PricingToggleOption value="monthly">Monthly</PricingToggleOption><PricingToggleOption value="yearly">Yearly</PricingToggleOption></PricingToggleList><PricingTogglePrice period="monthly">$12</PricingTogglePrice><PricingTogglePrice period="yearly">$120</PricingTogglePrice></PricingToggle>
+			<TestimonialCard><TestimonialCardQuote>Cut our close by two days.</TestimonialCardQuote><TestimonialCardAuthor><TestimonialCardName>Ana Lima</TestimonialCardName></TestimonialCardAuthor></TestimonialCard>
+			<TrustPanel><TrustPanelLogos><TrustPanelLogo name="Linear">Linear</TrustPanelLogo></TrustPanelLogos><TrustPanelRating value={4.8} /></TrustPanel>
+			<EmptyState><EmptyStateContent><EmptyStateHeader><EmptyStateTitle>No invoices yet</EmptyStateTitle><EmptyStateDescription>Invoices you send show here.</EmptyStateDescription></EmptyStateHeader><EmptyStateActions><EmptyStateAction>New invoice</EmptyStateAction></EmptyStateActions></EmptyStateContent></EmptyState>
+			<ToolCall status="success"><ToolCallHeader><ToolCallTrigger><ToolCallName>search_docs</ToolCallName></ToolCallTrigger></ToolCallHeader></ToolCall>
+			<Citation index={1}><CitationClaim>Revenue grew 12%</CitationClaim><CitationTrigger /><CitationPopover><CitationTitle>Q3 report</CitationTitle></CitationPopover></Citation>
+			<ResponseStatus status="streaming"><ResponseStatusIndicator /><ResponseStatusLabel>Writing</ResponseStatusLabel></ResponseStatus>
 		</div>
 	);
 }
@@ -65,8 +99,28 @@ describe("uai blocks in frames", () => {
 			"form-error-summary",
 			"message",
 			"thinking",
+			"app-header",
+			"app-sidebar",
+			"page-tabs",
+			"filter-bar",
+			"description-list",
+			"activity-timeline",
+			"task-list",
+			"file-upload",
+			"sign-in-card",
+			"order-status",
+			"pricing-toggle",
+			"testimonial-card",
+			"trust-panel",
+			"empty-state",
+			"tool-call",
+			"citation",
+			"response-status",
 		])
 			expect(html).toContain(`data-slot="${slot}`);
+
+		expect(html).toContain("$120");
+		expect(html).not.toContain("$12<");
 
 		expect(html).toContain("$48,210");
 		expect(html).toContain('placeholder="Ask anything"');
@@ -98,11 +152,13 @@ describe("uai blocks in frames", () => {
 			".shimmer-text",
 			".animate-in",
 			"--tone: var(--success)",
+			".text-success-ink",
 		])
 			expect(css).toContain(rule);
 
 		expect(css).toContain("--subtle-foreground: color-mix(in oklab, var(--muted-foreground) 75%, var(--background))");
 		expect(css).toContain("--border-strong: color-mix(in oklab, var(--border), var(--foreground) 14%)");
+		expect(css).toContain("--success-ink: color-mix(in oklab, var(--success) 80%, var(--foreground))");
 		expect(css).toContain("--ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1)");
 	});
 });

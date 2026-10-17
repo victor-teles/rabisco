@@ -285,8 +285,9 @@ function ElementProps({
 						<div className="flex min-w-0 flex-1 items-center">
 							<IconPicker
 								current={icon.imported}
+								pack={icon.pack}
 								disabled={structure.busy}
-								onPick={(name) => edit(swapIcon(source, start, name))}
+								onPick={(name, pack) => edit(swapIcon(source, start, name, pack))}
 							/>
 						</div>
 					</div>
