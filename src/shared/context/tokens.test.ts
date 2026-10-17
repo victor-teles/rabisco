@@ -349,6 +349,38 @@ describe("custom tokens", () => {
 		);
 	});
 
+	test("motion tokens: durations and easings for duration-* and ease-* (decision 0027)", () => {
+		expect(tokenKind("duration-fast")).toBe("duration");
+		expect(tokenKind("ease-snappy")).toBe("ease");
+		expect(tokenClass("duration-fast")).toBe("duration-fast");
+		expect(tokenClass("ease-snappy")).toBe("ease-snappy");
+
+		for (const ok of ["150ms", "0.2s", ".3s", "0", "5s"]) expect(validateToken("duration-fast", ok)).toBeNull();
+
+		for (const bad of ["150", "6s", "fast", "1s; color: red"])
+			expect(validateToken("duration-fast", bad)).not.toBeNull();
+
+		for (const ok of ["ease-out", "linear", "cubic-bezier(0.2, 0, 0, 1)", "cubic-bezier(.34,1.56,.64,1)"])
+			expect(validateToken("ease-snappy", ok)).toBeNull();
+
+		for (const bad of ["cubic-bezier(1, 2)", "steps(4)", "out"])
+			expect(validateToken("ease-snappy", bad)).not.toBeNull();
+		expect(validateTokenName("ease-out")).toContain("Built in");
+		expect(tokenThemeCss(["duration-fast", "ease-snappy"])).toBe(
+			"@theme reference {\n\t--ease-snappy: ease;\n}\n" +
+				"@theme inline reference {\n\t--transition-duration-fast: var(--duration-fast, 150ms);\n}\n",
+		);
+	});
+
+	test("the default duration and easing also set Tailwind's transition defaults", () => {
+		expect(declarations({ "duration-default": "250ms", "ease-default": "ease-out" })).toEqual([
+			["duration-default", "250ms"],
+			["default-transition-duration", "var(--duration-default)"],
+			["ease-default", "ease-out"],
+			["default-transition-timing-function", "var(--ease-default)"],
+		]);
+	});
+
 	test("a text style carries its weight and tracking as variables", () => {
 		expect(validateToken("text-heading", "2rem/1.2 600 -0.01em")).toBeNull();
 		expect(validateToken("text-heading", "2rem 600 -0.01em;")).not.toBeNull();

@@ -78,6 +78,8 @@ function prefixKinds(prefix: string): TokenKind[] {
 
 	if (prefix === "shadow") kinds.push("shadow");
 
+	if (prefix === "duration" || prefix === "ease") kinds.push(prefix);
+
 	return kinds;
 }
 

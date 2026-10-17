@@ -19,6 +19,8 @@ const CLASSES: Record<TokenKind, (utility: string) => string[]> = {
 	text: (utility) => [`text-${utility}`],
 	spacing: (utility) => [`p-${utility}`, `gap-${utility}`],
 	shadow: (utility) => [`shadow-${utility}`],
+	duration: (utility) => [`duration-${utility}`],
+	ease: (utility) => [`ease-${utility}`],
 };
 
 /** `#e11d48, dark #fb7185`; a token set in one mode only shows that mode */

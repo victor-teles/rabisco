@@ -35,7 +35,17 @@ export const TOKEN_NAMES = [...COLOR_TOKENS, "radius", ...FONT_TOKENS, "spacing"
 export type TokenName = (typeof TOKEN_NAMES)[number];
 
 /** Custom tokens use Tailwind v4 theme namespaces, so the name is the class: `color-brand` is `bg-brand` (decision 0013) */
-export const TOKEN_KINDS = ["color", "radius", "font", "font-weight", "text", "spacing", "shadow"] as const;
+export const TOKEN_KINDS = [
+	"color",
+	"radius",
+	"font",
+	"font-weight",
+	"text",
+	"spacing",
+	"shadow",
+	"duration",
+	"ease",
+] as const;
 
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 
@@ -105,7 +115,24 @@ const FONT_FAMILY = String.raw`(?:"[a-z0-9 -]+"|'[a-z0-9 -]+'|[a-z][a-z0-9 -]*)`
 
 const FONT_STACK = new RegExp(String.raw`^${FONT_FAMILY}(?:\s*,\s*${FONT_FAMILY})*$`, "i");
 
-const CUSTOM_NAME = /^(color|radius|font-weight|font|text|spacing|shadow)-([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
+const CUSTOM_NAME =
+	/^(color|radius|font-weight|font|text|spacing|shadow|duration|ease)-([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
+
+/** `150ms` or `0.2s`, up to 5 seconds */
+const DURATION = /^(?:0|\d*\.?\d+(?:ms|s))$/i;
+
+const BEZIER_NUMBER = String.raw`-?\d*\.?\d+`;
+
+const EASING = new RegExp(
+	String.raw`^(?:linear|ease|ease-in|ease-out|ease-in-out|cubic-bezier\(\s*${BEZIER_NUMBER}(?:\s*,\s*${BEZIER_NUMBER}){3}\s*\))$`,
+	"i",
+);
+
+/** Tailwind's own `ease-*` classes */
+const BUILT_IN_EASINGS = new Set(["in", "out", "in-out", "linear", "initial"]);
+
+/** Motion tokens with this name are also what `transition` and link transitions use when nothing else is said (decision 0027) */
+export const DEFAULT_MOTION_NAME = "default";
 
 /** Theme names the screen theme derives from the built-in tokens */
 const DERIVED_RADII = new Set(["sm", "md", "lg", "xl"]);
@@ -164,6 +191,17 @@ function isShadow(value: string): boolean {
 	});
 }
 
+/** Milliseconds of a `200ms` or `0.2s` value; `null` when it isn't one */
+export function durationMs(value: string): number | null {
+	const match = /^(\d*\.?\d+)(ms|s)?$/i.exec(value.trim());
+
+	if (!match || (match[2] === undefined && match[1] !== "0")) return null;
+
+	return Math.round(Number(match[1]) * (match[2]?.toLowerCase() === "s" ? 1000 : 1));
+}
+
+const isDuration = (value: string) => DURATION.test(value) && (durationMs(value) ?? Infinity) <= 5000;
+
 export const isCustomToken = (name: string) => !isOneOf(TOKEN_NAMES, name) && CUSTOM_NAME.test(name);
 
 /** `null` for an unknown name */
@@ -190,6 +228,8 @@ const CLASS_PREFIX: Record<TokenKind, string> = {
 	text: "text",
 	spacing: "p",
 	shadow: "shadow",
+	duration: "duration",
+	ease: "ease",
 };
 
 /** One class a custom token makes, e.g. `bg-brand` or `p-gutter`; `null` for built-in names */
@@ -221,6 +261,8 @@ export function validateTokenName(name: string): string | null {
 
 	if (kind === "font-weight" && BUILT_IN_WEIGHTS.has(utility)) return `Built in: font-${utility} is Tailwind's`;
 
+	if (kind === "ease" && BUILT_IN_EASINGS.has(utility)) return `Built in: ease-${utility} is Tailwind's`;
+
 	return null;
 }
 
@@ -245,6 +287,10 @@ export function validateToken(name: string, value: string): string | null {
 		case "radius":
 		case "spacing":
 			return LENGTH.test(value) ? null : "Not a length, e.g. 0.5rem or 8px";
+		case "duration":
+			return isDuration(value) ? null : "Not a duration, e.g. 200ms or 0.3s, up to 5s";
+		case "ease":
+			return EASING.test(value) ? null : "Not an easing, e.g. ease-out or cubic-bezier(0.2, 0, 0, 1)";
 	}
 }
 
@@ -626,10 +672,24 @@ export function formatTextStyle({ size, lineHeight, weight, tracking }: TextStyl
 	return [lineHeight === undefined ? size : `${size}/${lineHeight}`, weight, tracking].filter(Boolean).join(" ");
 }
 
+/** What `transition` uses without a `duration-*` or `ease-*` class */
+const DEFAULT_VARIABLES = new Map([
+	[`duration-${DEFAULT_MOTION_NAME}`, "default-transition-duration"],
+	[`ease-${DEFAULT_MOTION_NAME}`, "default-transition-timing-function"],
+]);
+
 /** A text token's line height, weight and tracking are their own variables, the way Tailwind's theme declares them */
 export function declarations(values: Record<string, string>): [string, string][] {
 	return Object.entries(values).flatMap(([name, value]): [string, string][] => {
 		if (validateToken(name, value) !== null) return [];
+
+		const fallback = DEFAULT_VARIABLES.get(name);
+
+		if (fallback)
+			return [
+				[name, value],
+				[fallback, `var(--${name})`],
+			];
 
 		const style = tokenKind(name) === "text" ? parseTextStyle(value) : null;
 
@@ -700,6 +760,8 @@ const FALLBACKS: Record<TokenKind, string> = {
 	text: "1rem",
 	spacing: "0",
 	shadow: "0 0 #0000",
+	duration: "150ms",
+	ease: "ease",
 };
 
 /**
@@ -708,10 +770,19 @@ const FALLBACKS: Record<TokenKind, string> = {
  * rebuilds nothing.
  */
 export function tokenThemeCss(names: Iterable<string>): string {
+	const durations: string[] = [];
+
 	const lines = [...names].flatMap((name) => {
 		const kind = isCustomToken(name) ? tokenKind(name) : null;
 
 		if (!kind) return [];
+
+		// `duration-*` reads `--transition-duration-*`, a name of its own: inline, so the class reads the token
+		if (kind === "duration") {
+			durations.push(`\t--transition-duration-${tokenUtility(name)}: var(--${name}, ${FALLBACKS[kind]});`);
+
+			return [];
+		}
 
 		// Tailwind writes a shadow's value into the class, so it has to be a reference to the stylesheet's
 		const fallback = kind === "shadow" ? `var(--${name}, ${FALLBACKS[kind]})` : FALLBACKS[kind];
@@ -727,7 +798,10 @@ export function tokenThemeCss(names: Iterable<string>): string {
 		];
 	});
 
-	return lines.length ? `@theme reference {\n${lines.join("\n")}\n}\n` : "";
+	return (
+		(lines.length ? `@theme reference {\n${lines.join("\n")}\n}\n` : "") +
+		(durations.length ? `@theme inline reference {\n${durations.join("\n")}\n}\n` : "")
+	);
 }
 
 const NO_TOKENS: DesignTokens = { light: {}, dark: {} };

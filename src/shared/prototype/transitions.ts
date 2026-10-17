@@ -1,3 +1,5 @@
+import { DEFAULT_MOTION_NAME, durationMs, type DesignTokens } from "../context/tokens";
+
 export const LINK_TRANSITION_ATTRIBUTE = "data-link-transition";
 
 export const LINK_MODE_ATTRIBUTE = "data-link-mode";
@@ -78,15 +80,29 @@ export const parseTiming = (duration: string | null | undefined, easing: string 
 	easing: parseEasing(easing),
 });
 
-/** A plan with the link's own duration and easing */
-export function timed<T extends Motion>(plan: T | null, timing: LinkTiming): T | null {
+/** A plan with the link's own duration and easing, else the project's default motion tokens */
+export function timed<T extends Motion>(plan: T | null, timing: LinkTiming, defaults: Partial<Motion> = {}): T | null {
 	if (!plan) return null;
 
 	return {
 		...plan,
-		duration: timing.duration ?? plan.duration,
-		easing: timing.easing ? EASINGS[timing.easing] : plan.easing,
+		duration: timing.duration ?? defaults.duration ?? plan.duration,
+		easing: timing.easing ? EASINGS[timing.easing] : (defaults.easing ?? plan.easing),
 	};
+}
+
+/** `duration-default` and `ease-default` in DESIGN.md replace the transition defaults (decisions 0027 and 0046) */
+export function motionDefaults(tokens: DesignTokens | undefined): Partial<Motion> {
+	const defaults: Partial<Motion> = {};
+	const duration = tokens?.light[`duration-${DEFAULT_MOTION_NAME}`];
+	const easing = tokens?.light[`ease-${DEFAULT_MOTION_NAME}`];
+	const ms = duration === undefined ? null : durationMs(duration);
+
+	if (ms !== null) defaults.duration = Math.min(ms, MAX_DURATION_MS);
+
+	if (easing !== undefined) defaults.easing = easing;
+
+	return defaults;
 }
 
 const isTransition = (value: string): value is LinkTransition => TRANSITIONS.some((name) => name === value);

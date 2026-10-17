@@ -61,9 +61,11 @@ const CATEGORY: Record<TokenKind, { label: string; example: { name: string; ligh
 	radius: { label: "Radius", example: { name: "radius-card", light: "1rem" } },
 	spacing: { label: "Spacing", example: { name: "spacing-gutter", light: "24px" } },
 	shadow: { label: "Shadows", example: { name: "shadow-card", light: "0 4px 12px rgb(0 0 0 / 0.1)" } },
+	duration: { label: "Durations", example: { name: "duration-default", light: "200ms" } },
+	ease: { label: "Easings", example: { name: "ease-default", light: "cubic-bezier(0.2, 0, 0, 1)" } },
 };
 
-const ORDER: TokenKind[] = ["color", "text", "font", "font-weight", "radius", "spacing", "shadow"];
+const ORDER: TokenKind[] = ["color", "text", "font", "font-weight", "radius", "spacing", "shadow", "duration", "ease"];
 
 type Filter = TokenKind | "all";
 

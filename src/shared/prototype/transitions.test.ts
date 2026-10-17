@@ -11,6 +11,7 @@ import {
 	parseTransition,
 	screenTransition,
 	TRANSITION_MS,
+	motionDefaults,
 } from "./transitions";
 
 describe("reading link options", () => {
@@ -131,5 +132,19 @@ describe("link timing (decision 0046)", () => {
 		expect(timed(plan, { duration: 120, easing: "linear" })).toMatchObject({ duration: 120, easing: EASINGS.linear });
 		expect(timed(plan, { duration: null, easing: null })).toEqual(plan);
 		expect(timed(null, { duration: 120, easing: null })).toBeNull();
+	});
+
+	test("the default motion tokens replace the plan's defaults, and a link's own timing wins over them", () => {
+		const plan = screenTransition("push", "forward", false)!;
+		const defaults = motionDefaults({ light: { "duration-default": "0.2s", "ease-default": "ease-out" }, dark: {} });
+
+		expect(defaults).toEqual({ duration: 200, easing: "ease-out" });
+		expect(timed(plan, { duration: null, easing: null }, defaults)).toMatchObject(defaults);
+		expect(timed(plan, { duration: 120, easing: "linear" }, defaults)).toMatchObject({
+			duration: 120,
+			easing: EASINGS.linear,
+		});
+		expect(motionDefaults({ light: { "duration-fast": "100ms" }, dark: {} })).toEqual({});
+		expect(motionDefaults(undefined)).toEqual({});
 	});
 });

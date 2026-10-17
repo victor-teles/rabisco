@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ChevronDown, CircleDot, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenFrame } from "@/components/app/screen-preview";
@@ -23,6 +23,7 @@ import type { DesignTokens, TokenValues } from "../../../shared/context/tokens";
 import { FRAME_SIZE, isScreenFile, screenNameFromPath } from "../../../shared/project";
 import { resolveLink } from "../../../shared/prototype/links";
 import {
+	motionDefaults,
 	overlayMotion,
 	overlayRect,
 	parseOverlayMode,
@@ -32,6 +33,7 @@ import {
 	timed,
 	type LinkTiming,
 	type LinkTransition,
+	type Motion,
 	type OverlayMode,
 	type ScreenTransition,
 	type Size,
@@ -133,6 +135,7 @@ export function PlayView({
 	const overlayOpen = overlays.some((overlay) => !overlay.closing);
 	const canBack = history.index > 0;
 	const canForward = history.index < history.stack.length - 1;
+	const defaults = useMemo(() => motionDefaults(theme), [theme]);
 
 	const modeOf = (file: string) => {
 		const target = frames.find((f) => f.file === file);
@@ -191,10 +194,10 @@ export function PlayView({
 			setHistory(step.history);
 			show(
 				currentVisit(step.history).file,
-				timed(screenTransition(step.transition, step.direction, prefersReducedMotion()), step.timing),
+				timed(screenTransition(step.transition, step.direction, prefersReducedMotion()), step.timing, defaults),
 			);
 		},
-		[show],
+		[show, defaults],
 	);
 
 	const runMotion = useCallback((id: number) => {
@@ -237,10 +240,10 @@ export function PlayView({
 		const top = overlays.filter((overlay) => !overlay.closing).at(-1);
 
 		if (!top) return;
-		const motion = timed(overlayMotion(top.mode, top.transition, false, prefersReducedMotion()), top.timing);
+		const motion = timed(overlayMotion(top.mode, top.transition, false, prefersReducedMotion()), top.timing, defaults);
 		noteMotion(motion ? { kind: "overlay", motion, opening: false } : null);
 		setOverlays((list) => list.map((overlay) => (overlay.id === top.id ? { ...overlay, closing: true } : overlay)));
-	}, [overlays, noteMotion]);
+	}, [overlays, noteMotion, defaults]);
 
 	const removeOverlay = useCallback((id: number) => {
 		setOverlays((list) => list.filter((overlay) => overlay.id !== id));
@@ -308,7 +311,7 @@ export function PlayView({
 
 				if (!mode) go(target.file, transition ?? "instant", timing);
 				else {
-					const motion = timed(overlayMotion(mode, transition, true, prefersReducedMotion()), timing);
+					const motion = timed(overlayMotion(mode, transition, true, prefersReducedMotion()), timing, defaults);
 					noteMotion(motion ? { kind: "overlay", motion, opening: true } : null);
 
 					setOverlays((list) => [
@@ -330,7 +333,7 @@ export function PlayView({
 					description: `No screen at ${target.to}. Pick a target in the inspector.`,
 				});
 		},
-		[files, go, back, canBack, overlayOpen, noteMotion],
+		[files, go, back, canBack, overlayOpen, noteMotion, defaults],
 	);
 
 	const sizeOf = (file: string): Size => {
@@ -620,6 +623,7 @@ export function PlayView({
 									onDismiss={closeOverlay}
 									onClosed={removeOverlay}
 									onHost={hostFor(overlay.id)}
+									defaults={defaults}
 								/>
 							))}
 						</div>
@@ -650,6 +654,7 @@ function OverlayLayer({
 	onDismiss,
 	onClosed,
 	onHost,
+	defaults,
 }: {
 	overlay: Overlay;
 	screen: Size;
@@ -662,6 +667,8 @@ function OverlayLayer({
 	onDismiss: () => void;
 	onClosed: (id: number) => void;
 	onHost: (host: FrameHost | null) => void;
+	/** The project's default motion tokens */
+	defaults: Partial<Motion>;
 }) {
 	const panelRef = useRef<HTMLDivElement>(null);
 	const backdropRef = useRef<HTMLDivElement>(null);
@@ -678,7 +685,9 @@ function OverlayLayer({
 	}, [shown]);
 
 	useLayoutEffect(() => {
-		const motion = shown ? timed(overlayMotion(mode, transition, !closing, prefersReducedMotion()), linkTiming) : null;
+		const motion = shown
+			? timed(overlayMotion(mode, transition, !closing, prefersReducedMotion()), linkTiming, defaults)
+			: null;
 
 		if (!motion) {
 			if (closing) closed();
@@ -700,7 +709,7 @@ function OverlayLayer({
 
 			for (const animation of animations) animation?.cancel();
 		};
-	}, [shown, mode, transition, linkTiming, closing]);
+	}, [shown, mode, transition, linkTiming, closing, defaults]);
 
 	return (
 		<div className={cn("absolute inset-0 z-10", closing && "pointer-events-none")}>

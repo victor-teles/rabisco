@@ -62,6 +62,8 @@ const KIND_LABEL: Record<TokenKind, string> = {
 	radius: "Radius",
 	spacing: "Spacing",
 	shadow: "Shadow",
+	duration: "Duration",
+	ease: "Easing",
 };
 
 function kindLabel(change: LibraryChange) {
