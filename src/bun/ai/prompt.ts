@@ -10,7 +10,7 @@ import { imageLabel, stagedAttachments } from "./attachments";
 import { modesText, themeTokensText } from "./theme-tokens";
 
 /** Bump when a prompt change affects output; logged with each generation. */
-export const PROMPT_VERSION = 24;
+export const PROMPT_VERSION = 25;
 
 export type PromptMode = "text" | "agent";
 
@@ -30,7 +30,24 @@ const UI_BLOCK_HINTS = `- MetricCard (variant card | plain | compact) > MetricCa
 - FormErrorSummary > FormErrorSummaryTitle, FormErrorSummaryList > FormErrorSummaryLink fieldId="<input id>".
 - Message from="user" | "assistant" (variant bubble | plain | compact) > MessageAvatar, MessageBody > MessageHeader > MessageAuthor + MessageTime; MessageContent; MessageActions > MessageCopy, MessageAction label="…".
 - PromptComposer (defaultValue, busy) > PromptComposerAdd > PromptComposerAddItem; PromptComposerInput placeholder="…", PromptComposerActions > PromptComposerModelSelect models={[{ id, label }]} + PromptComposerSubmit.
-- Thinking status="thinking" | "complete" | "error" > ThinkingTrigger duration="12s", ThinkingContent > ThinkingActivity type="progress" | "search" query="…" | "file" path="…" | "tool" tool="…".`;
+- Thinking status="thinking" | "complete" | "error" > ThinkingTrigger duration="12s", ThinkingContent > ThinkingActivity type="progress" | "search" query="…" | "file" path="…" | "tool" tool="…".
+- AppSidebar defaultValue="<item value>" (variant panel | inset | compact) > AppSidebarHeader > AppSidebarTitle; AppSidebarNav > AppSidebarGroup > AppSidebarGroupLabel + AppSidebarList > AppSidebarItem value="…" > AppSidebarItemIcon + AppSidebarItemLabel + AppSidebarItemBadge; AppSidebarFooter.
+- AppHeader (variant bar | floating | compact) > AppHeaderBrand, AppHeaderNav > AppHeaderNavItem active, AppHeaderSearch, AppHeaderActions > AppHeaderAction emphasis="primary" | "secondary".
+- PageTabs defaultValue="<tab value>" (variant underline | pill | segmented) > PageTabsBar > PageTabsList > PageTabsTab value="…" > label + PageTabsCount; PageTabsActions; then PageTabsPanel value="…" per tab.
+- FilterBar activeCount={2} (variant toolbar | panel | compact) > FilterBarControls (your inputs), FilterBarChips > FilterBarChip onRemove={() => {}}, FilterBarCount, FilterBarReset.
+- DescriptionList (variant inline | stacked | grid) > DescriptionListItem > DescriptionListTerm + DescriptionListDetails + DescriptionListAction.
+- ActivityTimeline (variant rail | card | compact) > ActivityTimelineGroup > ActivityTimelineDate + ActivityTimelineEvents > ActivityTimelineEvent > ActivityTimelineMarker (always first; an icon or empty) + ActivityTimelineContent > ActivityTimelineTitle (with ActivityTimelineActor) + ActivityTimelineTime + ActivityTimelineMeta.
+- TaskList (variant card | timeline | compact) > TaskListItem status="complete" | "active" | "pending" > TaskListTitle + TaskListDescription.
+- FileUpload (variant dropzone | inline | compact; accept) > FileUploadDropzone > FileUploadInput + FileUploadTrigger; FileUploadList > FileUploadItem status="uploading" | "complete" | "error" progress={64} > file name, FileUploadProgress, FileUploadRetry, FileUploadRemove.
+- SignInCard (variant card | split | compact; status idle | submitting | error) > SignInCardHeader > SignInCardTitle + SignInCardDescription; SignInCardBody > SignInCardProviders > SignInCardProvider, SignInCardDivider, SignInCardFields > SignInCardField > SignInCardLabel + SignInCardInput (revealable for passwords), SignInCardOptions, SignInCardError, SignInCardSubmit; SignInCardFooter.
+- OrderStatus (variant card | plain | compact) > OrderStatusHeader > OrderStatusTitle + OrderStatusDescription + OrderStatusBadge tone="neutral" | "progress" | "success" | "warning"; OrderStatusProgress > OrderStatusStep status="complete" | "current" | "upcoming" | "issue" > OrderStatusStepTitle + OrderStatusStepDescription; OrderStatusDetails > OrderStatusDetail label="…"; OrderStatusActions > OrderStatusAction emphasis="primary".
+- PricingToggle defaultValue="yearly" (variant segmented | pill | compact) > PricingToggleList > PricingToggleOption value="monthly" | "yearly" (with PricingToggleSavings); anywhere inside PricingToggle, one PricingTogglePrice period="<option value>" per option, and only the selected one shows.
+- TestimonialCard (variant card | editorial | compact) > TestimonialCardQuote, TestimonialCardAuthor > TestimonialCardAvatar (initials as children) + TestimonialCardName + TestimonialCardRole + TestimonialCardOrganization.
+- TrustPanel (variant card | plain | compact) > TrustPanelTitle, TrustPanelLogos > TrustPanelLogo name="…" > the wordmark (text, or an icon and text), TrustPanelRating value={4.8}, TrustPanelBadges > TrustPanelBadge.
+- EmptyState (variant card | plain | compact | page) > EmptyStateMedia (an icon), EmptyStateContent > EmptyStateHeader > EmptyStateTitle + EmptyStateDescription; EmptyStateActions > EmptyStateAction emphasis="primary" | "secondary"; EmptyStateNote.
+- ToolCall status="queued" | "running" | "success" | "error" (variant card | inline | compact) > ToolCallHeader > ToolCallTrigger > ToolCallName + ToolCallSummary + ToolCallStatus; ToolCallContent > ToolCallInput, ToolCallOutput, ToolCallError.
+- Citation index={1} (variant number | chip | underline) > CitationClaim (the cited text), CitationTrigger, CitationPopover > CitationSource + CitationTitle + CitationExcerpt + CitationLink.
+- ResponseStatus status="queued" | "streaming" | "stopped" | "complete" | "failed" (variant inline | pill | bar) > ResponseStatusIndicator, ResponseStatusLabel, ResponseStatusDetail, ResponseStatusActions > ResponseStatusStop or ResponseStatusRetry.`;
 
 const frameOf = (request: GenerationRequest) => {
 	const { width, height } = FRAME_SIZE[request.device];
@@ -61,7 +78,7 @@ const DESIGN_RULES = `# Design
 - Realistic, specific content, as dense as the real app: plausible names, numbers, dates and copy; 5–8 rows in a list, not 2. Never lorem ipsum, never "Item 1". When PRODUCT.md is given, take the content from it: its product's own entities, its audience's names and situations, and copy in its voice.
 - Text contrast at least 4.5:1 (3:1 from 24px): text-muted-foreground is the lightest text; text on a photo needs a scrim.
 - States only when the request names them: empty (a title, one line of help, the action), loading (bg-muted animate-pulse skeletons in the shape of the content), error (what happened and how to fix it: StatusBanner, FormFieldError).
-- No network images. Draw images with Placeholder: <Placeholder kind="photo" subject="food" seed="brunch" className="aspect-[4/3] w-full rounded-lg" />. kind photo (subject landscape, food, interior, product, people, abstract), avatar, map (pin), chart (subject area, line, bar) or illustration (subject tiles, empty, success, error); size it with className, and a different seed gives a different image. Icons come from lucide-react.
+- No network images. Draw images with Placeholder: <Placeholder kind="photo" subject="food" seed="brunch" className="aspect-[4/3] w-full rounded-lg" />. kind photo (subject landscape, food, interior, product, people, abstract), avatar, map (pin), chart (subject area, line, bar) or illustration (subject tiles, empty, success, error); size it with className, and a different seed gives a different image. Icons come from lucide-react. When DESIGN.md or the existing screens use Tabler or Phosphor, use that pack instead, one pack per project: @tabler/icons-react (<IconHome />, <IconHomeFilled />; stroke={1.5} sets the width) or @phosphor-icons/react (<House />; weight="regular" | "thin" | "light" | "bold" | "fill" | "duotone").
 - Tailwind classes only; inline style just for dynamic values. No <style> tags, no CSS imports.
 - Screens are mockups: light interactivity with useState is fine; no data fetching, timers, routing, window or document access.`;
 
@@ -70,7 +87,7 @@ const FILE_RULES_TEXT = (request: GenerationRequest) => `# Files
 - A screen default-exports one component: \`export default function OrderHistory() {…}\`. Its root fills the frame: \`h-full\` for app layouts with fixed bars (content area scrolls with overflow-y-auto), \`min-h-full\` for pages that grow.
 - The frame is ${frameOf(request)}. Design for exactly that size; never set a root width.${DEVICE_NOTES[request.device]}
 - Components use named exports only (\`export function StatCard…\`), never default exports.
-- Imports allowed: react, lucide-react, @/lib/utils (\`cn\`), the @/components/ui modules below, and project components as \`../components/<kebab-name>\` (same form from screens and components, no extension). Nothing else: no other packages.
+- Imports allowed: react, lucide-react (or @tabler/icons-react, @phosphor-icons/react), @/lib/utils (\`cn\`), the @/components/ui modules below, and project components as \`../components/<kebab-name>\` (same form from screens and components, no extension). Nothing else: no other packages.
 - Keep every \`data-link-to\` attribute when you edit a file: it is a prototype link (\`data-link-to="screens/<name>.tsx"\` or \`"back"\`). To add navigation, put \`data-link-to\` with the target screen's path on the clickable element. Keep \`data-link-transition\` (\`instant\`, \`dissolve\`, \`slide\`, \`push\`) and \`data-link-mode\` (\`overlay\` for a modal, \`sheet\`) next to it, and every other \`data-link-*\` attribute (duration, easing, trigger) as written. A \`data-link-to\` of \`#id\` scrolls to that element and a URL opens it.
 - Every file you write is complete: never a diff, never "// rest unchanged" or "..." placeholders. Under ${FILE_RULES.maxFileLength.toLocaleString("en-US")} characters.
 

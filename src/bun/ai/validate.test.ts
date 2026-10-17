@@ -117,7 +117,7 @@ describe("validateFiles", () => {
 
 			const editor = one(
 				"screens/a.tsx",
-				screen(`import { ToolCall } from "@/components/ui/uai/tool-call";\nvoid ToolCall;`),
+				screen(`import { RunSummary } from "@/components/ui/uai/run-summary";\nvoid RunSummary;`),
 			);
 
 			expect(editor).toHaveLength(1);

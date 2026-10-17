@@ -127,7 +127,7 @@ function checkImport(from: string, specifier: string, ctx: ImportContext): strin
 
 	if (FILE_RULES.imports.some((rule) => rule.test(specifier))) return null;
 
-	return `"${specifier}" can't be imported. Allowed: react, lucide-react, @/components/ui/*, @/lib/utils and project components.`;
+	return `"${specifier}" can't be imported. Allowed: react, lucide-react, @tabler/icons-react, @phosphor-icons/react, @/components/ui/*, @/lib/utils and project components.`;
 }
 
 const LITERAL_DEFAULT = /\bexports\.\s*default\s*=\s*(?:["'`\d[{]|null\b|true\b|false\b|undefined\b)/;

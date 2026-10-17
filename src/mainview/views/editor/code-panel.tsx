@@ -9,6 +9,7 @@ import { findNode } from "@/lib/outline";
 import { cn } from "@/lib/utils";
 import { elementAt, findElement, parseJsx, readImports, suggestName } from "../../../shared/jsx";
 import { isBoolean, isNumber } from "../../../shared/guards";
+import { iconPackOf } from "../../../shared/icons";
 import { CodeEditor, CodeHeader } from "./code-view";
 import { CODE_VIEW_KEYS, isMakeComponent, MAKE_COMPONENT_KEYS } from "./shortcuts";
 import { StructureTree, useOutline } from "./structure-tree";
@@ -239,7 +240,7 @@ function NameField({
 
 		const icons = new Set(
 			readImports(source)
-				.filter((d) => d.module === "lucide-react")
+				.filter((d) => iconPackOf(d.module))
 				.flatMap((d) => d.named.map((s) => s.local)),
 		);
 

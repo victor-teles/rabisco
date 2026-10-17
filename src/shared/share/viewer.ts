@@ -871,6 +871,7 @@ const viewerJs = () => `(function () {
 		if (message.type === "ready") {
 			// A (re)loaded frame starts empty: send everything, then turn play mode on
 			record.ready = true;
+			if (data.fonts) post(record, { type: "fonts", fonts: data.fonts });
 			if (data.assets) post(record, { type: "assets", assets: data.assets, reset: true });
 			post(record, { type: "modules", entry: record.file, modules: data.modules, css: data.css, theme: themeOf(record.file), mode: modeOf(record.file), reset: true });
 			syncPick(record);

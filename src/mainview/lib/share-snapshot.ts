@@ -1,6 +1,7 @@
 import { projectAssets } from "@/lib/render/assets";
 import { compileCache } from "@/lib/render/compile";
 import { collectGraph } from "@/lib/render/graph";
+import { shippedFonts, usesShippedFont } from "@/lib/render/shipped-fonts";
 import { screenStyles, themeCss } from "@/lib/render/styles";
 import type { DesignTokens } from "../../shared/context/tokens";
 import { motionDefaults } from "../../shared/prototype/transitions";
@@ -56,6 +57,10 @@ export async function buildShareSnapshot(input: {
 	const motion = motionDefaults(input.theme);
 
 	if (Object.keys(motion).length) snapshot.motion = motion;
+
+	const fonts = usesShippedFont(`${snapshot.css}\n${theme}`) ? await shippedFonts.dataUrls() : [];
+
+	if (fonts.length) snapshot.fonts = fonts;
 
 	return snapshot;
 }

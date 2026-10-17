@@ -46,15 +46,6 @@ _Principle: UX first_
 
 ---
 
-## Open items from finished phases ⬜
-
-Small items left over when phases 24 and 25 were archived.
-
-- ⬜ More uai blocks in the screen runtime, and icon packs besides lucide (from Phase 25)
-- ⬜ Load the shipped Inter into screen frames, so text in Rabisco matches Copy to Figma for users without Inter installed. Check the render cost per frame and how export snapshots change, and decide if it needs a decision record (from Phase 24, [0041](./decisions/0041-copy-to-figma-draws-text-from-shipped-inter.md), [LIT-146](/LIT/issues/LIT-146))
-
----
-
 ## Growth and launch ⬜
 
 _Principle: UX first (no dead ends)_

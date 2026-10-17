@@ -73,7 +73,7 @@ export function agentContextMarkdown(input: AgentContextInput): string {
 	const intro =
 		`${screens.length === 1 ? "This screen comes" : "These screens come"} from the Rabisco design "${input.project}". ` +
 		"Each screen is a React component in TSX, styled with Tailwind v4, built on shadcn/ui (`@/components/ui/*`) " +
-		"with lucide-react icons. Build them in this app with the same structure, components and tokens.";
+		"with lucide-react icons (Tabler or Phosphor where they import them). Build them in this app with the same structure, components and tokens.";
 
 	const parts = [
 		`# Rabisco design: ${names}`,

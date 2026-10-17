@@ -157,7 +157,7 @@ const writeTool = (
 const CODE: PropertySchema = {
 	type: "string",
 	description:
-		"The whole TSX file. Import project components from `../components/<name>`, shadcn and uai from `@/components/ui/<name>`, icons from `lucide-react`.",
+		"The whole TSX file. Import project components from `../components/<name>`, shadcn and uai from `@/components/ui/<name>`, icons from `lucide-react` (or `@tabler/icons-react` and `@phosphor-icons/react` when the project uses them).",
 };
 
 const TOKENS = (mode: string): PropertySchema => ({

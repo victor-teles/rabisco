@@ -4,9 +4,15 @@ import { cn } from "@/lib/utils";
 
 const NO_DRAG = "electrobun-webkit-app-region-no-drag";
 
-/** A double-click on the bar itself zooms the window, as on a native title bar; controls keep their own double-click */
+/**
+ * A double-click on the bar itself zooms the window, as on a native title bar; controls keep their own double-click.
+ * React bubbles events from portals (a popover's page list) through the bar, so the target must be in its DOM.
+ */
 function onTitleBarDoubleClick(event: MouseEvent<HTMLElement>) {
-	if (!isDesktop || !(event.target instanceof Element) || event.target.closest(`.${NO_DRAG}`)) return;
+	const { target, currentTarget } = event;
+
+	if (!isDesktop || !(target instanceof Element) || !currentTarget.contains(target) || target.closest(`.${NO_DRAG}`))
+		return;
 
 	void api.titleBarDoubleClick({});
 }

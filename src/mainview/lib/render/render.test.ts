@@ -353,6 +353,19 @@ export default () => <Icons.Star />;
 		expect(iconsFromSource(source).sort()).toEqual(["House", "Plus", "Star"]);
 		expect(iconsFromSource(`import type { LucideIcon } from "lucide-react";`)).toEqual([]);
 	});
+
+	test("Tabler and Phosphor imports name their pack", () => {
+		const source = `import { IconHome, IconStarFilled as Star } from "@tabler/icons-react";
+import * as Ph from "@phosphor-icons/react";
+export default () => <Ph.House weight="bold" />;
+`;
+
+		expect(iconsFromSource(source).sort()).toEqual([
+			"@phosphor-icons/react:House",
+			"@tabler/icons-react:IconHome",
+			"@tabler/icons-react:IconStarFilled",
+		]);
+	});
 });
 
 describe("refresh", () => {

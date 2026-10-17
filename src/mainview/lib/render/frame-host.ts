@@ -11,6 +11,7 @@ import { compileCache, type CompiledModule } from "./compile";
 import { cssPatch } from "./css-patch";
 import { collectGraph } from "./graph";
 import { setLinkBoxes } from "./link-boxes";
+import { shippedFonts } from "./shipped-fonts";
 import {
 	hitBoxes,
 	isFrameMessage,
@@ -135,8 +136,10 @@ export class FrameHost {
 	#sentMode = "";
 	#sentAssets = new Map<string, Blob>();
 	#sentAssetsVersion = -1;
+	#sentFonts = false;
 	#unsubscribe: () => void;
 	#unsubscribeAssets: () => void;
+	#unsubscribeFonts: () => void;
 	#hitTests = new Map<number, (hit: FrameHit | null) => void>();
 	/** Re-sent when the frame reloads. */
 	#tracked: TrackedElement = { start: null, version: "" };
@@ -158,12 +161,14 @@ export class FrameHost {
 		listen();
 		this.#unsubscribe = screenStyles.subscribe(() => this.#pushCss());
 		this.#unsubscribeAssets = projectAssets.subscribe(() => this.#pushAssets());
+		this.#unsubscribeFonts = shippedFonts.subscribe(() => this.#pushFonts());
 	}
 
 	dispose() {
 		hosts.delete(this);
 		this.#unsubscribe();
 		this.#unsubscribeAssets();
+		this.#unsubscribeFonts();
 		clearTimeout(this.#cssTimer);
 
 		for (const resolve of this.#hitTests.values()) resolve(null);
@@ -470,8 +475,10 @@ export class FrameHost {
 			this.#sentMode = "";
 			this.#sentAssets.clear();
 			this.#sentAssetsVersion = -1;
+			this.#sentFonts = false;
 			this.#textEdit?.resolve(null);
 			this.#emit({ status: "ready" });
+			this.#pushFonts();
 			this.#pushAssets();
 			this.#sync();
 
@@ -613,6 +620,14 @@ export class FrameHost {
 			},
 			changed ? CSS_PUSH_DELAY_MS : CSS_RECONCILE_DELAY_MS,
 		);
+	}
+
+	#pushFonts() {
+		const { fonts } = shippedFonts;
+
+		if (!this.#ready || this.#sentFonts || !fonts) return;
+		this.#sentFonts = true;
+		this.#post({ type: "fonts", fonts: [...fonts] });
 	}
 
 	/** Before modules, so the first render already finds the images */

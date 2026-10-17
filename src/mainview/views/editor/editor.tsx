@@ -1,23 +1,21 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+	ChevronDown,
 	ChevronLeft,
 	Circle,
 	Hand,
 	ImagePlus,
-	Maximize,
 	MessageCircle,
-	Minus,
 	MousePointer2,
 	PenTool,
 	Play,
-	Plus,
-	Redo2,
 	Square,
 	SquareDashedTopSolid,
 	StickyNote,
 	MoveUpRight,
+	PanelLeft,
 	Type,
-	Undo2,
+	type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FpsMeter } from "@/components/app/fps-meter";
@@ -27,6 +25,13 @@ import { ThemeToggle } from "@/components/app/theme-toggle";
 import { NoDrag, TitleBar } from "@/components/app/title-bar";
 import { Button } from "@/components/ui/button";
 import { ContextMenuSeparator } from "@/components/ui/context-menu";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuShortcut,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -206,6 +211,7 @@ import { ImportPageDialog } from "./import-page-dialog";
 import { StyleDialog } from "./style-dialog";
 import { NEW_SCREEN_SUBMENU, NewScreenMenu } from "./new-screen-menu";
 import { ThemePrompt, type ThemeBarState } from "./theme-prompt";
+import { ToolButton, ToolGroup, type ToolItem } from "./tool-group";
 import { ScreensPanel } from "./screens-panel";
 import { fontToken, leadingFamily, type FontFamily } from "../../../shared/fonts";
 import { replacePlaceholders, type PlaceholderImage } from "../../../shared/placeholder-images";
@@ -235,6 +241,7 @@ import {
 	ASSETS_VIEW_CODE,
 	MOTION_VIEW_CODE,
 	SIDE_PANEL_CODE,
+	SIDE_PANEL_KEYS,
 } from "./shortcuts";
 
 type EditorProps = {
@@ -3166,6 +3173,23 @@ export function EditorView({
 			<div className="flex h-full flex-col">
 				<TitleBar>
 					<NoDrag className="flex items-center gap-1">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className="text-muted-foreground"
+									aria-label={sidePanel.open ? "Hide panel" : "Show panel"}
+									aria-pressed={sidePanel.open}
+									onClick={sidePanel.toggle}
+								>
+									<PanelLeft />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								{sidePanel.open ? "Hide panel" : "Show panel"} <Kbd>{SIDE_PANEL_KEYS}</Kbd>
+							</TooltipContent>
+						</Tooltip>
 						<Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to home">
 							<ChevronLeft />
 						</Button>
@@ -3331,7 +3355,7 @@ export function EditorView({
 								}
 							/>
 						}
-						chatActions={
+						chatHeader={
 							project ? (
 								<ChatSessions
 									chats={project.chats}
@@ -3537,10 +3561,6 @@ export function EditorView({
 							drawingAnnotation={annotations.drawing}
 							onAnnotation={annotations.startDrawing}
 							onPlaceImage={() => void insertTools.placeImage()}
-							canUndo={canUndo}
-							canRedo={canRedo}
-							onUndo={undo}
-							onRedo={redo}
 							newScreen={<NewScreenMenu actions={actions} />}
 							comments={
 								<CommentsList
@@ -3787,10 +3807,6 @@ function Toolbar({
 	drawingAnnotation,
 	onAnnotation,
 	onPlaceImage,
-	canUndo,
-	canRedo,
-	onUndo,
-	onRedo,
 	newScreen,
 	comments,
 }: {
@@ -3801,135 +3817,68 @@ function Toolbar({
 	drawingAnnotation: AnnotationKind | null;
 	onAnnotation: (kind: AnnotationKind) => void;
 	onPlaceImage: () => void;
-	canUndo: boolean;
-	canRedo: boolean;
-	onUndo: () => void;
-	onRedo: () => void;
 	/** The new screen menu */
 	newScreen: React.ReactNode;
 	/** The comments list */
 	comments: React.ReactNode;
 }) {
-	const tools = [
-		{ id: "move" as const, label: "Move", shortcut: "V", icon: MousePointer2 },
-		{ id: "rectangle" as const, label: "Rectangle", shortcut: "R", icon: Square },
-		{ id: "ellipse" as const, label: "Ellipse", shortcut: "O", icon: Circle },
-		{ id: "text" as const, label: "Text", shortcut: "T", icon: Type },
-		{ id: "pen" as const, label: "Pen", shortcut: "P", icon: PenTool },
-		{ id: "hand" as const, label: "Hand", shortcut: "H", icon: Hand },
-		{ id: "comment" as const, label: "Comment", shortcut: "C", icon: MessageCircle },
+	const drawing = drawingSection || drawingAnnotation !== null;
+
+	const toolItem = (id: Tool, label: string, shortcut: string, icon: LucideIcon): ToolItem => ({
+		key: id,
+		label,
+		shortcut,
+		icon,
+		active: tool === id && !drawing,
+		onSelect: () => onToolChange(id),
+	});
+
+	const pointers = [toolItem("move", "Move", "V", MousePointer2), toolItem("hand", "Hand", "H", Hand)];
+
+	const drawTools = [
+		toolItem("rectangle", "Rectangle", "R", Square),
+		toolItem("ellipse", "Ellipse", "O", Circle),
+		{ key: "image", label: "Place image", shortcut: "⇧⌘K", icon: ImagePlus, active: false, onSelect: onPlaceImage },
 	];
 
-	const annotationTools = [
-		{ kind: "note" as const, label: "Sticky note", shortcut: "S", icon: StickyNote },
-		{ kind: "arrow" as const, label: "Arrow", shortcut: "⇧L", icon: MoveUpRight },
-	];
-
-	const history = [
-		{ label: "Undo", shortcut: "⌘Z", icon: Undo2, enabled: canUndo, onClick: onUndo },
-		{ label: "Redo", shortcut: "⇧⌘Z", icon: Redo2, enabled: canRedo, onClick: onRedo },
+	const annotate = [
+		{
+			key: "section",
+			label: "Section",
+			shortcut: "⇧S",
+			icon: SquareDashedTopSolid,
+			active: drawingSection,
+			onSelect: onSection,
+		},
+		{
+			key: "note",
+			label: "Sticky note",
+			shortcut: "S",
+			icon: StickyNote,
+			active: drawingAnnotation === "note",
+			onSelect: () => onAnnotation("note"),
+		},
+		{
+			key: "arrow",
+			label: "Arrow",
+			shortcut: "⇧L",
+			icon: MoveUpRight,
+			active: drawingAnnotation === "arrow",
+			onSelect: () => onAnnotation("arrow"),
+		},
 	];
 
 	return (
 		<div className={cn(floatingBar, "bottom-4 left-1/2 -translate-x-1/2")}>
-			{tools.map((t) => (
-				<Tooltip key={t.id}>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label={t.label}
-							aria-pressed={tool === t.id && !drawingSection && !drawingAnnotation}
-							onClick={() => onToolChange(t.id)}
-							className={cn(
-								tool === t.id &&
-									!drawingSection &&
-									!drawingAnnotation &&
-									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-							)}
-						>
-							<t.icon />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="top">
-						{t.label} <Kbd>{t.shortcut}</Kbd>
-					</TooltipContent>
-				</Tooltip>
-			))}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button variant="ghost" size="icon-sm" aria-label="Place image" onClick={onPlaceImage}>
-						<ImagePlus />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Place image <Kbd>⇧⌘K</Kbd>
-				</TooltipContent>
-			</Tooltip>
+			<ToolGroup label="Move tools" items={pointers} />
 			{newScreen}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						aria-label="Section"
-						aria-pressed={drawingSection}
-						onClick={onSection}
-						className={cn(
-							drawingSection && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-						)}
-					>
-						<SquareDashedTopSolid />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Section <Kbd>⇧S</Kbd>
-				</TooltipContent>
-			</Tooltip>
-			{annotationTools.map((t) => (
-				<Tooltip key={t.kind}>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label={t.label}
-							aria-pressed={drawingAnnotation === t.kind}
-							onClick={() => onAnnotation(t.kind)}
-							className={cn(
-								drawingAnnotation === t.kind &&
-									"bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-							)}
-						>
-							<t.icon />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="top">
-						{t.label} <Kbd>{t.shortcut}</Kbd>
-					</TooltipContent>
-				</Tooltip>
-			))}
-			{comments}
+			<ToolGroup label="Shape tools" items={drawTools} />
+			<ToolButton item={toolItem("text", "Text", "T", Type)} />
+			<ToolButton item={toolItem("pen", "Pen", "P", PenTool)} />
+			<ToolGroup label="Sections and notes" items={annotate} />
+			<ToolButton item={toolItem("comment", "Comment", "C", MessageCircle)} />
 			<Separator orientation="vertical" className="mx-0.5 h-5!" />
-			{history.map((h) => (
-				<Tooltip key={h.label}>
-					<TooltipTrigger asChild>
-						{/* aria-disabled keeps the tooltip reachable when there is nothing to undo */}
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label={h.label}
-							aria-disabled={!h.enabled}
-							onClick={() => h.enabled && h.onClick()}
-							className={cn("text-muted-foreground", !h.enabled && "opacity-40 hover:bg-transparent")}
-						>
-							<h.icon />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="top">
-						{h.label} <Kbd>{h.shortcut}</Kbd>
-					</TooltipContent>
-				</Tooltip>
-			))}
+			{comments}
 		</div>
 	);
 }
@@ -3950,55 +3899,48 @@ const ZoomControls = memo(function ZoomControls({
 }) {
 	const percent = useZoomPercent(viewport);
 
+	const items = [
+		{ label: "Zoom in", keys: "⌘+", run: onZoomIn, stayOpen: true },
+		{ label: "Zoom out", keys: "⌘-", run: onZoomOut, stayOpen: true },
+		{ label: "Zoom to 100%", keys: "⌘0", run: onReset, stayOpen: false },
+		{ label: "Zoom to fit", keys: "⇧1", run: onFit, stayOpen: false },
+	];
+
 	return (
 		<div className={cn(floatingBar, "right-4 bottom-4")}>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={onZoomOut}>
-						<Minus />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Zoom out <Kbd>⌘-</Kbd>
-				</TooltipContent>
-			</Tooltip>
-			<Tooltip>
-				<TooltipTrigger asChild>
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
 					<Button
 						variant="ghost"
 						size="sm"
-						className="w-14 px-0 tabular-nums"
-						onClick={onReset}
-						aria-label="Reset zoom to 100%"
+						className="gap-0.5 px-2 tabular-nums data-[state=open]:bg-accent"
+						aria-label={`Zoom: ${percent}%`}
 					>
 						{percent}%
+						<ChevronDown className="size-3 text-muted-foreground" />
 					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Zoom to 100% <Kbd>⌘0</Kbd>
-				</TooltipContent>
-			</Tooltip>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={onZoomIn}>
-						<Plus />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Zoom in <Kbd>⌘+</Kbd>
-				</TooltipContent>
-			</Tooltip>
-			<Separator orientation="vertical" className="mx-0.5 h-5!" />
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button variant="ghost" size="icon-sm" aria-label="Zoom to fit" onClick={onFit}>
-						<Maximize />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="top">
-					Zoom to fit <Kbd>⇧1</Kbd>
-				</TooltipContent>
-			</Tooltip>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent
+					side="top"
+					align="end"
+					sideOffset={10}
+					className="w-48"
+					onCloseAutoFocus={(event) => event.preventDefault()}
+				>
+					{items.map((item) => (
+						<DropdownMenuItem
+							key={item.label}
+							onSelect={(event) => {
+								if (item.stayOpen) event.preventDefault();
+								item.run();
+							}}
+						>
+							{item.label}
+							<DropdownMenuShortcut>{item.keys}</DropdownMenuShortcut>
+						</DropdownMenuItem>
+					))}
+				</DropdownMenuContent>
+			</DropdownMenu>
 		</div>
 	);
 });

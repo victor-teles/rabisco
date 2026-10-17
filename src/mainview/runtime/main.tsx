@@ -10,6 +10,7 @@ import {
 	type HostMessage,
 } from "../lib/render/protocol";
 import { frameAssets, resolveImageSources } from "./assets";
+import { addShippedFonts } from "./fonts";
 import { lintAccessibility } from "./accessibility-lint";
 import { sampleScreen } from "./consistency-sample";
 import { lintScreen } from "./design-lint";
@@ -587,6 +588,8 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 		pick.pins(message.pins);
 	} else if (message?.type === "pause") {
 		setPaused(message.on === true);
+	} else if (message?.type === "fonts") {
+		addShippedFonts(message.fonts);
 	} else if (message?.type === "assets") {
 		if (!frameAssets.apply(message.assets, message.reset)) return;
 		style.textContent = frameAssets.css(css);

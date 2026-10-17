@@ -262,6 +262,8 @@ export const FILE_RULES = {
 	imports: [
 		/^react$/,
 		/^lucide-react$/,
+		/^@tabler\/icons-react$/,
+		/^@phosphor-icons\/react$/,
 		/^@\/components\/ui\/[a-z0-9-]+$/,
 		/^@\/lib\/utils$/,
 		/^\.\.?\/components\/[a-z0-9-]+$/,

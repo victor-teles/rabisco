@@ -1,4 +1,5 @@
 import { transform } from "sucrase";
+import { ICON_PACK_IDS, ICON_PACKS, iconSpec } from "../../../shared/icons";
 import { injectLocations } from "../../../shared/jsx/transforms";
 import { extractCandidates } from "./candidates";
 import { SOURCE_URL_PREFIX, type CompileError } from "./protocol";
@@ -19,7 +20,7 @@ export type CompiledModule = {
 	error: CompileError | null;
 	imports: string[];
 	candidates: string[];
-	/** Names imported from `lucide-react`, so the frame can load them before rendering. */
+	/** Icons imported from a pack (`iconSpec`), so the frame can load them before rendering. */
 	icons: string[];
 };
 
@@ -48,26 +49,39 @@ function importsFromSource(source: string) {
 	return [...found];
 }
 
-/** `import { A, B as C }` and `import * as Icons` + `Icons.A` from lucide-react */
+const ICON_MODULES = ICON_PACK_IDS.map((pack) => ICON_PACKS[pack].module);
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+
+/** `import { A, B as C }` and `import * as Icons` + `Icons.A` from an icon pack, as `iconSpec`s */
 export function iconsFromSource(source: string) {
 	const found = new Set<string>();
 
-	// Type-only imports render nothing
-	for (const match of source.matchAll(/import\s+(?!type\s)([^;]*?)\s+from\s*(['"])lucide-react\2/g)) {
-		const clause = match[1]!;
-		const named = /\{([^}]*)\}/.exec(clause)?.[1] ?? "";
+	for (const module of ICON_MODULES) {
+		// Type-only imports render nothing
+		for (const match of source.matchAll(
+			new RegExp(`import\\s+(?!type\\s)([^;]*?)\\s+from\\s*(['"])${escapeRegExp(module)}\\2`, "g"),
+		)) {
+			const clause = match[1]!;
+			const named = /\{([^}]*)\}/.exec(clause)?.[1] ?? "";
 
-		for (const part of named.split(",")) {
-			const name = part.trim().split(/\s+as\s+/)[0]!;
+			const add = (name: string) => {
+				const spec = iconSpec(module, name);
 
-			if (/^[A-Z]\w*$/.test(name)) found.add(name);
+				if (spec) found.add(spec);
+			};
+
+			for (const part of named.split(",")) {
+				const name = part.trim().split(/\s+as\s+/)[0]!;
+
+				if (/^[A-Z]\w*$/.test(name)) add(name);
+			}
+
+			const namespace = /\*\s*as\s+([A-Za-z_$][\w$]*)/.exec(clause)?.[1];
+
+			if (namespace)
+				for (const use of source.matchAll(new RegExp(`\\b${escapeRegExp(namespace)}\\.([A-Z]\\w*)`, "g"))) add(use[1]!);
 		}
-
-		const namespace = /\*\s*as\s+([A-Za-z_$][\w$]*)/.exec(clause)?.[1];
-
-		if (namespace)
-			for (const use of source.matchAll(new RegExp(`\\b${namespace.replace(/\$/g, "\\$")}\\.([A-Z]\\w*)`, "g")))
-				found.add(use[1]!);
 	}
 
 	return [...found];

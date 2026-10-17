@@ -32,8 +32,26 @@ describe("assetUsages", () => {
 describe("iconUsages", () => {
 	test("counts lucide elements by icon name", () => {
 		expect(iconUsages(files)).toEqual([
-			{ name: "Star", count: 3, paths: ["screens/home.tsx", "components/card.tsx"] },
-			{ name: "Heart", count: 1, paths: ["screens/home.tsx"] },
+			{ pack: "lucide", name: "Star", count: 3, paths: ["screens/home.tsx", "components/card.tsx"] },
+			{ pack: "lucide", name: "Heart", count: 1, paths: ["screens/home.tsx"] },
+		]);
+	});
+
+	test("keeps the same icon name in different packs apart", () => {
+		const mixed = {
+			"screens/a.tsx": `import { Star } from "lucide-react";
+import { IconStar, IconStarFilled } from "@tabler/icons-react";
+import { StarIcon } from "@phosphor-icons/react";
+export default function A() {
+	return <div><Star /><IconStar /><IconStarFilled /><StarIcon /><StarIcon /></div>;
+}`,
+		};
+
+		expect(iconUsages(mixed)).toEqual([
+			{ pack: "phosphor", name: "Star", count: 2, paths: ["screens/a.tsx"] },
+			{ pack: "lucide", name: "Star", count: 1, paths: ["screens/a.tsx"] },
+			{ pack: "tabler", name: "Star", count: 1, paths: ["screens/a.tsx"] },
+			{ pack: "tabler", name: "StarFilled", count: 1, paths: ["screens/a.tsx"] },
 		]);
 	});
 });

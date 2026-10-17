@@ -2,7 +2,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const FRAME_HTML = `<!doctype html>
@@ -59,6 +59,98 @@ function lucideIcons(): Plugin {
 	};
 }
 
+const TABLER = resolve(import.meta.dirname, "node_modules/@tabler/icons");
+
+const PHOSPHOR = resolve(import.meta.dirname, "node_modules/@phosphor-icons/core");
+
+const PHOSPHOR_WEIGHTS = ["regular", "thin", "light", "bold", "fill", "duotone"] as const;
+
+type IconNode = [string, Record<string, string>][];
+
+/** Mirrors `iconFileName` in `src/shared/icons.ts` */
+const iconFileName = (base: string) => base.replace(/(?<=.)([A-Z])/g, "-$1").toLowerCase();
+
+/** How @tabler/icons-react names its exports: `a-b-2` → `AB2` */
+const tablerPascal = (name: string) => name.replace(/(^\w|-\w)/g, (part) => part.replace("-", "").toUpperCase());
+
+/** Phosphor's SVGs hold only `<path>`s */
+function svgNodes(svg: string): IconNode {
+	return [...svg.matchAll(/<(path)\s([^>]*?)\/>/g)].map(([, tag, attributes]) => [
+		tag!,
+		Object.fromEntries([...attributes!.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [name!, value!])),
+	]);
+}
+
+function writeIconScripts(dir: string, scripts: Map<string, string>) {
+	for (const [name, script] of scripts) {
+		const path = join(dir, `${name}.js`);
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, script);
+	}
+}
+
+/** `icons/tabler/<file>.js`: the outline and filled styles of one icon (decision 0050) */
+function tablerIcons(): Plugin {
+	return {
+		name: "rabisco-tabler-icons",
+		apply: "build",
+		writeBundle(options) {
+			const read = (style: string): Record<string, IconNode> =>
+				JSON.parse(readFileSync(join(TABLER, `tabler-nodes-${style}.json`), "utf-8"));
+
+			const outline = read("outline");
+			const filled = read("filled");
+			const scripts = new Map<string, string>();
+
+			for (const name of new Set([...Object.keys(outline), ...Object.keys(filled)])) {
+				const file = `tabler/${iconFileName(tablerPascal(name))}`;
+				const data = JSON.stringify({ name, outline: outline[name], filled: filled[name] });
+
+				if (scripts.has(file)) this.warn(`Two Tabler icons write ${file}`);
+				scripts.set(file, `self.__rabiscoIcon&&__rabiscoIcon(${JSON.stringify(file)},${data});`);
+			}
+
+			writeIconScripts(join(options.dir!, "icons"), scripts);
+			this.info(`${scripts.size} Tabler icon scripts`);
+		},
+	};
+}
+
+/** `icons/phosphor/<file>.js`: the six weights of one icon, under its name and its old alias (decision 0050) */
+function phosphorIcons(): Plugin {
+	return {
+		name: "rabisco-phosphor-icons",
+		apply: "build",
+		async writeBundle(options) {
+			const { icons } = await import(pathToFileURL(join(PHOSPHOR, "dist/index.mjs")).href);
+			const scripts = new Map<string, string>();
+
+			for (const icon of icons) {
+				const weights = Object.fromEntries(
+					PHOSPHOR_WEIGHTS.map((weight) => {
+						const file = weight === "regular" ? icon.name : `${icon.name}-${weight}`;
+
+						return [weight, svgNodes(readFileSync(join(PHOSPHOR, "assets", weight, `${file}.svg`), "utf-8"))];
+					}),
+				);
+
+				const data = JSON.stringify(weights);
+
+				for (const pascal of [icon.pascal_name, icon.alias?.pascal_name]) {
+					if (!pascal) continue;
+					const file = `phosphor/${iconFileName(pascal)}`;
+
+					if (!scripts.has(file))
+						scripts.set(file, `self.__rabiscoIcon&&__rabiscoIcon(${JSON.stringify(file)},${data});`);
+				}
+			}
+
+			writeIconScripts(join(options.dir!, "icons"), scripts);
+			this.info(`${scripts.size} Phosphor icon scripts`);
+		},
+	};
+}
+
 export default defineConfig({
 	plugins: [
 		react(),
@@ -69,6 +161,8 @@ export default defineConfig({
 			},
 		},
 		lucideIcons(),
+		tablerIcons(),
+		phosphorIcons(),
 	],
 	resolve: {
 		alias: [{ find: /^@\//, replacement: `${resolve(import.meta.dirname, "src/mainview")}/` }],

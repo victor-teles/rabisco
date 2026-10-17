@@ -69,12 +69,8 @@ describe("UI_MODULES", () => {
 		// Editor chrome, not screen UI yet
 		expect(files.filter((f) => !(f in UI_MODULES)).sort()).toEqual([
 			"uai/attachment",
-			"uai/citation",
 			"uai/command-menu",
-			"uai/empty-state",
-			"uai/response-status",
 			"uai/run-summary",
-			"uai/tool-call",
 		]);
 	});
 });
